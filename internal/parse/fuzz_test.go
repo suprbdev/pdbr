@@ -1,0 +1,92 @@
+package parse
+
+import (
+	"errors"
+	"net/http"
+	"strings"
+	"testing"
+
+	"github.com/suprbdev/pdbr/internal/compile"
+)
+
+// FuzzParse feeds random paths, query strings, headers and RPC bodies
+// through Parse: it must never panic, and every error must be a
+// *compile.UserError with a code and a status.
+func FuzzParse(f *testing.F) {
+	seeds := []struct{ method, path, query, accept, body string }{
+		{"GET", "/users", "select=id,email,posts(id,title,comments(id))&mood=eq.happy&posts.published=is.true&order=id.desc&limit=20&count=true", "", ""},
+		{"GET", "/users", `and=(mood.in.(happy,ok),or(email.ew.@example.com,tags.cs.{admin}),not.settings.hk.banned)`, "text/csv", ""},
+		{"GET", "/users", "posts!none.title=eq.x&posts=exists.true&order=post_count.desc,posts(title).asc", "", ""},
+		{"GET", "/comments", "select=id,parent:comments!parent_id(id),replies:comments!comments_parent_id_fkey!inner(id)&replies.limit=2", "", ""},
+		{"GET", "/places", "select=name,web:location(transform=3857)&location=st_dwithin.(\"POINT(1 2)\",100)&order=location.dist&near=POINT(1 2)", "", ""},
+		{"GET", "/posts", "after=WyJwdWJsaWMucG9zdHMiLDdd&distinct=title&before=x&offset=1", "application/json;q=0.5, text/csv", ""},
+		{"GET", "/users/1", "select=id&mood=eq.happy", "*/*", ""},
+		{"GET", "/users/by/email/a%40b.c", "", "", ""},
+		{"GET", "/rpc/search_posts", "term=hello&published=is.true&order=id.desc&limit=2", "text/csv", ""},
+		{"POST", "/rpc/add_numbers", "", "", `{"a": 1, "b": "2"}`},
+		{"POST", "/users", "select=id,posts(id)", "", `{"email":"x"}`},
+		{"PUT", "/users", "on_conflict=email", "", `{}`},
+		{"DELETE", "/users/1", "", "", ""},
+		{"HEAD", "/metrics", "limit=5&offset=5", "", ""},
+	}
+	for _, s := range seeds {
+		f.Add(s.method, s.path, s.query, s.accept, s.body)
+	}
+	built := buildFixture(f, true)
+	optsList := []Options{allOn, {}, {Spatial: true, CSV: true}, {RelationFilters: true, ComputedOrder: true, MaxPageSize: 3, MaxEmbedDepth: 1}}
+	f.Fuzz(func(t *testing.T, method, path, query, accept, body string) {
+		if strings.ContainsAny(method, " \r\n\t") || strings.ContainsAny(path+query, " \r\n\t#") {
+			t.Skip()
+		}
+		if !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
+		var rd *strings.Reader
+		if body != "" {
+			rd = strings.NewReader(body)
+		}
+		var r *http.Request
+		var err error
+		if rd != nil {
+			r, err = http.NewRequest(method, "http://x/api"+path+"?"+query, rd)
+		} else {
+			r, err = http.NewRequest(method, "http://x/api"+path+"?"+query, nil)
+		}
+		if err != nil {
+			t.Skip()
+		}
+		if accept != "" {
+			r.Header.Set("Accept", accept)
+		}
+		r.Header.Set("Content-Type", "application/json")
+		m, ok := built.Match(strings.TrimPrefix(r.URL.EscapedPath(), "/api"))
+		if !ok {
+			t.Skip()
+		}
+		for _, opts := range optsList {
+			if rd != nil {
+				_, _ = rd.Seek(0, 0)
+				r.Body = readCloser{rd}
+				r.ContentLength = int64(rd.Len())
+			}
+			p, err := Parse(built, m, r, opts)
+			if err == nil {
+				if p == nil || p.Page.Limit <= 0 && m.RPC == nil {
+					t.Fatalf("plan without page limit: %+v", p)
+				}
+				continue
+			}
+			var ue *compile.UserError
+			if !errors.As(err, &ue) {
+				t.Fatalf("non-UserError: %T %v", err, err)
+			}
+			if ue.Code == "" || ue.Status < 400 || ue.Status > 599 {
+				t.Fatalf("bad UserError: %+v", ue)
+			}
+		}
+	})
+}
+
+type readCloser struct{ *strings.Reader }
+
+func (readCloser) Close() error { return nil }

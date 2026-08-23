@@ -1,0 +1,3 @@
+POST /api/users?select=id,email,posts(id,title)
+
+{"email": "new@b.c", "posts": {"create": [{"title": "One"}, {"title": "Two", "body": "b"}]}}

@@ -1,0 +1,1 @@
+GET /api/users?mood=eq.happy&mood=in.(ok,happy)&moods=cs.{sad}&mood=not.eq.sad

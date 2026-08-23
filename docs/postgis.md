@@ -1,0 +1,362 @@
+# PostGIS
+
+pdbr maps PostGIS `geometry` and `geography` columns to GeoJSON and generates
+the spatial query surface on top of them: bounding-box search, DE-9IM
+predicates, radius search, derived accessors, reprojection and distance
+ordering — all compiled into the same **single SQL statement** as the rest of
+the request.
+
+Nothing needs to be configured. A column is spatial when its type name is
+`geometry` or `geography`, whatever schema the extension was installed in. If
+the database has a spatial column, the surface appears; if it does not, routes
+and OpenAPI are byte-identical to what pdbr generates without PostGIS
+installed.
+
+## GeoJSON in and out
+
+| Direction | Representation |
+|---|---|
+| output | a GeoJSON geometry object — `ST_AsGeoJSON(col)::jsonb` inside the response builder, never WKB hex |
+| input | a GeoJSON object **or** a WKT/EWKT string |
+
+```
+GET /api/places?select=name,location
+```
+```json
+[{"name": "Trafalgar Square",
+  "location": {"type": "Point", "coordinates": [-0.1281, 51.508]}}]
+```
+
+Both input forms are accepted anywhere a spatial value is taken — filters,
+`near=`, request bodies of `POST`/`PATCH`/`PUT`, RPC arguments:
+
+```
+POST /api/places
+{"name": "Trafalgar Square",
+ "location": {"type": "Point", "coordinates": [-0.1281, 51.508]}}
+
+POST /api/places
+{"name": "Elsewhere", "location": "SRID=4326;POINT(1 2)"}
+```
+
+GeoJSON `Feature` and `FeatureCollection` documents are unwrapped
+automatically (a `FeatureCollection` becomes a `GeometryCollection`), so a
+value pasted straight out of a map library works without editing.
+
+**SRIDs.** GeoJSON is WGS84 (4326) per RFC 7946, so GeoJSON input is tagged
+`ST_SetSRID(..., 4326)` unless it carries an explicit legacy `crs` member.
+EWKT (`SRID=3857;POINT(...)`) carries its own SRID and is passed through
+unchanged. Bare WKT on a `geography` column is tagged 4326, since geography
+requires a real CRS.
+
+Bare WKT on a `geometry` column keeps PostGIS's own default, SRID 0; a
+column declared `geometry(Point, 4326)` then rejects it (`ST_Intersects:
+Operation on mixed SRID geometries` for filters, `22023` → `400 pg:22023` for
+writes), so send EWKT (`SRID=4326;POINT(…)`) or GeoJSON to SRID-constrained
+geometry columns. Type modifiers are enforced by PostgreSQL as well: a
+`LineString` into `geometry(Point, 4326)` is `400 pg:22023`.
+
+**One parameter, one constructor.** Every spatial value reaches SQL as a
+single bind parameter wrapped in exactly one constructor —
+`ST_GeomFromGeoJSON($n)` or `ST_GeomFromEWKT($n)`, optionally inside
+`ST_SetSRID(…, <srid>)` and `(…)::geography` — chosen from the *shape* of the
+input (GeoJSON / EWKT / bare WKT), never its content. Parsing, unwrapping and
+constructor selection live in `pdbcore/postgis` (`Parse`, `Value.SQL`), shared
+with pdbq. A value that is neither valid GeoJSON nor plausible WKT is rejected
+with `400 invalid_filter` / `400 invalid_body` before any SQL is built.
+
+## Filtering
+
+Spatial columns take **only** the operators below (plus `is.null` /
+`not.is.null`); `eq`, `lt`, `in` and friends are not accepted (`400
+invalid_filter`), because PostGIS types have no meaningful scalar ordering.
+For the same reason spatial columns never appear in `distinct=` or in plain
+`order=` (only `.dist`, below). Operators marked **index** can be answered by
+a GiST index; the rest are exact but scan more rows, so pair them with a
+bounding-box operator when the table is large.
+
+| Operator | Value | SQL | Index |
+|---|---|---|---|
+| `bbox_intersects.(minx,miny,maxx,maxy[,srid])` | four numbers + optional SRID | `col && ST_MakeEnvelope($1,$2,$3,$4,<srid>)` | ✔ |
+| `bbox_contains.(…)` | same | `col ~ …` | ✔ |
+| `bbox_containedby.(…)` | same | `col @ …` | ✔ |
+| `st_intersects.<geom>` | GeoJSON or WKT/EWKT | `ST_Intersects(col, <geom>)` | ✔ |
+| `st_disjoint.<geom>` | geometry | `ST_Disjoint` | |
+| `st_contains.<geom>` | geometry | `ST_Contains` | ✔ |
+| `st_containsproperly.<geom>` | geometry | `ST_ContainsProperly` | ✔ |
+| `st_within.<geom>` | geometry | `ST_Within` | ✔ |
+| `st_covers.<geom>` | geometry | `ST_Covers` | ✔ |
+| `st_coveredby.<geom>` | geometry | `ST_CoveredBy` | ✔ |
+| `st_crosses.<geom>` | geometry | `ST_Crosses` | ✔ |
+| `st_overlaps.<geom>` | geometry | `ST_Overlaps` | ✔ |
+| `st_touches.<geom>` | geometry | `ST_Touches` | ✔ |
+| `st_equals.<geom>` | geometry | `ST_Equals` | |
+| `st_dwithin.(geom,dist[,spheroid])` | geometry, distance, optional `true`/`false` | `ST_DWithin(col, <geom>, $n)` | ✔ |
+| `st_beyond.(geom,dist[,spheroid])` | same | `NOT ST_DWithin(...)` | |
+
+All of them accept the `not.` prefix (`location=not.st_within.<geom>`) and
+work inside `and=`/`or=` groups (`or=(location.st_intersects."…",…)`).
+Geometries, bounding-box corners and distances are bind parameters; only the
+SRID of a bounding box is a structural integer literal in the SQL text.
+
+**Geography columns.** PostGIS defines only `&&`, `ST_Intersects`,
+`ST_Covers`, `ST_CoveredBy` and `ST_DWithin` for `geography`. The other
+operators are still accepted on a geography column: pdbr casts both sides
+to `geometry` (`ST_Within("area"::geometry, ST_SetSRID(…, 4326))`,
+`"area"::geometry ~ ST_MakeEnvelope(…)`), i.e. planar semantics in the
+column's SRID, exactly as pdbq compiles them (`pdbcore/postgis.Op.Geography`
+marks the native ones).
+
+### URL encoding
+
+The value after the operator is percent-decoded before parsing, so any WKT
+or GeoJSON works once encoded (`curl --data-urlencode -G`, `URLSearchParams`,
+etc.). A bare operator (`location=st_within.<geom>`) takes the rest of the
+value verbatim — no quoting, so a GeoJSON object goes in as-is. Inside a
+parenthesised list (`st_dwithin.(…)`, `bbox_*`, `and=(…)`/`or=(…)`), values
+containing `,`, `(` or `)` — every GeoJSON object, WKT with more than one
+point — must be double-quoted, and quotes inside the value escaped as `\"`
+(the standard list quoting of [filtering.md](filtering.md)):
+
+```
+# EWKT, single operator
+GET /api/places?location=st_intersects.SRID%3D4326%3BPOINT(-0.1281%2051.508)
+
+# GeoJSON, single operator (encoded {"type":"Point","coordinates":[-0.1281,51.508]})
+GET /api/places?location=st_within.%7B%22type%22%3A%22Polygon%22%2C%22coordinates%22%3A%5B%5B%5B-0.5%2C51.3%5D%2C%5B0.3%2C51.3%5D%2C%5B0.3%2C51.7%5D%2C%5B-0.5%2C51.7%5D%2C%5B-0.5%2C51.3%5D%5D%5D%7D
+
+# list operators: quote the geometry
+GET /api/places?location=st_dwithin.("SRID=4326;POINT(-0.1281 51.508)",5000,true)
+GET /api/places?location=bbox_intersects.(-0.5,51.3,0.3,51.7)
+GET /api/places?location=bbox_intersects.(-55000,6700000,33000,6750000,3857)
+
+# GeoJSON inside a logic list: quoted, inner quotes escaped
+GET /api/places?or=(location.st_within."{\"type\":\"Polygon\",\"coordinates\":[[…]]}",area.is.null)
+```
+
+(Spaces and quotes shown unencoded for readability; clients send `%20`,
+`%22`.)
+
+### Bounding box (viewport queries)
+
+`bbox_*.(minx,miny,maxx,maxy[,srid])` — `srid` defaults to 4326 and is
+inlined into `ST_MakeEnvelope`; the four corners are parameters. It names the
+CRS the corners are expressed in and must match the column's SRID — PostGIS
+does not reproject the box (the bounding-box operators on mixed SRIDs simply
+never match), so a `3857` box is for data stored in `3857`. This is the cheap
+first pass for "what is on screen":
+
+```
+GET /api/places?select=name&location=bbox_intersects.(-0.5,51.3,0.3,51.7)
+```
+
+### Radius search
+
+`st_dwithin.(geom,dist[,spheroid])`.
+
+**Units matter:** on a `geography` column the distance is **metres**; on a
+`geometry` column it is in the column's **SRID units** (for EPSG:4326 that is
+degrees, which is rarely what you want). Pass `true` as the third element to
+measure a geometry column in metres — pdbr casts both sides to `geography`:
+
+```
+GET /api/places?select=name&location=st_dwithin.("POINT(-0.1281 51.508)",5000,true)
+```
+
+compiles the predicate as
+`ST_DWithin("location"::geography, (ST_GeomFromEWKT($1))::geography, $2)`
+(a bare-WKT operand keeps SRID 0, which the geography cast reads as WGS84; on
+a `geography` column the same operand is tagged
+`ST_SetSRID(…, 4326)` first).
+
+## Derived accessors (pseudo-columns)
+
+Each spatial column `<col>` gains sibling pseudo-columns computed in the same
+statement — no extra round trip. They are selectable in `select=`, appear in
+OpenAPI as `readOnly` properties, and cannot be written, filtered or ordered:
+
+| Pseudo-column | JSON type | PostGIS |
+|---|---|---|
+| `<col>_area` | number | `ST_Area` (m² for geography, SRID units for geometry) |
+| `<col>_length` | number | `ST_Length` |
+| `<col>_perimeter` | number | `ST_Perimeter` |
+| `<col>_centroid` | GeoJSON | `ST_Centroid` |
+| `<col>_envelope` | GeoJSON | `ST_Envelope` |
+| `<col>_srid` | integer | `ST_SRID` |
+| `<col>_geometry_type` | string | `ST_GeometryType` (e.g. `ST_Point`) |
+| `<col>_is_valid` | boolean | `ST_IsValid` |
+
+```
+GET /api/places?select=name,location_centroid,location_srid,area_area
+```
+
+A real column (or a computed column) that already owns one of these names
+keeps it; the accessor is skipped with a build warning rather than shadowing
+your data. Aliases work as for any field: `select=sq_m:area_area`. A NULL
+geometry yields NULL accessors.
+
+Pseudo-columns (like computed columns) are excluded from `*` and only
+returned when named in `select=`, keeping default responses free of per-row
+PostGIS function calls. They are select-only: naming one in a filter, in
+`order=` or in a request body is `400 unknown_column` / `400 invalid_body`.
+The plugin registers them as `api.Resource.Pseudo` entries
+(`api.PseudoColumn{Key, Column, Accessor, Schema}`); the core compiler renders
+`Accessor` through `pdbcore/postgis.Deriveds`.
+
+## Reprojection and simplification
+
+Spatial fields and their pseudo-columns take parenthesised projection
+arguments in `select=` — `transform=<srid>` and `simplify=<tolerance>` —
+applied to the column value before it is encoded as GeoJSON (or before the
+accessor runs: `area_centroid(transform=3857)` is the centroid in web
+mercator, `area_area(transform=3857)` the planar area in that CRS). Aliases
+let you fetch several representations at once:
+
+```
+GET /api/places?select=name,web_mercator:location(transform=3857),coarse:location(simplify=0.01)
+```
+
+`transform` compiles to `ST_Transform(…, <srid>)` (the SRID is a structural
+integer literal), `simplify` to `ST_SimplifyPreserveTopology(…, $n)` (the
+tolerance is a bind parameter), so the result is never an invalid geometry;
+`simplify` is applied first. `transform` must be a positive integer,
+`simplify` a non-negative number, and they are the only field arguments the
+`select=` grammar accepts in v1 (`400 invalid_select` on anything else, on
+empty parentheses, or on a non-spatial field). Note that a transformed value
+is no longer WGS84 even though it is still emitted as GeoJSON.
+
+## Distance ordering
+
+Every spatial column accepts `order=<col>.dist.asc|desc` together with a
+`near=` parameter supplying the reference geometry (GeoJSON or WKT/EWKT, same
+parsing as filters). Ordering compiles to the KNN operator `<->`, which a
+GiST index answers directly — this is the fast "nearest N" path:
+
+```
+GET /api/places?select=name&order=location.dist.asc&near=SRID%3D4326%3BPOINT(-0.1281%2051.508)&limit=10
+```
+
+`near=` is required: `order=location.dist.asc` without it (or with an
+unparseable value) is a `400 invalid_filter`
+([errors.md](errors.md#code-vocabulary)) rather than a result that looks
+sorted but is not (pdbq silently drops the term and falls back to primary-key
+order; pdbr deliberately fails). One `near=` serves every `.dist` term in the
+request, including per-embed `places.order=location.dist.desc` terms, and is
+cast to each term's column flavour (`(…)::geography` for a geography column,
+so the KNN distance is metres there); the PK tiebreaker is appended after the
+distance term as for any order, and keyset cursors (`after=`/`before=`) walk
+the distance order. A `near=` with no `.dist` term is ignored. Plain
+`order=location.asc` on a spatial column is `400 column_not_orderable`;
+`.dist` on a non-spatial column is `400 invalid_filter`.
+
+## Indexing
+
+Spatial filters and ordering respect `filters.indexed_only` exactly like
+scalar columns, so with that policy on (the default), a spatial column needs
+a GiST index to be filterable or `.dist`-orderable at all — otherwise `400
+column_not_filterable` / `column_not_orderable`:
+
+```sql
+CREATE INDEX places_location_idx ON places USING gist (location);
+```
+
+`filters.allow_columns` and `@filterable` open a column without an index.
+This is worth doing regardless: without it, every spatial predicate is a
+sequential scan.
+
+## Configuration
+
+The surface is generated by the built-in `postgis` plugin (priority 160,
+`APIHook` only; the core parser and compiler read what it registers, no
+`CompileHook` needed). Disabling it (`plugins.disabled: [postgis]`) removes
+spatial filter operators (`400 invalid_filter`), pseudo-columns (`400
+unknown_column`), projection arguments (`400 invalid_select`) and distance
+ordering (`400 invalid_filter`), and OpenAPI loses the `GeoJSON` schema and
+the pseudo-column properties; reading and writing spatial columns as GeoJSON
+— including `POST`/`PATCH`/`PUT` bodies, `is.null`, RPC arguments and
+nested-mutation payloads — is core behaviour backed by `pdbcore/postgis` and
+keeps working.
+
+Each setting removes exactly its half: the plugin sets
+`api.Surface.SpatialFilters` / `SpatialOrder` / `SpatialProjection` (and the
+umbrella `Spatial` when all three are on), which `server.ParseOptions` hands
+to `parse.Options`; `derived` decides whether `Resource.Pseudo` is populated
+at all, so no parser gate is needed for it. Nothing is set when the model has
+no spatial column.
+
+```yaml
+plugins:
+  settings:
+    postgis:
+      filters: true      # st_* / bbox_* operators on spatial columns
+      derived: true      # <col>_area, <col>_centroid, ...
+      ordering: true     # order=<col>.dist.asc|desc + near=
+      projection: true   # select=col(transform=…,simplify=…)
+```
+
+Per-column control uses the usual [smart comments](smart-comments.md); the
+plugin reads these tags from the catalog itself (`pdbcore/smarttags`), so
+they work even with `smart-comments` disabled. `@omit filter` withdraws the
+column from the filter vocabulary entirely (spatial operators and `is.null`
+alike → `400 column_not_filterable`), `@omit order` from `.dist` ordering
+(`400 column_not_orderable`); a bare `@omit` and `@behavior -filter/-order`
+count too:
+
+```sql
+COMMENT ON COLUMN places.secret_location IS '@omit filter,order';
+```
+
+## OpenAPI
+
+- `components.schemas.GeoJSON`: an object schema with `type` (enum of the
+  seven RFC 7946 geometry types, `GeometryCollection` included),
+  `coordinates` and `geometries`; emitted once (`Builder.Extra.Schemas`),
+  only when a spatial column exists.
+- Every spatial column property is `$ref: '#/components/schemas/GeoJSON'`
+  (nullable per the column) via the plugin's type override
+  (`Builder.Extra.Types["geometry"|"geography"]`, consulted by
+  `Built.TypeSchema`). Request-body schemas (`.insert`/`.update`/`.upsert`
+  and RPC `POST` bodies) use `oneOf: [GeoJSON, string]` to admit WKT/EWKT
+  (`Builder.Extra.InputTypes`, `postgis.InputSchema()`).
+- Pseudo-columns are `readOnly` properties on the resource schema (not on
+  `.insert`/`.update`/`.upsert`), typed from `PseudoColumn.Schema` (`number`,
+  `integer`, `string`, `boolean`, or `GeoJSON`), each described with its
+  PostGIS function and `Select explicitly: select=<key>`.
+- Query parameters are rendered by the core generator from what the plugin
+  leaves on the model: the column's filter parameter lists the spatial vocabulary from
+  `Built.Extra.FilterOps["geometry"|"geography"]` (`st_intersects`, …,
+  `bbox_*`, `is`; just `is` under `filters: false`) in `x-pdbr-filter-ops`
+  instead of the scalar ops; resources with a `.dist`-orderable spatial
+  column (`Surface.SpatialOrder` and the column in `OrderColumns`) get a
+  `near` query parameter and their `order` description mentions
+  `<col>.dist`; the `select` description mentions `(transform=,simplify=)`
+  under `Surface.SpatialProjection`.
+
+## Notes and limits
+
+- **Injection safety.** Geometries, bounding-box corners and distances are all
+  bind parameters; the compiled SQL text is a pure function of the request
+  shape. This is enforced by `FuzzSpatial` in `internal/compile` (part of
+  `make fuzz`), the spatial twin of the `FuzzFilter` invariant.
+- **Goldens.** `spatial_filter`, `spatial_dwithin`, `spatial_output`,
+  `spatial_order`, `spatial_mutation` in `internal/compile/testdata` (the
+  golden harness applies the plugin so pseudo-columns resolve); e2e in
+  `test/e2e_postgis_test.go`.
+- **Malformed input fails fast.** A value that is neither valid GeoJSON nor
+  plausible WKT is rejected at compile time with a `400` problem, rather than
+  reaching Postgres as a type error mid-statement.
+- **CSV.** With `Accept: text/csv` spatial values and GeoJSON pseudo-columns
+  are emitted as their JSON text in the cell.
+- **Not covered:** raster and topology types, and `geometry(TypeName, SRID)`
+  type modifiers are not reflected in OpenAPI (every spatial column is the
+  same `GeoJSON` schema regardless of its declared geometry subtype; a
+  mismatched subtype or SRID fails in PostgreSQL as `22023` → `400
+  pg:22023`).
+- **Geometry arrays** (`geometry[]`) are read as arrays of GeoJSON and
+  written element-wise, but take no spatial operators, accessors or `.dist`.
+
+## Related
+
+- [smart-comments.md](smart-comments.md) — `@omit filter,order`, `@filterable`.
+- [plugins.md](plugins.md) — `ParamSet.SpatialValue` for plugins that build
+  their own DML over spatial columns.

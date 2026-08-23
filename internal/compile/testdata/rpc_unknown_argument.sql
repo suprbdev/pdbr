@@ -1,0 +1,2 @@
+-- request: GET /api/rpc/describe_mood?m=happy&x=1
+-- error: 400 unknown_argument: function "describe_mood" has no argument "x"

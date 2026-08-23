@@ -1,0 +1,3 @@
+POST /api/rpc/authenticate
+
+{"user_email": "ada@example.com"}

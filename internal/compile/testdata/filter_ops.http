@@ -1,0 +1,1 @@
+GET /api/posts?id=gt.1&id=lte.10&title=like.*Engine*&title=not.ilike.*draft*&author_id=in.(1,2)&author_id=neq.3&title=sw.Not&title=ew.ine&title=not.is.null

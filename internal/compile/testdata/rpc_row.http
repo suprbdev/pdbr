@@ -1,0 +1,3 @@
+POST /api/rpc/publish_post?select=title,users(email)
+
+{"post_id": 7}

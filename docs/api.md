@@ -1,0 +1,456 @@
+# HTTP API reference
+
+pdbr introspects `pg_catalog` and serves a PostgREST-style REST API. Every
+request — however many embeds, filters or nested writes it carries — compiles
+to **one** parameterized SQL statement whose single `jsonb` column is the
+response body; Go only maps status codes and headers.
+
+This document is the URL and header reference. Filters live in
+[filtering.md](filtering.md); paging, ordering and cursors in
+[pagination.md](pagination.md).
+
+## Base path and routes
+
+Everything except the health endpoints is mounted under `server.base_path`
+(default `/api`; `""` mounts at the root). `{base}` below is that prefix.
+
+| Method / route | Meaning | Status |
+|---|---|---|
+| `GET {base}/{table}` | list rows → JSON array | `200` |
+| `HEAD {base}/{table}` | list headers only (incl. `X-Total-Count` with `count=true`), no body | `200` |
+| `GET {base}/{table}/{pk}` | one row by primary key → object; composite PK values comma-separated in PK column order, each percent-encoded (`,` in a value → `%2C`) | `200` / `404` |
+| `GET {base}/{table}/by/{cols}/{vals}` | one row by unique constraint; `cols` = comma list equal (order-insensitive) to a unique constraint's column set, `vals` positional to `cols` | `200` / `404` |
+| `POST {base}/{table}` | insert object → row; insert array → bulk (single `INSERT … VALUES (…),(…)`, columns = union, missing → `DEFAULT`); `{}` → `DEFAULT VALUES` | `201` |
+| `PUT {base}/{table}` | upsert on the PK, or on `?on_conflict=col1,col2` (a unique constraint); conflict columns must be in the body | `201` inserted (`xmax = 0`) / `200` updated; arrays always `200` |
+| `PATCH {base}/{table}/{pk}`, `…/by/{cols}/{vals}` | partial update → row | `200` / `404` / `412` |
+| `DELETE {base}/{table}/{pk}`, `…/by/{cols}/{vals}` | delete → deleted row | `200` (`204` with `Prefer: return=minimal`) / `404` / `412` |
+| `PATCH`, `DELETE {base}/{table}` | bulk-by-filter — deferred to v1.x | `405` + `Allow` |
+| `GET {base}/{schema}/{table}…` | schema-qualified form of every route above | |
+| `GET {base}/rpc/{fn}?arg=v` | stable/immutable function | see [RPC](#rpc-functions) |
+| `POST {base}/rpc/{fn}` (JSON body `{arg: v}`) | any function; volatile via `GET` → `405` (`Allow: POST`) | |
+| `GET {base}/openapi.json` | OpenAPI 3.1 document (`server.openapi`, default true) | `200` |
+| `OPTIONS *` | CORS preflight when `server.cors_origins` is set | |
+| `GET /healthz`, `GET /readyz` | liveness `{"status":"ok"}` — **not** under `{base}` | `200` |
+
+`HEAD` is accepted wherever `GET` is and returns the same headers without a
+body.
+
+Views, materialized views and tables the connection role cannot write have no
+write methods; calling one returns `405` with `Allow` listing what exists.
+`server.read_only: true` turns every write into `405` (`code: read_only`) and
+can be toggled at runtime through `App.SetReadOnly`.
+
+### What gets generated
+
+For each table/view in `schema.schemas` the connection role can `SELECT`:
+
+| Postgres | pdbr |
+|---|---|
+| table `users` | resource `/users` (`/public/users` canonical; bare alias for `schema.schemas[0]`) |
+| rows | `GET /users` (`select`, filters, `order`, `limit`/`offset`, `after`/`before`, `count`, `distinct`) |
+| primary key | `GET /users/{id}`, `PATCH`/`DELETE /users/{id}`, keyset cursors, `ETag` |
+| unique constraints | `GET /users/by/email/{email}` (+ `PATCH`/`DELETE`), `PUT /users?on_conflict=email` |
+| foreign keys | embeds `posts?select=*,users(*)` (forward) and `users?select=*,posts(*)` (backward), relation filters and order |
+| `INSERT`/`UPDATE`/`DELETE` privileges | `POST /users`, `PATCH /users/{id}`, `DELETE /users/{id}`, `PUT /users` |
+| enums | verbatim labels in bodies, responses and filters (`mood=eq.happy`) |
+| composite types | nested JSON objects (`"address": {"street": …}`) on read and write; arrays too |
+| stable/immutable functions | `GET`/`POST /rpc/{fn}` |
+| volatile functions | `POST /rpc/{fn}` (mutation semantics) |
+| `fn(<table>)` stable functions | computed columns (`users_post_count` → `select=post_count`) |
+| PostGIS columns | GeoJSON in/out, `<col>_area`, `<col>_centroid`, … pseudo-columns, spatial filters, `.dist` ordering |
+| everything | `GET /openapi.json` |
+
+## Naming
+
+Identifiers are raw PostgreSQL names — nothing is camel-cased, singularized or
+prefixed:
+
+- Path segment = table/view name verbatim (percent-encoded if needed). JSON
+  keys = column names verbatim. Enum values = labels verbatim. RPC path =
+  function name.
+- **Multi-schema.** Every resource has a canonical `/{schema}/{table}` and
+  `/{schema}/rpc/{fn}`. Resources in `schema.schemas[0]` also get the bare
+  alias `/{table}` and `/rpc/{fn}`. A bare alias is suppressed with a startup
+  warning when it collides with a reserved segment: `rpc`, `openapi.json`,
+  `healthz`, `readyz`, `by`.
+- **Relation keys** (embeds, filter paths, order paths, nested-mutation
+  bodies): forward FK → the *referenced* table name; backward FK → the
+  *referencing* table name. Two FKs to the same table, or a self-reference,
+  yield the same key and require a hint: `rel!fk_constraint_name(...)` or
+  `rel!column(...)`; unhinted → `400 ambiguous_relation` listing the
+  candidates. `@fieldName` / `@foreignFieldName` on the FK comment set explicit
+  keys and remove the need for a hint.
+- **Computed columns**: function name with the `<table>_` prefix stripped
+  (`users_post_count` → `post_count`); `@name` overrides. A real column with the
+  same name wins and the computed column is skipped with a warning.
+- **PostGIS pseudo-columns**: `<col>_area`, `_length`, `_perimeter`,
+  `_centroid`, `_envelope`, `_srid`, `_geometry_type`, `_is_valid` (a real
+  column of that name wins).
+- Overloaded functions and duplicate route names: keep-first + warning.
+
+Route precedence between `/{schema}/{table}` and `/{table}/{pk}` (decided
+in M1, as built in `api.Built.Match`): a first segment equal to a configured
+schema name is always the schema-qualified form; a `schema.schemas[0]` table
+whose name equals another configured schema loses its bare alias (startup
+warning), like the reserved segments. `/{schema}/rpc/{fn}` wins over a table
+named `rpc` in that schema, falling back to the table when no such function
+exists.
+
+## Query parameters
+
+Reserved: `select`, `order`, `limit`, `offset`, `after`, `before`, `count`,
+`distinct`, `near`, `on_conflict`. Every other parameter is a filter
+(`col=op.value`, `rel.col=op.value`, `and=`/`or=`/`not.and=`/`not.or=`) — see
+[filtering.md](filtering.md). A column literally named like a reserved
+parameter cannot be filtered in the bare form; use it inside `and=(…)`.
+
+## `select=`
+
+Absent `select` means all columns (`*`). Grammar:
+
+```
+select   := item ("," item)*
+item     := field | alias ":" field | embed | "*"
+field    := name [ "(" k "=" v ("," k "=" v)* ")" ]      -- args only for spatial projection (transform=<srid>, simplify=<tol>) in v1
+embed    := relkey [ "!" hint ]* "(" select ")"           -- hint := fk_name | column | "inner"
+name     := column | computed column | postgis pseudo-column
+```
+
+### Sparse fields and aliases
+
+```http
+GET /api/users?select=id,email
+GET /api/users?select=id,n:email            -- alias: {"id": 1, "n": "a@b.c"}
+GET /api/users?select=*,post_count          -- all columns + a computed column
+```
+
+Unknown names → `400 unknown_column`.
+
+`*` expands to real columns only (PostgREST behaviour, as built in
+`compile.rowJSON`); computed columns and PostGIS pseudo-columns must be named
+explicitly (`select=*,post_count`). The OpenAPI resource schema still lists
+them (`readOnly`, "Select explicitly: select=<key>").
+
+### Embeds
+
+An embed compiles to a `LEFT JOIN LATERAL` inside the same statement:
+
+| Direction | Key | Result |
+|---|---|---|
+| forward (the FK is on this table) | referenced table name | object, or `null` when the FK is null or an embed filter excludes the referenced row |
+| backward (the FK points at this table) | referencing table name | array (possibly empty) |
+
+```http
+GET /api/posts?select=id,title,users(id,email)          -- forward: post → author
+GET /api/posts?select=id,title,author:users(email)      -- aliased
+GET /api/users?select=id,posts(id,title,comments(id))   -- backward, nested
+```
+
+```json
+[{"id": 1, "posts": [{"id": 7, "title": "Hello", "comments": [{"id": 3}]}]}]
+```
+
+Nesting depth is bounded by `server.max_embed_depth` (default 5); deeper →
+`400 embed_depth_exceeded`. Cost is bounded by `server.max_cost` — see
+[pagination.md](pagination.md#cost-limit).
+
+### Hints
+
+`comments.parent_id` references `comments`, so both the forward and the
+backward key are `comments`; `posts` and `places` both point at `users`, but
+that is one FK per table and needs no hint.
+
+```http
+GET /api/comments?select=id,parent:comments!parent_id(id,body)             -- forward by column
+GET /api/comments?select=id,replies:comments!comments_parent_id_fkey(id)   -- backward by FK name
+GET /api/posts?select=title,users!inner(email)&users.email=eq.a@b.c        -- inner
+```
+
+- `!fk_constraint_name` / `!column` disambiguate. `!column` names a column of
+  the FK on the referencing side.
+- `!inner` turns the lateral join into an inner one: a filter on the embed
+  restricts the parent rows (compiled as `EXISTS`), and parents with no match
+  are dropped instead of carrying `null` / `[]`.
+
+Hints can be combined: `comments!parent_id!inner(id)`.
+
+### Per-embed parameters
+
+Backward embeds accept their own paging, ordering and filters, addressed by
+the relation key (or its alias when one is given):
+
+```http
+GET /api/users?select=id,posts(id,title)&posts.order=title.desc&posts.limit=5&posts.offset=5
+GET /api/users?select=id,posts(id,title)&posts.published=is.true
+```
+
+Without `!inner` a filter on a backward embed only narrows the embedded list;
+a filter on a forward embed nulls out the object. With `!inner` both also
+restrict the parent. Embedded filters and orders follow the embedded table's
+own [indexed-only policy](filtering.md#the-indexed-only-policy).
+
+As built: `<embed>.limit`/`.order`/`.offset` and `<embed>.<col>=<op>.<value>`
+address a **selected** embed by its response key — the alias when one is
+given (`recent:posts(id)&recent.limit=3`, PostgREST style), the relation
+key otherwise — and nest (`posts.comments.limit=2`). Per-embed
+`after`/`before`/`count`/`select`/`distinct` are rejected (`400
+invalid_filter`): embedded lists are offset-paged in v1.
+
+### Computed columns and PostGIS
+
+```http
+GET /api/users?select=id,post_count                       -- users_post_count(users) → "post_count"
+GET /api/places?select=name,location,location_srid,area_area
+GET /api/places?select=name,web:location(transform=3857),coarse:area(simplify=0.01)
+```
+
+Computed columns come from stable/immutable functions whose first argument is
+the table's row type; set-returning ones become arrays. Extra scalar arguments
+are deferred to v1.x — the `field(k=v)` grammar is reserved for them; in v1
+parenthesised arguments are accepted only on spatial columns and their
+pseudo-columns (`transform=<srid>` → `ST_Transform`, `simplify=<tolerance>` →
+`ST_SimplifyPreserveTopology`; `postgis` plugin). Spatial values are GeoJSON
+on output; GeoJSON or WKT/EWKT on input.
+
+## RPC (functions)
+
+```http
+GET  /api/rpc/search_posts?q=hello
+POST /api/rpc/search_posts            {"q": "hello"}
+```
+
+- `GET` for stable/immutable functions, `POST` for any volatility. Volatile
+  functions run with mutation semantics (transaction, `405` when read-only).
+- Arguments by name, coerced by pg type; missing → SQL `NULL`; unknown →
+  `400`. Enum labels verbatim; spatial arguments GeoJSON or WKT.
+- Returns: scalar → JSON value `200`; `void` → `204`; single row (table or
+  composite) → object `200` (`null` when the function returns NULL); `SETOF
+  <table>` → array with full `select=` (embeds included), filters, `order=`,
+  `limit`/`offset`, `count=true` and CSV — offset paging only, no cursors;
+  `SETOF <scalar>` → array of values. A function returning the
+  `rls.auth.jwt_type` composite returns a minted HS256 JWT string.
+- Not exposed: functions without EXECUTE privilege, extension-owned, unnamed
+  args, `OUT`/`INOUT`/`VARIADIC`, trigger/internal returns. Overloads →
+  keep-first + warning. `schema.functions: false` removes RPC and computed
+  columns entirely.
+
+## Request and response bodies
+
+- Responses are `application/json; charset=utf-8`. Request bodies must be
+  `application/json` → otherwise `415 unsupported_media_type`.
+- `int8`, `numeric` and `money` are serialized as JSON **strings** (no
+  precision loss); on input a JSON number or string is accepted.
+- `bytea` is base64. Timestamps are ISO 8601. Composite-typed columns are
+  nested objects (arrays of composites too). Enum labels verbatim.
+- Body validation: unknown key → `400 invalid_body`; generated/identity
+  columns → `400 column_readonly`; on create, `NOT NULL` columns without a
+  default are required; on `PATCH` everything is optional.
+- `select=` applies to mutation responses (compiled against the `__mut` CTE,
+  embeds work; `RETURNING` lists only referenced columns).
+- Nested writes on `POST` (plugin `nested-mutations`): forward key →
+  `{"create": {…}}` or `{"connect": {<key cols>}}` (exactly one; the key is
+  the referenced columns, the primary key or one unique constraint —
+  `{"email": "…"}` connects a user); backward key → `{"create": [{…}, …]}`;
+  depth ≤ 3 (`plugins.settings.nested-mutations.max_depth`); FK columns
+  become optional when nested input is provided
+  ([mutations.md](mutations.md#nested-mutations-plugin-nested-mutations)).
+
+## Content negotiation
+
+| Request | Response |
+|---|---|
+| no `Accept`, `*/*`, `application/*`, `application/json` | JSON |
+| `Accept: text/csv` (or `text/*`) on a list `GET`/`HEAD` or set-returning RPC `GET`/`HEAD` | CSV, `Content-Type: text/csv; charset=utf-8` |
+| `Accept: text/csv` with an embed in `select=`, on a single-row path, on a mutation, on a non-set RPC, or with `server.csv: false` | `406 not_acceptable` (the `detail` says which) |
+| any other `Accept` | `406 not_acceptable` |
+
+Media ranges are ranked by `q` then specificity, so `text/csv;q=0.5,
+application/json` is JSON and `text/csv, */*;q=0.1` falls back to JSON when
+CSV is unavailable.
+
+CSV rules (RFC 4180, `internal/server/csv.go`):
+
+- One header row, then one record per row, `CRLF` line ends; fields are
+  quoted by the encoder when they contain `,`, `"`, line breaks or leading
+  spaces (`"` doubled).
+- Column order = `select=` order: `*` expands to the resource's columns in
+  catalog order, explicit items follow (an unaliased duplicate of a `*` column
+  is dropped), aliases rename the header — exactly the compiled projection.
+  Set-returning composite functions use the type's attributes; scalar sets
+  (`SETOF text`, `SETOF mood`) have a single `value` column.
+- Values: strings verbatim, numbers/booleans as their JSON literals,
+  arrays / json / composites / GeoJSON as compact JSON text, NULL and
+  missing keys as an empty field (no `\N` sentinel).
+- The SQL is identical to the JSON request (goldens unaffected); the server
+  re-encodes the jsonb array on the way out. `X-Total-Count`, cursors and
+  `Link` are unchanged, and `HEAD` returns the same headers with no body.
+- Errors are always `application/problem+json`, even when only `text/csv`
+  was acceptable.
+
+CSV is toggled by `server.csv` (default true); when off the OpenAPI document
+drops the `text/csv` content and the `Accept` header parameter.
+
+## `Prefer`
+
+| Header | Effect |
+|---|---|
+| `Prefer: return=representation` (default) | body = affected row(s) |
+| `Prefer: return=minimal` | `204` and no body; a single-object `POST` (or a `PUT` that inserted) returns `201` + `Location` and no body |
+
+Only the `return=` token is honoured in v1; others (`count=`, `resolution=`)
+are ignored.
+
+## ETag / conditional requests
+
+Single-row `GET`s carry a weak `ETag: W/"<hex>"` = `md5(to_jsonb(row)::text)`
+over **all** columns of the resource, computed in SQL and independent of
+`select=`. `If-None-Match` matching it → `304`.
+
+`PATCH`/`DELETE` on single-row paths honour `If-Match`. The check is part of
+the one statement:
+
+```sql
+WITH cur AS (SELECT md5(to_jsonb(t)::text) AS h FROM users t WHERE id = $1),
+     __mut AS (UPDATE users SET … WHERE id = $1 AND (SELECT h FROM cur) = $2 RETURNING …)
+SELECT …
+```
+
+No `cur` row → `404`; hash mismatch → `412 etag_mismatch`. Atomic without a
+second round-trip. `server.etags` (default true) toggles the whole feature.
+
+**Caveat — column-level grants.** Hashing the whole row needs `SELECT` on every
+column. If a role has column-level grants on a table, single-row `GET`s on it
+fail with `403`; disable `server.etags` for such deployments.
+
+List responses carry no `ETag`.
+
+## Response headers
+
+| Header | When | Meaning |
+|---|---|---|
+| `X-Total-Count` | `count=true` on lists / `SETOF` RPC | total rows after filters (distinct-aware); computed by a `count(*)` subquery in the same statement |
+| `X-Next-Cursor` | keyset-capable list, next page exists | opaque cursor for `after=` |
+| `X-Prev-Cursor` | keyset-capable list, previous page exists | opaque cursor for `before=` |
+| `Link` | lists | `<url?after=…>; rel="next", <url?before=…>; rel="prev"` built from the request URL (relative: `{base}{path}?{query}`, other params kept verbatim and in place); offset-only resources get `offset=` links and no cursors |
+| `ETag` | single-row `GET` | weak row hash |
+| `Location` | `201` from a single-object `POST` (or inserting `PUT`) on a resource with a single-column PK | `{base}/{table}/{pk}` |
+| `Allow` | every `405` (API routes, `/openapi.json`, `/healthz`, `/readyz`) | methods that exist on the path; empty when none does (a volatile function's route under `server.read_only`) |
+| `Content-Type` | always | `application/json; charset=utf-8`, `text/csv; charset=utf-8`, or `application/problem+json` |
+
+Cursor and `Link` details: [pagination.md](pagination.md).
+
+## Limits and errors
+
+| Limit | Config | Over |
+|---|---|---|
+| page size | `server.max_page_size` (100) | `400 page_size_exceeded` |
+| embed depth | `server.max_embed_depth` (5) | `400 embed_depth_exceeded` |
+| request cost | `server.max_cost` (10000) | `400 cost_exceeded` |
+| body size | `server.max_body_bytes` (1 MiB) | `413` |
+| request time | `server.request_timeout` (30s) | `504` |
+| statement time | `database.statement_timeout` (30s) | `504` |
+
+Errors are RFC 9457 problem documents (`application/problem+json`) with a
+stable `code` extension:
+
+```json
+{"type":"about:blank","title":"Conflict","status":409,
+ "detail":"duplicate key value violates unique constraint \"users_email_key\"",
+ "instance":"/api/users","code":"pg:23505"}
+```
+
+`errors.detail: dev` adds a `pg` object (`sqlstate`, `message`, `detail`,
+`hint`, `table`, `constraint`); `prod` (default) passes through `22*`/`23*`
+messages and makes the rest generic; `strict` makes every database message
+generic (`code` stays).
+
+## Worked examples
+
+Fixture: `users(id, email, mood, tags, settings, address)`,
+`posts(id, author_id, title, published)`,
+`comments(id, post_id, parent_id, body)`, `places(id, name, location, area)`,
+functions `search_posts(q)` and `users_post_count(users)`.
+
+List with sparse fields, a filter and an embed:
+
+```console
+$ curl -s 'localhost:8080/api/users?select=id,email,posts(id,title)&mood=eq.happy&limit=2'
+```
+```json
+[{"id":1,"email":"a@b.c","posts":[{"id":7,"title":"Hello"}]},
+ {"id":4,"email":"d@e.f","posts":[]}]
+```
+
+Total count and cursors:
+
+```console
+$ curl -si 'localhost:8080/api/posts?order=title.asc&limit=2&count=true'
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+X-Total-Count: 41
+X-Next-Cursor: WyJwdWJsaWMucG9zdHMiLDJd
+Link: </api/posts?order=title.asc&limit=2&count=true&after=WyJwdWJsaWMucG9zdHMiLDJd>; rel="next"
+
+[{"id":7,"title":"Hello","author_id":1,"published":true},
+ {"id":2,"title":"Intro","author_id":1,"published":false}]
+```
+
+Single row by PK with ETag, then a conditional re-fetch:
+
+```console
+$ curl -si 'localhost:8080/api/users/1?select=id,email,address'
+HTTP/1.1 200 OK
+ETag: W/"9e107d9d372bb6826bd81d3542a419d6"
+
+{"id":1,"email":"a@b.c","address":{"street":"1 Main St","city":"Leeds","mood":"ok"}}
+
+$ curl -si -H 'If-None-Match: W/"9e107d9d372bb6826bd81d3542a419d6"' 'localhost:8080/api/users/1'
+HTTP/1.1 304 Not Modified
+```
+
+Lookup by unique constraint, with a computed column:
+
+```console
+$ curl -s 'localhost:8080/api/users/by/email/a%40b.c?select=id,post_count'
+{"id":1,"post_count":"3"}
+```
+
+Insert with a nested forward `connect`, minimal response:
+
+```console
+$ curl -si -X POST -H 'Content-Type: application/json' -H 'Prefer: return=minimal' \
+    -d '{"title":"New","published":false,"users":{"connect":{"id":1}}}' \
+    'localhost:8080/api/posts'
+HTTP/1.1 201 Created
+Location: /api/posts/42
+```
+
+Conditional update:
+
+```console
+$ curl -si -X PATCH -H 'Content-Type: application/json' -H 'If-Match: W/"stale"' \
+    -d '{"published":true}' 'localhost:8080/api/posts/42'
+HTTP/1.1 412 Precondition Failed
+Content-Type: application/problem+json
+
+{"type":"about:blank","title":"Precondition Failed","status":412,
+ "detail":"row has changed since it was read","instance":"/api/posts/42","code":"etag_mismatch"}
+```
+
+Set-returning RPC as CSV, filtered and ordered:
+
+```console
+$ curl -s -H 'Accept: text/csv' 'localhost:8080/api/rpc/search_posts?q=hello&published=is.true&order=id.desc&limit=2'
+id,author_id,title,published
+9,2,Hello again,true
+7,1,Hello,true
+```
+
+Nearest places to a point, with a pseudo-column:
+
+```console
+$ curl -s 'localhost:8080/api/places?select=name,location_srid&order=location.dist.asc&near=SRID%3D4326%3BPOINT(-0.1281%2051.508)&limit=1'
+[{"name":"Trafalgar Square","location_srid":4326}]
+```
+
+Next: [filtering.md](filtering.md), [pagination.md](pagination.md).

@@ -1,0 +1,1 @@
+GET /api/users?posts.title=sw.A&posts.title=ew.z&posts!none.author_id=eq.9&posts=exists.true

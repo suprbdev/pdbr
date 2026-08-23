@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  packages: write
+
+# See ci.yaml: pdbcore is checked out alongside until it is tagged.
+jobs:
+  binaries:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pdbr
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: pdbr
+      - uses: actions/checkout@v4
+        with:
+          repository: suprbdev/pdbcore
+          path: pdbcore
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: pdbr/go.sum
+      - name: Unit + golden tests (race)
+        run: go test -race ./...
+      - name: Cross-compile
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          mkdir -p dist
+          for platform in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            os=${platform%/*} arch=${platform#*/}
+            bin=pdbr; [ "$os" = windows ] && bin=pdbr.exe
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath \
+              -ldflags="-s -w -X main.version=${VERSION}" \
+              -o "dist/$bin" ./cmd/pdbr
+            name="pdbr_${VERSION#v}_${os}_${arch}"
+            if [ "$os" = windows ]; then
+              (cd dist && zip -q "$name.zip" "$bin")
+            else
+              tar -C dist -czf "dist/$name.tar.gz" "$bin"
+            fi
+            rm "dist/$bin"
+          done
+      - name: Checksums
+        run: cd dist && sha256sum -- * > checksums.txt
+      - name: Create GitHub release
+        # Skipped under act (local workflow testing); act sets ACT=true.
+        if: ${{ !env.ACT }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            dist/*
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: pdbr
+      - uses: actions/checkout@v4
+        with:
+          repository: suprbdev/pdbcore
+          path: pdbcore
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: pdbr/go.sum
+      - name: Vendor pdbcore into the build context
+        run: go mod vendor
+        working-directory: pdbr
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: ${{ !env.ACT }}
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: docker/login-action@v3
+        if: ${{ !env.ACT }}
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: |
+            ghcr.io/${{ github.repository }}
+            suprbdev/pdbr
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern=v{{version}}
+            type=semver,pattern={{major}}.{{minor}}
+      - uses: docker/build-push-action@v6
+        with:
+          context: pdbr
+          platforms: linux/amd64,linux/arm64
+          push: ${{ !env.ACT }}
+          build-args: VERSION=${{ github.ref_name }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

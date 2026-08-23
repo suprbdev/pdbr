@@ -1,0 +1,3 @@
+POST /api/users?select=id,email,post_count,tag_words
+
+{"email": "new@example.com", "tags": ["x", "y"]}

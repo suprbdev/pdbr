@@ -1,0 +1,51 @@
+package compile
+
+import (
+	"errors"
+	"fmt"
+	"net/http"
+)
+
+// ErrNotImplemented marks a compile path that has not landed yet (plugin
+// seams); exec renders it as 501 not_implemented.
+var ErrNotImplemented = errors.New("compile: not implemented")
+
+// Error codes emitted by the compiler (docs/errors.md).
+const (
+	CodeInvalidFilter      = "invalid_filter"
+	CodeInvalidSelect      = "invalid_select"
+	CodePageSizeExceeded   = "page_size_exceeded"
+	CodeKeysetUnsupported  = "keyset_unsupported"
+	CodeEmbedDepthExceeded = "embed_depth_exceeded"
+	CodeCostExceeded       = "cost_exceeded"
+	CodeInvalidCursor      = "invalid_cursor"
+	CodeInvalidBody        = "invalid_body"
+	CodeNotImplemented     = "not_implemented"
+)
+
+// UserError is a client-facing error: rendered as a problem with the given
+// status and code (parse errors and hook errors wrap it). Keep schema
+// internals out of Detail; echoing back user-typed names is fine.
+type UserError struct {
+	Code   string
+	Status int
+	Detail string
+}
+
+func (e *UserError) Error() string { return e.Detail }
+
+// NewUserError builds a 400 UserError.
+func NewUserError(code, detail string) *UserError {
+	return &UserError{Code: code, Status: http.StatusBadRequest, Detail: detail}
+}
+
+func errUser(code, format string, args ...any) error {
+	return NewUserError(code, fmt.Sprintf(format, args...))
+}
+
+// errPageSize rejects a limit above the page-size cap. Silently clamping
+// would return fewer rows than asked for, which breaks paginators that infer
+// "last page" from a short result.
+func errPageSize(got, maxSize int) error {
+	return errUser(CodePageSizeExceeded, "limit %d exceeds the maximum page size of %d", got, maxSize)
+}

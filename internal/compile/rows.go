@@ -1,0 +1,456 @@
+package compile
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/suprbdev/pdbcore/introspect"
+	"github.com/suprbdev/pdbcore/postgis"
+
+	"github.com/suprbdev/pdbr/internal/api"
+	"github.com/suprbdev/pdbr/internal/plan"
+)
+
+// jsonbBuildObjectChunk keeps each jsonb_build_object call under PostgreSQL's
+// 100-argument limit; wider selections are concatenated with ||.
+const jsonbBuildObjectChunk = 40 // pairs (80 args)
+
+// rowJSON compiles a projection node over its resource into a jsonb
+// expression plus the LEFT JOIN LATERAL clauses it needs against alias.
+func (s *stmt) rowJSON(node *plan.Node, alias string, depth int) (string, []string, error) {
+	if depth > s.maxDepth {
+		return "", nil, errUser(CodeEmbedDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)
+	}
+	r := node.Resource
+	if r == nil {
+		return "", nil, fmt.Errorf("compile: projection node without resource")
+	}
+	var pairs []string
+	var laterals []string
+	seen := map[string]bool{}
+	add := func(key, expr string) {
+		seen[key] = true
+		pairs = append(pairs, quoteLiteral(key), expr)
+	}
+	if node.Star {
+		for _, f := range r.Columns {
+			expr, err := s.columnJSON(alias, f.Column, nil, depth)
+			if err != nil {
+				return "", nil, err
+			}
+			add(f.Key, expr)
+		}
+	}
+	for i := range node.Fields {
+		f := &node.Fields[i]
+		key, expr, err := s.fieldJSON(r, f, alias, depth)
+		if err != nil {
+			return "", nil, err
+		}
+		if node.Star && f.Alias == "" && f.Column != nil && seen[key] {
+			continue
+		}
+		add(key, expr)
+	}
+	for i := range node.Embeds {
+		e := &node.Embeds[i]
+		if e.Relation == nil {
+			return "", nil, fmt.Errorf("compile: embed %q is not resolved", e.Key)
+		}
+		key := e.Alias
+		if key == "" {
+			key = e.Key
+		}
+		var expr, lat string
+		var err error
+		if e.Relation.Forward {
+			expr, lat, err = s.forwardEmbed(e, alias, depth+1)
+		} else {
+			expr, lat, err = s.backwardEmbed(e, alias, depth+1)
+		}
+		if err != nil {
+			return "", nil, err
+		}
+		add(key, expr)
+		laterals = append(laterals, lat)
+	}
+	return buildJSONObject(pairs), laterals, nil
+}
+
+// fieldJSON renders one selected field: its response key and value expression.
+func (s *stmt) fieldJSON(r *api.Resource, f *plan.FieldSel, alias string, depth int) (string, string, error) {
+	switch {
+	case f.Column != nil:
+		key := f.Alias
+		if key == "" {
+			key = f.Column.Name
+			if fld := r.FieldByColumn(f.Column.Name); fld != nil {
+				key = fld.Key
+			}
+		}
+		expr, err := s.columnJSON(alias, f.Column, f.Args, depth)
+		return key, expr, err
+	case f.Computed != nil:
+		key := f.Alias
+		if key == "" {
+			key = f.Computed.Key
+		}
+		expr, err := s.computedJSON(f.Computed, f.Node, alias, depth+1)
+		return key, expr, err
+	case f.Pseudo != nil:
+		key := f.Alias
+		if key == "" {
+			key = f.Pseudo.Key
+		}
+		expr, err := s.pseudoJSON(f.Pseudo, f.Args, alias)
+		return key, expr, err
+	}
+	return "", "", fmt.Errorf("compile: empty field selection")
+}
+
+// buildJSONObject renders pairs into chunked jsonb_build_object calls.
+func buildJSONObject(pairs []string) string {
+	if len(pairs) == 0 {
+		return "'{}'::jsonb"
+	}
+	var chunks []string
+	for i := 0; i < len(pairs); i += jsonbBuildObjectChunk * 2 {
+		end := min(i+jsonbBuildObjectChunk*2, len(pairs))
+		chunks = append(chunks, "jsonb_build_object("+strings.Join(pairs[i:end], ", ")+")")
+	}
+	return strings.Join(chunks, " || ")
+}
+
+// columnJSON renders a column value for inclusion in the JSON response.
+func (s *stmt) columnJSON(alias string, c *introspect.Column, args map[string]any, depth int) (string, error) {
+	ref := colRef(alias, c.Name)
+	if comp := s.compositeFor(c); comp != nil {
+		return s.compositeJSON(ref, comp, c.IsArray, depth+1)
+	}
+	if postgis.IsSpatial(c.PGType) && !c.IsArray {
+		return s.spatialFieldSQL(ref, c, args)
+	}
+	if c.IsArray {
+		if postgis.IsSpatial(c.PGType) {
+			// to_jsonb on a geometry[] would emit WKB hex strings; map each
+			// element through ST_AsGeoJSON instead.
+			return s.spatialArrayJSON(ref), nil
+		}
+		return "to_jsonb(" + ref + ")", nil
+	}
+	return exprJSON(ref, c), nil
+}
+
+// exprJSON renders a scalar value expression for the JSON response: 64-bit
+// and arbitrary-precision numbers as strings (no precision loss), bytea as
+// base64, spatial values as GeoJSON; enum labels pass through verbatim.
+func exprJSON(ref string, c *introspect.Column) string {
+	if postgis.IsSpatial(c.PGType) {
+		return postgis.OutputSQL(ref)
+	}
+	switch strings.TrimPrefix(c.PGType, "_") {
+	case "int8", "numeric", "money":
+		return "(" + ref + ")::text"
+	case "bytea":
+		return "encode(" + ref + ", 'base64')"
+	}
+	return ref
+}
+
+// spatialArrayJSON renders a geometry/geography array as a JSON array of
+// GeoJSON objects, preserving element order and NULL-ness of the array itself.
+func (s *stmt) spatialArrayJSON(ref string) string {
+	elem := s.alias("g")
+	return fmt.Sprintf("CASE WHEN %s IS NULL THEN NULL ELSE (SELECT coalesce(jsonb_agg(%s ORDER BY %s.o), '[]'::jsonb) FROM (SELECT generate_subscripts(%s, 1) AS o) %s) END",
+		ref, postgis.OutputSQL("("+ref+")["+elem+".o]"), elem, ref, elem)
+}
+
+// spatialFieldSQL renders a selected spatial column, applying the optional
+// transform (reproject) and simplify (vertex reduction) arguments before the
+// value is encoded as GeoJSON.
+func (s *stmt) spatialFieldSQL(ref string, c *introspect.Column, args map[string]any) (string, error) {
+	expr, err := s.spatialArgs(ref, postgis.FlavourOf(c.PGType), args)
+	if err != nil {
+		return "", err
+	}
+	return postgis.OutputSQL(expr), nil
+}
+
+// spatialArgs applies simplify= then transform= to a spatial expression.
+func (s *stmt) spatialArgs(ref string, flavour postgis.Flavour, args map[string]any) (string, error) {
+	expr := ref
+	if v, ok := args["simplify"]; ok && v != nil {
+		tol, err := toFloat(v)
+		if err != nil || tol < 0 {
+			return "", errUser(CodeInvalidSelect, "simplify must be a number >= 0")
+		}
+		expr = postgis.SimplifySQL(expr, s.param(tol), flavour)
+	}
+	if v, ok := args["transform"]; ok && v != nil {
+		srid, err := toFloat(v)
+		if err != nil || srid <= 0 || srid != float64(int(srid)) {
+			return "", errUser(CodeInvalidSelect, "transform must be a positive integer SRID")
+		}
+		// Simplify already produced a geometry; keep the cast consistent.
+		f := flavour
+		if expr != ref {
+			f = postgis.Geometry
+		}
+		expr = postgis.TransformSQL(expr, int(srid), f)
+	}
+	return expr, nil
+}
+
+// pseudoJSON renders a derived spatial accessor (<col>_area, …). Projection
+// arguments apply to the owning column before the accessor runs.
+func (s *stmt) pseudoJSON(p *api.PseudoColumn, args map[string]any, alias string) (string, error) {
+	d, ok := derivedFor(p.Accessor)
+	if !ok {
+		return "", fmt.Errorf("compile: unknown spatial accessor %q", p.Accessor)
+	}
+	flavour := postgis.FlavourOf(p.Column.PGType)
+	expr, err := s.spatialArgs(colRef(alias, p.Column.Name), flavour, args)
+	if err != nil {
+		return "", err
+	}
+	if expr != colRef(alias, p.Column.Name) {
+		flavour = postgis.Geometry
+	}
+	return d.SQL(expr, flavour), nil
+}
+
+// derivedFor matches an accessor name ("area", "geometry_type",
+// "GeometryType") against the pdbcore accessor table.
+func derivedFor(accessor string) (postgis.Derived, bool) {
+	want := strings.ToLower(strings.ReplaceAll(accessor, "_", ""))
+	for _, d := range postgis.Deriveds {
+		if strings.ToLower(d.Suffix) == want {
+			return d, true
+		}
+	}
+	return postgis.Derived{}, false
+}
+
+// computedJSON compiles a computed column: the row-type function called with
+// an explicit ROW(...)::table cast, which works over any row source — a table
+// scan, a function row source, or a mutation RETURNING CTE (whose whole-row
+// variable is an anonymous record the function would reject). Set-returning
+// functions aggregate into an array (SETOF <scalar>) or an array of fully
+// projected rows (SETOF <table>).
+func (s *stmt) computedJSON(c *api.Computed, node *plan.Node, alias string, depth int) (string, error) {
+	fn := c.Function
+	call := computedCallSQL(fn, c.Resource.Table, alias)
+	ret := fnReturnColumn(fn)
+	if fn.ReturnsSet {
+		if c.SetOf != nil {
+			if depth > s.maxDepth {
+				return "", errUser(CodeEmbedDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)
+			}
+			if node == nil {
+				node = &plan.Node{Resource: c.SetOf, Star: true}
+			} else if node.Resource == nil {
+				n := *node
+				n.Resource = c.SetOf
+				node = &n
+			}
+			rowAlias := s.alias("t")
+			jsonExpr, laterals, err := s.rowJSON(node, rowAlias, depth)
+			if err != nil {
+				return "", err
+			}
+			sub := s.alias("s")
+			return fmt.Sprintf("(SELECT coalesce(jsonb_agg(%s.data), '[]'::jsonb) FROM (\n%s\n) %s)",
+				sub,
+				indent(fmt.Sprintf("SELECT %s AS data\nFROM %s %s%s", jsonExpr, call, rowAlias, joinLaterals(laterals))),
+				sub), nil
+		}
+		elem := s.alias("v")
+		return fmt.Sprintf("(SELECT coalesce(jsonb_agg(%s), '[]'::jsonb) FROM %s %s(v))",
+			exprJSON(elem+".v", ret), call, elem), nil
+	}
+	if comp := s.compositeFor(ret); comp != nil {
+		return s.compositeJSON(call, comp, ret.IsArray, depth)
+	}
+	if ret.IsArray {
+		if postgis.IsSpatial(ret.PGType) {
+			sub := s.alias("a")
+			return fmt.Sprintf("(SELECT %s FROM (SELECT %s AS v) %s)", s.spatialArrayJSON(sub+".v"), call, sub), nil
+		}
+		return "to_jsonb(" + call + ")", nil
+	}
+	return exprJSON(call, ret), nil
+}
+
+// rowParamSQL renders alias's row as an explicit ROW(...)::table value.
+func rowParamSQL(t *introspect.Table, alias string) string {
+	cols := make([]string, len(t.Columns))
+	for i, c := range t.Columns {
+		cols[i] = colRef(alias, c.Name)
+	}
+	return "ROW(" + strings.Join(cols, ", ") + ")::" + tableRef(t)
+}
+
+// computedCallSQL renders a computed-column function called on the current row.
+func computedCallSQL(fn *introspect.Function, t *introspect.Table, alias string) string {
+	return quoteIdent(fn.Schema) + "." + quoteIdent(fn.Name) + "(" + rowParamSQL(t, alias) + ")"
+}
+
+// fnReturnColumn describes a function's return type as a column so the
+// scalar/array renderers apply the same representation fixes.
+func fnReturnColumn(fn *introspect.Function) *introspect.Column {
+	return &introspect.Column{
+		Name:       fn.Name,
+		PGType:     fn.ReturnType,
+		TypeSchema: fn.ReturnTypeSchema,
+		IsArray:    strings.HasPrefix(fn.ReturnType, "_"),
+	}
+}
+
+// compositeFor resolves a column to its catalog composite type, or nil.
+func (s *stmt) compositeFor(c *introspect.Column) *introspect.Composite {
+	if c == nil || s.c.Built == nil || s.c.Built.Catalog == nil {
+		return nil
+	}
+	return s.c.Built.Catalog.Composite(c.TypeSchema, strings.TrimPrefix(c.PGType, "_"))
+}
+
+// compositeJSON renders a composite (or composite-array) value as a nested
+// object with every attribute. NULL detection uses the text representation
+// because `row IS NULL` is also true for a row whose attributes are all NULL.
+func (s *stmt) compositeJSON(ref string, comp *introspect.Composite, isArray bool, depth int) (string, error) {
+	if depth > s.maxDepth {
+		return "", errUser(CodeEmbedDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)
+	}
+	if isArray {
+		// unnest(composite[]) in FROM expands the composite into columns, so
+		// index the array by subscript instead to keep each element whole.
+		elem := s.alias("e")
+		inner, err := s.compositeJSON("("+ref+")["+elem+".o]", comp, false, depth)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("CASE WHEN %s IS NULL THEN NULL ELSE (SELECT coalesce(jsonb_agg(%s ORDER BY %s.o), '[]'::jsonb) FROM (SELECT generate_subscripts(%s, 1) AS o) %s) END",
+			ref, inner, elem, ref, elem), nil
+	}
+	var pairs []string
+	for _, f := range comp.Fields {
+		attr := "(" + ref + ")." + quoteIdent(f.Name)
+		var expr string
+		if nested := s.compositeFor(f); nested != nil {
+			var err error
+			expr, err = s.compositeJSON(attr, nested, f.IsArray, depth+1)
+			if err != nil {
+				return "", err
+			}
+		} else if f.IsArray {
+			if postgis.IsSpatial(f.PGType) {
+				expr = s.spatialArrayJSON(attr)
+			} else {
+				expr = "to_jsonb(" + attr + ")"
+			}
+		} else {
+			expr = exprJSON(attr, f)
+		}
+		pairs = append(pairs, quoteLiteral(f.Name), expr)
+	}
+	return fmt.Sprintf("CASE WHEN (%s)::text IS NULL THEN NULL ELSE %s END", ref, buildJSONObject(pairs)), nil
+}
+
+// embedNode returns the projection node of an embed (nil select inside the
+// parentheses means every column of the related resource).
+func embedNode(e *plan.Embed) *plan.Node {
+	if e.Node == nil {
+		return &plan.Node{Resource: e.Relation.To, Star: true}
+	}
+	if e.Node.Resource == nil {
+		n := *e.Node
+		n.Resource = e.Relation.To
+		return &n
+	}
+	return e.Node
+}
+
+// forwardEmbed compiles a many-to-one embed: one lateral join fetching the
+// referenced row's JSON (null when the FK is null or the embed filter
+// excludes the row).
+func (s *stmt) forwardEmbed(e *plan.Embed, parentAlias string, depth int) (string, string, error) {
+	rel := e.Relation
+	node := embedNode(e)
+	alias := s.alias("t")
+	jsonExpr, laterals, err := s.rowJSON(node, alias, depth)
+	if err != nil {
+		return "", "", err
+	}
+	conds := []string{joinConds(rel, alias, parentAlias)}
+	more, err := s.parentConds(node, e.Filter, alias)
+	if err != nil {
+		return "", "", err
+	}
+	conds = append(conds, more...)
+	latAlias := s.alias("l")
+	lat := fmt.Sprintf("LEFT JOIN LATERAL (\n%s\n) %s ON true",
+		indent(fmt.Sprintf("SELECT %s AS data\nFROM %s %s%s\nWHERE %s\nLIMIT 1",
+			jsonExpr, s.sourceRef(rel.To.Table), alias, joinLaterals(laterals), strings.Join(conds, " AND "))),
+		latAlias)
+	return latAlias + ".data", lat, nil
+}
+
+// backwardEmbed compiles a one-to-many embed: a lateral join aggregating the
+// child rows' JSON into an array, with the embed's own filter, order and
+// offset paging. The correlation is rendered by listInner once the child
+// alias exists (a textual placeholder could collide with user JSON keys).
+func (s *stmt) backwardEmbed(e *plan.Embed, parentAlias string, depth int) (string, string, error) {
+	rel := e.Relation
+	corr := func(childAlias string) string { return joinConds(rel, childAlias, parentAlias) }
+	inner, err := s.listInner(embedNode(e), e.Filter, e.Order, e.Page, corr, depth)
+	if err != nil {
+		return "", "", err
+	}
+	sub := s.alias("s")
+	latAlias := s.alias("l")
+	body := fmt.Sprintf("SELECT coalesce(jsonb_agg(%s.data), '[]'::jsonb) AS data\nFROM (\n%s\n) %s", sub, indent(inner), sub)
+	lat := fmt.Sprintf("LEFT JOIN LATERAL (\n%s\n) %s ON true", indent(body), latAlias)
+	return latAlias + ".data", lat, nil
+}
+
+// listInner builds `SELECT <json> AS data FROM ... WHERE ... ORDER BY ...
+// LIMIT/OFFSET` for an embedded list. corr, when set, renders the condition
+// correlating the subquery to a parent row given the child alias.
+func (s *stmt) listInner(node *plan.Node, filter plan.Expr, order []plan.OrderTerm, page plan.Page, corr func(childAlias string) string, depth int) (string, error) {
+	t := node.Resource.Table
+	alias := s.alias("t")
+	jsonExpr, laterals, err := s.rowJSON(node, alias, depth)
+	if err != nil {
+		return "", err
+	}
+	var extra []string
+	if corr != nil {
+		extra = append(extra, corr(alias))
+	}
+	where, err := s.whereClause(node, filter, alias, extra)
+	if err != nil {
+		return "", err
+	}
+	orderSQL := s.renderOrder(s.orderTerms(t, order), alias, false)
+	limit, err := s.embedLimit(page)
+	if err != nil {
+		return "", err
+	}
+	pageSQL := "\nLIMIT " + s.param(limit)
+	if page.Offset > 0 {
+		pageSQL += "\nOFFSET " + s.param(page.Offset)
+	}
+	return fmt.Sprintf("SELECT %s AS data\nFROM %s %s%s%s%s%s", jsonExpr, s.sourceRef(t), alias, joinLaterals(laterals), where, orderSQL, pageSQL), nil
+}
+
+// embedLimit resolves an embed's page size: the cap when absent, rejected
+// (never clamped) when above it.
+func (s *stmt) embedLimit(page plan.Page) (int, error) {
+	if page.Limit <= 0 {
+		return s.maxPageSize, nil
+	}
+	if page.Limit > s.maxPageSize {
+		return 0, errPageSize(page.Limit, s.maxPageSize)
+	}
+	return page.Limit, nil
+}

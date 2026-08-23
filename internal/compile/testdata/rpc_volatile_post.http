@@ -1,0 +1,3 @@
+POST /api/rpc/word_lengths
+
+{"words": ["a", "bb"]}

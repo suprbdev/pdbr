@@ -1,0 +1,40 @@
+# Local development stack: Postgres with the fixture schema + pdbr in watch
+# mode. Run from the repo root: make dev (or make compose-up / compose-down).
+# The Makefile targets vendor pdbcore into the build context first — it is a
+# local `replace ../pdbcore` until it is tagged — so prefer them over a bare
+# `docker compose up --build`.
+#
+# No ports are published here — create a compose.override.yaml (gitignored,
+# picked up automatically) mapping them to whatever fits your local setup;
+# see docs/quickstart.md for an example.
+services:
+  db:
+    # PostGIS-enabled image so the fixture schema's spatial table works.
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: pdbr
+      POSTGRES_PASSWORD: pdbr
+      POSTGRES_DB: pdbr
+    volumes:
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pdbr"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  pdbr:
+    image: suprbdev/pdbr:latest
+    build:
+      context: .
+    # No healthcheck: the image is distroless (no shell/curl). Probe
+    # GET /healthz from outside; db's healthcheck gates the start.
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PDBR_DATABASE_URL: postgres://pdbr:pdbr@db:5432/pdbr
+      PDBR_WATCH_ENABLED: "true"
+      PDBR_RLS_ENABLED: "false" # dev stack; see docs/rls.md for production
+      PDBR_ERRORS_DETAIL: dev
+      PDBR_LOG_LEVEL: debug

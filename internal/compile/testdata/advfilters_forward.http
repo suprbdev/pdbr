@@ -1,0 +1,1 @@
+GET /api/posts?users.email=eq.ada@example.com&users=exists.true&select=id&order=users(email).desc,id&limit=2

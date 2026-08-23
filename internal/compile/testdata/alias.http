@@ -1,0 +1,1 @@
+GET /api/posts?select=id,headline:title,author:users(email)&order=title.desc&limit=3

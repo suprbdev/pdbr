@@ -1,0 +1,3 @@
+POST /api/users?select=id,mood,moods,tags,settings
+
+{"email": "a@b.c", "mood": "happy", "moods": ["sad", "happy"], "tags": ["admin", "founder"], "settings": {"theme": "dark"}}

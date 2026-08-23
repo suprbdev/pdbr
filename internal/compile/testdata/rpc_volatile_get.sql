@@ -1,0 +1,2 @@
+-- request: GET /api/rpc/add_numbers?a=2&b=40
+-- error: 405 method_not_allowed: Allow: POST

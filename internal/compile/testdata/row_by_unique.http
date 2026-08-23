@@ -1,0 +1,1 @@
+GET /api/users/by/email/a%40b.c?select=id,post_count

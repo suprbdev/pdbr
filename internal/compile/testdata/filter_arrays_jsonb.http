@@ -1,0 +1,1 @@
+GET /api/users?tags=cs.{admin,founder}&tags=ov.{staff,guest}&moods=cd.{sad,ok,happy}&settings=cs.{"theme":"dark"}&settings=hk.theme&settings=jpe.$.theme&settings=jpm.$.theme=="dark"

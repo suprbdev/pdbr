@@ -1,0 +1,1 @@
+GET /api/memberships/7,eng?select=user_id,team,role

@@ -1,0 +1,343 @@
+package parse
+
+import (
+	"encoding/json"
+	"regexp"
+	"strconv"
+	"strings"
+
+	"github.com/suprbdev/pdbcore/introspect"
+	"github.com/suprbdev/pdbcore/postgis"
+
+	"github.com/suprbdev/pdbr/internal/api"
+	"github.com/suprbdev/pdbr/internal/compile"
+)
+
+type typeKind int
+
+const (
+	kindOther typeKind = iota // passed through as text; PG casts
+	kindText
+	kindInt
+	kindFloat
+	kindNumeric
+	kindBool
+	kindUUID
+	kindJSON
+	kindEnum
+	kindSpatial
+	kindComposite
+)
+
+// colType is the parser's view of a column (or function argument) type.
+type colType struct {
+	base    string // pg type name without the array prefix
+	isArray bool
+	kind    typeKind
+	enum    *api.Enum
+	flavour postgis.Flavour
+}
+
+func (t colType) elem() colType {
+	e := t
+	e.isArray = false
+	return e
+}
+
+func (t colType) name() string {
+	if t.isArray {
+		return t.base + "[]"
+	}
+	return t.base
+}
+
+func (p *parser) typeOf(col *introspect.Column) colType {
+	return p.typeFor(col.PGType, col.TypeSchema, col.IsArray, col.EnumRef)
+}
+
+func (p *parser) typeFor(pgType, typeSchema string, isArray bool, enumRef string) colType {
+	base := strings.TrimPrefix(pgType, "_")
+	t := colType{base: base, isArray: isArray || strings.HasPrefix(pgType, "_")}
+	if enumRef != "" {
+		if e := p.built.Enums[enumRef]; e != nil {
+			t.kind, t.enum = kindEnum, e
+			return t
+		}
+	}
+	if e := p.built.Enums[typeSchema+"."+base]; e != nil && !e.Enum.TableBacked {
+		t.kind, t.enum = kindEnum, e
+		return t
+	}
+	if p.built.Composites[typeSchema+"."+base] != nil {
+		t.kind = kindComposite
+		return t
+	}
+	if f := postgis.FlavourOf(base); f.Spatial() {
+		t.kind, t.flavour = kindSpatial, f
+		return t
+	}
+	t.kind = scalarKind(base)
+	return t
+}
+
+func scalarKind(base string) typeKind {
+	switch base {
+	case "text", "varchar", "bpchar", "char", "name", "citext":
+		return kindText
+	case "int2", "int4", "int8", "oid":
+		return kindInt
+	case "float4", "float8":
+		return kindFloat
+	case "numeric":
+		return kindNumeric
+	case "bool":
+		return kindBool
+	case "uuid":
+		return kindUUID
+	case "json", "jsonb":
+		return kindJSON
+	}
+	return kindOther
+}
+
+var (
+	numericRe = regexp.MustCompile(`^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$`)
+	uuidRe    = regexp.MustCompile(`^(\{)?[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}(\})?$`)
+)
+
+// coerceScalar coerces a text value to col's type. Array columns take a
+// PostgreSQL array literal ({a,b}) and yield []any.
+func (p *parser) coerceScalar(col *introspect.Column, text string) (any, *compile.UserError) {
+	return p.coerceText(p.typeOf(col), text)
+}
+
+func (p *parser) coerceText(t colType, text string) (any, *compile.UserError) {
+	if t.isArray {
+		items, err := parseArrayLiteral(text)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]any, len(items))
+		for i, it := range items {
+			if it == nil {
+				continue
+			}
+			v, err := p.coerceElem(t.elem(), *it)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = v
+		}
+		return out, nil
+	}
+	return p.coerceElem(t, text)
+}
+
+func (p *parser) coerceElem(t colType, text string) (any, *compile.UserError) {
+	switch t.kind {
+	case kindInt:
+		n, err := strconv.ParseInt(strings.TrimSpace(text), 10, 64)
+		if err != nil {
+			return nil, errf(CodeInvalidFilter, "%q is not a valid %s", text, t.base)
+		}
+		return n, nil
+	case kindFloat:
+		f, err := strconv.ParseFloat(strings.TrimSpace(text), 64)
+		if err != nil {
+			return nil, errf(CodeInvalidFilter, "%q is not a valid %s", text, t.base)
+		}
+		return f, nil
+	case kindNumeric:
+		s := strings.TrimSpace(text)
+		if !numericRe.MatchString(s) && !strings.EqualFold(s, "nan") && !strings.EqualFold(s, "infinity") && !strings.EqualFold(s, "-infinity") {
+			return nil, errf(CodeInvalidFilter, "%q is not a valid numeric", text)
+		}
+		return s, nil
+	case kindBool:
+		b, ok := parseBool(text)
+		if !ok {
+			return nil, errf(CodeInvalidFilter, "%q is not a valid boolean", text)
+		}
+		return b, nil
+	case kindUUID:
+		s := strings.TrimSpace(text)
+		if !uuidRe.MatchString(s) {
+			return nil, errf(CodeInvalidFilter, "%q is not a valid uuid", text)
+		}
+		return s, nil
+	case kindJSON, kindComposite:
+		// Composite values travel as JSON text (RPC GET arguments); filters
+		// never reach here because composite columns are not filterable.
+		if !json.Valid([]byte(text)) {
+			return nil, errf(CodeInvalidFilter, "%q is not valid JSON", text)
+		}
+		return text, nil
+	case kindEnum:
+		return p.enumLabel(t.enum, text)
+	case kindSpatial:
+		return p.coerceSpatial(t.flavour, text)
+	}
+	return text, nil
+}
+
+func parseBool(text string) (bool, bool) {
+	switch strings.ToLower(strings.TrimSpace(text)) {
+	case "t", "true", "y", "yes", "on", "1":
+		return true, true
+	case "f", "false", "n", "no", "off", "0":
+		return false, true
+	}
+	return false, false
+}
+
+// enumLabel maps a client-facing enum value to its pg label.
+func (p *parser) enumLabel(e *api.Enum, text string) (any, *compile.UserError) {
+	for i, v := range e.Values {
+		if v == text {
+			return e.Enum.Values[i], nil
+		}
+	}
+	return nil, errf(CodeInvalidFilter, "%q is not a value of enum %q", text, e.Name)
+}
+
+// coerceSpatial parses GeoJSON text or WKT/EWKT into a postgis.Value.
+func (p *parser) coerceSpatial(f postgis.Flavour, text string) (any, *compile.UserError) {
+	var in any = text
+	if strings.HasPrefix(strings.TrimSpace(text), "{") {
+		var m map[string]any
+		if err := json.Unmarshal([]byte(text), &m); err != nil {
+			return nil, errf(CodeInvalidFilter, "spatial value is not valid GeoJSON")
+		}
+		in = m
+	}
+	v, err := postgis.Parse(in, f)
+	if err != nil {
+		return nil, errf(CodeInvalidFilter, "%s", err.Error())
+	}
+	return v, nil
+}
+
+// coerceJSON coerces a decoded JSON value (json.Decoder with UseNumber) to
+// t: cursor elements and RPC POST arguments.
+func (p *parser) coerceJSON(t colType, v any) (any, *compile.UserError) {
+	if v == nil {
+		return nil, nil
+	}
+	if t.isArray {
+		list, ok := v.([]any)
+		if !ok {
+			if s, ok := v.(string); ok {
+				return p.coerceText(t, s)
+			}
+			return nil, errf(CodeInvalidFilter, "expected a JSON array for %s", t.name())
+		}
+		out := make([]any, len(list))
+		for i, item := range list {
+			x, err := p.coerceJSON(t.elem(), item)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = x
+		}
+		return out, nil
+	}
+	switch t.kind {
+	case kindJSON, kindComposite:
+		b, err := json.Marshal(v)
+		if err != nil {
+			return nil, errf(CodeInvalidFilter, "value is not encodable as JSON")
+		}
+		return string(b), nil
+	case kindSpatial:
+		val, err := postgis.Parse(v, t.flavour)
+		if err != nil {
+			return nil, errf(CodeInvalidFilter, "%s", err.Error())
+		}
+		return val, nil
+	}
+	switch x := v.(type) {
+	case json.Number:
+		return p.coerceElem(t, x.String())
+	case string:
+		return p.coerceElem(t, x)
+	case bool:
+		if t.kind == kindBool {
+			return x, nil
+		}
+		return p.coerceElem(t, strconv.FormatBool(x))
+	}
+	return nil, errf(CodeInvalidFilter, "expected a JSON scalar for %s", t.name())
+}
+
+// parseArrayLiteral parses a one-dimensional PostgreSQL array literal
+// ({a,b,"c,d",NULL}); nil entries are SQL NULLs.
+func parseArrayLiteral(s string) ([]*string, *compile.UserError) {
+	s = strings.TrimSpace(s)
+	if len(s) < 2 || s[0] != '{' || s[len(s)-1] != '}' {
+		return nil, errf(CodeInvalidFilter, "%q is not an array literal ({a,b})", s)
+	}
+	body := s[1 : len(s)-1]
+	var out []*string
+	if strings.TrimSpace(body) == "" {
+		return out, nil
+	}
+	i := 0
+	for {
+		for i < len(body) && (body[i] == ' ' || body[i] == '\t') {
+			i++
+		}
+		if i < len(body) && body[i] == '"' {
+			var b strings.Builder
+			i++
+			closed := false
+			for i < len(body) {
+				c := body[i]
+				if c == '\\' && i+1 < len(body) {
+					b.WriteByte(body[i+1])
+					i += 2
+					continue
+				}
+				if c == '"' {
+					closed = true
+					i++
+					break
+				}
+				b.WriteByte(c)
+				i++
+			}
+			if !closed {
+				return nil, errf(CodeInvalidFilter, "unterminated quote in array literal %q", s)
+			}
+			v := b.String()
+			out = append(out, &v)
+		} else {
+			start := i
+			for i < len(body) && body[i] != ',' {
+				if body[i] == '{' || body[i] == '}' {
+					return nil, errf(CodeInvalidFilter, "nested arrays are not supported in %q", s)
+				}
+				i++
+			}
+			raw := strings.TrimSpace(body[start:i])
+			if strings.EqualFold(raw, "null") {
+				out = append(out, nil)
+			} else {
+				v := raw
+				out = append(out, &v)
+			}
+		}
+		for i < len(body) && (body[i] == ' ' || body[i] == '\t') {
+			i++
+		}
+		if i >= len(body) {
+			return out, nil
+		}
+		if body[i] != ',' {
+			return nil, errf(CodeInvalidFilter, "malformed array literal %q", s)
+		}
+		i++
+		if i >= len(body) {
+			return nil, errf(CodeInvalidFilter, "malformed array literal %q", s)
+		}
+	}
+}

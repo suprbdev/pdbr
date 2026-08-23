@@ -1,0 +1,2 @@
+DELETE /api/posts/2
+Prefer: return=minimal

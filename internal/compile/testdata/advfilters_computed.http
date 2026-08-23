@@ -1,0 +1,1 @@
+GET /api/users?post_count=gt.1&post_count=not.in.(5,6)&select=id,post_count&order=post_count.desc,id&limit=2

@@ -1,0 +1,1 @@
+GET /api/users?or=(mood.eq.happy,mood.eq.ok)&and=(id.gte.1,or(email.like.*ada*,not.email.eq.x@y.z))&not.and=(id.eq.99,mood.eq.sad)

@@ -1,0 +1,302 @@
+// Package plan holds the transport-neutral request plan: what a parsed HTTP
+// request asks for, with every name already resolved against api.Built.
+// The compiler consumes only this; it never sees an *http.Request. The
+// package is pure data and imports nothing beyond pdbcore/introspect and
+// pdbr/internal/api.
+package plan
+
+import (
+	"github.com/suprbdev/pdbcore/introspect"
+
+	"github.com/suprbdev/pdbr/internal/api"
+)
+
+// Method is the request method (OPTIONS never reaches the plan).
+type Method string
+
+const (
+	GET    Method = "GET"
+	HEAD   Method = "HEAD"
+	POST   Method = "POST"
+	PATCH  Method = "PATCH"
+	PUT    Method = "PUT"
+	DELETE Method = "DELETE"
+)
+
+// Request is one HTTP request, fully resolved.
+type Request struct {
+	Method   Method
+	Resource *api.Resource // nil for RPC
+	RPC      *api.RPC      // nil for resources
+	// Key identifies a single row: primary key values (pk path) or a unique
+	// constraint + values (/by/{cols}/{vals}). Nil for list paths.
+	Key *Key
+	// Body is the parsed and validated JSON body: one row (Object) or a bulk
+	// list (Objects) of column->value maps already coerced by pg type; for
+	// RPC the arg map. Nested-mutation subtrees ride along as Nested.
+	Body *Body
+	// Select is the projection tree (nil = "*", all columns).
+	Select *Node
+	Filter Expr // nil = no filter
+	Order  []OrderTerm
+	Page   Page
+	Count  bool
+	// Distinct lists DISTINCT ON columns in request order (nil = none).
+	Distinct []*introspect.Column
+	// OnConflict is the upsert target (nil = primary key).
+	OnConflict *introspect.Constraint
+	// Near is the reference geometry for distance ordering (postgis plugin).
+	Near        any
+	IfMatch     string // raw ETag from If-Match ("" = absent)
+	IfNoneMatch string
+	Prefer      Prefer
+	Accept      Accept
+}
+
+// Key is a single-row selector.
+type Key struct {
+	Constraint *introspect.Constraint // the PK or unique constraint matched
+	Values     []any                  // coerced, positional to Constraint.Columns
+}
+
+// Body is a parsed request body.
+type Body struct {
+	Object  map[string]any   // single row / RPC args
+	Objects []map[string]any // bulk insert / bulk upsert
+	// Nested holds nested-mutation subtrees keyed by relation key, populated
+	// only when the nested-mutations plugin is enabled.
+	Nested map[string]*Nested
+	// Columns is the union of body keys in catalog column order (bulk).
+	Columns []*introspect.Column
+}
+
+// Nested is a nested-mutation subtree (nested-mutations plugin).
+type Nested struct {
+	Relation *api.Relation
+	// Create holds rows to insert (one for forward relations, many for
+	// backward); Connect holds the referenced key columns of an existing row.
+	Create  []map[string]any
+	Connect map[string]any
+	// Children are deeper subtrees keyed by relation key.
+	Children map[string]*Nested
+	// Raw is the decoded JSON value of the body key as the parser saw it
+	// (parse.Options.NestedKeys); the nested-mutations plugin resolves it
+	// into Create/Connect/Children.
+	Raw any
+}
+
+// Node is one level of the select= projection tree.
+type Node struct {
+	Resource *api.Resource
+	Alias    string // response key for this node ("" at root)
+	Fields   []FieldSel
+	Embeds   []Embed
+	Star     bool // "*" present: all columns of Resource, plus explicit Fields/Embeds
+}
+
+// FieldSel is one selected field.
+type FieldSel struct {
+	Alias    string             // response key ("" = key of the selected item)
+	Column   *introspect.Column // real column
+	Computed *api.Computed      // computed column (row-type function)
+	Pseudo   *api.PseudoColumn  // postgis derived accessor (<col>_<accessor>)
+	// Args are spatial projection args: "transform" (int SRID) and/or
+	// "simplify" (float64 tolerance). Nil when absent.
+	Args map[string]any
+	// Node is the nested select= of a SETOF <table> computed column
+	// (Computed.SetOf != nil); nil means "*".
+	Node *Node
+}
+
+// Embed is one embedded relation.
+type Embed struct {
+	Key      string        // relation key as written
+	Alias    string        // response key ("" = Key)
+	Relation *api.Relation // resolved (direction, FK, hint applied)
+	Inner    bool          // !inner
+	Node     *Node
+	Filter   Expr        // per-embed filters (posts.title=eq.x)
+	Order    []OrderTerm // posts.order=
+	Page     Page        // posts.limit= / posts.offset=
+}
+
+// Expr is a filter tree node: exactly one of And, Or, Not, Cond.
+type Expr interface{ isExpr() }
+
+type And struct{ Terms []Expr }
+type Or struct{ Terms []Expr }
+type Not struct{ Term Expr }
+
+// Cond is a leaf predicate.
+//
+// Value is coerced by the parser per column type and operator:
+//   - eq/neq/gt/gte/lt/lte: int64 (int2/int4/int8/oid), float64 (float4/8),
+//     bool, string (text-like, uuid, numeric/money, timestamps, intervals,
+//     everything else, enum pg label, JSON text for json/jsonb columns),
+//     []any of element values for array columns.
+//   - in: []any of element values (never nil; may be empty).
+//   - is: nil for is.null, bool for is.true / is.false.
+//   - like/ilike/sw/ew: the raw string operand (the compiler translates *
+//     to % for like/ilike and escapes sw/ew).
+//   - cs/cd/ov: []any for array columns, JSON text (string) for jsonb.
+//   - hk: string key; jpe/jpm: the jsonpath string.
+//   - spatial ops: a postgis.Value (st_* geometry ops), a DWithin, or a BBox.
+type Cond struct {
+	Column   *introspect.Column // real column of the current resource
+	Computed *api.Computed      // computed-column filter (advanced-filters)
+	Relation *RelationPath      // relation filter (advanced-filters)
+	Op       Op                 // eq, neq, ..., st_intersects, exists
+	Value    any                // coerced; nil for structural ops (is.null ...)
+	Negate   bool               // leading not.
+}
+
+// DWithin is the operand of st_dwithin / st_beyond.
+type DWithin struct {
+	Geom     any // postgis.Value
+	Distance float64
+	// Spheroid is the optional third argument (geography only).
+	Spheroid *bool
+}
+
+// BBox is the operand of bbox_intersects / bbox_contains / bbox_containedby.
+type BBox struct {
+	MinX, MinY, MaxX, MaxY float64
+	SRID                   int // 0 = unspecified
+}
+
+func (And) isExpr()  {}
+func (Or) isExpr()   {}
+func (Not) isExpr()  {}
+func (Cond) isExpr() {}
+
+// Op is a filter operator name as written in the URL (after not.).
+type Op string
+
+const (
+	OpEq     Op = "eq"
+	OpNeq    Op = "neq"
+	OpGt     Op = "gt"
+	OpGte    Op = "gte"
+	OpLt     Op = "lt"
+	OpLte    Op = "lte"
+	OpIn     Op = "in"
+	OpIs     Op = "is"
+	OpLike   Op = "like"
+	OpILike  Op = "ilike"
+	OpSw     Op = "sw"
+	OpEw     Op = "ew"
+	OpCs     Op = "cs"
+	OpCd     Op = "cd"
+	OpOv     Op = "ov"
+	OpHk     Op = "hk"
+	OpJpe    Op = "jpe"
+	OpJpm    Op = "jpm"
+	OpExists Op = "exists"
+
+	OpStIntersects       Op = "st_intersects"
+	OpStDisjoint         Op = "st_disjoint"
+	OpStContains         Op = "st_contains"
+	OpStContainsProperly Op = "st_containsproperly"
+	OpStWithin           Op = "st_within"
+	OpStCovers           Op = "st_covers"
+	OpStCoveredBy        Op = "st_coveredby"
+	OpStCrosses          Op = "st_crosses"
+	OpStOverlaps         Op = "st_overlaps"
+	OpStTouches          Op = "st_touches"
+	OpStEquals           Op = "st_equals"
+	OpStDWithin          Op = "st_dwithin"
+	OpStBeyond           Op = "st_beyond"
+	OpBBoxIntersects     Op = "bbox_intersects"
+	OpBBoxContains       Op = "bbox_contains"
+	OpBBoxContainedBy    Op = "bbox_containedby"
+)
+
+// SpatialOps maps the URL spelling of every spatial operator to the
+// pdbcore/postgis Op name (postgis.OpByName).
+var SpatialOps = map[Op]string{
+	OpStIntersects:       "intersects",
+	OpStDisjoint:         "disjoint",
+	OpStContains:         "contains",
+	OpStContainsProperly: "containsProperly",
+	OpStWithin:           "within",
+	OpStCovers:           "covers",
+	OpStCoveredBy:        "coveredBy",
+	OpStCrosses:          "crosses",
+	OpStOverlaps:         "overlaps",
+	OpStTouches:          "touches",
+	OpStEquals:           "equals",
+	OpStDWithin:          "dwithin",
+	OpStBeyond:           "beyond",
+	OpBBoxIntersects:     "bboxIntersects",
+	OpBBoxContains:       "bboxContains",
+	OpBBoxContainedBy:    "bboxContainedBy",
+}
+
+// Quantifier selects how a relation filter applies over related rows.
+type Quantifier string
+
+const (
+	Some   Quantifier = "some"
+	None   Quantifier = "none"
+	Every  Quantifier = "every"
+	Exists Quantifier = "exists"
+)
+
+// RelationPath is a relation filter (advanced-filters plugin). The parser
+// sets the owning Cond's Op to Leaf.Op (or OpExists) and never sets its
+// Negate: a leading not. on the column condition lives on Leaf.Negate, and
+// not.exists.true is folded into *Exists. Several Conds sharing Steps[0]
+// and Quantifier may be ANDed inside one EXISTS by the compiler.
+type RelationPath struct {
+	Steps      []*api.Relation // one step in v1 (rel.col); grammar allows more
+	Quantifier Quantifier      // some (default) | none | every | exists
+	Leaf       *Cond           // nil for exists.true/false
+	Exists     *bool           // for exists.true|false
+	// Filter is the full predicate over the related table (several
+	// conditions on the same key/quantifier ANDed inside one EXISTS); when
+	// set it takes precedence over Leaf.
+	Filter Expr
+}
+
+// OrderTerm is one order= term.
+type OrderTerm struct {
+	Column     *introspect.Column
+	Computed   *api.Computed
+	Relation   *RelationOrder     // users(name) — forward: scalar subquery, backward: MIN/MAX
+	Distance   *introspect.Column // spatial column for `.dist` (uses Request.Near)
+	Desc       bool
+	NullsFirst bool // both directions default to NULLS LAST
+}
+
+// RelationOrder orders by a related table's column.
+type RelationOrder struct {
+	Relation *api.Relation
+	Column   *introspect.Column
+}
+
+// Page is the resolved paging. The parser always sets Limit (explicit or
+// server.max_page_size), on the request and on every Embed (forward embeds
+// carry the default too; the compiler ignores it there).
+type Page struct {
+	Limit  int // always resolved: explicit or server.max_page_size
+	Offset int
+	After  []any // decoded cursor pk values (nil = absent)
+	Before []any
+	// LimitSet reports that limit was given explicitly (cost estimation:
+	// an unset backward-embed limit is estimated at 10, not the cap).
+	LimitSet bool
+}
+
+// Prefer is the parsed Prefer header.
+type Prefer struct {
+	// Return is "representation" (default) or "minimal".
+	Return string
+}
+
+// Accept is the negotiated response format.
+type Accept string
+
+const (
+	AcceptJSON Accept = "json"
+	AcceptCSV  Accept = "csv"
+)

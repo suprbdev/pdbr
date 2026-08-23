@@ -1,0 +1,4 @@
+POST /api/posts
+Prefer: return=minimal
+
+{"title": "Hello", "published": false, "users": {"connect": {"id": 1}}}

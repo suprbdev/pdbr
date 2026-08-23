@@ -1,0 +1,3 @@
+POST /api/users?select=id,address,prev_addresses
+
+{"email": "a@b.c", "address": {"street": "12 St James Sq", "city": "London", "mood": "happy"}, "prev_addresses": [{"street": "1 Ockham Park", "city": "Surrey", "mood": "ok"}]}

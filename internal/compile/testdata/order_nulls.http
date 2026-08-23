@@ -1,0 +1,1 @@
+GET /api/users?order=mood.asc.nullsfirst,email.desc&limit=5

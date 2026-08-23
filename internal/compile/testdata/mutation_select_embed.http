@@ -1,0 +1,3 @@
+POST /api/posts?select=id,title,users(id,email)
+
+{"author_id": 1, "title": "Hello"}

@@ -1,0 +1,1 @@
+GET /api/posts/7?select=id,title,users(email)

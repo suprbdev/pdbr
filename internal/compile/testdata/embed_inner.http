@@ -1,0 +1,1 @@
+GET /api/posts?select=title,users!inner(email)&users.email=eq.a@b.c

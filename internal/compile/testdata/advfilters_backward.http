@@ -1,0 +1,1 @@
+GET /api/users?posts!every.title=sw.C&places!none.owner_id=eq.1&select=id&order=posts(title).desc,id&limit=3

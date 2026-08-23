@@ -1,0 +1,1 @@
+HEAD /api/posts?author_id=eq.1&count=true&limit=10

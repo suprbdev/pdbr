@@ -1,0 +1,3 @@
+PUT /api/memberships
+
+{"user_id": 7, "team": "eng", "role": "lead"}

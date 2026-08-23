@@ -1,0 +1,1 @@
+GET /api/users?select=id,email,name:full_name&limit=10

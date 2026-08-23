@@ -1,0 +1,1 @@
+GET /api/posts?users=exists.false&select=id

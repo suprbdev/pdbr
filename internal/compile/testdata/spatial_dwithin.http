@@ -1,0 +1,1 @@
+GET /api/places?select=id,name&location=st_dwithin.("SRID=4326;POINT(-0.1281%2051.508)",5000,true)&area=not.st_beyond.("POINT(-0.128%2051.508)",100)&order=id&limit=10

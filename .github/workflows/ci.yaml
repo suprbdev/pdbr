@@ -1,0 +1,107 @@
+name: CI
+
+# pdbcore is consumed via `replace github.com/suprbdev/pdbcore => ../pdbcore`
+# until it is tagged, so every job checks both repos out side by side
+# (pdbr/ and pdbcore/) and runs from pdbr/. Drop the pdbcore checkout and the
+# working-directory settings once the replace directive is gone.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pdbr
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: pdbr
+      - uses: actions/checkout@v4
+        with:
+          repository: suprbdev/pdbcore
+          path: pdbcore
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: pdbr/go.sum
+      - name: Vet
+        run: go vet ./...
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          working-directory: pdbr
+      - name: Unit + golden tests (race)
+        run: go test -race ./...
+      - name: Benchmarks compile
+        run: go test -bench=. -benchtime=1x -run=^$ ./internal/api/ ./internal/compile/
+      - name: Example config is current
+        run: |
+          go run ./cmd/pdbr config example > /tmp/pdbr.example.yaml
+          diff -u examples/pdbr.example.yaml /tmp/pdbr.example.yaml
+
+  e2e:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pdbr
+    services:
+      postgres:
+        # PostGIS-enabled: the fixture schema creates the extension for the
+        # spatial e2e coverage.
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: pdbr
+          POSTGRES_PASSWORD: pdbr
+          POSTGRES_DB: pdbr_test
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U pdbr"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: pdbr
+      - uses: actions/checkout@v4
+        with:
+          repository: suprbdev/pdbcore
+          path: pdbcore
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: pdbr/go.sum
+      - name: Load fixture schema
+        run: |
+          sudo apt-get install -y --no-install-recommends postgresql-client
+          PGPASSWORD=pdbr psql -h localhost -p 5433 -U pdbr -d pdbr_test -f db/init/01-schema.sql
+      - name: E2E tests
+        env:
+          PDBR_TEST_DATABASE_URL: postgres://pdbr:pdbr@localhost:5433/pdbr_test
+        # cmd/pdbr carries the DB-backed `schema dump|check` CLI tests.
+        run: go test -race -count=1 -p 1 ./test/ ./cmd/pdbr/
+
+  docker:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pdbr
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: pdbr
+      - uses: actions/checkout@v4
+        with:
+          repository: suprbdev/pdbcore
+          path: pdbcore
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: pdbr/go.sum
+      - name: Vendor pdbcore into the build context
+        run: go mod vendor
+      - name: Build image
+        run: docker build .

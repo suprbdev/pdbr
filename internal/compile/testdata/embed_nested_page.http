@@ -1,0 +1,1 @@
+GET /api/users?select=id,posts(id,title,comments(id,body))&posts.limit=3&posts.comments.limit=2&posts.comments.order=id.desc
