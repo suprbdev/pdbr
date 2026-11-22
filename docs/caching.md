@@ -13,7 +13,7 @@ $ pdbr serve --schema.cache_path schema.cache   # at runtime
 ```
 
 The cache is gzipped JSON of the introspected catalog wrapped in an envelope
-carrying a **format version** (`CatalogFormatVersion`, currently 3) and a
+carrying a **format version** (`CatalogFormatVersion`, currently 6) and a
 **content hash**; `serve` refuses mismatched versions and corrupted files, and
 the loader caps decompressed size at 256 MiB as a gzip-bomb guard. Booting from
 cache never touches `pg_catalog`, so the runtime role only needs privileges on
