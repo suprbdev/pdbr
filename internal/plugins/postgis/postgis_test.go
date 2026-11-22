@@ -106,16 +106,27 @@ func TestSurfaceMatrix(t *testing.T) {
 func TestPseudoColumns(t *testing.T) {
 	_, built := build(t, testutil.FixtureCatalog(), New(nil))
 	places := built.ByPath["places"]
-	want := []string{"area", "length", "perimeter", "centroid", "envelope", "srid", "geometry_type", "is_valid"}
+	want := []string{
+		"area", "length", "perimeter", "centroid", "envelope", "srid", "geometry_type", "is_valid",
+		"x", "y", "z", "m", "num_points", "num_geometries", "start_point", "end_point",
+		"point_on_surface", "wkt", "ewkt", "is_empty", "is_simple", "xmin", "ymin", "xmax", "ymax",
+	}
 	if got := Accessors(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("Accessors = %v", got)
 	}
-	if len(places.Pseudo) != 16 {
-		t.Fatalf("pseudo-columns = %d: %v", len(places.Pseudo), places.Pseudo)
+	notOnPoint := map[string]bool{"z": true, "m": true, "start_point": true, "end_point": true}
+	if n := 2*len(want) - len(notOnPoint); len(places.Pseudo) != n {
+		t.Fatalf("pseudo-columns = %d, want %d: %v", len(places.Pseudo), n, places.Pseudo)
 	}
 	for _, col := range []string{"location", "area"} {
 		for _, acc := range want {
 			pc := places.Pseudo[col+"_"+acc]
+			if col == "location" && notOnPoint[acc] {
+				if pc != nil {
+					t.Errorf("pseudo %s_%s registered on a 2D Point column", col, acc)
+				}
+				continue
+			}
 			if pc == nil || pc.Column.Name != col || pc.Accessor != acc || pc.Schema == nil {
 				t.Errorf("pseudo %s_%s = %+v", col, acc, pc)
 			}
@@ -129,6 +140,15 @@ func TestPseudoColumns(t *testing.T) {
 	}
 	if s := places.Pseudo["area_is_valid"].Schema; s.Type != "boolean" {
 		t.Errorf("is_valid schema = %+v", s)
+	}
+	if s := places.Pseudo["location_x"].Schema; s.Type != "number" {
+		t.Errorf("x schema = %+v", s)
+	}
+	if s := places.Pseudo["area_start_point"].Schema; s.Ref != "#/components/schemas/GeoJSON" {
+		t.Errorf("start_point schema = %+v", s)
+	}
+	if s := places.Pseudo["area_ewkt"].Schema; s.Type != "string" {
+		t.Errorf("ewkt schema = %+v", s)
 	}
 	// Non-spatial resources get none.
 	if len(built.ByPath["users"].Pseudo) != 0 {
@@ -150,7 +170,7 @@ func TestRealColumnWins(t *testing.T) {
 	if places.Pseudo["location_srid"] != nil {
 		t.Fatal("pseudo-column shadowed a real column")
 	}
-	if places.Field("location_srid") == nil || len(places.Pseudo) != 15 {
+	if places.Field("location_srid") == nil || len(places.Pseudo) != 45 {
 		t.Fatalf("field/pseudo count: %v %d", places.Field("location_srid"), len(places.Pseudo))
 	}
 	found := false
@@ -161,6 +181,41 @@ func TestRealColumnWins(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("no warning: %v", b.Warnings)
+	}
+}
+
+func TestPseudoColumnsByTypmod(t *testing.T) {
+	cases := []struct {
+		spatial *introspect.SpatialType
+		has     []string
+		lacks   []string
+	}{
+		{nil, []string{"x", "z", "m", "start_point", "end_point"}, nil},
+		{&introspect.SpatialType{Subtype: introspect.SpatialGeometry}, []string{"x", "z", "m", "start_point"}, nil},
+		{&introspect.SpatialType{Subtype: introspect.SpatialPoint, SRID: 4326}, []string{"x", "y", "srid"}, []string{"z", "m", "start_point", "end_point"}},
+		{&introspect.SpatialType{Subtype: introspect.SpatialPoint, HasZ: true}, []string{"x", "y", "z"}, []string{"m"}},
+		{&introspect.SpatialType{Subtype: introspect.SpatialPoint, HasZ: true, HasM: true}, []string{"z", "m"}, nil},
+		{&introspect.SpatialType{Subtype: introspect.SpatialLineString}, []string{"start_point", "end_point", "length"}, []string{"x", "y", "z", "m"}},
+		{&introspect.SpatialType{Subtype: introspect.SpatialPolygon}, []string{"area", "point_on_surface", "xmin"}, []string{"x", "start_point"}},
+		{&introspect.SpatialType{Subtype: "CircularString"}, []string{"start_point"}, []string{"x"}},
+		{&introspect.SpatialType{Subtype: "Nonsense"}, []string{"x", "start_point"}, nil},
+	}
+	for _, tc := range cases {
+		cat := testutil.FixtureCatalog()
+		pt := placesTable(cat)
+		pt.Columns[3].Spatial = tc.spatial
+		_, built := build(t, cat, New(nil))
+		places := built.ByPath["places"]
+		for _, acc := range tc.has {
+			if places.Pseudo["location_"+acc] == nil {
+				t.Errorf("%+v: location_%s missing", tc.spatial, acc)
+			}
+		}
+		for _, acc := range tc.lacks {
+			if places.Pseudo["location_"+acc] != nil {
+				t.Errorf("%+v: location_%s registered", tc.spatial, acc)
+			}
+		}
 	}
 }
 
@@ -231,7 +286,7 @@ func TestOpenAPI(t *testing.T) {
 	if s := built.TypeSchema("geography", "public", ""); s.Ref != "#/components/schemas/GeoJSON" {
 		t.Errorf("TypeSchema(geography) = %+v", s)
 	}
-	if ops := built.Extra.FilterOps["geometry"]; !reflect.DeepEqual(ops, FilterOps()) || len(ops) != 17 {
+	if ops := built.Extra.FilterOps["geometry"]; !reflect.DeepEqual(ops, FilterOps()) || len(ops) != len(corepostgis.Ops) {
 		t.Errorf("FilterOps = %v", ops)
 	}
 	_, off := build(t, testutil.FixtureCatalog(), New(map[string]any{"filters": false}))

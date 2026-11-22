@@ -1,0 +1,10 @@
+-- request: GET /api/places?select=id&location=bbox_equals.SRID%3D4326%3BPOINT(-0.1281%2051.508)&area=not.st_exactlyequals.SRID%3D4326%3BPOINT(0%200)&and=(location.st_exactlyequals."SRID=4326;POINT(-0.1281%2051.508)",location.st_orderingequals."SRID=4326;POINT(-0.1281%2051.508)",location.st_intersects3d."SRID=4326;POINT(-0.1281%2051.508)",location.bbox_intersectsnd."SRID=4326;POINT(-0.1281%2051.508)",not.area.st_orderingequals."SRID=4326;POINT(0%200)",not.area.st_intersects3d."SRID=4326;POINT(0%200)",not.area.bbox_intersectsnd."SRID=4326;POINT(0%200)",not.area.bbox_equals."SRID=4326;POINT(0%200)")&order=id
+SELECT jsonb_build_object('rows', coalesce(jsonb_agg(s1.data ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $12), '[]'::jsonb), 'has_next', coalesce(bool_or(s1.__rn > $12), false), 'has_prev', false, 'first', (jsonb_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $12))->0, 'last', (jsonb_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $12))->-1) AS data
+FROM (
+  SELECT jsonb_build_object('id', t0."id") AS data, jsonb_build_array(t0."id") AS __key, row_number() OVER (ORDER BY t0."id" ASC) AS __rn
+  FROM "public"."places" t0
+  WHERE (NOT (t0."area"::geometry ~= ST_GeomFromEWKT($1)) AND NOT (t0."area"::geometry &&& ST_GeomFromEWKT($2)) AND NOT (ST_3DIntersects(t0."area"::geometry, ST_GeomFromEWKT($3))) AND NOT (ST_OrderingEquals(t0."area"::geometry, ST_GeomFromEWKT($4))) AND t0."location" &&& ST_GeomFromEWKT($5) AND t0."location" = ST_GeomFromEWKT($6) AND ST_3DIntersects(t0."location", ST_GeomFromEWKT($7)) AND ST_OrderingEquals(t0."location", ST_GeomFromEWKT($8))) AND NOT (t0."area" = (ST_GeomFromEWKT($9))::geography) AND t0."location" ~= ST_GeomFromEWKT($10)
+  ORDER BY t0."id" ASC
+  LIMIT $11
+) s1
+-- args: ["SRID=4326;POINT(0 0)","SRID=4326;POINT(0 0)","SRID=4326;POINT(0 0)","SRID=4326;POINT(0 0)","SRID=4326;POINT(-0.1281 51.508)","SRID=4326;POINT(-0.1281 51.508)","SRID=4326;POINT(-0.1281 51.508)","SRID=4326;POINT(-0.1281 51.508)","SRID=4326;POINT(0 0)","SRID=4326;POINT(-0.1281 51.508)",101,100]

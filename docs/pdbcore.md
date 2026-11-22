@@ -118,8 +118,8 @@ type Flavour int // None, Geometry, Geography
 func Detect(cat *introspect.Catalog) Flavour
 func ParseGeom(v any) (Geom, error)          // GeoJSON object/string, WKT, EWKT → canonical
 func ConstructorSQL(param string, srid int) string // ST_GeomFromGeoJSON / ST_GeomFromEWKT over ONE $n
-var Ops map[string]Op                          // 17 predicates: name → SQL template + arity
-var Accessors map[string]Accessor              // 8 derived accessors
+var Ops map[string]Op                          // 30 predicates: name → SQL template + arity
+var Accessors map[string]Accessor              // 25 derived accessors
 func TransformSQL(expr string, srid int) string; func SimplifySQL(expr, tolParam string) string; func KNNSQL(col, param string) string
 ```
 

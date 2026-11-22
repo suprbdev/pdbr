@@ -84,7 +84,11 @@ prefixed:
   (`users_post_count` → `post_count`); `@name` overrides. A real column with the
   same name wins and the computed column is skipped with a warning.
 - **PostGIS pseudo-columns**: `<col>_area`, `_length`, `_perimeter`,
-  `_centroid`, `_envelope`, `_srid`, `_geometry_type`, `_is_valid` (a real
+  `_centroid`, `_envelope`, `_srid`, `_geometry_type`, `_is_valid`, `_x`,
+  `_y`, `_z`, `_m`, `_num_points`, `_num_geometries`, `_start_point`,
+  `_end_point`, `_point_on_surface`, `_wkt`, `_ewkt`, `_is_empty`,
+  `_is_simple`, `_xmin`, `_ymin`, `_xmax`, `_ymax` (the type-specific ones only
+  where the column's typmod allows them — [postgis.md](postgis.md); a real
   column of that name wins).
 - Overloaded functions and duplicate route names: keep-first + warning.
 

@@ -39,7 +39,7 @@ compile time (`400 invalid_filter` when it does not parse) and passed as
 | `cs`, `cd`, `ov` | `@>`, `<@`, `&&` | arrays (`{a,b}` literal); `cs`/`cd` also jsonb (JSON literal) |
 | `hk` | `?` (has key) | jsonb |
 | `jpe`, `jpm` | `@?`, `@@` — value is a SQL/JSON path | jsonb |
-| spatial (`postgis` plugin) | `st_intersects`, `st_disjoint`, `st_contains`, `st_containsproperly`, `st_within`, `st_covers`, `st_coveredby`, `st_crosses`, `st_overlaps`, `st_touches`, `st_equals` (value = GeoJSON or WKT/EWKT); `st_dwithin.(geom,dist[,spheroid])`, `st_beyond.(…)`; `bbox_intersects.(minx,miny,maxx,maxy[,srid])`, `bbox_contains`, `bbox_containedby` — plus `is.null`; scalar ops on a spatial column are `400 invalid_filter`, spatial ops on a scalar column too; off (`invalid_filter`) with `plugins.settings.postgis.filters: false` or the plugin disabled — see [postgis.md](postgis.md) | geometry / geography |
+| spatial (`postgis` plugin) | `st_intersects`, `st_disjoint`, `st_contains`, `st_containsproperly`, `st_within`, `st_covers`, `st_coveredby`, `st_crosses`, `st_overlaps`, `st_touches`, `st_equals`, `st_exactlyequals`, `st_orderingequals`, `st_intersects3d`, `bbox_leftof`, `bbox_rightof`, `bbox_below`, `bbox_above`, `bbox_overlapsorleftof`, `bbox_overlapsorrightof`, `bbox_overlapsorbelow`, `bbox_overlapsorabove`, `bbox_equals`, `bbox_intersectsnd` (value = GeoJSON or WKT/EWKT); `st_dwithin.(geom,dist[,spheroid])`, `st_beyond.(…)`; `bbox_intersects.(minx,miny,maxx,maxy[,srid])`, `bbox_contains`, `bbox_containedby` — plus `is.null`; scalar ops on a spatial column are `400 invalid_filter`, spatial ops on a scalar column too; off (`invalid_filter`) with `plugins.settings.postgis.filters: false` or the plugin disabled — see [postgis.md](postgis.md) | geometry / geography |
 | relation (`advanced-filters` plugin) | `EXISTS` subqueries — see [Relation filters](#relation-filters) | FKs |
 | computed (`advanced-filters` plugin) | `fn(t) op $n` — see [Computed columns](#computed-columns) | computed columns |
 
@@ -282,7 +282,7 @@ semantics under short URL names:
 | `condition: {col: v}` | plain `col=eq.v` (no separate shorthand) |
 | `posts: {some\|none\|every: {…}}` | `posts.col=…`, `posts!none.col=…`, `posts!every.col=…` |
 | `postsExist: true`, `authorExists: false` | `posts=exists.true`, `users=exists.false` |
-| `bboxIntersects`, `intersects`, `dwithin`, … | `bbox_intersects.(…)`, `st_intersects`, `st_dwithin.(…)`, … |
+| `bboxIntersects`, `intersects`, `dwithin`, `bboxLeftOf`, `exactlyEquals`, `intersects3D`, … | `bbox_intersects.(…)`, `st_intersects`, `st_dwithin.(…)`, `bbox_leftof`, `st_exactlyequals`, `st_intersects3d`, … (lower-cased, `bbox_`/`st_` prefix — [postgis.md](postgis.md#filtering)) |
 | relation keys `author` / `postsByAuthorId` | table names `users` / `posts` (+ `!hint`) |
 | enum values `HAPPY` | labels verbatim `happy` |
 

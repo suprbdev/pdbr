@@ -93,17 +93,54 @@ bounding-box operator when the table is large.
 | `st_equals.<geom>` | geometry | `ST_Equals` | |
 | `st_dwithin.(geom,dist[,spheroid])` | geometry, distance, optional `true`/`false` | `ST_DWithin(col, <geom>, $n)` | ✔ |
 | `st_beyond.(geom,dist[,spheroid])` | same | `NOT ST_DWithin(...)` | |
+| `bbox_leftof.<geom>` | geometry | `col << <geom>` (strictly left of) | ✔ |
+| `bbox_rightof.<geom>` | geometry | `col >> <geom>` (strictly right of) | ✔ |
+| `bbox_below.<geom>` | geometry | `col <<\| <geom>` (strictly below) | ✔ |
+| `bbox_above.<geom>` | geometry | `col \|>> <geom>` (strictly above) | ✔ |
+| `bbox_overlapsorleftof.<geom>` | geometry | `col &< <geom>` (does not extend to the right of) | ✔ |
+| `bbox_overlapsorrightof.<geom>` | geometry | `col &> <geom>` (does not extend to the left of) | ✔ |
+| `bbox_overlapsorbelow.<geom>` | geometry | `col &<\| <geom>` (does not extend above) | ✔ |
+| `bbox_overlapsorabove.<geom>` | geometry | `col \|&> <geom>` (does not extend below) | ✔ |
+| `bbox_equals.<geom>` | geometry | `col ~= <geom>` (same bounding box) | ✔ |
+| `bbox_intersectsnd.<geom>` | geometry | `col &&& <geom>` (n-D boxes, Z/M included, overlap) | n-D |
+| `st_exactlyequals.<geom>` | geometry | `col = <geom>` (same coordinates, order and SRID) | B-tree |
+| `st_orderingequals.<geom>` | geometry | `ST_OrderingEquals` (equal, same vertex order) | ✔ |
+| `st_intersects3d.<geom>` | geometry | `ST_3DIntersects` | ✔ |
+
+**Operator names.** Every spatial operator is spelled after its
+`pdbcore/postgis` (and pdbq) name, lower-cased, with a `bbox_` prefix for
+the bounding-box operators and `st_` for the rest: `bboxLeftOf` →
+`bbox_leftof`, `bboxOverlapsOrBelow` → `bbox_overlapsorbelow`,
+`exactlyEquals` → `st_exactlyequals`, `intersects3D` → `st_intersects3d`.
+The names are part of the API and never change; new pdbcore operators are
+added under the same rule.
+
+**Bounding-box operand.** Only `bbox_intersects`, `bbox_contains` and
+`bbox_containedby` take the `(minx,miny,maxx,maxy[,srid])` envelope (the
+viewport case). The directional and equality bounding-box operators
+(`bbox_leftof` … `bbox_equals`, `bbox_intersectsnd`) take a geometry, like
+the `st_*` operators, and compare against that geometry's bounding box — a
+geometry can carry the Z/M extent `&&&` needs where an envelope cannot.
+"Left/right" compare X, "below/above" compare Y; `bbox_overlapsorleftof`
+means "this box's right edge is not to the right of the operand's",
+`bbox_overlapsorbelow` "this box's top edge is not above the operand's", and
+so on, as in PostGIS.
+
+**Index notes.** `&&&` (`bbox_intersectsnd`) is served by an n-D GiST index
+(`USING gist (col gist_geometry_ops_nd)`), not the default 2D one;
+`st_intersects3d` is prefiltered by the 2D index and pruned on Z by an n-D
+one. `st_exactlyequals` (`=`) uses a B-tree index, not a GiST one.
 
 All of them accept the `not.` prefix (`location=not.st_within.<geom>`) and
 work inside `and=`/`or=` groups (`or=(location.st_intersects."…",…)`).
 Geometries, bounding-box corners and distances are bind parameters; only the
 SRID of a bounding box is a structural integer literal in the SQL text.
 
-**Geography columns.** PostGIS defines only `&&`, `ST_Intersects`,
+**Geography columns.** PostGIS defines only `&&`, `=`, `ST_Intersects`,
 `ST_Covers`, `ST_CoveredBy` and `ST_DWithin` for `geography`. The other
 operators are still accepted on a geography column: pdbr casts both sides
 to `geometry` (`ST_Within("area"::geometry, ST_SetSRID(…, 4326))`,
-`"area"::geometry ~ ST_MakeEnvelope(…)`), i.e. planar semantics in the
+`"area"::geometry ~ ST_MakeEnvelope(…)`, `"area"::geometry << …`), i.e. planar semantics in the
 column's SRID, exactly as pdbq compiles them (`pdbcore/postgis.Op.Geography`
 marks the native ones).
 
@@ -121,6 +158,7 @@ point — must be double-quoted, and quotes inside the value escaped as `\"`
 ```
 # EWKT, single operator
 GET /api/places?location=st_intersects.SRID%3D4326%3BPOINT(-0.1281%2051.508)
+GET /api/places?location=bbox_leftof.SRID%3D4326%3BPOINT(0%200)
 
 # GeoJSON, single operator (encoded {"type":"Point","coordinates":[-0.1281,51.508]})
 GET /api/places?location=st_within.%7B%22type%22%3A%22Polygon%22%2C%22coordinates%22%3A%5B%5B%5B-0.5%2C51.3%5D%2C%5B0.3%2C51.3%5D%2C%5B0.3%2C51.7%5D%2C%5B-0.5%2C51.7%5D%2C%5B-0.5%2C51.3%5D%5D%5D%7D
@@ -172,7 +210,8 @@ a `geography` column the same operand is tagged
 ## Derived accessors (pseudo-columns)
 
 Each spatial column `<col>` gains sibling pseudo-columns computed in the same
-statement — no extra round trip. They are selectable in `select=`, appear in
+statement — no extra round trip (the type-specific ones only where its type
+modifier allows a non-null value, see below). They are selectable in `select=`, appear in
 OpenAPI as `readOnly` properties, and cannot be written, filtered or ordered:
 
 | Pseudo-column | JSON type | PostGIS |
@@ -185,10 +224,39 @@ OpenAPI as `readOnly` properties, and cannot be written, filtered or ordered:
 | `<col>_srid` | integer | `ST_SRID` |
 | `<col>_geometry_type` | string | `ST_GeometryType` (e.g. `ST_Point`) |
 | `<col>_is_valid` | boolean | `ST_IsValid` |
+| `<col>_x`, `<col>_y` | number | `ST_X`, `ST_Y` (longitude/latitude for geography); null unless the value is a point |
+| `<col>_z`, `<col>_m` | number | `ST_Z`, `ST_M`; null unless the value is a point with that dimension |
+| `<col>_num_points` | integer | `ST_NPoints` (vertex count) |
+| `<col>_num_geometries` | integer | `ST_NumGeometries` (1 for a single geometry, 0 when empty) |
+| `<col>_start_point`, `<col>_end_point` | GeoJSON | `ST_StartPoint`, `ST_EndPoint`; null unless the value is a LineString, CircularString or CompoundCurve |
+| `<col>_point_on_surface` | GeoJSON | `ST_PointOnSurface` (a point guaranteed to lie on the geometry) |
+| `<col>_wkt` | string | `ST_AsText` (WKT, no SRID) |
+| `<col>_ewkt` | string | `ST_AsEWKT` (`SRID=4326;POINT(…)`) |
+| `<col>_is_empty` | boolean | `ST_IsEmpty` |
+| `<col>_is_simple` | boolean | `ST_IsSimple` |
+| `<col>_xmin`, `<col>_ymin`, `<col>_xmax`, `<col>_ymax` | number | `ST_XMin` … `ST_YMax` (bounding-box extent; null when empty) |
 
 ```
 GET /api/places?select=name,location_centroid,location_srid,area_area
+GET /api/places?select=name,lon:location_x,lat:location_y,location_ewkt,area_xmin,area_ymax
 ```
+
+Geometry-only functions are applied to a geography column through a
+`::geometry` cast (`ST_NPoints("area"::geometry)`). The type-specific
+accessors (`x`/`y`/`z`/`m`, `start_point`/`end_point`) render a `CASE` on
+`ST_GeometryType`, so a value of another type yields `null` instead of a
+PostGIS error.
+
+**Per-column accessors.** An accessor that could only ever be `null` for a
+column's type modifier is not generated for it: on `geometry(Point, 4326)`
+there is `location_x`/`location_y` but no `location_z`, `location_m`,
+`location_start_point` or `location_end_point` (`400 unknown_column`, absent
+from OpenAPI); `geometry(PointZ, …)` adds `_z`, `geometry(PointM, …)` `_m`,
+and `geometry(LineString, …)` has `_start_point`/`_end_point` but no `_x`.
+Columns without a subtype (`geometry`, `geography`, `geometry(Geometry,
+…)`), an unrecognised one, or a schema cache without typmod information get
+every accessor. The decision is `pdbcore/postgis.Derived.AppliesTo` over
+`introspect.Column.Spatial`.
 
 A real column (or a computed column) that already owns one of these names
 keeps it; the accessor is skipped with a build warning rather than shadowing
@@ -324,8 +392,8 @@ COMMENT ON COLUMN places.secret_location IS '@omit filter,order';
   PostGIS function and `Select explicitly: select=<key>`.
 - Query parameters are rendered by the core generator from what the plugin
   leaves on the model: the column's filter parameter lists the spatial vocabulary from
-  `Built.Extra.FilterOps["geometry"|"geography"]` (`st_intersects`, …,
-  `bbox_*`, `is`; just `is` under `filters: false`) in `x-pdbr-filter-ops`
+  `Built.Extra.FilterOps["geometry"|"geography"]` (the 29 operators above in
+  `pdbcore/postgis.Ops` order, then `is`; just `is` under `filters: false`) in `x-pdbr-filter-ops`
   instead of the scalar ops; resources with a `.dist`-orderable spatial
   column (`Surface.SpatialOrder` and the column in `OrderColumns`) get a
   `near` query parameter and their `order` description mentions
@@ -338,8 +406,9 @@ COMMENT ON COLUMN places.secret_location IS '@omit filter,order';
   bind parameters; the compiled SQL text is a pure function of the request
   shape. This is enforced by `FuzzSpatial` in `internal/compile` (part of
   `make fuzz`), the spatial twin of the `FuzzFilter` invariant.
-- **Goldens.** `spatial_filter`, `spatial_dwithin`, `spatial_output`,
-  `spatial_order`, `spatial_mutation` in `internal/compile/testdata` (the
+- **Goldens.** `spatial_filter`, `spatial_dwithin`, `spatial_bbox_directional`,
+  `spatial_equality`, `spatial_output`, `spatial_accessors`,
+  `spatial_accessor_typmod`, `spatial_order`, `spatial_mutation` in `internal/compile/testdata` (the
   golden harness applies the plugin so pseudo-columns resolve); e2e in
   `test/e2e_postgis_test.go`.
 - **Malformed input fails fast.** A value that is neither valid GeoJSON nor
@@ -347,9 +416,10 @@ COMMENT ON COLUMN places.secret_location IS '@omit filter,order';
   reaching Postgres as a type error mid-statement.
 - **CSV.** With `Accept: text/csv` spatial values and GeoJSON pseudo-columns
   are emitted as their JSON text in the cell.
-- **Not covered:** raster and topology types, and `geometry(TypeName, SRID)`
-  type modifiers are not reflected in OpenAPI (every spatial column is the
-  same `GeoJSON` schema regardless of its declared geometry subtype; a
+- **Not covered:** raster and topology types. `geometry(TypeName, SRID)`
+  type modifiers only decide which accessors a column gets; they are not
+  reflected in the OpenAPI value schema (every spatial column is the same
+  `GeoJSON` schema regardless of its declared geometry subtype; a
   mismatched subtype or SRID fails in PostgreSQL as `22023` → `400
   pg:22023`).
 - **Geometry arrays** (`geometry[]`) are read as arrays of GeoJSON and

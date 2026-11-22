@@ -1,0 +1,2 @@
+-- request: GET /api/places?select=id,location_z
+-- error: 400 unknown_column: unknown column "location_z" on "places"

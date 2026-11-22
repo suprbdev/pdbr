@@ -150,10 +150,14 @@ func Omits(comment string) (skipFilter, skipOrder bool) {
 	return everything || om["filter"], everything || om["order"]
 }
 
-// addPseudoColumns registers <key>_<accessor> for every derived accessor; a
-// real or computed column that already owns the name keeps it.
+// addPseudoColumns registers <key>_<accessor> for every derived accessor
+// that applies to the column's typmod (see Applies); a real or computed
+// column that already owns the name keeps it.
 func (p *Plugin) addPseudoColumns(b *api.Builder, r *api.Resource, f *api.Field) {
 	for _, d := range postgis.Deriveds {
+		if !Applies(d, f.Column) {
+			continue
+		}
 		acc := Accessor(d)
 		key := f.Key + "_" + acc
 		switch {
@@ -177,6 +181,18 @@ func (p *Plugin) addPseudoColumns(b *api.Builder, r *api.Resource, f *api.Field)
 			Description: d.Description,
 		}
 	}
+}
+
+// Applies reports whether the derived accessor can be non-null on col
+// given its typmod (introspect.Column.Spatial): x/y only on Point columns,
+// z/m only on Point columns with that dimension, start_point/end_point only
+// on single-curve columns. A column without a known typmod (unconstrained,
+// or a catalog that predates it) gets every accessor.
+func Applies(d postgis.Derived, col *introspect.Column) bool {
+	if col.Spatial == nil {
+		return true
+	}
+	return d.AppliesTo(string(col.Spatial.Subtype), col.Spatial.HasZ, col.Spatial.HasM)
 }
 
 // Accessor is the pseudo-column suffix of a derived accessor: the pdbcore
