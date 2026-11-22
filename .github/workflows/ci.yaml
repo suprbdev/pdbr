@@ -1,9 +1,5 @@
 name: CI
 
-# pdbcore is consumed via `replace github.com/suprbdev/pdbcore => ../pdbcore`
-# until it is tagged, so every job checks both repos out side by side
-# (pdbr/ and pdbcore/) and runs from pdbr/. Drop the pdbcore checkout and the
-# working-directory settings once the replace directive is gone.
 on:
   push:
     branches: [main]
@@ -12,27 +8,15 @@ on:
 jobs:
   lint-test:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: pdbr
     steps:
       - uses: actions/checkout@v4
-        with:
-          path: pdbr
-      - uses: actions/checkout@v4
-        with:
-          repository: suprbdev/pdbcore
-          path: pdbcore
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26"
-          cache-dependency-path: pdbr/go.sum
       - name: Vet
         run: go vet ./...
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
-        with:
-          working-directory: pdbr
       - name: Unit + golden tests (race)
         run: go test -race ./...
       - name: Benchmarks compile
@@ -44,9 +28,6 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: pdbr
     services:
       postgres:
         # PostGIS-enabled: the fixture schema creates the extension for the
@@ -64,16 +45,9 @@ jobs:
           --health-retries 15
     steps:
       - uses: actions/checkout@v4
-        with:
-          path: pdbr
-      - uses: actions/checkout@v4
-        with:
-          repository: suprbdev/pdbcore
-          path: pdbcore
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26"
-          cache-dependency-path: pdbr/go.sum
       - name: Load fixture schema
         run: |
           sudo apt-get install -y --no-install-recommends postgresql-client
@@ -86,22 +60,10 @@ jobs:
 
   docker:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: pdbr
     steps:
       - uses: actions/checkout@v4
-        with:
-          path: pdbr
-      - uses: actions/checkout@v4
-        with:
-          repository: suprbdev/pdbcore
-          path: pdbcore
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26"
-          cache-dependency-path: pdbr/go.sum
-      - name: Vendor pdbcore into the build context
-        run: go mod vendor
       - name: Build image
         run: docker build .

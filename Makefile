@@ -13,19 +13,8 @@ help: ## Show this help
 build: ## Build the pdbr binary into bin/
 	$(GO) build -trimpath -ldflags="-s -w -X main.version=$(VERSION)" -o bin/pdbr ./cmd/pdbr
 
-# pdbcore is a local `replace ../pdbcore` until it is tagged, so the image
-# build context must carry it: every docker/compose target vendors first and
-# removes the (gitignored) vendor tree again on exit — a leftover vendor/
-# would silently switch local `go build`/`go test` to vendor mode. Once
-# pdbcore is tagged (`go get github.com/suprbdev/pdbcore@vX.Y.Z`, drop the
-# replace) delete the `go mod vendor` steps here, in the Dockerfile comment
-# and in .github/workflows.
-define with_vendor
-trap 'rm -rf vendor' EXIT; $(GO) mod vendor && $(1)
-endef
-
 dev: ## Full local stack (Postgres + pdbr in watch mode); add compose.override.yaml for host ports
-	$(call with_vendor,docker compose build)
+	docker compose build
 	docker compose up
 
 test: ## Unit + golden tests (hermetic, no database needed)
@@ -75,21 +64,21 @@ release: ## Cut a new release (prompts for version, tags, pushes)
 	echo "  https://github.com/suprbdev/pdbr/actions/workflows/release.yaml"
 
 docker-build: ## Build the pdbr Docker image (pdbr:$(VERSION))
-	$(call with_vendor,docker build --build-arg VERSION=$(VERSION) -t pdbr:$(VERSION) .)
+	docker build --build-arg VERSION=$(VERSION) -t pdbr:$(VERSION) .
 
 # Requires `docker login` and a buildx builder (docker buildx create --use).
 # VERSION must be an exact release tag — run from a tagged checkout or pass
 # VERSION=vX.Y.Z explicitly.
 docker-push: ## Build and push multi-arch image to Docker Hub ($(IMAGE):latest + :vX.Y.Z)
 	@echo "$(VERSION)" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$$' || { echo "error: VERSION '$(VERSION)' is not a clean vX.Y.Z tag — checkout a release tag or pass VERSION=vX.Y.Z"; exit 1; }
-	trap 'rm -rf vendor' EXIT; $(GO) mod vendor && docker buildx build \
+	docker buildx build \
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
 		-t $(IMAGE):latest -t $(IMAGE):$(VERSION) \
 		--push .
 
 compose-up: ## Start the local stack detached
-	$(call with_vendor,docker compose build)
+	docker compose build
 	docker compose up -d
 
 compose-down: ## Stop the local stack and remove volumes

@@ -1,8 +1,5 @@
 # Local development stack: Postgres with the fixture schema + pdbr in watch
 # mode. Run from the repo root: make dev (or make compose-up / compose-down).
-# The Makefile targets vendor pdbcore into the build context first — it is a
-# local `replace ../pdbcore` until it is tagged — so prefer them over a bare
-# `docker compose up --build`.
 #
 # No ports are published here — create a compose.override.yaml (gitignored,
 # picked up automatically) mapping them to whatever fits your local setup;

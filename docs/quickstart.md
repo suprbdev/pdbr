@@ -11,10 +11,8 @@ the demo schema (users, posts, comments, places, events, a `metrics` view and
 a handful of functions — the same fixture pdbcore ships for both pdbq and
 pdbr, mounted from `db/init/01-schema.sql`, which `make fixture` regenerates
 from `pdbcore/testutil`) and pdbr in watch mode with RLS off and
-`errors.detail: dev`. Use the Makefile target rather than a bare
-`docker compose up --build`: until pdbcore is tagged it is a local `replace`
-and the target vendors it into the build context first
-([deployment.md](deployment.md#local-stack-compose)).
+`errors.detail: dev`. See [deployment.md](deployment.md#local-stack-compose) for the
+Makefile targets.
 
 The stack publishes no ports by itself — networking setups differ, so port
 mappings live in a gitignored `compose.override.yaml` that compose picks up

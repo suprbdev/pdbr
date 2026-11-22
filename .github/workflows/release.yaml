@@ -8,25 +8,14 @@ permissions:
   contents: write
   packages: write
 
-# See ci.yaml: pdbcore is checked out alongside until it is tagged.
 jobs:
   binaries:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: pdbr
     steps:
       - uses: actions/checkout@v4
-        with:
-          path: pdbr
-      - uses: actions/checkout@v4
-        with:
-          repository: suprbdev/pdbcore
-          path: pdbcore
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26"
-          cache-dependency-path: pdbr/go.sum
       - name: Unit + golden tests (race)
         run: go test -race ./...
       - name: Cross-compile
@@ -65,19 +54,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          path: pdbr
-      - uses: actions/checkout@v4
-        with:
-          repository: suprbdev/pdbcore
-          path: pdbcore
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26"
-          cache-dependency-path: pdbr/go.sum
-      - name: Vendor pdbcore into the build context
-        run: go mod vendor
-        working-directory: pdbr
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -103,7 +82,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
       - uses: docker/build-push-action@v6
         with:
-          context: pdbr
+          context: .
           platforms: linux/amd64,linux/arm64
           push: ${{ !env.ACT }}
           build-args: VERSION=${{ github.ref_name }}
