@@ -218,6 +218,7 @@ return=minimal, handling=strict, max-affected=10`).
 | `return=headers-only` | writes | same as `minimal` (pdbr's `minimal` already keeps `Location`) |
 | `handling=lenient` | any request | default: unknown tokens and malformed values are ignored |
 | `handling=strict` | any request | unknown tokens or malformed values → `400 invalid_preference` (PostgREST `PGRST122`); enables `max-affected` |
+| `count=exact\|planned\|estimated` | bulk `PATCH`, `DELETE` | `Content-Range: 0-<n-1>/<n>` (the written-row count is always exact, so `Preference-Applied` says `count=exact`); lists: [pagination.md](pagination.md#prefer-count-and-content-range) |
 | `max-affected=N` | `PATCH`, `DELETE` (bulk and keyed) | with `handling=strict` only (ignored and not echoed under lenient handling, as in PostgREST): writing more than `N` rows → `400 max_affected_exceeded`, nothing written (PostgREST `PGRST124`). A keyed write counts as one row |
 
 `max-affected` keeps the single-statement invariant: the statement is
@@ -671,6 +672,6 @@ See [rls.md](rls.md) for the claim mechanism.
 - Nested update / delete / disconnect.
 - Savepoints (`SAVEPOINT` per nested CTE for partial success).
 - Writable views (`INSTEAD OF` triggers / auto-updatable views).
-- `Prefer: resolution=merge-duplicates|ignore-duplicates`, `Prefer: count=`,
-  `Prefer: tx=` (rejected under `handling=strict`).
+- `Prefer: resolution=merge-duplicates|ignore-duplicates`, `Prefer: tx=`
+  (rejected under `handling=strict`).
 - `ETag` on mutation responses.

@@ -536,3 +536,60 @@ func TestExecuteMaxAffected(t *testing.T) {
 		t.Fatalf("no cap: %+v txs=%d", res, len(db.txs))
 	}
 }
+
+func TestContentRange(t *testing.T) {
+	b := built(t)
+	stmt := &compile.Statement{Shape: compile.ShapePage, Total: true}
+	cases := []struct {
+		page plan.Page
+		raw  string
+		want string
+	}{
+		{plan.Page{Limit: 2}, `{"rows":[{"id":1},{"id":2}],"has_next":true,"has_prev":false,"total":5}`, "0-1/5"},
+		{plan.Page{Limit: 2, Offset: 4}, `{"rows":[{"id":5}],"has_next":false,"has_prev":true,"total":5}`, "4-4/5"},
+		{plan.Page{Limit: 2, Offset: 9}, `{"rows":[],"has_next":false,"has_prev":true,"total":5}`, "*/5"},
+		{plan.Page{Limit: 2, After: []any{1}}, `{"rows":[{"id":2}],"has_next":false,"has_prev":true,"total":5}`, ""},
+	}
+	for _, tc := range cases {
+		op := listOp(b, "/users")
+		op.Plan.Page = tc.page
+		res, err := Unwrap(op, stmt, []byte(tc.raw), true, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := res.Headers.Get("Content-Range"); got != tc.want {
+			t.Errorf("%+v: Content-Range = %q, want %q", tc.page, got, tc.want)
+		}
+	}
+	op := listOp(b, "/users")
+	res, _ := Unwrap(op, &compile.Statement{Shape: compile.ShapePage}, []byte(`{"rows":[{"id":1}],"has_next":false,"has_prev":false}`), true, "")
+	if got := res.Headers.Get("Content-Range"); got != "0-0/*" || res.Headers.Get("X-Total-Count") != "" {
+		t.Errorf("no count: %q", got)
+	}
+	res, _ = Unwrap(op, &compile.Statement{Shape: compile.ShapePage}, nil, false, "")
+	if res.Headers.Get("Content-Range") != "" {
+		t.Errorf("no row: %v", res.Headers)
+	}
+
+	users := b.ByPath["users"]
+	bulk := func(prefer string, count bool) *Operation {
+		return &Operation{Method: "PATCH", Resource: users, Plan: &plan.Request{Method: plan.PATCH, Count: count, Prefer: plan.Prefer{Return: prefer}}}
+	}
+	mb := &compile.Statement{Shape: compile.ShapeMutBulk}
+	for _, tc := range []struct {
+		op   *Operation
+		raw  string
+		want string
+	}{
+		{bulk("", false), `{"n":2,"rows":[{},{}]}`, "0-1/*"},
+		{bulk("", true), `{"n":2,"rows":[{},{}]}`, "0-1/2"},
+		{bulk("", true), `{"n":0,"rows":[]}`, "*/0"},
+		{bulk("minimal", true), `{"n":3}`, "*/3"},
+		{bulk("minimal", false), `{"n":3}`, "*/*"},
+	} {
+		res, err := Unwrap(tc.op, mb, []byte(tc.raw), true, "")
+		if err != nil || res.Headers.Get("Content-Range") != tc.want {
+			t.Errorf("%s: Content-Range = %q %v, want %q", tc.raw, res.Headers.Get("Content-Range"), err, tc.want)
+		}
+	}
+}

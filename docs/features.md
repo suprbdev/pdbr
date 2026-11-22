@@ -74,7 +74,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **As built (v0.1.0): ev
 - [x] `Accept: text/csv` on lists and set-returning RPCs → RFC 4180 CSV, header row, arrays/json/composites as JSON text, NULL → empty; embeds → `406`; `server.csv` toggle (v1) (new)
 - [x] `Prefer: return=representation|minimal|headers-only` (v1) (new)
 - [ ] Aggregate endpoints (count/sum/avg on lists) — stretch (parity)
-- [ ] Other `Prefer` tokens (`count=`, `resolution=`) (v1.x) (new)
+- [ ] Other `Prefer` tokens (`resolution=`, `missing=`) (v1.x) (new)
 
 ## Filtering & ordering
 
@@ -116,7 +116,8 @@ Checklist of PostgreSQL and REST features pdbr supports. **As built (v0.1.0): ev
 - [x] `X-Next-Cursor` / `X-Prev-Cursor` headers when a next/prev page exists (v1) (new)
 - [x] `Link: <…>; rel="next", <…>; rel="prev"` built from the request URL (`after=`/`before=`, or `offset=` for offset-only resources) (v1) (new)
 - [x] Cost limit `server.max_cost` (1 + Σ mult × child; `@costMultiplier` lowers) → 400 `cost_exceeded` (v1) (parity)
-- [ ] `Content-Range` / `Range` header pagination (PostgREST style) (stretch) (new)
+- [x] `Prefer: count=exact|planned|estimated` (planned = `pg_class.reltuples`, estimated = exact up to `server.max_page_size` rows; filtered/distinct/view/function requests count exactly) and `Content-Range: 0-24/*|N` on list pages, alongside `X-Total-Count` (v1.x) (new)
+- [ ] `Range` request header pagination and `206 Partial Content` (PostgREST style) (stretch) (new)
 
 ## Mutations
 
@@ -213,7 +214,8 @@ Checklist of PostgreSQL and REST features pdbr supports. **As built (v0.1.0): ev
 - [x] Atomic runtime hot-swap (in-flight requests finish on the old `api.Built`) (v1) (parity)
 - [x] No embedded UI, no CDN assets (bring your own OpenAPI tooling) — by decision (v1) (new)
 - [ ] `/metrics` (Prometheus) endpoint (v1.x) (parity)
-- [ ] `Content-Range` / `Range` request headers (stretch) (new)
+- [x] `Content-Range` response header on list pages and bulk writes (v1.x) (new)
+- [ ] `Range` request header (stretch) (new)
 
 ## OpenAPI 3.1
 
@@ -311,6 +313,14 @@ these are the deliberate departures (each documented in its topic page):
   transaction** (exec compares the row count the statement reports and rolls
   back), not by a second query; it applies to `PATCH`/`DELETE` only, not to
   RPC results (PostgREST `PGRST128`).
+- **`count=planned` reads `pg_class.reltuples`** instead of running
+  `EXPLAIN` (a second statement); it and `count=estimated` (threshold
+  `server.max_page_size`, PostgREST's `db-max-rows`) apply to unfiltered
+  table scans only and fall back to `exact` otherwise
+  (`Preference-Applied` says so).
+- **Counted list responses stay `200`** (PostgREST: `206 Partial Content`);
+  keyset pages carry no `Content-Range`; the `Range` request header is not
+  supported. `X-Total-Count` is kept next to `Content-Range`.
 - **`Prefer: tx=` and `timezone=` are not supported**: ignored under
   lenient handling, `400 invalid_preference` under `handling=strict`.
 - Error codes are pdbr's stable `code` vocabulary, not `PGRST…` numbers

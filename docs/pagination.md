@@ -69,7 +69,8 @@ Cursors are not interchangeable with pdbq `nodeId`s: the first element is
 | `X-Next-Cursor` | keyset-capable resource and a next page exists | cursor of the last row in the body |
 | `X-Prev-Cursor` | keyset-capable resource and a previous page exists | cursor of the first row in the body |
 | `Link` | any list | `<url>; rel="next"`, `<url>; rel="prev"` — the request URL with `after`/`before` (or `offset`) replaced; see [Link URLs](#link-urls) |
-| `X-Total-Count` | `count=true` | total matching rows, ignoring `limit`/`offset`/cursors |
+| `X-Total-Count` | `count=true` or `Prefer: count=` | total matching rows, ignoring `limit`/`offset`/cursors (an estimate under `count=planned`/`estimated`) |
+| `Content-Range` | every offset-addressed list page (no `after`/`before`) | `<first>-<last>/<total>` by row position, `*` for an empty page or when no count was requested: `0-24/*`, `25-49/1043`, `*/1043`; see [`Prefer: count=`](#prefer-count-and-content-range) |
 
 Whether a further page exists in the direction being paged is exact (one
 extra row is fetched and dropped). The opposite direction is reported as
@@ -100,8 +101,8 @@ all — and only the paging parameters change:
   place / appended with `offset ± limit` (never below 0); nothing is dropped.
 - Duplicate occurrences of the rewritten parameter are collapsed to one.
 
-`HEAD` carries exactly the same `Link`, `X-Total-Count` and cursor headers
-as `GET`, and so do `text/csv` responses.
+`HEAD` carries exactly the same `Link`, `X-Total-Count`, `Content-Range` and
+cursor headers as `GET`, and so do `text/csv` responses.
 
 ### Walk-through
 
@@ -155,6 +156,46 @@ gains a `count(*)` subquery over the same `FROM`/`WHERE` and the total is
 returned as `X-Total-Count`. It is distinct-aware (counts groups under
 `distinct=`) and unaffected by `limit`, `offset`, `after`, `before`. `HEAD`
 with `count=true` is the cheapest way to get just the number.
+
+## `Prefer: count=` and `Content-Range`
+
+PostgREST's counting preference is honoured on list `GET`/`HEAD` (tables,
+views, `SETOF <table>` functions). Every mode fills both `X-Total-Count`
+(kept for existing clients; `count=true` is `Prefer: count=exact`) and the
+total of `Content-Range`; `Preference-Applied` names the mode actually used.
+
+| Mode | Total | SQL (same statement) |
+|---|---|---|
+| `count=exact` | exact, after filters, distinct-aware | the `count(*)` subquery above |
+| `count=planned` | `pg_class.reltuples` of the table — the planner's row statistic, as current as the last `ANALYZE` / autovacuum | `(SELECT CASE WHEN pc.reltuples >= 0 THEN pc.reltuples::bigint ELSE <exact> END FROM pg_catalog.pg_class pc WHERE pc.oid = '"public"."posts"'::regclass)`; a never-analysed table (`reltuples = -1`) falls back to the exact count |
+| `count=estimated` | exact while the table has at most `server.max_page_size` rows, planned above (never below `max_page_size + 1`) | a bounded `count(*)` over `LIMIT max_page_size + 1` rows, then the planned expression |
+
+`planned`/`estimated` need an unfiltered scan of a table or materialized
+view: with filters, `distinct=`, `!inner` embeds, on views and on functions
+pdbr counts exactly and answers `Preference-Applied: count=exact`.
+PostgREST runs `EXPLAIN` as a second statement for `planned`, which pdbr's
+one-statement rule forbids (SQL cannot read a plan estimate inside a
+query), so pdbr uses the table statistic and only where it is the right
+number. The statistic ignores RLS, like `EXPLAIN` row estimates.
+
+`Content-Range` is `<offset>-<offset + rows - 1>/<total or *>` and `*/<total
+or *>` for an empty page; keyset pages (`after=`/`before=`) carry none
+(their position is unknown). The status stays `200` — PostgREST answers
+`206 Partial Content` when the range is a strict subset of a known total,
+which RFC 9110 reserves for `Range` requests (not supported: the `Range`
+request header is ignored).
+
+```console
+$ curl -sI -H 'Prefer: count=exact' 'localhost:8080/api/posts?limit=2&offset=2'
+HTTP/1.1 200 OK
+Content-Range: 2-3/5
+Preference-Applied: count=exact
+X-Total-Count: 5
+```
+
+Bulk `PATCH`/`DELETE` also carry `Content-Range` for the written rows
+(`0-<n-1>/*`; total `n` with any `Prefer: count=`, always exact;
+`*/…` under `return=minimal` or when nothing matched).
 
 ## `order=`
 

@@ -77,10 +77,16 @@ func unwrapMutation(op *Operation, stmt *compile.Statement, raw []byte, found bo
 				return nil, &Error{Status: http.StatusInternalServerError, Code: CodeInternal, Detail: "malformed bulk mutation wrapper"}
 			}
 		}
+		var total *int64
+		if op.Plan != nil && op.Plan.Count {
+			total = &w.N
+		}
 		if minimal {
+			res.Headers.Set("Content-Range", contentRange(0, 0, total))
 			res.Status = http.StatusNoContent
 			return res, nil
 		}
+		res.Headers.Set("Content-Range", contentRange(0, int(w.N), total))
 		res.Data = w.Rows
 		if res.Data == nil {
 			res.Data = json.RawMessage("[]")

@@ -126,3 +126,38 @@ func TestPrefer(t *testing.T) {
 		t.Fatalf("POST max-affected = %+v %v", p, err)
 	}
 }
+
+func TestPreferCount(t *testing.T) {
+	b := buildFixture(t, true)
+	cases := []struct {
+		r       req
+		count   bool
+		mode    plan.CountMode
+		applied []string
+	}{
+		{req{url: "/api/users", header: map[string]string{"Prefer": "count=exact"}}, true, plan.CountExact, []string{"count=exact"}},
+		{req{url: "/api/users", header: map[string]string{"Prefer": "count=planned"}}, true, plan.CountPlanned, []string{"count=planned"}},
+		{req{method: "HEAD", url: "/api/posts?select=id", header: map[string]string{"Prefer": "count=estimated"}}, true, plan.CountEstimated, []string{"count=estimated"}},
+		{req{url: "/api/users?mood=eq.ok", header: map[string]string{"Prefer": "count=planned"}}, true, plan.CountExact, []string{"count=exact"}},
+		{req{url: "/api/users?distinct=mood", header: map[string]string{"Prefer": "count=estimated"}}, true, plan.CountExact, []string{"count=exact"}},
+		{req{url: "/api/users?select=id,posts!inner(id)&limit=1", header: map[string]string{"Prefer": "count=planned"}}, true, plan.CountExact, []string{"count=exact"}},
+		{req{url: "/api/metrics", header: map[string]string{"Prefer": "count=planned"}}, true, plan.CountExact, []string{"count=exact"}},
+		{req{url: "/api/rpc/search_posts?term=x", header: map[string]string{"Prefer": "count=planned"}}, true, plan.CountExact, []string{"count=exact"}},
+		{req{url: "/api/users?count=true"}, true, "", nil},
+		{req{url: "/api/users/1", header: map[string]string{"Prefer": "count=exact"}}, false, "", nil},
+		{req{method: "DELETE", url: "/api/users?id=eq.1", header: map[string]string{"Prefer": "count=planned"}}, true, plan.CountExact, []string{"count=exact"}},
+		{req{method: "DELETE", url: "/api/users/1", header: map[string]string{"Prefer": "count=exact"}}, false, "", nil},
+		{req{url: "/api/users", header: map[string]string{"Prefer": "count=nope"}}, false, "", nil},
+	}
+	for _, tc := range cases {
+		p, err := doParse(t, b, tc.r, allOn)
+		if err != nil {
+			t.Fatalf("%s %s: %v", tc.r.method, tc.r.url, err)
+		}
+		if p.Count != tc.count || p.CountMode != tc.mode || !reflect.DeepEqual(p.Prefer.Applied, tc.applied) {
+			t.Errorf("%s %s %v: count=%v mode=%q applied=%v", tc.r.method, tc.r.url, tc.r.header, p.Count, p.CountMode, p.Prefer.Applied)
+		}
+	}
+	_, err := doParse(t, b, req{url: "/api/users", header: map[string]string{"Prefer": "handling=strict, count=nope"}}, allOn)
+	wantCode(t, err, CodeInvalidPreference)
+}

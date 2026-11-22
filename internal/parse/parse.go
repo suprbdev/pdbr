@@ -190,6 +190,7 @@ func Parse(built *api.Built, m *api.Match, r *http.Request, opts Options) (*plan
 			}
 		}
 	}
+	p.resolveCount()
 	if err := p.negotiateAccept(r); err != nil {
 		return nil, err
 	}
