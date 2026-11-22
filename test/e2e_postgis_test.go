@@ -20,6 +20,7 @@ import (
 // (-0.0005 51.4779), 4 Sydney Opera House (151.2153 -33.8568).
 const (
 	trafalgar     = "SRID=4326;POINT(-0.1281 51.508)"
+	trafalgarArea = "SRID=4326;POLYGON((-0.130 51.507, -0.126 51.507, -0.126 51.509, -0.130 51.509, -0.130 51.507))"
 	londonPolygon = `{"type":"Polygon","coordinates":[[[-0.5,51.3],[0.3,51.3],[0.3,51.7],[-0.5,51.7],[-0.5,51.3]]]}`
 )
 
@@ -80,6 +81,34 @@ func TestPostGISFilters(t *testing.T) {
 		{[]string{"select=id", "and=(location.bbox_intersects.(-0.5,51.3,0.3,51.7),not.location.st_equals.\"" + trafalgar + "\")", "order=id"}, []int{2, 3}},
 		// GeoJSON inside a logic list: quoted, inner quotes escaped.
 		{[]string{"select=id", "not.and=(location.st_within.\"" + strings.ReplaceAll(londonPolygon, `"`, `\"`) + "\",area.is.null)", "order=id"}, []int{1, 4}},
+		{[]string{"select=id", "location=bbox_leftof.SRID=4326;POINT(0 0)", "order=id"}, []int{1, 2, 3}},
+		{[]string{"select=id", "location=bbox_rightof.SRID=4326;POINT(0 0)"}, []int{4}},
+		{[]string{"select=id", "location=bbox_below.SRID=4326;POINT(0 51.5)", "order=id"}, []int{3, 4}},
+		{[]string{"select=id", "location=bbox_above.SRID=4326;POINT(0 51.5)", "order=id"}, []int{1, 2}},
+		{[]string{"select=id", "location=bbox_overlapsorleftof.SRID=4326;POINT(-0.127 0)", "order=id"}, []int{1, 2}},
+		{[]string{"select=id", "location=bbox_overlapsorrightof.SRID=4326;POINT(-0.127 0)", "order=id"}, []int{2, 3, 4}},
+		{[]string{"select=id", "location=bbox_overlapsorbelow.SRID=4326;POINT(0 51.508)", "order=id"}, []int{1, 3, 4}},
+		{[]string{"select=id", "location=bbox_overlapsorabove.SRID=4326;POINT(0 51.508)", "order=id"}, []int{1, 2}},
+		{[]string{"select=id", "location=not.bbox_leftof.SRID=4326;POINT(0 0)"}, []int{4}},
+		{[]string{"select=id", "location=bbox_equals." + trafalgar}, []int{1}},
+		{[]string{"select=id", "location=st_exactlyequals." + trafalgar}, []int{1}},
+		{[]string{"select=id", "location=st_exactlyequals." + `{"type":"Point","coordinates":[-0.1281,51.508]}`}, []int{1}},
+		{[]string{"select=id", "location=st_orderingequals." + trafalgar}, []int{1}},
+		{[]string{"select=id", "location=st_intersects3d." + trafalgar}, []int{1}},
+		{[]string{"select=id", "location=bbox_intersectsnd." + trafalgar}, []int{1}},
+		{[]string{"select=id", "location=not.st_exactlyequals." + trafalgar, "order=id"}, []int{2, 3, 4}},
+		{[]string{"select=id", "or=(location.bbox_rightof.\"SRID=4326;POINT(0 0)\",location.st_exactlyequals.\"" + trafalgar + "\")", "order=id"}, []int{1, 4}},
+		{[]string{"select=id", "area=bbox_leftof.POINT(0 51.508)"}, []int{1}},
+		{[]string{"select=id", "area=bbox_above.POINT(0 51.5)"}, []int{1}},
+		{[]string{"select=id", "area=bbox_below.POINT(0 51.5)"}, nil},
+		{[]string{"select=id", "area=bbox_overlapsorrightof.POINT(-0.131 51.508)"}, []int{1}},
+		{[]string{"select=id", "area=st_exactlyequals." + trafalgarArea}, []int{1}},
+		{[]string{"select=id", "area=st_orderingequals." + trafalgarArea}, []int{1}},
+		{[]string{"select=id", "area=st_orderingequals.SRID=4326;POLYGON((-0.126 51.507, -0.126 51.509, -0.130 51.509, -0.130 51.507, -0.126 51.507))"}, nil},
+		{[]string{"select=id", "area=st_equals.SRID=4326;POLYGON((-0.126 51.507, -0.126 51.509, -0.130 51.509, -0.130 51.507, -0.126 51.507))"}, []int{1}},
+		{[]string{"select=id", "area=bbox_equals." + trafalgarArea}, []int{1}},
+		{[]string{"select=id", "area=st_intersects3d.POINT(-0.128 51.508)"}, []int{1}},
+		{[]string{"select=id", "area=bbox_intersectsnd.POINT(-0.128 51.508)"}, []int{1}},
 	}
 	for _, tc := range cases {
 		var rows []row
@@ -105,6 +134,9 @@ func TestPostGISFilters(t *testing.T) {
 		{[]string{"owner_id=st_intersects.POINT(1 2)"}, "invalid_filter"},
 		{[]string{"id=bbox_intersects.(1,2,3,4)"}, "invalid_filter"},
 		{[]string{"location=st_nope.POINT(1 2)"}, "invalid_filter"},
+		{[]string{"location=bbox_leftof.(1,2,3,4)"}, "invalid_filter"},
+		{[]string{"owner_id=st_exactlyequals.POINT(1 2)"}, "invalid_filter"},
+		{[]string{"location=bbox_intersectsnd.not a geometry"}, "invalid_filter"},
 		{[]string{"distinct=location", "select=id"}, "invalid_filter"},
 	}
 	for _, tc := range bad {
@@ -179,6 +211,95 @@ func TestPostGISPseudoColumns(t *testing.T) {
 	}
 	res, body := send(t, "PATCH", srv.URL+"/api/places/1", `{"location_srid": 1}`, nil)
 	wantProblem(t, res, body, 400, "invalid_body")
+}
+
+func TestPostGISAccessors(t *testing.T) {
+	srv := testServer(t, nil)
+	near := func(v any, want float64) bool {
+		f, ok := v.(float64)
+		return ok && math.Abs(f-want) < 1e-6
+	}
+	var rows []row
+	getJSON(t, q(srv.URL, "select=location_x,location_y,location_num_points,location_num_geometries,location_point_on_surface,location_wkt,location_ewkt,location_is_empty,location_is_simple,location_xmin,location_ymin,location_xmax,location_ymax,mx:location_x(transform=3857),area_x,area_y,area_z,area_m,area_num_points,area_num_geometries,area_start_point,area_end_point,area_point_on_surface,area_wkt,area_ewkt,area_is_empty,area_is_simple,area_xmin,area_ymin,area_xmax,area_ymax", "id=eq.1"), &rows)
+	if len(rows) != 1 {
+		t.Fatalf("rows = %v", rows)
+	}
+	r := rows[0]
+	if mx, _ := r["mx"].(float64); !near(r["location_x"], -0.1281) || !near(r["location_y"], 51.508) || math.Abs(mx+14260.03) > 1 {
+		t.Errorf("location x/y = %v %v %v", r["location_x"], r["location_y"], r["mx"])
+	}
+	if r["location_num_points"] != float64(1) || r["location_num_geometries"] != float64(1) || r["location_is_empty"] != false || r["location_is_simple"] != true {
+		t.Errorf("location counts/predicates = %v", r)
+	}
+	if r["location_wkt"] != "POINT(-0.1281 51.508)" || r["location_ewkt"] != trafalgar {
+		t.Errorf("location wkt/ewkt = %q %q", r["location_wkt"], r["location_ewkt"])
+	}
+	if p, _ := r["location_point_on_surface"].(map[string]any); p["type"] != "Point" {
+		t.Errorf("location_point_on_surface = %v", r["location_point_on_surface"])
+	}
+	if !near(r["location_xmin"], -0.1281) || !near(r["location_xmax"], -0.1281) || !near(r["location_ymin"], 51.508) || !near(r["location_ymax"], 51.508) {
+		t.Errorf("location extent = %v %v %v %v", r["location_xmin"], r["location_ymin"], r["location_xmax"], r["location_ymax"])
+	}
+	for _, k := range []string{"area_x", "area_y", "area_z", "area_m", "area_start_point", "area_end_point"} {
+		if r[k] != nil {
+			t.Errorf("%s on a polygon = %v, want null", k, r[k])
+		}
+	}
+	if r["area_num_points"] != float64(5) || r["area_num_geometries"] != float64(1) || r["area_is_empty"] != false || r["area_is_simple"] != true {
+		t.Errorf("area counts/predicates = %v", r)
+	}
+	if w, _ := r["area_wkt"].(string); !strings.HasPrefix(w, "POLYGON((") {
+		t.Errorf("area_wkt = %v", r["area_wkt"])
+	}
+	if w, _ := r["area_ewkt"].(string); !strings.HasPrefix(w, "SRID=4326;POLYGON((") {
+		t.Errorf("area_ewkt = %v", r["area_ewkt"])
+	}
+	if p, _ := r["area_point_on_surface"].(map[string]any); p["type"] != "Point" {
+		t.Errorf("area_point_on_surface = %v", r["area_point_on_surface"])
+	}
+	extent := func(v any, want float64) bool {
+		f, ok := v.(float64)
+		return ok && math.Abs(f-want) < 1e-5
+	}
+	if !extent(r["area_xmin"], -0.130) || !extent(r["area_ymin"], 51.507) || !extent(r["area_xmax"], -0.126) || !extent(r["area_ymax"], 51.509) {
+		t.Errorf("area extent = %v %v %v %v", r["area_xmin"], r["area_ymin"], r["area_xmax"], r["area_ymax"])
+	}
+	getJSON(t, q(srv.URL, "select=area_x,area_wkt,area_is_empty", "id=eq.2"), &rows)
+	if rows[0]["area_x"] != nil || rows[0]["area_wkt"] != nil || rows[0]["area_is_empty"] != nil {
+		t.Errorf("null geometry accessors = %v", rows[0])
+	}
+
+	for _, key := range []string{"location_z", "location_m", "location_start_point", "location_end_point"} {
+		res, body := get(t, q(srv.URL, "select=id,"+key))
+		wantProblem(t, res, body, 400, "unknown_column")
+	}
+	props := schemas(openAPI(t, srv.URL))["places"].(map[string]any)["properties"].(map[string]any)
+	for _, key := range []string{"location_z", "location_m", "location_start_point", "location_end_point"} {
+		if _, ok := props[key]; ok {
+			t.Errorf("OpenAPI advertises %s on a 2D Point column", key)
+		}
+	}
+	for _, key := range []string{"location_x", "location_y", "location_wkt", "area_z", "area_m", "area_start_point", "area_end_point", "area_ymax"} {
+		if p, _ := props[key].(map[string]any); p == nil || p["readOnly"] != true {
+			t.Errorf("OpenAPI %s = %v", key, props[key])
+		}
+	}
+
+	sweep(t)
+	var pl row
+	sendJSON(t, "POST", srv.URL+"/api/places?select=id,area_geometry_type,area_start_point,area_end_point,area_num_points,area_x", `{"name": "M3 postgis line area", "area": "SRID=4326;LINESTRING(0 0, 1 1, 2 0)"}`, 201, &pl)
+	defer sendJSON(t, "DELETE", fmt.Sprintf("%s/api/places/%d", srv.URL, rowID(t, pl)), "", 200, nil)
+	sp, _ := pl["area_start_point"].(map[string]any)
+	ep, _ := pl["area_end_point"].(map[string]any)
+	if pl["area_geometry_type"] != "ST_LineString" || sp["type"] != "Point" || fmtAny(ep["coordinates"]) != "[2,0]" || pl["area_num_points"] != float64(3) || pl["area_x"] != nil {
+		t.Errorf("linestring area accessors = %v", pl)
+	}
+	var pt row
+	sendJSON(t, "POST", srv.URL+"/api/places?select=id,area_x,area_y,area_z,area_start_point", `{"name": "M3 postgis point area", "area": "SRID=4326;POINT(3 4)"}`, 201, &pt)
+	defer sendJSON(t, "DELETE", fmt.Sprintf("%s/api/places/%d", srv.URL, rowID(t, pt)), "", 200, nil)
+	if pt["area_x"] != float64(3) || pt["area_y"] != float64(4) || pt["area_z"] != nil || pt["area_start_point"] != nil {
+		t.Errorf("point area accessors = %v", pt)
+	}
 }
 
 func TestPostGISProjection(t *testing.T) {
@@ -339,7 +460,8 @@ func schemas(doc map[string]any) map[string]any {
 
 func TestPostGISOpenAPI(t *testing.T) {
 	srv := testServer(t, nil)
-	sch := schemas(openAPI(t, srv.URL))
+	doc := openAPI(t, srv.URL)
+	sch := schemas(doc)
 	geo, _ := sch["GeoJSON"].(map[string]any)
 	if geo == nil || geo["type"] != "object" {
 		t.Fatalf("GeoJSON schema = %v", geo)
@@ -358,6 +480,29 @@ func TestPostGISOpenAPI(t *testing.T) {
 	}
 	if _, ok := sch["users"].(map[string]any)["properties"].(map[string]any)["email_srid"]; ok {
 		t.Error("pseudo-column on a non-spatial resource")
+	}
+	params := opParams(pathOp(doc, "/places", "get"))
+	for _, col := range []string{"location", "area"} {
+		ops, _ := params["query:"+col]["x-pdbr-filter-ops"].([]any)
+		if len(ops) != 30 || ops[len(ops)-1] != "is" {
+			t.Errorf("%s x-pdbr-filter-ops = %v", col, ops)
+		}
+		for _, op := range ops {
+			var operand string
+			switch op {
+			case "is":
+				operand = "is.null"
+			case "st_dwithin", "st_beyond":
+				operand = op.(string) + `.("SRID=4326;POINT(0 0)",1)`
+			case "bbox_intersects", "bbox_contains", "bbox_containedby":
+				operand = op.(string) + ".(0,0,1,1)"
+			default:
+				operand = op.(string) + ".SRID=4326;POINT(0 0)"
+			}
+			if res, body := get(t, q(srv.URL, "select=id", col+"="+operand)); res.StatusCode != 200 {
+				t.Errorf("%s=%s = %d %s", col, operand, res.StatusCode, body)
+			}
+		}
 	}
 }
 

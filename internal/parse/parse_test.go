@@ -519,6 +519,54 @@ func TestSpatialFilters(t *testing.T) {
 	}
 }
 
+func TestSpatialOpsMatchPlan(t *testing.T) {
+	spatial := 0
+	for name, spec := range ops {
+		if !spec.spatial {
+			continue
+		}
+		spatial++
+		if string(spec.op) != name {
+			t.Errorf("ops[%q].op = %q", name, spec.op)
+		}
+		core, ok := plan.SpatialOps[spec.op]
+		if !ok {
+			t.Errorf("parser operator %q missing from plan.SpatialOps", name)
+			continue
+		}
+		op, _ := postgis.OpByName(core)
+		if wantList := op.Kind() == postgis.ArgDWithin || op.Kind() == postgis.ArgBBox; spec.list != wantList {
+			t.Errorf("ops[%q].list = %v, want %v", name, spec.list, wantList)
+		}
+	}
+	if spatial != len(plan.SpatialOps) {
+		t.Errorf("parser has %d spatial operators, plan.SpatialOps %d", spatial, len(plan.SpatialOps))
+	}
+	if want := len(postgis.Ops) - 1; len(plan.SpatialOps) != want {
+		t.Errorf("plan.SpatialOps has %d operators, pdbcore %d (excluding isNull)", len(plan.SpatialOps), want)
+	}
+}
+
+func TestSpatialGeometryOperandOps(t *testing.T) {
+	b := buildFixture(t, true)
+	for op, core := range plan.SpatialOps {
+		spec, _ := postgis.OpByName(core)
+		if spec.Kind() != postgis.ArgGeometry {
+			continue
+		}
+		for _, col := range []string{"location", "area"} {
+			p := mustParse(t, b, "/api/places?"+col+"=not."+string(op)+".SRID%3D4326%3BPOINT(1%202)")
+			c := p.Filter.(plan.Cond)
+			v, ok := c.Value.(postgis.Value)
+			if !ok || c.Op != op || !c.Negate || v.Param != "SRID=4326;POINT(1 2)" {
+				t.Errorf("%s=%s: cond = %+v", col, op, c)
+			}
+		}
+		_, err := doParse(t, b, req{url: "/api/places?owner_id=" + string(op) + ".POINT(1%202)"}, allOn)
+		wantCode(t, err, CodeInvalidFilter)
+	}
+}
+
 func TestEmbedParams(t *testing.T) {
 	b := buildFixture(t, true)
 	p := mustParse(t, b, "/api/users?select=id,posts(id,title,comments(id))&posts.order=title.desc&posts.limit=5&posts.offset=5&posts.published=is.true&posts.comments.limit=2&posts.comments.post_id=eq.1&posts.or=(title.eq.a,title.eq.b)")

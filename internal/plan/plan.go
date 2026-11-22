@@ -140,7 +140,8 @@ type Not struct{ Term Expr }
 //     to % for like/ilike and escapes sw/ew).
 //   - cs/cd/ov: []any for array columns, JSON text (string) for jsonb.
 //   - hk: string key; jpe/jpm: the jsonpath string.
-//   - spatial ops: a postgis.Value (st_* geometry ops), a DWithin, or a BBox.
+//   - spatial ops: a postgis.Value (st_* and geometry-operand bbox_* ops),
+//     a DWithin, or a BBox.
 type Cond struct {
 	Column   *introspect.Column // real column of the current resource
 	Computed *api.Computed      // computed-column filter (advanced-filters)
@@ -159,6 +160,8 @@ type DWithin struct {
 }
 
 // BBox is the operand of bbox_intersects / bbox_contains / bbox_containedby.
+// The other bbox_* operators take a geometry (postgis.Value) and compare
+// against its bounding box.
 type BBox struct {
 	MinX, MinY, MaxX, MaxY float64
 	SRID                   int // 0 = unspecified
@@ -209,10 +212,27 @@ const (
 	OpBBoxIntersects     Op = "bbox_intersects"
 	OpBBoxContains       Op = "bbox_contains"
 	OpBBoxContainedBy    Op = "bbox_containedby"
+
+	OpBBoxLeftOf            Op = "bbox_leftof"
+	OpBBoxRightOf           Op = "bbox_rightof"
+	OpBBoxBelow             Op = "bbox_below"
+	OpBBoxAbove             Op = "bbox_above"
+	OpBBoxOverlapsOrLeftOf  Op = "bbox_overlapsorleftof"
+	OpBBoxOverlapsOrRightOf Op = "bbox_overlapsorrightof"
+	OpBBoxOverlapsOrBelow   Op = "bbox_overlapsorbelow"
+	OpBBoxOverlapsOrAbove   Op = "bbox_overlapsorabove"
+	OpBBoxEquals            Op = "bbox_equals"
+	OpStExactlyEquals       Op = "st_exactlyequals"
+	OpStOrderingEquals      Op = "st_orderingequals"
+	OpStIntersects3D        Op = "st_intersects3d"
+	OpBBoxIntersectsND      Op = "bbox_intersectsnd"
 )
 
 // SpatialOps maps the URL spelling of every spatial operator to the
-// pdbcore/postgis Op name (postgis.OpByName).
+// pdbcore/postgis Op name (postgis.OpByName). The URL spelling is the
+// pdbcore name lower-cased with a "bbox_" prefix for the bounding-box
+// operators (bboxLeftOf -> bbox_leftof) and "st_" for the rest
+// (exactlyEquals -> st_exactlyequals).
 var SpatialOps = map[Op]string{
 	OpStIntersects:       "intersects",
 	OpStDisjoint:         "disjoint",
@@ -230,6 +250,20 @@ var SpatialOps = map[Op]string{
 	OpBBoxIntersects:     "bboxIntersects",
 	OpBBoxContains:       "bboxContains",
 	OpBBoxContainedBy:    "bboxContainedBy",
+
+	OpBBoxLeftOf:            "bboxLeftOf",
+	OpBBoxRightOf:           "bboxRightOf",
+	OpBBoxBelow:             "bboxBelow",
+	OpBBoxAbove:             "bboxAbove",
+	OpBBoxOverlapsOrLeftOf:  "bboxOverlapsOrLeftOf",
+	OpBBoxOverlapsOrRightOf: "bboxOverlapsOrRightOf",
+	OpBBoxOverlapsOrBelow:   "bboxOverlapsOrBelow",
+	OpBBoxOverlapsOrAbove:   "bboxOverlapsOrAbove",
+	OpBBoxEquals:            "bboxEquals",
+	OpStExactlyEquals:       "exactlyEquals",
+	OpStOrderingEquals:      "orderingEquals",
+	OpStIntersects3D:        "intersects3D",
+	OpBBoxIntersectsND:      "bboxIntersectsND",
 }
 
 // Quantifier selects how a relation filter applies over related rows.

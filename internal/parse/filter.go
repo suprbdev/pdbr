@@ -52,6 +52,20 @@ var ops = map[string]opSpec{
 	"bbox_intersects":     {op: plan.OpBBoxIntersects, spatial: true, list: true},
 	"bbox_contains":       {op: plan.OpBBoxContains, spatial: true, list: true},
 	"bbox_containedby":    {op: plan.OpBBoxContainedBy, spatial: true, list: true},
+
+	"bbox_leftof":            {op: plan.OpBBoxLeftOf, spatial: true},
+	"bbox_rightof":           {op: plan.OpBBoxRightOf, spatial: true},
+	"bbox_below":             {op: plan.OpBBoxBelow, spatial: true},
+	"bbox_above":             {op: plan.OpBBoxAbove, spatial: true},
+	"bbox_overlapsorleftof":  {op: plan.OpBBoxOverlapsOrLeftOf, spatial: true},
+	"bbox_overlapsorrightof": {op: plan.OpBBoxOverlapsOrRightOf, spatial: true},
+	"bbox_overlapsorbelow":   {op: plan.OpBBoxOverlapsOrBelow, spatial: true},
+	"bbox_overlapsorabove":   {op: plan.OpBBoxOverlapsOrAbove, spatial: true},
+	"bbox_equals":            {op: plan.OpBBoxEquals, spatial: true},
+	"st_exactlyequals":       {op: plan.OpStExactlyEquals, spatial: true},
+	"st_orderingequals":      {op: plan.OpStOrderingEquals, spatial: true},
+	"st_intersects3d":        {op: plan.OpStIntersects3D, spatial: true},
+	"bbox_intersectsnd":      {op: plan.OpBBoxIntersectsND, spatial: true},
 }
 
 // operand is a parsed "[not.]op.value".

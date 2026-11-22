@@ -87,6 +87,9 @@ func FuzzSpatial(f *testing.F) {
 			cond(loc, "st_intersects", wkt),
 			cond(loc, "bbox_intersects", []any{x, x, x, x}),
 			cond(loc, "st_dwithin", []any{wkt, d}),
+			cond(loc, "bbox_leftof", wkt),
+			cond(loc, "st_exactlyequals", wkt),
+			cond(loc, "bbox_intersectsnd", wkt),
 		}}
 		p.Order = []plan.OrderTerm{{Distance: loc}}
 		p.Near = wkt
