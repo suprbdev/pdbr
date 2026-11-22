@@ -16,8 +16,9 @@ GraphQL); the shared half lives in
 
 > **Status: v0.1.0 feature-complete, ready to tag.** Everything in
 > [docs/features.md](docs/features.md) marked v1 is implemented and tested;
-> [PLAN.md](PLAN.md) records how it was built. The first tag waits on
-> `pdbcore v0.1.0` (see [docs/deployment.md](docs/deployment.md#releasing)).
+> [PLAN.md](PLAN.md) records how it was built. Depends on the
+> tagged `pdbcore v0.1.0`; release steps are in
+> [docs/deployment.md](docs/deployment.md#releasing).
 
 ```console
 $ pdbr serve --database.url postgres://localhost/mydb
@@ -138,7 +139,7 @@ $ make lint          # golangci-lint (config committed)
 $ make example-config # regenerate examples/pdbr.example.yaml from struct tags
 $ make fixture       # regenerate db/init/01-schema.sql from pdbcore's fixture
 $ make dev           # live stack with watch mode
-$ make docker-build  # distroless image (vendors pdbcore while it is a local replace)
+$ make docker-build  # distroless image
 $ make help          # every target
 ```
 

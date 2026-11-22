@@ -2,8 +2,8 @@
 
 > **Status: as built (M0 done, awaiting the `v0.1.0` tag).**
 > `github.com/suprbdev/pdbcore` exists at `/personal/pdbcore` with the package
-> set below; pdbq and pdbr both consume it (via `replace ../pdbcore` until it
-> is tagged). This document is the extraction plan it was built from; the
+> set below; pdbq and pdbr both consume it (as the tagged `v0.1.0`
+> module). This document is the extraction plan it was built from; the
 > module's own `README.md` and package docs are the maintained reference, and
 > the M0 report notes the small deviations (`inflect.ByColumns`,
 > `watch.Watcher.TriggerName`, `cache` error wording, no `ValidateDatabase`).

@@ -16,14 +16,6 @@ $ make docker-build                     # → pdbr:<git describe>, pdbr:dev on a
 $ docker run -e PDBR_DATABASE_URL=postgres://... -p 8080:8080 pdbr:dev
 ```
 
-`make docker-build` (and `make dev`/`compose-up`, and CI) run `go mod vendor`
-before `docker build` and remove the vendor tree afterwards: pdbcore is
-consumed through a `replace ../pdbcore` directive until it is tagged, and the
-vendored copy is how the build context carries it. A bare
-`docker build .` / `docker compose up --build` therefore needs `go mod vendor`
-first — or use the Makefile targets. This goes away with the first pdbcore
-tag (see "Releasing" below).
-
 Released images are published multi-arch (`linux/amd64`, `linux/arm64`) to
 `ghcr.io/suprbdev/pdbr` and `docker.io/suprbdev/pdbr` on every `v*` tag,
 tagged `X.Y.Z`, `vX.Y.Z` and `X.Y`:
@@ -68,7 +60,7 @@ services:
 ```
 
 ```console
-$ make dev            # build (vendoring pdbcore) + docker compose up, foreground
+$ make dev            # build + docker compose up, foreground
 $ make compose-up     # same, detached
 $ make compose-down   # stop and remove volumes
 ```
@@ -216,34 +208,15 @@ Publishing steps are skipped under [act](https://github.com/nektos/act)
 (`if: ${{ !env.ACT }}`), so `act -n -W .github/workflows/release.yaml`
 dry-runs the whole thing locally.
 
-### First release: the pdbcore / pdbq / pdbr sequence
+### Dependency on pdbcore
 
-pdbr and pdbq both consume `github.com/suprbdev/pdbcore` through a local
-`replace ../pdbcore` directive until pdbcore has a tag. Release day, in
-order:
+pdbr consumes `github.com/suprbdev/pdbcore` as an ordinary tagged module
+(`v0.1.0`); no `replace` directive, vendoring or side-by-side checkout is
+needed to build, test or run CI.
 
-1. **pdbcore** — commit the working tree, `make test lint`
-   (`make test-e2e` for the DB-backed suites), `make release` → `v0.1.0`.
-   pdbcore is a library: its release workflow publishes notes only.
-2. **pdbq** — `go get github.com/suprbdev/pdbcore@v0.1.0`, delete the
-   `replace` line from `go.mod`, `go mod tidy` (its Dockerfile's
-   `go mod download` layer resolves pdbcore from the proxy again), drop any
-   pdbcore checkout / vendor steps from its workflows, run
-   `make test test-e2e lint`, commit "Use pdbcore v0.1.0.", `make release`
-   → `v0.11.0`.
-3. **pdbr** — same edits: `go get github.com/suprbdev/pdbcore@v0.1.0`,
-   remove the `replace`, `go mod tidy`; delete the `with_vendor` wrapper in
-   the `Makefile` (targets call `docker build`/`docker compose build`
-   directly), remove the `suprbdev/pdbcore` checkout steps, the
-   `working-directory: pdbr` defaults, the `path: pdbr` checkout option and
-   the "Vendor pdbcore" steps from `ci.yaml`/`release.yaml`
-   (`cache-dependency-path` becomes `go.sum`), and in `release.yaml` set the
-   build context back to `.`; optionally split the Dockerfile `COPY` for layer
-   caching. Update the CLAUDE.md/deployment.md sentences that mention the
-   replace. `make test lint`, `make test-e2e`, `make docker-build`, commit
-   "Use pdbcore v0.1.0.", `make release` → `v0.1.0`.
-4. Verify: the GitHub release lists 5 archives + `checksums.txt`;
-   `docker run ghcr.io/suprbdev/pdbr:0.1.0 --version` prints `v0.1.0`.
-
-Later pdbcore releases follow the same pattern minus the `replace` cleanup:
-bump with `go get`, regenerate goldens if the fixture changed, tag.
+Later pdbcore releases: bump with `go get github.com/suprbdev/pdbcore@vX.Y.Z`
+and `go mod tidy`, regenerate goldens and `db/init/01-schema.sql`
+(`make fixture`) if the fixture changed, run `make test test-e2e lint`, then
+`make release`. Verify the published release lists 5 archives +
+`checksums.txt` and that `docker run ghcr.io/suprbdev/pdbr:X.Y.Z --version`
+prints `vX.Y.Z`.

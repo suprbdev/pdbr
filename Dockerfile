@@ -1,13 +1,8 @@
 # Multi-stage build: static pdbr binary on distroless.
-#
-# pdbcore is consumed through a `replace ../pdbcore` directive until it is
-# tagged, so the build context must carry it: `make docker-build`, `make dev`
-# and CI run `go mod vendor` first and Go picks the vendor tree up
-# automatically (COPY . . includes it). Once pdbcore is tagged, drop the
-# vendor step and split the COPY into `go.mod go.sum` + `go mod download` +
-# `COPY . .` for layer caching.
 FROM golang:1.26-alpine AS build
 WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
 COPY . .
 ARG VERSION=dev
 RUN CGO_ENABLED=0 go build -trimpath \
