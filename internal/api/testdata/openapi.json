@@ -490,13 +490,9 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "return=minimal answers 204 without a body (201 + Location for a single-object create).",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference.",
             "schema": {
-              "type": "string",
-              "enum": [
-                "return=representation",
-                "return=minimal"
-              ]
+              "type": "string"
             }
           }
         ],
@@ -528,6 +524,12 @@
             "headers": {
               "Location": {
                 "description": "URL of the new row for a single-object body on a resource with a single-column primary key.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -612,13 +614,9 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "return=minimal answers 204 without a body (201 + Location for a single-object create).",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference.",
             "schema": {
-              "type": "string",
-              "enum": [
-                "return=representation",
-                "return=minimal"
-              ]
+              "type": "string"
             }
           }
         ],
@@ -647,6 +645,14 @@
         "responses": {
           "200": {
             "description": "Updated (single object that hit an existing row, or any array).",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -673,6 +679,12 @@
                 "schema": {
                   "type": "string"
                 }
+              },
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
               }
             },
             "content": {
@@ -684,7 +696,15 @@
             }
           },
           "204": {
-            "description": "Updated with Prefer: return=minimal."
+            "description": "Updated with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/Problem"
@@ -705,6 +725,369 @@
             "$ref": "#/components/responses/Problem"
           },
           "415": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "comments"
+        ],
+        "summary": "Update the comments rows matching the filters",
+        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless server.allow_unfiltered_mutations is on.",
+        "operationId": "comments.bulk_update",
+        "parameters": [
+          {
+            "name": "select",
+            "in": "query",
+            "description": "Columns and embeds of the updated rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, post_id, parent_id, body. Embeds: comments, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "and",
+            "in": "query",
+            "description": "Conjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes. Also the only way to filter a column named like a reserved parameter.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "or",
+            "in": "query",
+            "description": "Disjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "not.and",
+            "in": "query",
+            "description": "Negated conjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "not.or",
+            "in": "query",
+            "description": "Negated disjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is"
+            ]
+          },
+          {
+            "name": "post_id",
+            "in": "query",
+            "description": "Filter: post_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (post_id=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is"
+            ]
+          },
+          {
+            "name": "parent_id",
+            "in": "query",
+            "description": "Filter: parent_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (parent_id=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is"
+            ]
+          }
+        ],
+        "requestBody": {
+          "description": "Columns to set on every matching row.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/comments.update"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated (the changed rows; an empty array when nothing matched).",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/comments"
+                  }
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Updated with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "406": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "415": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "comments"
+        ],
+        "summary": "Delete the comments rows matching the filters",
+        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless server.allow_unfiltered_mutations is on.",
+        "operationId": "comments.bulk_delete",
+        "parameters": [
+          {
+            "name": "select",
+            "in": "query",
+            "description": "Columns and embeds of the deleted rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, post_id, parent_id, body. Embeds: comments, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "and",
+            "in": "query",
+            "description": "Conjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes. Also the only way to filter a column named like a reserved parameter.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "or",
+            "in": "query",
+            "description": "Disjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "not.and",
+            "in": "query",
+            "description": "Negated conjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "not.or",
+            "in": "query",
+            "description": "Negated disjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is"
+            ]
+          },
+          {
+            "name": "post_id",
+            "in": "query",
+            "description": "Filter: post_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (post_id=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is"
+            ]
+          },
+          {
+            "name": "parent_id",
+            "in": "query",
+            "description": "Filter: parent_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (parent_id=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted (the removed rows; an empty array when nothing matched).",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/comments"
+                  }
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Deleted with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "406": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
             "$ref": "#/components/responses/Problem"
           },
           "500": {
@@ -886,13 +1269,9 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "return=minimal answers 204 without a body (201 + Location for a single-object create).",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
             "schema": {
-              "type": "string",
-              "enum": [
-                "return=representation",
-                "return=minimal"
-              ]
+              "type": "string"
             }
           }
         ],
@@ -910,6 +1289,14 @@
         "responses": {
           "200": {
             "description": "Updated",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -919,7 +1306,15 @@
             }
           },
           "204": {
-            "description": "Updated with Prefer: return=minimal."
+            "description": "Updated with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/Problem"
@@ -988,19 +1383,23 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "return=minimal answers 204 without a body (201 + Location for a single-object create).",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
             "schema": {
-              "type": "string",
-              "enum": [
-                "return=representation",
-                "return=minimal"
-              ]
+              "type": "string"
             }
           }
         ],
         "responses": {
           "200": {
             "description": "Deleted (the removed row)",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1010,7 +1409,15 @@
             }
           },
           "204": {
-            "description": "Deleted with Prefer: return=minimal."
+            "description": "Deleted with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/Problem"
@@ -1481,13 +1888,9 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "return=minimal answers 204 without a body (201 + Location for a single-object create).",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference.",
             "schema": {
-              "type": "string",
-              "enum": [
-                "return=representation",
-                "return=minimal"
-              ]
+              "type": "string"
             }
           }
         ],
@@ -1519,6 +1922,12 @@
             "headers": {
               "Location": {
                 "description": "URL of the new row for a single-object body on a resource with a single-column primary key.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -1603,13 +2012,9 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "return=minimal answers 204 without a body (201 + Location for a single-object create).",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference.",
             "schema": {
-              "type": "string",
-              "enum": [
-                "return=representation",
-                "return=minimal"
-              ]
+              "type": "string"
             }
           }
         ],
@@ -1638,6 +2043,14 @@
         "responses": {
           "200": {
             "description": "Updated (single object that hit an existing row, or any array).",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1664,6 +2077,12 @@
                 "schema": {
                   "type": "string"
                 }
+              },
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
               }
             },
             "content": {
@@ -1675,7 +2094,15 @@
             }
           },
           "204": {
-            "description": "Updated with Prefer: return=minimal."
+            "description": "Updated with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/Problem"
@@ -1696,6 +2123,333 @@
             "$ref": "#/components/responses/Problem"
           },
           "415": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Update the events rows matching the filters",
+        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless server.allow_unfiltered_mutations is on.",
+        "operationId": "events.bulk_update",
+        "parameters": [
+          {
+            "name": "select",
+            "in": "query",
+            "description": "Columns and embeds of the updated rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, name, type_code.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "and",
+            "in": "query",
+            "description": "Conjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes. Also the only way to filter a column named like a reserved parameter.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "or",
+            "in": "query",
+            "description": "Disjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "not.and",
+            "in": "query",
+            "description": "Negated conjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "not.or",
+            "in": "query",
+            "description": "Negated disjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is"
+            ]
+          },
+          {
+            "name": "type_code",
+            "in": "query",
+            "description": "Filter: type_code=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (type_code=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is"
+            ]
+          }
+        ],
+        "requestBody": {
+          "description": "Columns to set on every matching row.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/events.update"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated (the changed rows; an empty array when nothing matched).",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/events"
+                  }
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Updated with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "406": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "415": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Delete the events rows matching the filters",
+        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless server.allow_unfiltered_mutations is on.",
+        "operationId": "events.bulk_delete",
+        "parameters": [
+          {
+            "name": "select",
+            "in": "query",
+            "description": "Columns and embeds of the deleted rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, name, type_code.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "and",
+            "in": "query",
+            "description": "Conjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes. Also the only way to filter a column named like a reserved parameter.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "or",
+            "in": "query",
+            "description": "Disjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "not.and",
+            "in": "query",
+            "description": "Negated conjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "not.or",
+            "in": "query",
+            "description": "Negated disjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is"
+            ]
+          },
+          {
+            "name": "type_code",
+            "in": "query",
+            "description": "Filter: type_code=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (type_code=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted (the removed rows; an empty array when nothing matched).",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/events"
+                  }
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Deleted with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "406": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
             "$ref": "#/components/responses/Problem"
           },
           "500": {
@@ -1877,13 +2631,9 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "return=minimal answers 204 without a body (201 + Location for a single-object create).",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
             "schema": {
-              "type": "string",
-              "enum": [
-                "return=representation",
-                "return=minimal"
-              ]
+              "type": "string"
             }
           }
         ],
@@ -1901,6 +2651,14 @@
         "responses": {
           "200": {
             "description": "Updated",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1910,7 +2668,15 @@
             }
           },
           "204": {
-            "description": "Updated with Prefer: return=minimal."
+            "description": "Updated with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/Problem"
@@ -1979,19 +2745,23 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "return=minimal answers 204 without a body (201 + Location for a single-object create).",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
             "schema": {
-              "type": "string",
-              "enum": [
-                "return=representation",
-                "return=minimal"
-              ]
+              "type": "string"
             }
           }
         ],
         "responses": {
           "200": {
             "description": "Deleted (the removed row)",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -2001,7 +2771,15 @@
             }
           },
           "204": {
-            "description": "Deleted with Prefer: return=minimal."
+            "description": "Deleted with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/Problem"
@@ -2792,13 +3570,9 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "return=minimal answers 204 without a body (201 + Location for a single-object create).",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference.",
             "schema": {
-              "type": "string",
-              "enum": [
-                "return=representation",
-                "return=minimal"
-              ]
+              "type": "string"
             }
           }
         ],
@@ -2830,6 +3604,12 @@
             "headers": {
               "Location": {
                 "description": "URL of the new row for a single-object body on a resource with a single-column primary key.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -2914,13 +3694,9 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "return=minimal answers 204 without a body (201 + Location for a single-object create).",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference.",
             "schema": {
-              "type": "string",
-              "enum": [
-                "return=representation",
-                "return=minimal"
-              ]
+              "type": "string"
             }
           }
         ],
@@ -2949,6 +3725,14 @@
         "responses": {
           "200": {
             "description": "Updated (single object that hit an existing row, or any array).",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -2975,6 +3759,12 @@
                 "schema": {
                   "type": "string"
                 }
+              },
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
               }
             },
             "content": {
@@ -2986,7 +3776,15 @@
             }
           },
           "204": {
-            "description": "Updated with Prefer: return=minimal."
+            "description": "Updated with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/Problem"
@@ -3007,6 +3805,377 @@
             "$ref": "#/components/responses/Problem"
           },
           "415": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "places"
+        ],
+        "summary": "Update the places rows matching the filters",
+        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless server.allow_unfiltered_mutations is on.",
+        "operationId": "places.bulk_update",
+        "parameters": [
+          {
+            "name": "select",
+            "in": "query",
+            "description": "Columns and embeds of the updated rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, owner_id, name, location, area. Embeds: users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "and",
+            "in": "query",
+            "description": "Conjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes. Also the only way to filter a column named like a reserved parameter.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "or",
+            "in": "query",
+            "description": "Disjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "not.and",
+            "in": "query",
+            "description": "Negated conjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "not.or",
+            "in": "query",
+            "description": "Negated disjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is"
+            ]
+          },
+          {
+            "name": "owner_id",
+            "in": "query",
+            "description": "Filter: owner_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (owner_id=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is"
+            ]
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "description": "Filter: location=<op>.<value> (geometry). Ops: is. Prefix not. to negate (location=not.is.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "is"
+            ]
+          },
+          {
+            "name": "area",
+            "in": "query",
+            "description": "Filter: area=<op>.<value> (geography). Ops: is. Prefix not. to negate (area=not.is.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "is"
+            ]
+          }
+        ],
+        "requestBody": {
+          "description": "Columns to set on every matching row.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/places.update"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated (the changed rows; an empty array when nothing matched).",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/places"
+                  }
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Updated with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "406": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "415": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "places"
+        ],
+        "summary": "Delete the places rows matching the filters",
+        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless server.allow_unfiltered_mutations is on.",
+        "operationId": "places.bulk_delete",
+        "parameters": [
+          {
+            "name": "select",
+            "in": "query",
+            "description": "Columns and embeds of the deleted rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, owner_id, name, location, area. Embeds: users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "and",
+            "in": "query",
+            "description": "Conjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes. Also the only way to filter a column named like a reserved parameter.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "or",
+            "in": "query",
+            "description": "Disjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "not.and",
+            "in": "query",
+            "description": "Negated conjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "not.or",
+            "in": "query",
+            "description": "Negated disjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is"
+            ]
+          },
+          {
+            "name": "owner_id",
+            "in": "query",
+            "description": "Filter: owner_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (owner_id=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is"
+            ]
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "description": "Filter: location=<op>.<value> (geometry). Ops: is. Prefix not. to negate (location=not.is.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "is"
+            ]
+          },
+          {
+            "name": "area",
+            "in": "query",
+            "description": "Filter: area=<op>.<value> (geography). Ops: is. Prefix not. to negate (area=not.is.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "is"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted (the removed rows; an empty array when nothing matched).",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/places"
+                  }
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Deleted with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "406": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
             "$ref": "#/components/responses/Problem"
           },
           "500": {
@@ -3188,13 +4357,9 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "return=minimal answers 204 without a body (201 + Location for a single-object create).",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
             "schema": {
-              "type": "string",
-              "enum": [
-                "return=representation",
-                "return=minimal"
-              ]
+              "type": "string"
             }
           }
         ],
@@ -3212,6 +4377,14 @@
         "responses": {
           "200": {
             "description": "Updated",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -3221,7 +4394,15 @@
             }
           },
           "204": {
-            "description": "Updated with Prefer: return=minimal."
+            "description": "Updated with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/Problem"
@@ -3290,19 +4471,23 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "return=minimal answers 204 without a body (201 + Location for a single-object create).",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
             "schema": {
-              "type": "string",
-              "enum": [
-                "return=representation",
-                "return=minimal"
-              ]
+              "type": "string"
             }
           }
         ],
         "responses": {
           "200": {
             "description": "Deleted (the removed row)",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -3312,7 +4497,15 @@
             }
           },
           "204": {
-            "description": "Deleted with Prefer: return=minimal."
+            "description": "Deleted with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/Problem"
@@ -3827,13 +5020,9 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "return=minimal answers 204 without a body (201 + Location for a single-object create).",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference.",
             "schema": {
-              "type": "string",
-              "enum": [
-                "return=representation",
-                "return=minimal"
-              ]
+              "type": "string"
             }
           }
         ],
@@ -3865,6 +5054,12 @@
             "headers": {
               "Location": {
                 "description": "URL of the new row for a single-object body on a resource with a single-column primary key.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -3949,13 +5144,9 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "return=minimal answers 204 without a body (201 + Location for a single-object create).",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference.",
             "schema": {
-              "type": "string",
-              "enum": [
-                "return=representation",
-                "return=minimal"
-              ]
+              "type": "string"
             }
           }
         ],
@@ -3984,6 +5175,14 @@
         "responses": {
           "200": {
             "description": "Updated (single object that hit an existing row, or any array).",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -4010,6 +5209,12 @@
                 "schema": {
                   "type": "string"
                 }
+              },
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
               }
             },
             "content": {
@@ -4021,7 +5226,15 @@
             }
           },
           "204": {
-            "description": "Updated with Prefer: return=minimal."
+            "description": "Updated with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/Problem"
@@ -4042,6 +5255,377 @@
             "$ref": "#/components/responses/Problem"
           },
           "415": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "posts"
+        ],
+        "summary": "Update the posts rows matching the filters",
+        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless server.allow_unfiltered_mutations is on.",
+        "operationId": "posts.bulk_update",
+        "parameters": [
+          {
+            "name": "select",
+            "in": "query",
+            "description": "Columns and embeds of the updated rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "and",
+            "in": "query",
+            "description": "Conjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes. Also the only way to filter a column named like a reserved parameter.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "or",
+            "in": "query",
+            "description": "Disjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "not.and",
+            "in": "query",
+            "description": "Negated conjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "not.or",
+            "in": "query",
+            "description": "Negated disjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is"
+            ]
+          },
+          {
+            "name": "author_id",
+            "in": "query",
+            "description": "Filter: author_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (author_id=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is"
+            ]
+          },
+          {
+            "name": "title",
+            "in": "query",
+            "description": "Filter: title=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, like, ilike, sw, ew. Prefix not. to negate (title=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is",
+              "like",
+              "ilike",
+              "sw",
+              "ew"
+            ]
+          }
+        ],
+        "requestBody": {
+          "description": "Columns to set on every matching row.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/posts.update"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated (the changed rows; an empty array when nothing matched).",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/posts"
+                  }
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Updated with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "406": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "415": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "posts"
+        ],
+        "summary": "Delete the posts rows matching the filters",
+        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless server.allow_unfiltered_mutations is on.",
+        "operationId": "posts.bulk_delete",
+        "parameters": [
+          {
+            "name": "select",
+            "in": "query",
+            "description": "Columns and embeds of the deleted rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "and",
+            "in": "query",
+            "description": "Conjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes. Also the only way to filter a column named like a reserved parameter.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "or",
+            "in": "query",
+            "description": "Disjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "not.and",
+            "in": "query",
+            "description": "Negated conjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "not.or",
+            "in": "query",
+            "description": "Negated disjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is"
+            ]
+          },
+          {
+            "name": "author_id",
+            "in": "query",
+            "description": "Filter: author_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (author_id=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is"
+            ]
+          },
+          {
+            "name": "title",
+            "in": "query",
+            "description": "Filter: title=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, like, ilike, sw, ew. Prefix not. to negate (title=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is",
+              "like",
+              "ilike",
+              "sw",
+              "ew"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted (the removed rows; an empty array when nothing matched).",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/posts"
+                  }
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Deleted with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "406": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
             "$ref": "#/components/responses/Problem"
           },
           "500": {
@@ -4223,13 +5807,9 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "return=minimal answers 204 without a body (201 + Location for a single-object create).",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
             "schema": {
-              "type": "string",
-              "enum": [
-                "return=representation",
-                "return=minimal"
-              ]
+              "type": "string"
             }
           }
         ],
@@ -4247,6 +5827,14 @@
         "responses": {
           "200": {
             "description": "Updated",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -4256,7 +5844,15 @@
             }
           },
           "204": {
-            "description": "Updated with Prefer: return=minimal."
+            "description": "Updated with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/Problem"
@@ -4325,19 +5921,23 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "return=minimal answers 204 without a body (201 + Location for a single-object create).",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
             "schema": {
-              "type": "string",
-              "enum": [
-                "return=representation",
-                "return=minimal"
-              ]
+              "type": "string"
             }
           }
         ],
         "responses": {
           "200": {
             "description": "Deleted (the removed row)",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -4347,7 +5947,15 @@
             }
           },
           "204": {
-            "description": "Deleted with Prefer: return=minimal."
+            "description": "Deleted with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/Problem"
@@ -6802,13 +8410,9 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "return=minimal answers 204 without a body (201 + Location for a single-object create).",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference.",
             "schema": {
-              "type": "string",
-              "enum": [
-                "return=representation",
-                "return=minimal"
-              ]
+              "type": "string"
             }
           }
         ],
@@ -6840,6 +8444,12 @@
             "headers": {
               "Location": {
                 "description": "URL of the new row for a single-object body on a resource with a single-column primary key.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -6924,13 +8534,9 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "return=minimal answers 204 without a body (201 + Location for a single-object create).",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference.",
             "schema": {
-              "type": "string",
-              "enum": [
-                "return=representation",
-                "return=minimal"
-              ]
+              "type": "string"
             }
           }
         ],
@@ -6959,6 +8565,14 @@
         "responses": {
           "200": {
             "description": "Updated (single object that hit an existing row, or any array).",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -6985,6 +8599,12 @@
                 "schema": {
                   "type": "string"
                 }
+              },
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
               }
             },
             "content": {
@@ -6996,7 +8616,15 @@
             }
           },
           "204": {
-            "description": "Updated with Prefer: return=minimal."
+            "description": "Updated with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/Problem"
@@ -7017,6 +8645,501 @@
             "$ref": "#/components/responses/Problem"
           },
           "415": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Update the users rows matching the filters",
+        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless server.allow_unfiltered_mutations is on.",
+        "operationId": "users.bulk_update",
+        "parameters": [
+          {
+            "name": "select",
+            "in": "query",
+            "description": "Columns and embeds of the updated rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "and",
+            "in": "query",
+            "description": "Conjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes. Also the only way to filter a column named like a reserved parameter.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "or",
+            "in": "query",
+            "description": "Disjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "not.and",
+            "in": "query",
+            "description": "Negated conjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "not.or",
+            "in": "query",
+            "description": "Negated disjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is"
+            ]
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "description": "Filter: email=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, like, ilike, sw, ew. Prefix not. to negate (email=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is",
+              "like",
+              "ilike",
+              "sw",
+              "ew"
+            ]
+          },
+          {
+            "name": "mood",
+            "in": "query",
+            "description": "Filter: mood=<op>.<value> (mood). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (mood=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is"
+            ]
+          },
+          {
+            "name": "settings",
+            "in": "query",
+            "description": "Filter: settings=<op>.<value> (jsonb). Ops: eq, neq, gt, gte, lt, lte, is, cs, cd, hk, jpe, jpm. Prefix not. to negate (settings=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "is",
+              "cs",
+              "cd",
+              "hk",
+              "jpe",
+              "jpm"
+            ]
+          },
+          {
+            "name": "tags",
+            "in": "query",
+            "description": "Filter: tags=<op>.<value> (text[]). Ops: eq, neq, gt, gte, lt, lte, is, cs, cd, ov. Prefix not. to negate (tags=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "is",
+              "cs",
+              "cd",
+              "ov"
+            ]
+          },
+          {
+            "name": "moods",
+            "in": "query",
+            "description": "Filter: moods=<op>.<value> (mood[]). Ops: eq, neq, gt, gte, lt, lte, is, cs, cd, ov. Prefix not. to negate (moods=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "is",
+              "cs",
+              "cd",
+              "ov"
+            ]
+          }
+        ],
+        "requestBody": {
+          "description": "Columns to set on every matching row.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/users.update"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated (the changed rows; an empty array when nothing matched).",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/users"
+                  }
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Updated with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "406": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "415": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Delete the users rows matching the filters",
+        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless server.allow_unfiltered_mutations is on.",
+        "operationId": "users.bulk_delete",
+        "parameters": [
+          {
+            "name": "select",
+            "in": "query",
+            "description": "Columns and embeds of the deleted rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "and",
+            "in": "query",
+            "description": "Conjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes. Also the only way to filter a column named like a reserved parameter.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "or",
+            "in": "query",
+            "description": "Disjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "not.and",
+            "in": "query",
+            "description": "Negated conjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "not.or",
+            "in": "query",
+            "description": "Negated disjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is"
+            ]
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "description": "Filter: email=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, like, ilike, sw, ew. Prefix not. to negate (email=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is",
+              "like",
+              "ilike",
+              "sw",
+              "ew"
+            ]
+          },
+          {
+            "name": "mood",
+            "in": "query",
+            "description": "Filter: mood=<op>.<value> (mood). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (mood=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is"
+            ]
+          },
+          {
+            "name": "settings",
+            "in": "query",
+            "description": "Filter: settings=<op>.<value> (jsonb). Ops: eq, neq, gt, gte, lt, lte, is, cs, cd, hk, jpe, jpm. Prefix not. to negate (settings=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "is",
+              "cs",
+              "cd",
+              "hk",
+              "jpe",
+              "jpm"
+            ]
+          },
+          {
+            "name": "tags",
+            "in": "query",
+            "description": "Filter: tags=<op>.<value> (text[]). Ops: eq, neq, gt, gte, lt, lte, is, cs, cd, ov. Prefix not. to negate (tags=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "is",
+              "cs",
+              "cd",
+              "ov"
+            ]
+          },
+          {
+            "name": "moods",
+            "in": "query",
+            "description": "Filter: moods=<op>.<value> (mood[]). Ops: eq, neq, gt, gte, lt, lte, is, cs, cd, ov. Prefix not. to negate (moods=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "is",
+              "cs",
+              "cd",
+              "ov"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted (the removed rows; an empty array when nothing matched).",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/users"
+                  }
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Deleted with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "406": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
             "$ref": "#/components/responses/Problem"
           },
           "500": {
@@ -7198,13 +9321,9 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "return=minimal answers 204 without a body (201 + Location for a single-object create).",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
             "schema": {
-              "type": "string",
-              "enum": [
-                "return=representation",
-                "return=minimal"
-              ]
+              "type": "string"
             }
           }
         ],
@@ -7222,6 +9341,14 @@
         "responses": {
           "200": {
             "description": "Updated",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -7231,7 +9358,15 @@
             }
           },
           "204": {
-            "description": "Updated with Prefer: return=minimal."
+            "description": "Updated with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/Problem"
@@ -7300,19 +9435,23 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "return=minimal answers 204 without a body (201 + Location for a single-object create).",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
             "schema": {
-              "type": "string",
-              "enum": [
-                "return=representation",
-                "return=minimal"
-              ]
+              "type": "string"
             }
           }
         ],
         "responses": {
           "200": {
             "description": "Deleted (the removed row)",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -7322,7 +9461,15 @@
             }
           },
           "204": {
-            "description": "Deleted with Prefer: return=minimal."
+            "description": "Deleted with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/Problem"
@@ -7535,13 +9682,9 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "return=minimal answers 204 without a body (201 + Location for a single-object create).",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
             "schema": {
-              "type": "string",
-              "enum": [
-                "return=representation",
-                "return=minimal"
-              ]
+              "type": "string"
             }
           }
         ],
@@ -7559,6 +9702,14 @@
         "responses": {
           "200": {
             "description": "Updated",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -7568,7 +9719,15 @@
             }
           },
           "204": {
-            "description": "Updated with Prefer: return=minimal."
+            "description": "Updated with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/Problem"
@@ -7637,19 +9796,23 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "return=minimal answers 204 without a body (201 + Location for a single-object create).",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
             "schema": {
-              "type": "string",
-              "enum": [
-                "return=representation",
-                "return=minimal"
-              ]
+              "type": "string"
             }
           }
         ],
         "responses": {
           "200": {
             "description": "Deleted (the removed row)",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -7659,7 +9822,15 @@
             }
           },
           "204": {
-            "description": "Deleted with Prefer: return=minimal."
+            "description": "Deleted with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/Problem"

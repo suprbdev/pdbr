@@ -1,0 +1,4 @@
+PATCH /api/posts?author_id=eq.1
+Prefer: return=minimal
+
+{"published": true}

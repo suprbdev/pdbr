@@ -50,6 +50,11 @@ func TestUnwrapMutation(t *testing.T) {
 		{"ifmatch missing", op("DELETE", ""), compile.ShapeMutWrap, `{"found":false,"row":null}`, true, want{404, "", "", CodeNotFound}},
 		{"ifmatch minimal", op("DELETE", "minimal"), compile.ShapeMutWrap, `{"found":true,"row":true}`, true, want{204, "", "", ""}},
 		{"wrap no rows", op("PATCH", ""), compile.ShapeMutWrap, ``, false, want{404, "", "", CodeNotFound}},
+		{"bulk patch", op("PATCH", ""), compile.ShapeMutBulk, `{"n":2,"rows":[{"id":1},{"id":2}]}`, true, want{200, `[{"id":1},{"id":2}]`, "", ""}},
+		{"bulk patch none", op("PATCH", ""), compile.ShapeMutBulk, `{"n":0,"rows":[]}`, true, want{200, `[]`, "", ""}},
+		{"bulk delete minimal", op("DELETE", "minimal"), compile.ShapeMutBulk, `{"n":3}`, true, want{204, "", "", ""}},
+		{"bulk delete headers-only none", op("DELETE", "headers-only"), compile.ShapeMutBulk, `{"n":0}`, true, want{204, "", "", ""}},
+		{"bulk malformed", op("DELETE", ""), compile.ShapeMutBulk, `[`, true, want{500, "", "", CodeInternal}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -77,5 +82,35 @@ func TestUnwrapMutation(t *testing.T) {
 	res, err := Unwrap(&Operation{Method: "POST", Resource: users, Plan: &plan.Request{Method: plan.POST}}, stmt(compile.ShapeMutWrap), []byte(`{"row":{},"key":[3]}`), true, "")
 	if err != nil || res.Headers.Get("Location") != "/users/3" {
 		t.Fatalf("root base path: %v %v", res, err)
+	}
+}
+
+func TestAffectedRows(t *testing.T) {
+	cases := []struct {
+		shape compile.Shape
+		raw   string
+		found bool
+		want  int64
+	}{
+		{compile.ShapeMutBulk, `{"n":7,"rows":[]}`, true, 7},
+		{compile.ShapeMutBulk, ``, false, 0},
+		{compile.ShapeMutRow, `{"id":1}`, true, 1},
+		{compile.ShapeMutRow, ``, false, 0},
+		{compile.ShapeMutWrap, `{"n":1}`, true, 1},
+		{compile.ShapeMutWrap, `{"found":true,"row":null}`, true, 0},
+		{compile.ShapeMutWrap, `{"found":true,"row":{"id":1}}`, true, 1},
+	}
+	for _, tc := range cases {
+		var raw []byte
+		if tc.raw != "" {
+			raw = []byte(tc.raw)
+		}
+		got, err := affectedRows(&compile.Statement{Shape: tc.shape}, raw, tc.found)
+		if err != nil || got != tc.want {
+			t.Errorf("%s %s = %d %v, want %d", tc.shape, tc.raw, got, err, tc.want)
+		}
+	}
+	if _, err := affectedRows(&compile.Statement{Shape: compile.ShapeMutBulk}, []byte("["), true); err == nil {
+		t.Error("malformed wrapper accepted")
 	}
 }

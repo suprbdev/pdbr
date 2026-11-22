@@ -40,6 +40,8 @@ server:
   etags: true
   # Honour Accept: text/csv on list GETs and set-returning RPCs.
   csv: true
+  # Allow PATCH and DELETE on a collection route without a filter (every visible row). Off by default: such requests answer 400 unfiltered_mutation.
+  allow_unfiltered_mutations: false
 
 schema:
   # PostgreSQL schemas to expose.

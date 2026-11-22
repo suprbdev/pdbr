@@ -128,7 +128,7 @@ func TestSmartCommentsRoutesAndMethods(t *testing.T) {
 	// @omit all: the collection keeps its write methods, rows stay readable.
 	res, body = get(t, srv+"/api/sc_tags")
 	wantProblem(t, res, body, 405, "method_not_allowed")
-	if allow := res.Header.Get("Allow"); allow != "POST, PUT" {
+	if allow := res.Header.Get("Allow"); allow != "POST, PUT, PATCH, DELETE" {
 		t.Fatalf("sc_tags Allow = %q", allow)
 	}
 	var tag row

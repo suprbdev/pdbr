@@ -63,6 +63,7 @@ See [cli.md](cli.md) for details.
 | `server.read_only` | bool | `false` | every write → `405` (`code: read_only`); runtime-toggleable via `App.SetReadOnly` |
 | `server.etags` | bool | `true` | weak `ETag` on single-row GETs, `If-None-Match` → `304`, `If-Match` on `PATCH`/`DELETE` → `412` |
 | `server.csv` | bool | `true` | `Accept: text/csv` on lists and set-returning RPCs |
+| `server.allow_unfiltered_mutations` | bool | `false` | let `PATCH`/`DELETE {base}/{table}` run without a filter (every row the role can see); off → `400 unfiltered_mutation`. See [mutations.md](mutations.md#bulk-patch--delete-by-filter) |
 | `schema.schemas` | []string | `[public]` | schema allowlist; resources in the first entry also get bare `/{table}` aliases |
 | `schema.cache_path` | string | — | boot from `pdbr schema dump` output; see [caching.md](caching.md) |
 | `schema.functions` | bool | `true` | expose functions as `/rpc/{fn}` routes and computed columns ([rpc.md](rpc.md)) |

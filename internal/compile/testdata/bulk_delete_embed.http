@@ -1,0 +1,1 @@
+DELETE /api/posts?or=(author_id.eq.2,title.like.M3*)&select=id,title,users(email)

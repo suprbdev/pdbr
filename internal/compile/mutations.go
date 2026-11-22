@@ -36,6 +36,10 @@ func (s *stmt) mutation() (*Statement, error) {
 	case plan.PUT:
 		dml, err = s.upsertDML()
 	case plan.PATCH, plan.DELETE:
+		if p.Key == nil {
+			dml, err = s.bulkDML()
+			break
+		}
 		var cur string
 		cur, dml, err = s.keyedDML()
 		if cur != "" {
@@ -58,7 +62,7 @@ func (s *stmt) mutationResponse(ctes string) (*Statement, error) {
 	r := p.Resource
 	t := r.Table
 	bulk := p.Body != nil && p.Body.Objects != nil
-	minimal := p.Prefer.Return == "minimal"
+	minimal := p.Prefer.Minimal()
 	ifMatch := s.ifMatchTags() != nil
 	alias := s.alias("t")
 
@@ -74,6 +78,19 @@ func (s *stmt) mutationResponse(ctes string) (*Statement, error) {
 	var body string
 	shape := ShapeMutWrap
 	switch {
+	case p.Key == nil && (p.Method == plan.PATCH || p.Method == plan.DELETE):
+		shape = ShapeMutBulk
+		if minimal {
+			body = "SELECT jsonb_build_object('n', (SELECT count(*) FROM __mut)) AS data"
+			break
+		}
+		jsonExpr, laterals, err := s.rowJSON(s.rootNode(), alias, 0)
+		if err != nil {
+			return nil, err
+		}
+		sub := s.alias("s")
+		body = fmt.Sprintf("SELECT jsonb_build_object('n', count(*), 'rows', coalesce(jsonb_agg(%s.data), '[]'::jsonb)) AS data\nFROM (\n%s\n) %s",
+			sub, indent(fmt.Sprintf("SELECT %s AS data\nFROM __mut %s%s", jsonExpr, alias, joinLaterals(laterals))), sub)
 	case minimal && ifMatch:
 		body = fmt.Sprintf("SELECT %s AS data", buildJSONObject([]string{
 			"'found'", "EXISTS (SELECT 1 FROM cur)",
@@ -277,6 +294,36 @@ func (s *stmt) keyedDML() (cur, dml string, err error) {
 		return cur, fmt.Sprintf("DELETE FROM %s\nWHERE %s", tableRef(t), where), nil
 	}
 	return cur, fmt.Sprintf("UPDATE %s\nSET %s\nWHERE %s", tableRef(t), strings.Join(sets, ", "), where), nil
+}
+
+// bulkDML renders the UPDATE / DELETE of a list route: the root filter of
+// the query string compiled against an aliased target (no WHERE at all when
+// server.allow_unfiltered_mutations let an unfiltered request through).
+func (s *stmt) bulkDML() (string, error) {
+	p := s.plan
+	t := p.Resource.Table
+	alias := s.alias("m")
+	where := ""
+	if p.Filter != nil {
+		cond, err := s.filterSQL(p.Filter, alias)
+		if err != nil {
+			return "", err
+		}
+		if cond != "" {
+			where = "\nWHERE " + cond
+		}
+	}
+	if p.Method == plan.DELETE {
+		return fmt.Sprintf("DELETE FROM %s %s%s", tableRef(t), alias, where), nil
+	}
+	if p.Body == nil || len(p.Body.Columns) == 0 {
+		return "", errUser(CodeInvalidBody, "PATCH body must set at least one column")
+	}
+	sets := make([]string, len(p.Body.Columns))
+	for i, c := range p.Body.Columns {
+		sets[i] = quoteIdent(c.Name) + " = " + s.inputValue(c, p.Body.Object[c.Name])
+	}
+	return fmt.Sprintf("UPDATE %s %s\nSET %s%s", tableRef(t), alias, strings.Join(sets, ", "), where), nil
 }
 
 func columnList(cols []*introspect.Column) string {

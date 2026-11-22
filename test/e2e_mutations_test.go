@@ -465,13 +465,13 @@ func TestTypedInputs(t *testing.T) {
 
 func TestMutationMethodAvailability(t *testing.T) {
 	srv := testServer(t, nil)
-	res, body := send(t, "PATCH", srv.URL+"/api/users", `{"full_name":"x"}`, nil)
-	if wantProblem(t, res, body, 405, "method_not_allowed"); res.Header.Get("Allow") != "GET, HEAD, POST, PUT" {
+	res, body := send(t, "OPTIONS", srv.URL+"/api/users", "", nil)
+	if wantProblem(t, res, body, 405, "method_not_allowed"); res.Header.Get("Allow") != "GET, HEAD, POST, PUT, PATCH, DELETE" {
 		t.Errorf("Allow = %q", res.Header.Get("Allow"))
 	}
-	res, body = send(t, "DELETE", srv.URL+"/api/users", "", nil)
-	if wantProblem(t, res, body, 405, "method_not_allowed"); res.Header.Get("Allow") != "GET, HEAD, POST, PUT" {
-		t.Errorf("Allow = %q", res.Header.Get("Allow"))
+	res, body = send(t, "DELETE", srv.URL+"/api/metrics?name=eq.x", "", nil)
+	if wantProblem(t, res, body, 405, "method_not_allowed"); res.Header.Get("Allow") != "GET, HEAD" {
+		t.Errorf("view Allow = %q", res.Header.Get("Allow"))
 	}
 	res, body = send(t, "POST", srv.URL+"/api/metrics", `{"name":"x"}`, nil)
 	if wantProblem(t, res, body, 405, "method_not_allowed"); res.Header.Get("Allow") != "GET, HEAD" {
@@ -488,6 +488,10 @@ func TestMutationMethodAvailability(t *testing.T) {
 	}
 	res, body = send(t, "PUT", ro.URL+"/api/users?on_conflict=email", `{"email":"x@y.z"}`, nil)
 	wantProblem(t, res, body, 405, "read_only")
+	res, body = send(t, "DELETE", ro.URL+"/api/users?id=eq.1", "", nil)
+	if wantProblem(t, res, body, 405, "read_only"); res.Header.Get("Allow") != "GET, HEAD" {
+		t.Errorf("read-only bulk Allow = %q", res.Header.Get("Allow"))
+	}
 }
 
 func TestMutationPrivilegesAndRLS(t *testing.T) {

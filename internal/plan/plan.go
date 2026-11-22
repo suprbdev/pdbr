@@ -321,11 +321,26 @@ type Page struct {
 	LimitSet bool
 }
 
-// Prefer is the parsed Prefer header.
+// Prefer is the parsed Prefer header (RFC 7240, PostgREST vocabulary).
 type Prefer struct {
-	// Return is "representation" (default) or "minimal".
+	// Return is "representation" (default; "" means the same), "minimal" or
+	// "headers-only" (an alias of minimal: pdbr's minimal already keeps
+	// Location).
 	Return string
+	// Strict reports handling=strict: unknown tokens and invalid values are
+	// a 400 instead of being ignored, and max-affected is honoured.
+	Strict bool
+	// MaxAffected is the max-affected=N cap on the rows a PATCH or DELETE
+	// may touch; nil when absent, ignored (lenient handling) or not
+	// applicable to the request.
+	MaxAffected *int64
+	// Applied lists the honoured preferences in canonical token=value form,
+	// in header order, for the Preference-Applied response header.
+	Applied []string
 }
+
+// Minimal reports return=minimal or return=headers-only.
+func (p Prefer) Minimal() bool { return p.Return == "minimal" || p.Return == "headers-only" }
 
 // Accept is the negotiated response format.
 type Accept string

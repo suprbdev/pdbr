@@ -1,0 +1,3 @@
+PATCH /api/users?mood=eq.sad&id=gt.1
+
+{"full_name": "Grace"}

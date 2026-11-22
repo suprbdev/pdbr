@@ -52,6 +52,7 @@ func configFlags(cmd *cobra.Command) {
 	fs.StringSlice("server.cors_origins", nil, "allowed CORS origins ('*' for any)")
 	fs.Bool("server.compression", false, "gzip responses when the client accepts it")
 	fs.Bool("server.read_only", false, "answer every write with 405 (read-only mode)")
+	fs.Bool("server.allow_unfiltered_mutations", false, "allow PATCH/DELETE on a collection without a filter")
 	fs.StringSlice("schema.schemas", nil, "PostgreSQL schemas to expose")
 	fs.String("schema.cache_path", "", "boot from schema cache file")
 	fs.Bool("schema.expose_partitions", false, "expose table partitions as resources of their own")

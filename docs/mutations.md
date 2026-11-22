@@ -5,7 +5,8 @@ statement → one jsonb `data` row. Go maps status and headers; PostgreSQL
 builds the body. The SQL shown below is the golden output
 (`internal/compile/testdata/{create,create_bulk,patch_pk,patch_ifmatch,
 delete_pk,delete_minimal,upsert_on_conflict,upsert_bulk,mutation_select_embed,
-composite_input,enum_input,…}.sql`), long column lists elided with `…`.
+composite_input,enum_input,bulk_patch,bulk_delete_embed,…}.sql`), long column
+lists elided with `…`.
 
 Routes (per table with the matching privilege; see [Method availability](#method-availability-405--allow)):
 
@@ -15,7 +16,8 @@ Routes (per table with the matching privilege; see [Method availability](#method
 | `PATCH {base}/{table}/{pk}` · `…/by/{cols}/{vals}` | `UPDATE … WHERE key` | `200` + row |
 | `DELETE {base}/{table}/{pk}` · `…/by/{cols}/{vals}` | `DELETE … WHERE key` | `200` + row (`204` with `Prefer: return=minimal`) |
 | `PUT {base}/{table}` | `INSERT … ON CONFLICT DO UPDATE` | `201` inserted / `200` updated; array → `200` |
-| `PATCH` / `DELETE {base}/{table}` (no key) | — | `405` + `Allow` (bulk-by-filter deferred, see [Deferred](#deferred-to-v1x)) |
+| `PATCH {base}/{table}?<filters>` | `UPDATE … WHERE <filters>` | `200` + array of updated rows (`[]` when nothing matched) |
+| `DELETE {base}/{table}?<filters>` | `DELETE … WHERE <filters>` | `200` + array of deleted rows (`204` with `Prefer: return=minimal`) |
 
 Request bodies must be `application/json` (else `415`) and ≤ `server.max_body_bytes`
 (1 MiB, else `413`). Responses are `application/json; charset=utf-8`; errors are
@@ -153,6 +155,79 @@ pre-delete state visible to the statement's snapshot); `204` empty with
 `Prefer: return=minimal` (`RETURNING 1`); `404` when nothing matched; `412` on
 stale `If-Match`.
 
+## Bulk PATCH / DELETE by filter
+
+`PATCH` and `DELETE` on the collection path write every row the query
+string's filters select. The filters are the read filters — same grammar,
+operators, logic trees, relation and computed filters (advanced-filters) and
+the same filter policy (`filters.indexed_only` → `400 column_not_filterable`)
+— compiled by the same filter compiler against the DML target:
+
+```http
+PATCH /api/users?mood=eq.sad&id=gt.1
+Content-Type: application/json
+
+{"full_name": "Grace"}
+```
+
+```sql
+WITH __mut AS (
+  UPDATE "public"."users" m0
+  SET "full_name" = $3
+  WHERE m0."id" > $1 AND m0."mood" = $2
+  RETURNING "id", "email", "full_name", …
+)
+SELECT jsonb_build_object('n', count(*), 'rows', coalesce(jsonb_agg(s3.data), '[]'::jsonb)) AS data
+FROM (
+  SELECT jsonb_build_object('id', t1."id", …) AS data
+  FROM __mut t1
+) s3
+-- args: [1,"sad","Grace"]
+```
+
+| Rule | Behaviour |
+|---|---|
+| no root filter | `400 unfiltered_mutation` before any SQL runs, unless `server.allow_unfiltered_mutations: true` (then the DML has no `WHERE`; RLS still applies). Per-embed filters (`posts.title=…` with `posts(...)` in `select=`) shape the response only and do not count — alias the embed (`author:users(email)`) to use `users.email=` as a relation filter instead |
+| body | `PATCH`: one JSON object (arrays → `400 invalid_body`), set on every matching row; `{}` → `400 invalid_body`. `DELETE` never reads a body |
+| response | `200` + JSON array of the written rows (`select=` and embeds apply, compiled against `__mut`); `[]` when nothing matched — never `404`. `Prefer: return=minimal` / `headers-only` → `204` |
+| `limit`, `offset`, `order`, `count`, `distinct`, `after`/`before`, `on_conflict` | `400 invalid_filter` (PostgREST's ordered "limited update/delete" is not supported) |
+| `If-Match` | ignored (keyed paths only) |
+| `Prefer: max-affected=N` | with `handling=strict`: more than `N` rows → `400 max_affected_exceeded`, nothing written ([below](#prefer)) |
+| availability | wherever the keyed `PATCH`/`DELETE` exists (UPDATE / DELETE privilege, no `@omit update|delete`); PK-less tables included; views and read-only mode → `405` |
+
+The DML target is aliased (`m0`) so relation filters correlate on it
+(`EXISTS (SELECT 1 FROM "public"."users" r1 WHERE r1."id" = m0."author_id" …)`)
+and the narrow-`RETURNING` scan (`t1."col"` / `__mut."col"`) never sees filter
+columns. Golden files: `bulk_patch`, `bulk_patch_minimal`,
+`bulk_patch_computed`, `bulk_delete_embed`, `bulk_delete_relation`,
+`bulk_unfiltered`.
+
+## `Prefer`
+
+`Prefer` tokens are comma-separated, case-insensitive, may span several
+headers, and the last occurrence of a token wins. Every honoured token is
+echoed in `Preference-Applied` (header order, e.g. `Preference-Applied:
+return=minimal, handling=strict, max-affected=10`).
+
+| Token | Applies to | Effect |
+|---|---|---|
+| `return=representation` | writes | default: the body is the written row(s) |
+| `return=minimal` | writes | no body: `204`, or `201` + `Location` for a single-object create |
+| `return=headers-only` | writes | same as `minimal` (pdbr's `minimal` already keeps `Location`) |
+| `handling=lenient` | any request | default: unknown tokens and malformed values are ignored |
+| `handling=strict` | any request | unknown tokens or malformed values → `400 invalid_preference` (PostgREST `PGRST122`); enables `max-affected` |
+| `max-affected=N` | `PATCH`, `DELETE` (bulk and keyed) | with `handling=strict` only (ignored and not echoed under lenient handling, as in PostgREST): writing more than `N` rows → `400 max_affected_exceeded`, nothing written (PostgREST `PGRST124`). A keyed write counts as one row |
+
+`max-affected` keeps the single-statement invariant: the statement is
+unchanged (the bulk shape already returns `n`, keyed shapes imply 0 or 1),
+and exec compares the count inside the transaction right after the
+statement and returns an error, which rolls the transaction back. A
+request carrying the cap always runs in a transaction, even with
+`transactions.mutations: false`. Raising from inside the statement was
+rejected: SQL has no `RAISE` outside PL/pgSQL, and the usual tricks
+(`1/0`, a failing cast in a `CASE`) surface as indistinguishable `22012` /
+`22P02` user errors.
+
 ## PUT — upsert
 
 `PUT {base}/{table}` with a full or partial row. Compiles to
@@ -244,7 +319,8 @@ into `RETURNING` (they need the row type, see [rpc.md](rpc.md#computed-columns))
 
 Filters, `order=`, `limit`, `offset`, `count`, `distinct`, `after`/`before` are
 rejected on mutation routes (`400`) — only `select=` (and `on_conflict` for
-PUT) is meaningful. Per-embed params (`posts.order=`, `posts.limit=`) inside
+PUT) is meaningful; the exception is bulk `PATCH`/`DELETE` on the collection
+path, where the filters select the rows. Per-embed params (`posts.order=`, `posts.limit=`) inside
 `select=` embeds are honoured.
 
 ## Body validation
@@ -353,7 +429,7 @@ reads, with `__mut` as the row source; row JSON is `jsonb_build_object`
 When Go needs a value that is not part of the body (the primary key for
 `Location`, upsert `inserted`, `If-Match` `found`, the affected count under
 `return=minimal`), the statement wraps the body in one object and the server
-unwraps `row`. As built there are three mutation shapes
+unwraps `row`. As built there are four mutation shapes
 (`compile.Statement.Shape`, unwrapped in `internal/exec/unwrap_mutation.go`):
 
 | Shape | `data` | Used for |
@@ -361,6 +437,7 @@ unwraps `row`. As built there are three mutation shapes
 | `mut_row` | the row JSON verbatim; zero rows → `404` | keyed `PATCH`/`DELETE` with `return=representation` and no `If-Match` |
 | `mut_list` | the JSON array verbatim (`[]` when empty) | bulk `POST` (`201`) / bulk `PUT` (`200`) |
 | `mut_wrap` | `{"row": obj\|null, "key": [pk], "inserted": bool, "found": bool, "n": int}` — members present per request | single `POST` (`row`,`key`), single `PUT` (`row`,`inserted`,`key`), `If-Match` (`found`,`row`), `return=minimal` (`n` [+`key`] [+`inserted`]) |
+| `mut_bulk` | `{"n": int, "rows": [...]}` (`rows` absent under `return=minimal`) | bulk `PATCH`/`DELETE` by filter: `200` + `rows` (`[]` when `n = 0`), `204` under `return=minimal`; `n` feeds `max-affected` |
 
 `found == false` → `404`; `row` null with `found == true` → `412`; `row` null
 otherwise, or `n == 0` → `404`; `201` for `POST` and inserted `PUT` (with
@@ -403,7 +480,7 @@ a known path → `405` with an `Allow` header listing what exists:
 | no PK and no unique constraint | no `/{pk}`, no `/by/…` → no `PATCH`/`DELETE` at all |
 | `@omit create|update|delete` (smart-comments) | method removed |
 | `server.read_only: true` (or `App.SetReadOnly(true)` at runtime) | every write on every resource → `405 read_only`, `Allow: GET, HEAD` (`OPTIONS` when CORS is on); answered before the body is read |
-| `PATCH`/`DELETE {base}/{table}` without a key | `405`, `Allow` = the list route's methods |
+| `PATCH`/`DELETE {base}/{table}` without a filter | not a `405`: `400 unfiltered_mutation` ([bulk writes](#bulk-patch--delete-by-filter)) |
 
 Read-only mode also refuses volatile RPCs ([rpc.md](rpc.md#volatile-functions-are-mutations)).
 Privileges are those of the connecting role at introspection time; RLS/`SET
@@ -587,11 +664,11 @@ See [rls.md](rls.md) for the claim mechanism.
 
 ## Deferred to v1.x
 
-- Bulk `PATCH`/`DELETE {base}/{table}` by filter (`?id=in.(1,2)`), with an
-  affected-count response and a mandatory-filter safeguard.
+- `limit`/`order` on bulk `PATCH`/`DELETE` (PostgREST's limited update/delete).
 - Nested `connect` on backward relations (`"posts": {"connect": [{"id": 1}]}`).
 - Nested update / delete / disconnect.
 - Savepoints (`SAVEPOINT` per nested CTE for partial success).
 - Writable views (`INSTEAD OF` triggers / auto-updatable views).
-- `Prefer: resolution=merge-duplicates|ignore-duplicates`, `Prefer: count=`.
+- `Prefer: resolution=merge-duplicates|ignore-duplicates`, `Prefer: count=`,
+  `Prefer: tx=` (rejected under `handling=strict`).
 - `ETag` on mutation responses.

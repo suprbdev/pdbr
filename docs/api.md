@@ -24,7 +24,7 @@ Everything except the health endpoints is mounted under `server.base_path`
 | `PUT {base}/{table}` | upsert on the PK, or on `?on_conflict=col1,col2` (a unique constraint); conflict columns must be in the body | `201` inserted (`xmax = 0`) / `200` updated; arrays always `200` |
 | `PATCH {base}/{table}/{pk}`, `…/by/{cols}/{vals}` | partial update → row | `200` / `404` / `412` |
 | `DELETE {base}/{table}/{pk}`, `…/by/{cols}/{vals}` | delete → deleted row | `200` (`204` with `Prefer: return=minimal`) / `404` / `412` |
-| `PATCH`, `DELETE {base}/{table}` | bulk-by-filter — deferred to v1.x | `405` + `Allow` |
+| `PATCH`, `DELETE {base}/{table}?<filters>` | bulk write of every row the filters select → array of written rows; no filter → `400 unfiltered_mutation` unless `server.allow_unfiltered_mutations` ([mutations.md](mutations.md#bulk-patch--delete-by-filter)) | `200` (`204` with `Prefer: return=minimal`) |
 | `GET {base}/{schema}/{table}…` | schema-qualified form of every route above | |
 | `GET {base}/rpc/{fn}?arg=v` | stable/immutable function | see [RPC](#rpc-functions) |
 | `POST {base}/rpc/{fn}` (JSON body `{arg: v}`) | any function; volatile via `GET` → `405` (`Allow: POST`) | |
@@ -300,10 +300,12 @@ drops the `text/csv` content and the `Accept` header parameter.
 | Header | Effect |
 |---|---|
 | `Prefer: return=representation` (default) | body = affected row(s) |
-| `Prefer: return=minimal` | `204` and no body; a single-object `POST` (or a `PUT` that inserted) returns `201` + `Location` and no body |
+| `Prefer: return=minimal` / `return=headers-only` | `204` and no body; a single-object `POST` (or a `PUT` that inserted) returns `201` + `Location` and no body |
+| `Prefer: handling=strict` | unknown or malformed tokens → `400 invalid_preference` (default `handling=lenient` ignores them) |
+| `Prefer: handling=strict, max-affected=N` | `PATCH`/`DELETE` writing more than `N` rows → `400 max_affected_exceeded`, rolled back |
 
-Only the `return=` token is honoured in v1; others (`count=`, `resolution=`)
-are ignored.
+Honoured tokens are echoed in `Preference-Applied`. Details and the
+transaction semantics: [mutations.md](mutations.md#prefer).
 
 ## ETag / conditional requests
 
@@ -339,6 +341,7 @@ List responses carry no `ETag`.
 | `Link` | lists | `<url?after=…>; rel="next", <url?before=…>; rel="prev"` built from the request URL (relative: `{base}{path}?{query}`, other params kept verbatim and in place); offset-only resources get `offset=` links and no cursors |
 | `ETag` | single-row `GET` | weak row hash |
 | `Location` | `201` from a single-object `POST` (or inserting `PUT`) on a resource with a single-column PK | `{base}/{table}/{pk}` |
+| `Preference-Applied` | a request whose `Prefer` tokens were honoured | the honoured tokens, comma-separated (`return=minimal, handling=strict`) |
 | `Allow` | every `405` (API routes, `/openapi.json`, `/healthz`, `/readyz`) | methods that exist on the path; empty when none does (a volatile function's route under `server.read_only`) |
 | `Content-Type` | always | `application/json; charset=utf-8`, `text/csv; charset=utf-8`, or `application/problem+json` |
 

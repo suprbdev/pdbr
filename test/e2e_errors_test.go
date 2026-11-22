@@ -172,6 +172,9 @@ func TestErrorCodeVocabulary(t *testing.T) {
 		{name: "method_not_allowed", method: "POST", path: "/api/metrics", status: 405, code: "method_not_allowed", check: allowIs("GET, HEAD")},
 		{name: "unknown_argument", path: "/api/rpc/best_mood?nope=1", status: 400, code: "unknown_argument"},
 		{name: "missing_argument", path: "/api/rpc/describe_mood", status: 400, code: "missing_argument", check: detailIs(`function "describe_mood": missing required argument(s): m`)},
+		{name: "unfiltered_mutation", method: "DELETE", path: "/api/users", status: 400, code: "unfiltered_mutation"},
+		{name: "invalid_preference", method: "DELETE", path: "/api/users/999999", hdr: map[string]string{"Prefer": "handling=strict, tx=commit"}, status: 400, code: "invalid_preference"},
+		{name: "max_affected_exceeded", method: "PATCH", path: "/api/users?id=gt.0", body: `{"full_name":"x"}`, hdr: map[string]string{"Prefer": "handling=strict, max-affected=1"}, status: 400, code: "max_affected_exceeded"},
 		{name: "pg sqlstate", path: "/api/users?settings=jpe.$[", status: 400, code: "pg:42601", check: func(t *testing.T, _ *http.Response, p problem) {
 			if p.PG["sqlstate"] != "42601" {
 				t.Errorf("pg object = %v", p.PG)
@@ -320,7 +323,8 @@ func TestErrorStatusMapping(t *testing.T) {
 		{name: "23514 check", method: "POST", path: "/api/e2e_checked", body: `{"n":0}`, status: 400, code: "pg:23514"},
 		{name: "42* other", path: "/api/users?settings=jpe.$[", status: 400, code: "pg:42601"},
 		{name: "404 keyed mutation", method: "PATCH", path: "/api/users/999999", body: `{"full_name":"x"}`, status: 404, code: "not_found"},
-		{name: "405 keyless patch", method: "PATCH", path: "/api/users", body: `{"full_name":"x"}`, status: 405, code: "method_not_allowed", check: allowIs("GET, HEAD, POST, PUT")},
+		{name: "405 view patch", method: "PATCH", path: "/api/metrics", body: `{"name":"x"}`, status: 405, code: "method_not_allowed", check: allowIs("GET, HEAD")},
+		{name: "400 unfiltered bulk patch", method: "PATCH", path: "/api/users", body: `{"full_name":"x"}`, status: 400, code: "unfiltered_mutation"},
 		{name: "405 row route", method: "POST", path: "/api/users/1", body: `{}`, status: 405, code: "method_not_allowed", check: allowIs("GET, HEAD, PATCH, DELETE")},
 		{name: "405 volatile via GET", path: "/api/rpc/add_numbers", status: 405, code: "method_not_allowed", check: allowIs("POST")},
 		{name: "405 stable rpc", method: "DELETE", path: "/api/rpc/search_posts", status: 405, code: "method_not_allowed", check: allowIs("GET, HEAD, POST")},

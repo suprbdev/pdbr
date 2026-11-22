@@ -36,19 +36,20 @@ type Config struct {
 
 // Server is the pdbr-owned HTTP section.
 type Server struct {
-	Addr           string        `koanf:"addr" doc:"Listen address for the HTTP server."`
-	BasePath       string        `koanf:"base_path" doc:"Prefix for every API route (\"\" mounts at the root). /healthz and /readyz are never prefixed."`
-	OpenAPI        bool          `koanf:"openapi" doc:"Serve the OpenAPI 3.1 document at GET {base_path}/openapi.json (on by default; it reveals every table, column, relation and function to unauthenticated callers)."`
-	RequestTimeout time.Duration `koanf:"request_timeout" doc:"Overall HTTP request timeout; expiry answers 504."`
-	MaxBodyBytes   int64         `koanf:"max_body_bytes" doc:"Maximum accepted request body size in bytes; over answers 413."`
-	MaxEmbedDepth  int           `koanf:"max_embed_depth" doc:"Maximum select= embed nesting depth; deeper answers 400 embed_depth_exceeded."`
-	MaxCost        int           `koanf:"max_cost" doc:"Maximum estimated cost (1 + list multipliers) per request; over answers 400 cost_exceeded. @costMultiplier smart comments tune the estimate."`
-	MaxPageSize    int           `koanf:"max_page_size" doc:"Largest accepted limit (larger answers 400 page_size_exceeded); also the page size when limit is absent."`
-	CORSOrigins    []string      `koanf:"cors_origins" doc:"Allowed CORS origins (exact match, or '*' for any). Empty disables CORS headers and preflight entirely."`
-	Compression    bool          `koanf:"compression" doc:"Gzip responses for clients that send Accept-Encoding: gzip (off by default)."`
-	ReadOnly       bool          `koanf:"read_only" doc:"Answer every write with 405 (code read_only) for read replicas, maintenance or demos. Also toggleable at runtime when embedding pdbr as a library (App.SetReadOnly)."`
-	Etags          bool          `koanf:"etags" doc:"Weak ETag on single-row GETs, If-None-Match answering 304, If-Match on PATCH/DELETE answering 412. Disable when column-level grants deny SELECT on some columns (the ETag hashes the whole row)."`
-	CSV            bool          `koanf:"csv" doc:"Honour Accept: text/csv on list GETs and set-returning RPCs."`
+	Addr                     string        `koanf:"addr" doc:"Listen address for the HTTP server."`
+	BasePath                 string        `koanf:"base_path" doc:"Prefix for every API route (\"\" mounts at the root). /healthz and /readyz are never prefixed."`
+	OpenAPI                  bool          `koanf:"openapi" doc:"Serve the OpenAPI 3.1 document at GET {base_path}/openapi.json (on by default; it reveals every table, column, relation and function to unauthenticated callers)."`
+	RequestTimeout           time.Duration `koanf:"request_timeout" doc:"Overall HTTP request timeout; expiry answers 504."`
+	MaxBodyBytes             int64         `koanf:"max_body_bytes" doc:"Maximum accepted request body size in bytes; over answers 413."`
+	MaxEmbedDepth            int           `koanf:"max_embed_depth" doc:"Maximum select= embed nesting depth; deeper answers 400 embed_depth_exceeded."`
+	MaxCost                  int           `koanf:"max_cost" doc:"Maximum estimated cost (1 + list multipliers) per request; over answers 400 cost_exceeded. @costMultiplier smart comments tune the estimate."`
+	MaxPageSize              int           `koanf:"max_page_size" doc:"Largest accepted limit (larger answers 400 page_size_exceeded); also the page size when limit is absent."`
+	CORSOrigins              []string      `koanf:"cors_origins" doc:"Allowed CORS origins (exact match, or '*' for any). Empty disables CORS headers and preflight entirely."`
+	Compression              bool          `koanf:"compression" doc:"Gzip responses for clients that send Accept-Encoding: gzip (off by default)."`
+	ReadOnly                 bool          `koanf:"read_only" doc:"Answer every write with 405 (code read_only) for read replicas, maintenance or demos. Also toggleable at runtime when embedding pdbr as a library (App.SetReadOnly)."`
+	Etags                    bool          `koanf:"etags" doc:"Weak ETag on single-row GETs, If-None-Match answering 304, If-Match on PATCH/DELETE answering 412. Disable when column-level grants deny SELECT on some columns (the ETag hashes the whole row)."`
+	CSV                      bool          `koanf:"csv" doc:"Honour Accept: text/csv on list GETs and set-returning RPCs."`
+	AllowUnfilteredMutations bool          `koanf:"allow_unfiltered_mutations" doc:"Allow PATCH and DELETE on a collection route without a filter (every visible row). Off by default: such requests answer 400 unfiltered_mutation."`
 }
 
 // Schema is the shared schema section plus pdbr's own keys.

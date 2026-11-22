@@ -72,7 +72,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **As built (v0.1.0): ev
 - [x] `select=` applies to mutation responses (compiled against `__mut`) (v1) (parity)
 - [x] Single-row weak `ETag: W/"<md5>"` computed in SQL over all columns; `If-None-Match` → `304`; `server.etags` toggle (v1) (new)
 - [x] `Accept: text/csv` on lists and set-returning RPCs → RFC 4180 CSV, header row, arrays/json/composites as JSON text, NULL → empty; embeds → `406`; `server.csv` toggle (v1) (new)
-- [x] `Prefer: return=representation|minimal` (v1) (new)
+- [x] `Prefer: return=representation|minimal|headers-only` (v1) (new)
 - [ ] Aggregate endpoints (count/sum/avg on lists) — stretch (parity)
 - [ ] Other `Prefer` tokens (`count=`, `resolution=`) (v1.x) (new)
 
@@ -136,7 +136,8 @@ Checklist of PostgreSQL and REST features pdbr supports. **As built (v0.1.0): ev
 - [x] `server.read_only` → every write `405` `read_only`; runtime-toggleable `App.SetReadOnly` (v1) (parity)
 - [x] Not-found update/delete → `404`, transaction rolled back (v1) (parity)
 - [x] Nested mutations via `nested-mutations` plugin on `POST` create: forward `{"create":…}` **or** `{"connect":…}`, backward `{"create":[…]}`, depth ≤ `max_depth` (3), forced transaction, multi-CTE single statement, visibility CTE for response embeds (v1) (parity)
-- [ ] `PATCH|DELETE {base}/{table}` bulk-by-filter (`405` in v1) (v1.x) (parity)
+- [x] `PATCH|DELETE {base}/{table}?<filters>` bulk-by-filter: read filter grammar and policy, `200` + array / `204`, unfiltered → `400 unfiltered_mutation` unless `server.allow_unfiltered_mutations` (v1.x) (parity)
+- [x] `Prefer: handling=strict|lenient` (`400 invalid_preference`), `max-affected=N` on `PATCH`/`DELETE` (`400 max_affected_exceeded`, rolled back), `return=headers-only`, `Preference-Applied` (v1.x) (new)
 - [ ] Nested `connect` on reverse relations and nested update/delete/disconnect (v1.x) (parity)
 - [ ] `PUT {base}/{table}/{pk}` single-row upsert by path key (v1.x) (new)
 
@@ -288,6 +289,30 @@ Checklist of PostgreSQL and REST features pdbr supports. **As built (v0.1.0): ev
 - [x] E2E suite: reads, embeds, filters, keyset walk (incl. deleted anchor), distinct, ETag/If-Match/304, CSV, mutations + rollback atomicity, upsert, nested mutation, retry, JWT mint, RLS matrix, smart comments, OpenAPI validity, postgis, plugin-disabled surfaces, read-only 405, errors table, watch mode (trigger + poll fallback), schema cache (offline boot, dump/check drift, pdbq interop) (v1) (parity)
 - [x] `.golangci.yaml` committed from day one (v1) (new)
 - [ ] Load benchmarks: pdbr + PostgREST lane in [pg-vs-pdbq](https://github.com/suprbdev/pg-vs-pdbq) — tracked in that repo, not here (v1.x) (parity)
+
+## Differences from PostgREST
+
+pdbr follows PostgREST's URL grammar and `Prefer` vocabulary where it can;
+these are the deliberate departures (each documented in its topic page):
+
+- **Default `return`.** PostgREST writes default to `return=minimal`; pdbr
+  defaults to `representation`, and its `minimal` keeps `201` + `Location`
+  on single-object creates, so `return=headers-only` is an alias of
+  `minimal`.
+- **Unfiltered bulk writes are refused** (`400 unfiltered_mutation`) unless
+  `server.allow_unfiltered_mutations` is on; PostgREST leaves this to
+  `pg-safeupdate`.
+- **Bulk `PATCH`/`DELETE` take no `limit`/`order`** (PostgREST's limited
+  update/delete) and answer `200` + array / `204` — never `404` — when
+  nothing matches.
+- **`max-affected` is checked after the one statement, inside its
+  transaction** (exec compares the row count the statement reports and rolls
+  back), not by a second query; it applies to `PATCH`/`DELETE` only, not to
+  RPC results (PostgREST `PGRST128`).
+- **`Prefer: tx=` and `timezone=` are not supported**: ignored under
+  lenient handling, `400 invalid_preference` under `handling=strict`.
+- Error codes are pdbr's stable `code` vocabulary, not `PGRST…` numbers
+  ([errors.md](errors.md)).
 
 ## Dropped from pdbq (GraphQL-only, not applicable)
 

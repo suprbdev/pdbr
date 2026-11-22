@@ -55,6 +55,8 @@ const (
 	CodeNotFound             = "not_found"
 	CodeBodyTooLarge         = "body_too_large"
 	CodeMethodNotAllowed     = "method_not_allowed"
+	CodeInvalidPreference    = "invalid_preference"
+	CodeUnfilteredMutation   = "unfiltered_mutation"
 )
 
 // Options tune the parser; zero values fall back to the documented defaults
@@ -69,6 +71,10 @@ type Options struct {
 	Etags bool
 	// CSV is server.csv; when false Accept: text/csv is never satisfiable.
 	CSV bool
+	// AllowUnfilteredMutations is server.allow_unfiltered_mutations: when
+	// false a PATCH or DELETE on a list route without a root filter is 400
+	// unfiltered_mutation.
+	AllowUnfilteredMutations bool
 	// RelationFilters enables rel.col=, rel!none., rel!every. and
 	// rel=exists. (advanced-filters plugin).
 	RelationFilters bool
@@ -156,7 +162,9 @@ func Parse(built *api.Built, m *api.Match, r *http.Request, opts Options) (*plan
 	if err := p.checkContentType(r); err != nil {
 		return nil, err
 	}
-	p.parseHeaders(r)
+	if err := p.parseHeaders(r); err != nil {
+		return nil, err
+	}
 
 	if m.RPC != nil {
 		if err := p.parseRPC(r); err != nil {
@@ -171,6 +179,9 @@ func Parse(built *api.Built, m *api.Match, r *http.Request, opts Options) (*plan
 		}
 		if err := p.parseBody(r); err != nil {
 			return nil, err
+		}
+		if p.isBulkWrite() && req.Filter == nil && !opts.AllowUnfilteredMutations {
+			return nil, errf(CodeUnfilteredMutation, "%s on %q without a filter would affect every row; add a filter (or enable server.allow_unfiltered_mutations)", method, resName(m.Resource))
 		}
 	}
 	if err := p.negotiateAccept(r); err != nil {
