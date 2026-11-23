@@ -14,12 +14,6 @@ It is the sibling of [pdbq](https://github.com/suprbdev/pdbq) (same engine,
 GraphQL); the shared half lives in
 [pdbcore](docs/pdbcore.md).
 
-> **Status: v0.1.0 feature-complete, ready to tag.** Everything in
-> [docs/features.md](docs/features.md) marked v1 is implemented and tested;
-> [PLAN.md](PLAN.md) records how it was built. Depends on the
-> tagged `pdbcore v0.1.0`; release steps are in
-> [docs/deployment.md](docs/deployment.md#releasing).
-
 ```console
 $ pdbr serve --database.url postgres://localhost/mydb
 time=... msg=introspected tables=12 enums=3 functions=2 took=38ms
@@ -107,7 +101,6 @@ See [docs/quickstart.md](docs/quickstart.md) for the full tour.
 
 | Doc | Contents |
 |---|---|
-| [PLAN.md](PLAN.md) | Delivery plan, phases, decision log |
 | [docs/features.md](docs/features.md) | Feature support checklist (parity with pdbq, new-to-REST, tiers) |
 | [docs/quickstart.md](docs/quickstart.md) | First run, first requests |
 | [docs/api.md](docs/api.md) | Routes, `select=` grammar, embeds, hints, headers |
@@ -128,7 +121,7 @@ See [docs/quickstart.md](docs/quickstart.md) for the full tour.
 | [docs/caching.md](docs/caching.md) | Schema cache and CI/CD gates |
 | [docs/deployment.md](docs/deployment.md) | Docker image, health checks, production checklist |
 | [docs/architecture.md](docs/architecture.md) | Pipeline, `plan.Request`, compiler contract, invariants, gotchas |
-| [docs/pdbcore.md](docs/pdbcore.md) | Shared-module extraction plan (pdbq ↔ pdbr) |
+| [docs/pdbcore.md](docs/pdbcore.md) | The shared pdbcore module (pdbq ↔ pdbr) and the dependency bump procedure |
 
 ## Development
 

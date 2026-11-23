@@ -17,8 +17,7 @@ half of that engine is shared through the
 [`pdbcore`](pdbcore.md) module.
 
 Related: [features.md](features.md) (support checklist),
-[pdbcore.md](pdbcore.md) (shared-module extraction), [PLAN.md](../PLAN.md)
-(delivery plan).
+[pdbcore.md](pdbcore.md) (shared module).
 
 ## Pipeline
 

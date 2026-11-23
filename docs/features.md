@@ -1,6 +1,6 @@
 # Feature support
 
-Checklist of PostgreSQL and REST features pdbr supports. **As built (v0.1.0): every v1 row is implemented and tested; unticked rows are the v1.x / v2 / stretch backlog.** Checked = implemented and tested; unchecked = planned or explicitly deferred (tier noted where one applies: v1 = first release, v1.x = next minor releases, v2 = major-version track, stretch = nice-to-have). Each item is tagged `(parity)` when it mirrors a pdbq feature or `(new)` when it exists only because of REST. Use this as the reference when adding features: tick the box in the same PR that ships it. See [architecture.md](architecture.md) for how the pieces fit and [PLAN.md](../PLAN.md) for sequencing.
+Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the v1.x / v2 / stretch backlog.** Checked = implemented and tested; unchecked = planned or explicitly deferred (tier noted where one applies: v1 = first release, v1.x = next minor releases, v2 = major-version track, stretch = nice-to-have). Each item is tagged `(parity)` when it mirrors a pdbq feature or `(new)` when it exists only because of REST. Use this as the reference when adding features: tick the box in the same PR that ships it. See [architecture.md](architecture.md) for how the pieces fit.
 
 ## Introspection (pg_catalog — from pdbcore)
 
