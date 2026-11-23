@@ -31,7 +31,7 @@ type pagePlan struct {
 // defaults to the cap rather than an unbounded scan; larger is rejected.
 func (s *stmt) planPage(r *api.Resource, page plan.Page) (pagePlan, error) {
 	t := r.Table
-	p := pagePlan{keyset: t.PrimaryKey != nil, limit: page.Limit, offset: page.Offset}
+	p := pagePlan{keyset: t.PrimaryKey != nil && !r.HiddenKey, limit: page.Limit, offset: page.Offset}
 	if p.limit <= 0 {
 		p.limit = s.maxPageSize
 	}

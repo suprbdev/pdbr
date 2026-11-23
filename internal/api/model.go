@@ -63,6 +63,10 @@ type Resource struct {
 	// Keyset reports whether the resource has a primary key (cursors). A
 	// temporal primary key still pages; the row path needs PrimaryKey.
 	Keyset bool
+	// HiddenKey reports that a primary-key column is hidden from reads
+	// (@omit, @omit read): the row path, keyset cursors and Location lose
+	// their key, which would otherwise expose the column's value.
+	HiddenKey bool
 	// Etag reports whether single-row GETs carry an ETag.
 	Etag bool
 	// CostMultipliers maps relation key -> @costMultiplier.
