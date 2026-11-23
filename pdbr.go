@@ -59,6 +59,8 @@ type App struct {
 	watchMu sync.Mutex
 	stops   []func()
 
+	watchReady <-chan struct{}
+
 	// readOnly lives on the App so one flag is shared by every runtime the
 	// App builds — flipping it at runtime survives watch-mode swaps.
 	readOnly atomic.Bool
@@ -207,6 +209,21 @@ func (a *App) Connect(ctx context.Context) error {
 
 // Pool exposes the connection pool (nil before Connect).
 func (a *App) Pool() *pgxpool.Pool { return a.pool }
+
+// WatchReady returns a channel closed once the schema watcher started by the
+// last Handler or Serve call is listening for DDL; changes committed after it
+// closes are never missed. It is already closed when watch mode is off or no
+// server has been built.
+func (a *App) WatchReady() <-chan struct{} {
+	a.watchMu.Lock()
+	defer a.watchMu.Unlock()
+	if a.watchReady == nil {
+		c := make(chan struct{})
+		close(c)
+		return c
+	}
+	return a.watchReady
+}
 
 // Close stops any running schema watcher, waits for it to release its
 // connection, then closes the pool. It is idempotent, needs no prior Serve or
@@ -455,11 +472,19 @@ func (a *App) buildServer(ctx context.Context) (*server.Server, error) {
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
+			go func() {
+				select {
+				case <-w.Ready():
+					a.Log.Info("watch: ready")
+				case <-wctx.Done():
+				}
+			}()
 			if err := w.Run(wctx); err != nil {
 				a.Log.Error("watch: stopped", "err", err)
 			}
 		}()
 		a.watchMu.Lock()
+		a.watchReady = w.Ready()
 		a.stops = append(a.stops, func() {
 			cancel()
 			<-done

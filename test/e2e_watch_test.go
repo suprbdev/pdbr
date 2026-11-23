@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -20,7 +19,8 @@ import (
 	"github.com/suprbdev/pdbr/internal/config"
 )
 
-// watchServer boots an App in watch mode.
+// watchServer boots an App in watch mode and returns once its watcher is
+// ready, so DDL issued afterwards is always observed.
 func watchServer(t *testing.T, dbURL string, logs *syncWriter, mutate func(*config.Config)) *httptest.Server {
 	t.Helper()
 	cfg := config.DefaultConfig()
@@ -48,6 +48,11 @@ func watchServer(t *testing.T, dbURL string, logs *syncWriter, mutate func(*conf
 	}
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
+	select {
+	case <-app.WatchReady():
+	case <-time.After(15 * time.Second):
+		t.Fatal("watcher never became ready")
+	}
 	return srv
 }
 
@@ -149,11 +154,6 @@ func TestWatchEventTrigger(t *testing.T) {
 	if res, _ := get(t, srv.URL+"/api/watch_probe"); res.StatusCode != 404 {
 		t.Fatalf("watch_probe before create = %d", res.StatusCode)
 	}
-	// The watcher LISTENs before it logs "installed"; DDL issued earlier
-	// would notify nobody.
-	waitFor(t, "event trigger to be installed", 5*time.Second, func() bool {
-		return strings.Contains(logs.String(), "DDL event trigger installed")
-	})
 
 	execDDL(t, dbURL, `CREATE TABLE public.watch_probe (id serial PRIMARY KEY, name text NOT NULL)`,
 		`INSERT INTO public.watch_probe (name) VALUES ('a')`)
@@ -227,12 +227,6 @@ func TestWatchPollFallback(t *testing.T) {
 	if res, _ := get(t, srv.URL+"/api/watch_poll_probe"); res.StatusCode != 404 {
 		t.Fatalf("probe before create = %d", res.StatusCode)
 	}
-	// The poller seeds its baseline hash on the first tick; DDL before that
-	// tick would be folded into the baseline and go unnoticed.
-	waitFor(t, "fallback warning in the log", 5*time.Second, func() bool {
-		return strings.Contains(logs.String(), "falling back to polling")
-	})
-	time.Sleep(time.Second)
 	execDDL(t, dbURL, `CREATE TABLE public.watch_poll_probe (id serial PRIMARY KEY, v text)`)
 	waitFor(t, "poll fallback to pick up the new table", 15*time.Second, func() bool {
 		res, _ := get(t, srv.URL+"/api/watch_poll_probe")
