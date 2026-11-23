@@ -1,0 +1,2 @@
+HEAD /api/posts?count=true
+Range: 0-9

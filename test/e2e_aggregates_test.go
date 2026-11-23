@@ -100,7 +100,7 @@ func TestAggregates(t *testing.T) {
 		`[{"author_id": 3, "count": 1}, {"author_id": 2, "count": 1}, {"author_id": 1, "count": 1}]`)
 
 	res, body := do(t, "GET", url+"/posts?select=author_id,count()&limit=2&offset=1", map[string]string{"Prefer": "count=planned"})
-	if res.StatusCode != 200 || res.Header.Get("Content-Range") != "1-2/3" || res.Header.Get("Preference-Applied") != "count=exact" || res.Header.Get("X-Next-Cursor") != "" {
+	if res.StatusCode != 206 || res.Header.Get("Content-Range") != "1-2/3" || res.Header.Get("Preference-Applied") != "count=exact" || res.Header.Get("X-Next-Cursor") != "" {
 		t.Errorf("paged groups = %d %v %s", res.StatusCode, res.Header, body)
 	}
 	if !strings.Contains(res.Header.Get("Link"), "offset=0") {

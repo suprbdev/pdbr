@@ -30,7 +30,8 @@ type etagWrapper struct {
 // Unwrap maps the statement's data column (raw; found reports whether the
 // statement returned a row) to the client response per stmt.Shape: the 404
 // for missed single-row lookups, ETag / 304, the page headers
-// (X-Total-Count, Content-Range, X-Next-Cursor, X-Prev-Cursor, Link), the RPC shapes
+// (X-Total-Count, Content-Range, X-Next-Cursor, X-Prev-Cursor, Link; 206 when a
+// counted page is a strict subset of the total, 416 past it), the RPC shapes
 // (unwrap_rpc.go) and the mutation statuses (201/200/204/404/412, Location;
 // unwrap_mutation.go). basePath prefixes Link and Location URLs. Pure: no
 // database, no HTTP.
@@ -91,6 +92,19 @@ func Unwrap(op *Operation, stmt *compile.Statement, raw []byte, found bool, base
 				offset = op.Plan.Page.Offset
 			}
 			res.Headers.Set("Content-Range", contentRange(offset, n, total))
+			if total != nil {
+				switch t := *total; {
+				case int64(offset) > t:
+					return nil, &Error{
+						Status:  http.StatusRequestedRangeNotSatisfiable,
+						Code:    CodeRangeNotSatisfiable,
+						Detail:  "an offset of " + strconv.Itoa(offset) + " was requested, but there are only " + strconv.FormatInt(t, 10) + " rows",
+						Headers: http.Header{"Content-Range": {"*/" + strconv.FormatInt(t, 10)}},
+					}
+				case int64(n) < t:
+					res.Status = http.StatusPartialContent
+				}
+			}
 		}
 		pageHeaders(res.Headers, op, stmt, &w, basePath)
 	case compile.ShapeVoid, compile.ShapeScalar, compile.ShapeJWT, compile.ShapeJWTSet:
@@ -178,11 +192,18 @@ func pageHeaders(h http.Header, op *Operation, stmt *compile.Statement, w *pageW
 		if limit <= 0 {
 			limit = 100
 		}
+		offsetLink := func(offset int) string {
+			q := withParam(op.RawQuery, "offset", strconv.Itoa(offset))
+			if pg.FromRange {
+				q = withParam(strings.TrimPrefix(q, "?"), "limit", strconv.Itoa(limit))
+			}
+			return `<` + base + q + `>`
+		}
 		if w.HasNext {
-			links = append(links, `<`+base+withParam(op.RawQuery, "offset", strconv.Itoa(pg.Offset+limit))+`>; rel="next"`)
+			links = append(links, offsetLink(pg.Offset+limit)+`; rel="next"`)
 		}
 		if w.HasPrev && pg.Offset > 0 {
-			links = append(links, `<`+base+withParam(op.RawQuery, "offset", strconv.Itoa(max(pg.Offset-limit, 0)))+`>; rel="prev"`)
+			links = append(links, offsetLink(max(pg.Offset-limit, 0))+`; rel="prev"`)
 		}
 	}
 	if len(links) > 0 {

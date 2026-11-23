@@ -9,10 +9,11 @@ import (
 )
 
 const (
-	problemResponse          = "Problem"
-	methodNotAllowedResponse = "MethodNotAllowed"
-	mediaJSON                = "application/json"
-	mediaCSV                 = "text/csv"
+	problemResponse             = "Problem"
+	methodNotAllowedResponse    = "MethodNotAllowed"
+	rangeNotSatisfiableResponse = "RangeNotSatisfiable"
+	mediaJSON                   = "application/json"
+	mediaCSV                    = "text/csv"
 )
 
 // Error status sets per operation kind (docs/errors.md "Status mapping"):
@@ -119,12 +120,15 @@ func (b *Builder) listItem(item *PathItem, rt *Route) {
 	if rt.Allows(MethodGet) {
 		get := b.operation(rt, r.Path+".list", "List "+r.Path, readStatuses)
 		get.Parameters = append(append(b.listParams(r, false), b.acceptParam()...), countPreferParam())
+		get.Parameters = append(get.Parameters, rangeParams()...)
 		appendDescription(get, b.filterProse(r))
 		ok := &Response{Description: "OK", Headers: b.listHeaders(r.Keyset), Content: map[string]*MediaType{
 			mediaJSON: {Schema: &Schema{Type: "array", Items: SchemaRef(r.Path)}},
 		}}
 		b.addCSV(ok)
 		get.Responses["200"] = ok
+		get.Responses["206"] = partialOf(ok)
+		get.Responses["416"] = rangeNotSatisfiable()
 		item.Get = get
 		if rt.Allows(MethodHead) {
 			item.Head = headOf(get, r.Path+".list.head")
@@ -284,6 +288,7 @@ func (b *Builder) rpcItem(item *PathItem, rt *Route) {
 		get.Parameters = append(get.Parameters, b.rpcListParams(rpc, argNames)...)
 		if setOf {
 			get.Parameters = append(get.Parameters, b.acceptParam()...)
+			get.Parameters = append(get.Parameters, rangeParams()...)
 		}
 		if setOfRows {
 			get.Parameters = append(get.Parameters, countPreferParam())
@@ -293,6 +298,10 @@ func (b *Builder) rpcItem(item *PathItem, rt *Route) {
 		}
 		for k, v := range b.rpcResponses(rpc, true) {
 			get.Responses[k] = v
+		}
+		if setOfRows {
+			get.Responses["206"] = partialOf(get.Responses["200"])
+			get.Responses["416"] = rangeNotSatisfiable()
 		}
 		item.Get = get
 		if rt.Allows(MethodHead) {
@@ -628,6 +637,30 @@ func (b *Builder) keyedPutSchema(r *Resource, key []string) *Schema {
 func countPreferParam() *Parameter {
 	return &Parameter{Name: "Prefer", In: "header", Schema: &Schema{Type: "string"},
 		Description: "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences."}
+}
+
+// rangeParams documents the Range / Range-Unit request headers of list reads.
+func rangeParams() []*Parameter {
+	return []*Parameter{
+		{Name: "Range", In: "header", Schema: &Schema{Type: "string"},
+			Description: "Row window as <first>-<last> (inclusive, zero-based) or <first>- (PostgREST Range-Unit items): an alternative to offset/limit, intersected with them when both are given. The size is clamped to server.max_page_size. Answers 206 when a known total (count=) exceeds the returned rows and 416 when <first> is past it; an empty window is 400 invalid_range; not combinable with after/before."},
+		{Name: "Range-Unit", In: "header", Schema: &Schema{Type: "string", Enum: []string{"items"}},
+			Description: "Unit of the Range header; the Range header is ignored when this is present and not items."},
+	}
+}
+
+// partialOf is the 206 twin of a list 200 response: same body, with the
+// headers that tell a partial page apart (the rest match the 200).
+func partialOf(ok *Response) *Response {
+	return &Response{
+		Description: "Partial Content: a count was requested and the returned rows are a strict subset of the total. Same body and further headers (Link, cursors, Preference-Applied) as 200.",
+		Headers:     map[string]*Header{"Content-Range": ok.Headers["Content-Range"], "X-Total-Count": ok.Headers["X-Total-Count"]},
+		Content:     ok.Content,
+	}
+}
+
+func rangeNotSatisfiable() *Response {
+	return &Response{Ref: "#/components/responses/" + rangeNotSatisfiableResponse}
 }
 
 // contentRangeHeader documents Content-Range on list responses.

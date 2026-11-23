@@ -88,6 +88,12 @@
           },
           {
             "$ref": "#/components/parameters/header.Prefer.608c0edc"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range-Unit"
           }
         ],
         "responses": {
@@ -142,6 +148,33 @@
               }
             }
           },
+          "206": {
+            "description": "Partial Content: a count was requested and the returned rows are a strict subset of the total. Same body and further headers (Link, cursors, Preference-Applied) as 200.",
+            "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Total-Count": {
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/comments"
+                  }
+                }
+              }
+            }
+          },
           "400": {
             "$ref": "#/components/responses/Problem"
           },
@@ -150,6 +183,9 @@
           },
           "406": {
             "$ref": "#/components/responses/Problem"
+          },
+          "416": {
+            "$ref": "#/components/responses/RangeNotSatisfiable"
           },
           "500": {
             "$ref": "#/components/responses/Problem"
@@ -219,6 +255,12 @@
           },
           {
             "$ref": "#/components/parameters/header.Prefer.608c0edc"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range-Unit"
           }
         ],
         "responses": {
@@ -263,6 +305,23 @@
               }
             }
           },
+          "206": {
+            "description": "Partial Content: a count was requested and the returned rows are a strict subset of the total. Same body and further headers (Link, cursors, Preference-Applied) as 200. (same headers as GET, no body)",
+            "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Total-Count": {
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "400": {
             "$ref": "#/components/responses/Problem"
           },
@@ -271,6 +330,9 @@
           },
           "406": {
             "$ref": "#/components/responses/Problem"
+          },
+          "416": {
+            "$ref": "#/components/responses/RangeNotSatisfiable"
           },
           "500": {
             "$ref": "#/components/responses/Problem"
@@ -1176,6 +1238,12 @@
           },
           {
             "$ref": "#/components/parameters/header.Prefer.608c0edc"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range-Unit"
           }
         ],
         "responses": {
@@ -1230,6 +1298,33 @@
               }
             }
           },
+          "206": {
+            "description": "Partial Content: a count was requested and the returned rows are a strict subset of the total. Same body and further headers (Link, cursors, Preference-Applied) as 200.",
+            "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Total-Count": {
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/events"
+                  }
+                }
+              }
+            }
+          },
           "400": {
             "$ref": "#/components/responses/Problem"
           },
@@ -1238,6 +1333,9 @@
           },
           "406": {
             "$ref": "#/components/responses/Problem"
+          },
+          "416": {
+            "$ref": "#/components/responses/RangeNotSatisfiable"
           },
           "500": {
             "$ref": "#/components/responses/Problem"
@@ -1304,6 +1402,12 @@
           },
           {
             "$ref": "#/components/parameters/header.Prefer.608c0edc"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range-Unit"
           }
         ],
         "responses": {
@@ -1348,6 +1452,23 @@
               }
             }
           },
+          "206": {
+            "description": "Partial Content: a count was requested and the returned rows are a strict subset of the total. Same body and further headers (Link, cursors, Preference-Applied) as 200. (same headers as GET, no body)",
+            "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Total-Count": {
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "400": {
             "$ref": "#/components/responses/Problem"
           },
@@ -1356,6 +1477,9 @@
           },
           "406": {
             "$ref": "#/components/responses/Problem"
+          },
+          "416": {
+            "$ref": "#/components/responses/RangeNotSatisfiable"
           },
           "500": {
             "$ref": "#/components/responses/Problem"
@@ -2243,6 +2367,12 @@
           },
           {
             "$ref": "#/components/parameters/header.Prefer.608c0edc"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range-Unit"
           }
         ],
         "responses": {
@@ -2285,6 +2415,33 @@
               }
             }
           },
+          "206": {
+            "description": "Partial Content: a count was requested and the returned rows are a strict subset of the total. Same body and further headers (Link, cursors, Preference-Applied) as 200.",
+            "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Total-Count": {
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/metrics"
+                  }
+                }
+              }
+            }
+          },
           "400": {
             "$ref": "#/components/responses/Problem"
           },
@@ -2293,6 +2450,9 @@
           },
           "406": {
             "$ref": "#/components/responses/Problem"
+          },
+          "416": {
+            "$ref": "#/components/responses/RangeNotSatisfiable"
           },
           "500": {
             "$ref": "#/components/responses/Problem"
@@ -2347,6 +2507,12 @@
           },
           {
             "$ref": "#/components/parameters/header.Prefer.608c0edc"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range-Unit"
           }
         ],
         "responses": {
@@ -2379,6 +2545,23 @@
               }
             }
           },
+          "206": {
+            "description": "Partial Content: a count was requested and the returned rows are a strict subset of the total. Same body and further headers (Link, cursors, Preference-Applied) as 200. (same headers as GET, no body)",
+            "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Total-Count": {
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "400": {
             "$ref": "#/components/responses/Problem"
           },
@@ -2387,6 +2570,9 @@
           },
           "406": {
             "$ref": "#/components/responses/Problem"
+          },
+          "416": {
+            "$ref": "#/components/responses/RangeNotSatisfiable"
           },
           "500": {
             "$ref": "#/components/responses/Problem"
@@ -2461,6 +2647,12 @@
           },
           {
             "$ref": "#/components/parameters/header.Prefer.608c0edc"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range-Unit"
           }
         ],
         "responses": {
@@ -2515,6 +2707,33 @@
               }
             }
           },
+          "206": {
+            "description": "Partial Content: a count was requested and the returned rows are a strict subset of the total. Same body and further headers (Link, cursors, Preference-Applied) as 200.",
+            "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Total-Count": {
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/places"
+                  }
+                }
+              }
+            }
+          },
           "400": {
             "$ref": "#/components/responses/Problem"
           },
@@ -2523,6 +2742,9 @@
           },
           "406": {
             "$ref": "#/components/responses/Problem"
+          },
+          "416": {
+            "$ref": "#/components/responses/RangeNotSatisfiable"
           },
           "500": {
             "$ref": "#/components/responses/Problem"
@@ -2595,6 +2817,12 @@
           },
           {
             "$ref": "#/components/parameters/header.Prefer.608c0edc"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range-Unit"
           }
         ],
         "responses": {
@@ -2639,6 +2867,23 @@
               }
             }
           },
+          "206": {
+            "description": "Partial Content: a count was requested and the returned rows are a strict subset of the total. Same body and further headers (Link, cursors, Preference-Applied) as 200. (same headers as GET, no body)",
+            "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Total-Count": {
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "400": {
             "$ref": "#/components/responses/Problem"
           },
@@ -2647,6 +2892,9 @@
           },
           "406": {
             "$ref": "#/components/responses/Problem"
+          },
+          "416": {
+            "$ref": "#/components/responses/RangeNotSatisfiable"
           },
           "500": {
             "$ref": "#/components/responses/Problem"
@@ -3561,6 +3809,12 @@
           },
           {
             "$ref": "#/components/parameters/header.Prefer.608c0edc"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range-Unit"
           }
         ],
         "responses": {
@@ -3615,6 +3869,33 @@
               }
             }
           },
+          "206": {
+            "description": "Partial Content: a count was requested and the returned rows are a strict subset of the total. Same body and further headers (Link, cursors, Preference-Applied) as 200.",
+            "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Total-Count": {
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/posts"
+                  }
+                }
+              }
+            }
+          },
           "400": {
             "$ref": "#/components/responses/Problem"
           },
@@ -3623,6 +3904,9 @@
           },
           "406": {
             "$ref": "#/components/responses/Problem"
+          },
+          "416": {
+            "$ref": "#/components/responses/RangeNotSatisfiable"
           },
           "500": {
             "$ref": "#/components/responses/Problem"
@@ -3692,6 +3976,12 @@
           },
           {
             "$ref": "#/components/parameters/header.Prefer.608c0edc"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range-Unit"
           }
         ],
         "responses": {
@@ -3736,6 +4026,23 @@
               }
             }
           },
+          "206": {
+            "description": "Partial Content: a count was requested and the returned rows are a strict subset of the total. Same body and further headers (Link, cursors, Preference-Applied) as 200. (same headers as GET, no body)",
+            "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Total-Count": {
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "400": {
             "$ref": "#/components/responses/Problem"
           },
@@ -3744,6 +4051,9 @@
           },
           "406": {
             "$ref": "#/components/responses/Problem"
+          },
+          "416": {
+            "$ref": "#/components/responses/RangeNotSatisfiable"
           },
           "500": {
             "$ref": "#/components/responses/Problem"
@@ -5299,6 +5609,12 @@
           },
           {
             "$ref": "#/components/parameters/query.offset.61fa3a0f"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range-Unit"
           }
         ],
         "responses": {
@@ -5350,6 +5666,12 @@
           },
           {
             "$ref": "#/components/parameters/query.offset.61fa3a0f"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range-Unit"
           }
         ],
         "responses": {
@@ -5638,6 +5960,12 @@
             "$ref": "#/components/parameters/query.title"
           },
           {
+            "$ref": "#/components/parameters/header.Range"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range-Unit"
+          },
+          {
             "$ref": "#/components/parameters/header.Prefer.608c0edc"
           }
         ],
@@ -5675,6 +6003,33 @@
               }
             }
           },
+          "206": {
+            "description": "Partial Content: a count was requested and the returned rows are a strict subset of the total. Same body and further headers (Link, cursors, Preference-Applied) as 200.",
+            "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Total-Count": {
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/posts"
+                  }
+                }
+              }
+            }
+          },
           "400": {
             "$ref": "#/components/responses/Problem"
           },
@@ -5683,6 +6038,9 @@
           },
           "406": {
             "$ref": "#/components/responses/Problem"
+          },
+          "416": {
+            "$ref": "#/components/responses/RangeNotSatisfiable"
           },
           "500": {
             "$ref": "#/components/responses/Problem"
@@ -5745,6 +6103,12 @@
             "$ref": "#/components/parameters/query.title"
           },
           {
+            "$ref": "#/components/parameters/header.Range"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range-Unit"
+          },
+          {
             "$ref": "#/components/parameters/header.Prefer.608c0edc"
           }
         ],
@@ -5772,6 +6136,23 @@
               }
             }
           },
+          "206": {
+            "description": "Partial Content: a count was requested and the returned rows are a strict subset of the total. Same body and further headers (Link, cursors, Preference-Applied) as 200. (same headers as GET, no body)",
+            "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Total-Count": {
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "400": {
             "$ref": "#/components/responses/Problem"
           },
@@ -5780,6 +6161,9 @@
           },
           "406": {
             "$ref": "#/components/responses/Problem"
+          },
+          "416": {
+            "$ref": "#/components/responses/RangeNotSatisfiable"
           },
           "500": {
             "$ref": "#/components/responses/Problem"
@@ -6147,6 +6531,12 @@
           },
           {
             "$ref": "#/components/parameters/header.Prefer.608c0edc"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range-Unit"
           }
         ],
         "responses": {
@@ -6201,6 +6591,33 @@
               }
             }
           },
+          "206": {
+            "description": "Partial Content: a count was requested and the returned rows are a strict subset of the total. Same body and further headers (Link, cursors, Preference-Applied) as 200.",
+            "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Total-Count": {
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/users"
+                  }
+                }
+              }
+            }
+          },
           "400": {
             "$ref": "#/components/responses/Problem"
           },
@@ -6209,6 +6626,9 @@
           },
           "406": {
             "$ref": "#/components/responses/Problem"
+          },
+          "416": {
+            "$ref": "#/components/responses/RangeNotSatisfiable"
           },
           "500": {
             "$ref": "#/components/responses/Problem"
@@ -6287,6 +6707,12 @@
           },
           {
             "$ref": "#/components/parameters/header.Prefer.608c0edc"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range"
+          },
+          {
+            "$ref": "#/components/parameters/header.Range-Unit"
           }
         ],
         "responses": {
@@ -6331,6 +6757,23 @@
               }
             }
           },
+          "206": {
+            "description": "Partial Content: a count was requested and the returned rows are a strict subset of the total. Same body and further headers (Link, cursors, Preference-Applied) as 200. (same headers as GET, no body)",
+            "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Total-Count": {
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "400": {
             "$ref": "#/components/responses/Problem"
           },
@@ -6339,6 +6782,9 @@
           },
           "406": {
             "$ref": "#/components/responses/Problem"
+          },
+          "416": {
+            "$ref": "#/components/responses/RangeNotSatisfiable"
           },
           "500": {
             "$ref": "#/components/responses/Problem"
@@ -8687,6 +9133,24 @@
             }
           }
         }
+      },
+      "RangeNotSatisfiable": {
+        "description": "Range Not Satisfiable: a count was requested and the first requested row (Range header or offset) is past the total (code range_not_satisfiable).",
+        "headers": {
+          "Content-Range": {
+            "description": "*/<total>",
+            "schema": {
+              "type": "string"
+            }
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
       }
     },
     "parameters": {
@@ -8744,6 +9208,25 @@
         "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing. count=exact|planned|estimated puts the number of written rows into the Content-Range total.",
         "schema": {
           "type": "string"
+        }
+      },
+      "header.Range": {
+        "name": "Range",
+        "in": "header",
+        "description": "Row window as <first>-<last> (inclusive, zero-based) or <first>- (PostgREST Range-Unit items): an alternative to offset/limit, intersected with them when both are given. The size is clamped to server.max_page_size. Answers 206 when a known total (count=) exceeds the returned rows and 416 when <first> is past it; an empty window is 400 invalid_range; not combinable with after/before.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "header.Range-Unit": {
+        "name": "Range-Unit",
+        "in": "header",
+        "description": "Unit of the Range header; the Range header is ignored when this is present and not items.",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "items"
+          ]
         }
       },
       "query.after": {

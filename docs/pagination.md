@@ -1,15 +1,15 @@
 # Pagination, ordering, counting
 
 Every list (`GET {base}/{table}`, `SETOF` RPCs, backward embeds) is bounded:
-there is no unbounded scan. Paging is either **offset** (`limit`/`offset`) or
-**keyset** (`after`/`before` cursors anchored on the primary key); both
+there is no unbounded scan. Paging is either **offset** (`limit`/`offset`, or the `Range` request header)
+or **keyset** (`after`/`before` cursors anchored on the primary key); both
 compile into the single statement, and both are driven by `order=`.
 
 ## `limit` and `offset`
 
 | Param | Default | Notes |
 |---|---|---|
-| `limit` | `server.max_page_size` (100) | larger than the cap → `400 page_size_exceeded`; `0` or negative → `400` |
+| `limit` | `server.max_page_size` (100) | larger than the cap → `400 page_size_exceeded`; `0` or negative → `400`; also set by the [`Range` header](#range-request-header) |
 | `offset` | `0` | negative → `400`; cannot combine with `before` |
 
 ```http
@@ -19,6 +19,42 @@ GET /api/posts?limit=20&offset=40
 Absent `limit` means the cap, not "everything". `offset` is the only paging
 mode for views and other PK-less resources, for `distinct=`, and for `SETOF`
 RPC results.
+
+## `Range` request header
+
+PostgREST's header form of `limit`/`offset`, on `GET` and `HEAD` of lists
+(tables, views, `SETOF` functions; not single rows, not bulk `PATCH`/`DELETE`,
+whose `Range` is ignored):
+
+```http
+GET /api/posts
+Range-Unit: items
+Range: 0-24
+```
+
+| `Range` | Rows |
+|---|---|
+| `0-24` | the first 25 (inclusive, zero-based) |
+| `10-` | from the 11th row, up to `server.max_page_size` |
+
+- The only unit is `items`; `Range-Unit` is optional, and a `Range` sent with
+  another `Range-Unit` is ignored. A `Range` that is not `<first>-<last>` or
+  `<first>-` is ignored as well (PostgREST).
+- With `limit`/`offset` in the query the two windows are **intersected**
+  (PostgREST): `?offset=5&limit=10` with `Range: 0-24` returns rows 5-14;
+  `?limit=5` with `Range: 0-24` returns 5 rows. An empty intersection, or a
+  last item before the first (`5-2`), is `400 invalid_range`.
+- The size is **clamped** to `server.max_page_size` without an error
+  (`Range: 0-499` returns 100 rows), unlike an explicit `limit=` above the cap,
+  which stays `400 page_size_exceeded`.
+- Not combinable with `after`/`before` → `400 keyset_unsupported`.
+- `Link` URLs of a `Range` request carry `offset=` and `limit=`, so the next
+  page keeps the size without the header.
+- `HEAD` honours `Range` like `GET` (PostgREST ignores it on `HEAD`; RFC 9110
+  wants the same headers as `GET`).
+- Response status and `Content-Range` follow
+  [`Prefer: count=`](#prefer-count-and-content-range): `206`/`416` need a
+  known total, otherwise the status is `200` and the total is `*`.
 
 ## Keyset cursors: `after` / `before`
 
@@ -78,6 +114,8 @@ Cursors are not interchangeable with pdbq `nodeId`s: the first element is
 | `Link` | any list | `<url>; rel="next"`, `<url>; rel="prev"` — the request URL with `after`/`before` (or `offset`) replaced; see [Link URLs](#link-urls) |
 | `X-Total-Count` | `count=true` or `Prefer: count=` | total matching rows, ignoring `limit`/`offset`/cursors (an estimate under `count=planned`/`estimated`) |
 | `Content-Range` | every offset-addressed list page (no `after`/`before`) | `<first>-<last>/<total>` by row position, `*` for an empty page or when no count was requested: `0-24/*`, `25-49/1043`, `*/1043`; see [`Prefer: count=`](#prefer-count-and-content-range) |
+| status `206` | offset-addressed page, total known, fewer rows than the total | `Partial Content`; `200` when the page is the whole result or no total is known |
+| status `416` | total known and the offset is beyond it | `Range Not Satisfiable` with `Content-Range: */<total>` and `code: range_not_satisfiable` |
 
 Whether a further page exists in the direction being paged is exact (one
 extra row is fetched and dropped). The opposite direction is reported as
@@ -170,6 +208,7 @@ PostgREST's counting preference is honoured on list `GET`/`HEAD` (tables,
 views, `SETOF <table>` functions). Every mode fills both `X-Total-Count`
 (kept for existing clients; `count=true` is `Prefer: count=exact`) and the
 total of `Content-Range`; `Preference-Applied` names the mode actually used.
+The total also decides the [status](#status-206-and-416) of the page.
 
 | Mode | Total | SQL (same statement) |
 |---|---|---|
@@ -190,14 +229,29 @@ number.
 
 `Content-Range` is `<offset>-<offset + rows - 1>/<total or *>` and `*/<total
 or *>` for an empty page; keyset pages (`after=`/`before=`) carry none
-(their position is unknown). The status stays `200` — PostgREST answers
-`206 Partial Content` when the range is a strict subset of a known total,
-which RFC 9110 reserves for `Range` requests (not supported: the `Range`
-request header is ignored).
+(their position is unknown).
+
+### Status: 206 and 416
+
+As PostgREST, with a known total (any count mode, `count=true` included) and
+`offset` = the first row of the page, `n` = rows returned:
+
+| Condition | Status | `Content-Range` |
+|---|---|---|
+| no total (no count requested), keyset page | `200` | `0-24/*` or none |
+| `offset > total` | `416` | `*/<total>`, body `range_not_satisfiable` |
+| `n < total` (the page is a strict subset) | `206` | `<first>-<last>/<total>` |
+| otherwise (the page is the whole result, or the table is empty) | `200` | `<first>-<last>/<total>` or `*/0` |
+
+This applies to `limit`/`offset` and to the `Range` header alike, so a counted
+page is `206` whenever the table is larger than the page: with the default
+page size, `Prefer: count=exact` on a 1000-row table answers `206` for the
+first page. An `offset` equal to the total is `206` with an empty page
+(PostgREST compares `offset > total`). Clients must treat `2xx` as success.
 
 ```console
 $ curl -sI -H 'Prefer: count=exact' 'localhost:8080/api/posts?limit=2&offset=2'
-HTTP/1.1 200 OK
+HTTP/1.1 206 Partial Content
 Content-Range: 2-3/5
 Preference-Applied: count=exact
 X-Total-Count: 5
@@ -381,7 +435,9 @@ offset-only.
 | Code | Status | When |
 |---|---|---|
 | `page_size_exceeded` | 400 | `limit` (or `<rel>.limit`) above `server.max_page_size` |
-| `keyset_unsupported` | 400 | `after`/`before` on a PK-less resource, `distinct=`, or a `SETOF` RPC; `offset` combined with `before` |
+| `keyset_unsupported` | 400 | `after`/`before` on a PK-less resource, `distinct=`, or a `SETOF` RPC; `offset` combined with `before`; a `Range` header combined with `after`/`before` |
+| `invalid_range` | 400 | `Range` header whose last item precedes the first, or that does not overlap `offset`/`limit` |
+| `range_not_satisfiable` | 416 | counted list whose `offset` (or `Range` start) is beyond the total |
 | `invalid_cursor` | 400 | `after`/`before` cursor undecodable or minted for a different resource |
 | `column_not_orderable` | 400 | `order=`/`distinct=` column excluded by the policy or `@omit order` |
 | `unknown_column` | 400 | unknown column / computed column in `order=` or `distinct=` |

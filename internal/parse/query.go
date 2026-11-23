@@ -182,6 +182,9 @@ func (p *parser) parseQueryWith(raw string, res *api.Resource, extra func(key, v
 	if err := p.resolveContribOrders(trgm, hasTrgm); err != nil {
 		return err
 	}
+	if err := p.applyRange(); err != nil {
+		return err
+	}
 	if p.req.Page.Limit == 0 {
 		p.req.Page.Limit = p.opts.maxPageSize()
 	}

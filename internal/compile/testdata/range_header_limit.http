@@ -1,0 +1,2 @@
+GET /api/posts?limit=5&offset=2
+Range: 0-24

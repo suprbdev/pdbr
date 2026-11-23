@@ -556,7 +556,7 @@ func TestExecuteListThroughFake(t *testing.T) {
 	op.Plan.Count = true
 	op.RawQuery = "count=true"
 	res := e.Execute(context.Background(), op)
-	if res.Err != nil || res.Status != 200 || string(res.Data) != `[{"id":1}]` {
+	if res.Err != nil || res.Status != 206 || string(res.Data) != `[{"id":1}]` {
 		t.Fatalf("res=%+v err=%v", res, res.Err)
 	}
 	if res.Headers.Get("X-Total-Count") != "3" || res.Headers.Get("X-Next-Cursor") == "" || !strings.HasPrefix(res.Headers.Get("Link"), "</api/users?count=true&after=") {
@@ -619,7 +619,7 @@ func TestContentRange(t *testing.T) {
 	}{
 		{plan.Page{Limit: 2}, `{"rows":[{"id":1},{"id":2}],"has_next":true,"has_prev":false,"total":5}`, "0-1/5"},
 		{plan.Page{Limit: 2, Offset: 4}, `{"rows":[{"id":5}],"has_next":false,"has_prev":true,"total":5}`, "4-4/5"},
-		{plan.Page{Limit: 2, Offset: 9}, `{"rows":[],"has_next":false,"has_prev":true,"total":5}`, "*/5"},
+		{plan.Page{Limit: 2, Offset: 5}, `{"rows":[],"has_next":false,"has_prev":true,"total":5}`, "*/5"},
 		{plan.Page{Limit: 2, After: []any{1}}, `{"rows":[{"id":2}],"has_next":false,"has_prev":true,"total":5}`, ""},
 	}
 	for _, tc := range cases {
@@ -662,6 +662,65 @@ func TestContentRange(t *testing.T) {
 		res, err := Unwrap(tc.op, mb, []byte(tc.raw), true, "")
 		if err != nil || res.Headers.Get("Content-Range") != tc.want {
 			t.Errorf("%s: Content-Range = %q %v, want %q", tc.raw, res.Headers.Get("Content-Range"), err, tc.want)
+		}
+	}
+}
+
+func TestPageStatus(t *testing.T) {
+	b := built(t)
+	stmt := &compile.Statement{Shape: compile.ShapePage, Total: true}
+	cases := []struct {
+		name   string
+		page   plan.Page
+		raw    string
+		status int
+		cr     string
+	}{
+		{"whole result", plan.Page{Limit: 100}, `{"rows":[{"id":1},{"id":2}],"total":2}`, 200, "0-1/2"},
+		{"strict subset", plan.Page{Limit: 1}, `{"rows":[{"id":1}],"total":2}`, 206, "0-0/2"},
+		{"last partial page", plan.Page{Limit: 2, Offset: 4}, `{"rows":[{"id":5}],"total":5}`, 206, "4-4/5"},
+		{"offset equals total", plan.Page{Limit: 2, Offset: 5}, `{"rows":[],"total":5}`, 206, "*/5"},
+		{"empty table", plan.Page{Limit: 2}, `{"rows":[],"total":0}`, 200, "*/0"},
+		{"no total", plan.Page{Limit: 1}, `{"rows":[{"id":1}]}`, 200, "0-0/*"},
+	}
+	for _, tc := range cases {
+		st := stmt
+		if tc.name == "no total" {
+			st = &compile.Statement{Shape: compile.ShapePage}
+		}
+		op := listOp(b, "/users")
+		op.Plan.Page = tc.page
+		res, err := Unwrap(op, st, []byte(tc.raw), true, "")
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if res.Status != tc.status || res.Headers.Get("Content-Range") != tc.cr {
+			t.Errorf("%s: status=%d Content-Range=%q, want %d %q", tc.name, res.Status, res.Headers.Get("Content-Range"), tc.status, tc.cr)
+		}
+	}
+
+	op := listOp(b, "/users")
+	op.Plan.Page = plan.Page{Limit: 2, Offset: 9}
+	_, err := Unwrap(op, stmt, []byte(`{"rows":[],"total":5}`), true, "")
+	var xe *Error
+	if !errors.As(err, &xe) || xe.Status != 416 || xe.Code != CodeRangeNotSatisfiable || xe.Headers.Get("Content-Range") != "*/5" {
+		t.Fatalf("offset past total: %+v", err)
+	}
+}
+
+func TestRangeLinkCarriesLimit(t *testing.T) {
+	b := built(t)
+	op := listOp(b, "/users")
+	op.RawQuery = "order=id"
+	op.Plan.Page = plan.Page{Limit: 10, Offset: 10, LimitSet: true, FromRange: true}
+	res, err := Unwrap(op, &compile.Statement{Shape: compile.ShapePage}, []byte(`{"rows":[{"id":1}],"has_next":true,"has_prev":true}`), true, "/api")
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := res.Headers.Get("Link")
+	for _, want := range []string{"</api/users?order=id&offset=20&limit=10>; rel=\"next\"", "</api/users?order=id&offset=0&limit=10>; rel=\"prev\""} {
+		if !strings.Contains(link, want) {
+			t.Errorf("Link = %q, want %q", link, want)
 		}
 	}
 }

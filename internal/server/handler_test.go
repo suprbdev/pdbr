@@ -108,7 +108,7 @@ func TestHandlerList(t *testing.T) {
 	db := (&scriptedDB{}).on(`FROM "public"."users"`, pageJSON, nil)
 	srv, _ := handlerServer(t, db, nil)
 	res, body := do(t, "GET", srv.URL+"/api/users?select=id,email&limit=2&count=true", nil)
-	if res.StatusCode != 200 || res.Header.Get("Content-Type") != ContentTypeJSON {
+	if res.StatusCode != 206 || res.Header.Get("Content-Type") != ContentTypeJSON {
 		t.Fatalf("status=%d ct=%q body=%s", res.StatusCode, res.Header.Get("Content-Type"), body)
 	}
 	if body != `[{"id":1,"email":"a@b.c"},{"id":2,"email":"d@e.f"}]` {
@@ -130,7 +130,7 @@ func TestHandlerHeadParity(t *testing.T) {
 	srv, _ := handlerServer(t, db, nil)
 	get, body := do(t, "GET", srv.URL+"/api/users?count=true", nil)
 	head, hbody := do(t, "HEAD", srv.URL+"/api/users?count=true", nil)
-	if head.StatusCode != 200 || hbody != "" || body == "" {
+	if head.StatusCode != 206 || hbody != "" || body == "" {
 		t.Fatalf("head=%d %q get body=%q", head.StatusCode, hbody, body)
 	}
 	for _, h := range []string{"X-Total-Count", "X-Next-Cursor", "Link", "Content-Type"} {

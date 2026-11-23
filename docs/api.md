@@ -366,6 +366,7 @@ drops the `text/csv` content and the `Accept` header parameter.
 | `Prefer: handling=strict, max-affected=N` | `PATCH`/`DELETE` writing more than `N` rows → `400 max_affected_exceeded`, rolled back |
 | `Prefer: resolution=merge-duplicates\|ignore-duplicates` | `POST` upserts / skips conflicting rows on `?on_conflict=` or the PK ([mutations.md](mutations.md#post-with-prefer-resolution)) |
 | `Prefer: missing=default` | accepted on `POST`/`PUT`; omitted keys always take their default in pdbr |
+| `Range: <first>-<last>` / `<first>-` (+ `Range-Unit: items`) | list `GET`/`HEAD`: offset/limit as a header, intersected with `offset`/`limit`; `206` when a counted page is a strict subset of the total, `416` past it ([pagination.md](pagination.md#range-request-header)); ignored on writes |
 | `Prefer: count=exact\|planned\|estimated` | list `GET`/`HEAD`: total in `Content-Range` and `X-Total-Count` ([pagination.md](pagination.md#prefer-count-and-content-range)); bulk `PATCH`/`DELETE`: exact written-row total in `Content-Range` |
 
 Honoured tokens are echoed in `Preference-Applied`. Details and the
@@ -399,7 +400,7 @@ List responses carry no `ETag`.
 
 | Header | When | Meaning |
 |---|---|---|
-| `Content-Range` | offset-addressed list pages and bulk `PATCH`/`DELETE` | `<first>-<last>/<total>` (`*` when empty or without a count) |
+| `Content-Range` | offset-addressed list pages and bulk `PATCH`/`DELETE` | `<first>-<last>/<total>` (`*` when empty or without a count); `*/<total>` on `416` |
 | `X-Total-Count` | `count=true` or `Prefer: count=` on lists / `SETOF` RPC | total rows after filters (distinct-aware); computed by a `count(*)` subquery in the same statement |
 | `X-Next-Cursor` | keyset-capable list, next page exists | opaque cursor for `after=` |
 | `X-Prev-Cursor` | keyset-capable list, previous page exists | opaque cursor for `before=` |
@@ -416,7 +417,7 @@ Cursor and `Link` details: [pagination.md](pagination.md).
 
 | Limit | Config | Over |
 |---|---|---|
-| page size | `server.max_page_size` (100) | `400 page_size_exceeded` |
+| page size | `server.max_page_size` (100) | `400 page_size_exceeded` (`limit=`); a `Range` header is clamped instead |
 | embed depth | `server.max_embed_depth` (5) | `400 embed_depth_exceeded` |
 | request cost | `server.max_cost` (10000) | `400 cost_exceeded` |
 | body size | `server.max_body_bytes` (1 MiB) | `413` |

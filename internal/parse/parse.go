@@ -38,6 +38,7 @@ import (
 // Error codes emitted by the parser (docs/errors.md).
 const (
 	CodeInvalidFilter        = "invalid_filter"
+	CodeInvalidRange         = "invalid_range"
 	CodeInvalidSelect        = "invalid_select"
 	CodeUnknownColumn        = "unknown_column"
 	CodeUnknownRelation      = "unknown_relation"
@@ -220,6 +221,8 @@ type parser struct {
 	// root is the node dotted parameters are resolved against (the select
 	// tree, or a bare node over the resource when select is absent).
 	root *plan.Node
+	// rangeHdr is the Range request header of a GET/HEAD (readRange).
+	rangeHdr string
 }
 
 func parseMethod(m string) (plan.Method, error) {

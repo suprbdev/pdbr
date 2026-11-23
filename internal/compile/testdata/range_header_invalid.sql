@@ -1,0 +1,2 @@
+-- request: GET /api/posts
+-- error: 400 invalid_range: Range "5-2": the last item precedes the first

@@ -185,6 +185,11 @@ func (h *Handler) writeError(w http.ResponseWriter, r *http.Request, m *api.Matc
 		}
 		w.Header().Set("Allow", allow)
 	}
+	for k, vs := range xe.Headers {
+		for _, v := range vs {
+			w.Header().Add(k, v)
+		}
+	}
 	WriteProblemPG(w, r, xe.Status, xe.Code, xe.Detail, xe.PG)
 }
 
