@@ -129,7 +129,7 @@ func (p *Plugin) TransformAPI(_ context.Context, b *api.Builder) error {
 // PERIOD relation connects by.
 func connectSchema(b *api.Builder, r *api.Resource) *api.Schema {
 	var sets [][]string
-	if pk := r.PrimaryKey(); pk != nil {
+	if pk := r.PrimaryKey(); pk != nil && !r.HiddenKey {
 		sets = append(sets, pk.Columns)
 	}
 	for _, u := range r.Uniques {

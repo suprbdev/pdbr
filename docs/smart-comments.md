@@ -58,7 +58,7 @@ Disable everything with `plugins.disabled: [smart-comments]` (see
 | Tag | Applies to | REST effect |
 |---|---|---|
 | `@omit` | table, column, FK, unique, function | remove the object everywhere (routes, schema, embeds, params) |
-| `@omit read` | table, column | table: no `GET`/`HEAD` on `/{t}`, `/{t}/{pk}`, `/{t}/by/…` (still embeddable); column: absent from responses/`select=` |
+| `@omit read` | table, column | table: no `GET`/`HEAD` on `/{t}`, `/{t}/{pk}`, `/{t}/by/…` (still embeddable); column: absent from responses, `select=`, filters, `order=`, `distinct=`, aggregates, `/by/…` routes and cursors |
 | `@omit all` | table | no `GET`/`HEAD /{t}` collection; row paths stay |
 | `@omit many` | table, FK | not embeddable/filterable/orderable as a **backward** relation |
 | `@omit create` / `update` / `delete` | table, column | table: method removed → `405` + `Allow`; column: key rejected in that body (`400`) |
@@ -82,7 +82,7 @@ Disable everything with `plugins.disabled: [smart-comments]` (see
 | Tag | Effect |
 |---|---|
 | `@omit` | Hide the table entirely: no routes, no `components.schemas` entry, not embeddable, no relation keys or filters referencing it. |
-| `@omit read` | No `GET`/`HEAD` on `/{table}`, `/{table}/{pk}` and `/{table}/by/…`; the resource stays reachable through `select=` embeds from related resources — useful for detail/join tables. Write methods on those paths are unaffected. |
+| `@omit read` | (table) No `GET`/`HEAD` on `/{table}`, `/{table}/{pk}` and `/{table}/by/…`; the resource stays reachable through `select=` embeds from related resources — useful for detail/join tables. Write methods on those paths are unaffected. |
 | `@omit all` | No collection `GET`/`HEAD /{table}`; `/{table}/{pk}` and `/{table}/by/…` stay. |
 | `@omit many` | Never embedded, filtered or ordered as a backward relation from other resources (no `users?select=posts(*)`, no `users?posts.title=…`); forward embeds (`posts?select=users(*)`) stay. |
 | `@omit create` / `update` / `delete` | Suppress the corresponding method — `POST /{table}`, `PATCH /{table}/{pk}`, `DELETE /{table}/{pk}` — exactly like a missing SQL privilege: `405` with `Allow` listing what remains. `PUT /{table}` (upsert) needs both create and update, so either omit removes it. |
@@ -107,8 +107,10 @@ keeps its `components.schemas` entry), and `PUT` needs both `create` and
 
 | Tag | Effect |
 |---|---|
-| `@omit` | Hide the column everywhere (responses, `select=`, request bodies, filters, `order=`, OpenAPI, the [ETag](api.md#etag--conditional-requests) hash). It may still back PKs/FKs; row paths keep working. |
-| `@omit read` / `create` / `update` / `filter` / `order` | Hide it from just that surface: `read` → not in responses, `select=` (`400 unknown_column`) or the ETag hash, still writable and filterable; `create`/`update` → key rejected in `POST`/`PUT` or `PATCH`/`PUT` bodies (`400 invalid_body`, `column "c" of "t" cannot be written by POST`); `filter` → `400 column_not_filterable`; `order` → `400 column_not_orderable`. A unique constraint over a `read`-omitted (or fully omitted) column loses its `/{table}/by/{cols}/…` route (the segment names the hidden key); primary keys keep backing row paths, cursors and `Location`. A `NOT NULL` column without a default tagged `@omit create` makes every `POST` fail its required-column check — omit the column from reads instead, or give it a default. |
+| `@omit` | Hide the column everywhere (responses, `select=`, request bodies, filters, `order=`, OpenAPI, the [ETag](api.md#etag--conditional-requests) hash). It may still back FKs and the join columns of embeds. |
+| `@omit read` | Hide it from everything that could reveal its value: responses, `select=` (including aggregate inputs, grouping and spreads), the [ETag](api.md#etag--conditional-requests) hash, and, **unlike PostGraphile and PostgREST column privileges**, every query surface: filters (conditions, `or`/`and`/`not` trees, JSON paths, operators of the contrib and spatial plugins, embed and relation filters), `order=`, `distinct=` and aggregates are all `400 unknown_column`, as is `on_conflict=` naming it. Otherwise a hidden `salary` could be recovered by bisecting with `salary=gt.50000`. It stays writable in `POST`/`PUT`/`PATCH` bodies. |
+| `@omit create` / `update` / `filter` / `order` | Hide it from just that surface: `create`/`update` → key rejected in `POST`/`PUT` or `PATCH`/`PUT` bodies (`400 invalid_body`, `column "c" of "t" cannot be written by POST`); `filter` → `400 column_not_filterable`; `order` → `400 column_not_orderable`. |
+| Unique and primary keys over a hidden column | A unique constraint over a `read`-omitted (or fully omitted) column loses its `/{table}/by/{cols}/…` route (`404`) and its `on_conflict=` target. A primary key containing one loses the `/{table}/{pk}` row path (`404`), keyset paging (`after=`/`before=` → `400 keyset_unsupported`, no `X-Next-Cursor`/`Link` cursors) and the `Location` header, since a cursor or path would expose or probe the value; page such tables with `limit`/`offset`. Rows still sort by the key as a tie-breaker. A `NOT NULL` column without a default tagged `@omit create` makes every `POST` fail its required-column check — omit the column from reads instead, or give it a default. |
 | `@name <new_name>` | Rename the JSON key everywhere: responses, `select=`, filter param name, `order=` value, body keys, `/by/{cols}` segments, OpenAPI property. |
 | `@deprecated [reason]` | OpenAPI property `deprecated: true`, plus `x-deprecation-reason: <reason>` (`No longer supported` when the tag has no value). |
 | `@notNull` / `@nullable` | Override introspected nullability — views lose `NOT NULL`, `@notNull` restores `type: T` (instead of `[T, "null"]`) in OpenAPI. On a table column, `@notNull` without a default also makes the key `required` in `<name>.insert`; `@nullable` removes it from `required`. |

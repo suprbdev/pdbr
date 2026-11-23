@@ -233,10 +233,10 @@ func (b *Builder) RemoveRelation(rel *Relation) {
 	rel.From.Relations[rel.Key] = keep
 }
 
-// RemoveField hides a column from responses and select=; when everywhere is
-// set it also leaves request bodies, filters and order=. Unique lookups over
-// the column lose their /by/ route either way (the route needs the exposed
-// key); primary keys keep backing row paths and cursors.
+// RemoveField hides a column from responses and select=, and with it from
+// filters, order=, distinct, aggregates and unique lookups; when everywhere
+// is set it also leaves request bodies. A hidden primary-key column
+// (Resource.HiddenKey) also drops the row path and keyset cursors.
 func (b *Builder) RemoveField(r *Resource, key string, everywhere bool) {
 	f := r.Field(key)
 	if f == nil {
@@ -256,10 +256,14 @@ func (b *Builder) RemoveField(r *Resource, key string, everywhere bool) {
 		}
 	}
 	r.Uniques = uniques
+	delete(r.FilterColumns, key)
+	delete(r.OrderColumns, key)
+	if pk := r.Table.PrimaryKey; pk != nil && containsString(pk.Columns, f.Column.Name) {
+		r.HiddenKey = true
+		r.Keyset = false
+	}
 	if everywhere {
 		delete(r.InputColumns, key)
-		delete(r.FilterColumns, key)
-		delete(r.OrderColumns, key)
 	}
 }
 
@@ -927,7 +931,7 @@ func (b *Builder) Build() (*Built, error) {
 			out.byResource[r][RouteList] = rt
 		}
 		rowMethods := methodList(r.Methods, MethodGet, MethodHead, MethodPut, MethodPatch, MethodDelete)
-		if pk := r.PrimaryKey(); pk != nil && len(rowMethods) > 0 {
+		if pk := r.PrimaryKey(); pk != nil && !r.HiddenKey && len(rowMethods) > 0 {
 			rt := &Route{Kind: RouteRow, Pattern: base + "/" + r.keyTemplate(pk.Columns), Methods: keyedMethods(r, rowMethods, pk.Columns), Resource: r}
 			out.Routes = append(out.Routes, rt)
 			out.byResource[r][RouteRow] = rt

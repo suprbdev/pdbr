@@ -362,7 +362,7 @@ that introduced it.
 | `RemoveMethod(r, methods…)` | turn methods off; `Build` drops them from every route (`405` + `Allow`, or no route when none is left) | smart-comments (`@omit read/create/update/delete`) |
 | `Resource.OmitList` | suppress `GET`/`HEAD` on the collection route only | smart-comments (`@omit all`) |
 | `RemoveRelation(rel)` | drop one relation candidate; the key vanishes with its last candidate | smart-comments (`@omit many`) |
-| `RemoveField(r, key, everywhere)` | hide a column from responses/`select=` (and, with `everywhere`, bodies, filters and `order=`); unique lookups over it lose their `/by/` route | smart-comments (column `@omit` / `@omit read`) |
+| `RemoveField(r, key, everywhere)` | hide a column from responses, `select=`, filters, `order=`, `distinct=` and aggregates (and, with `everywhere`, bodies); unique lookups over it lose their `/by/` route, and a hidden primary-key column drops the row path and keyset cursors | smart-comments (column `@omit` / `@omit read`) |
 | `Resource.NoCreate` / `NoUpdate` + `Resource.InputColumnsFor(method)` | reject body keys per write method (`PUT` honours both) | smart-comments (column `@omit create/update`) |
 | `RemoveFilterColumn(r, key)` / `RemoveOrderColumn(r, key)` | withdraw a key from the filter / `order=` vocabulary | smart-comments (`@omit filter/order`) |
 | `RemoveComputed(r, key)`, `RemoveRPC(schema, fn)`, `RemoveUnique(r, constraint)` | drop a computed column, an RPC route, a `/by/` route | smart-comments (available; bare `@omit` is resolved at the catalog level) |
