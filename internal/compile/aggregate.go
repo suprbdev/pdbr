@@ -270,7 +270,7 @@ func aggregateJSON(ref string, a *plan.Aggregate) string {
 	case a.OutputCast != nil:
 		return "to_json((" + ref + ")::" + typeRefSQL(a.OutputCast) + ")"
 	case a.Func.Spatial():
-		return postgis.OutputSQL(ref)
+		return postgis.OutputJSONSQL(ref)
 	}
 	return "to_json(" + ref + ")"
 }

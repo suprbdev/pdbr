@@ -171,7 +171,7 @@ func (s *stmt) valueJSON(ref string, fn *introspect.Function, depth int) (string
 		return "to_json(" + ref + ")", nil
 	}
 	if postgis.IsSpatial(ret.PGType) {
-		return postgis.OutputSQL(ref), nil
+		return postgis.OutputJSONSQL(ref), nil
 	}
 	return "to_json(" + exprJSON(ref, ret) + ")", nil
 }

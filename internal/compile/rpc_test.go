@@ -143,7 +143,7 @@ FROM (SELECT "public"."home"("a" => jsonb_populate_record(NULL::"public"."addres
 	if !strings.Contains(st.SQL, `"public"."near_me"("p" => CASE WHEN left($1, 1) = '{' THEN ST_GeomFromGeoJSON($1) ELSE ST_GeomFromEWKT($1) END, "opts" => $2::"jsonb", "moods" => $3::text[]::"public"."mood"[])`) {
 		t.Errorf("typed args: %s", st.SQL)
 	}
-	if !strings.HasPrefix(st.SQL, "SELECT ST_AsGeoJSON(__fn.v)::jsonb AS data") {
+	if !strings.HasPrefix(st.SQL, "SELECT ST_AsGeoJSON(__fn.v)::json AS data") {
 		t.Errorf("spatial return: %s", st.SQL)
 	}
 	userErr(t, f.compileErr(rpcReq(f, "near_me", nil)), compile.CodeMissingArgument)

@@ -174,7 +174,7 @@ func (s *stmt) columnJSON(alias string, c *introspect.Column, args map[string]an
 // base64, spatial values as GeoJSON; enum labels pass through verbatim.
 func exprJSON(ref string, c *introspect.Column) string {
 	if postgis.IsSpatial(c.PGType) {
-		return postgis.OutputSQL(ref)
+		return postgis.OutputJSONSQL(ref)
 	}
 	switch strings.TrimPrefix(c.PGType, "_") {
 	case "int8", "numeric", "money":
@@ -190,7 +190,7 @@ func exprJSON(ref string, c *introspect.Column) string {
 func (s *stmt) spatialArrayJSON(ref string) string {
 	elem := s.alias("g")
 	return fmt.Sprintf("CASE WHEN %s IS NULL THEN NULL ELSE (SELECT coalesce(json_agg(%s ORDER BY %s.o), '[]'::json) FROM (SELECT generate_subscripts(%s, 1) AS o) %s) END",
-		ref, postgis.OutputSQL("("+ref+")["+elem+".o]"), elem, ref, elem)
+		ref, postgis.OutputJSONSQL("("+ref+")["+elem+".o]"), elem, ref, elem)
 }
 
 // spatialFieldSQL renders a selected spatial column, applying the optional
@@ -201,7 +201,7 @@ func (s *stmt) spatialFieldSQL(ref string, c *introspect.Column, args map[string
 	if err != nil {
 		return "", err
 	}
-	return postgis.OutputSQL(expr), nil
+	return postgis.OutputJSONSQL(expr), nil
 }
 
 // spatialArgs applies simplify= then transform= to a spatial expression.
@@ -244,7 +244,7 @@ func (s *stmt) pseudoJSON(p *api.PseudoColumn, args map[string]any, alias string
 	if expr != colRef(alias, p.Column.Name) {
 		flavour = postgis.Geometry
 	}
-	return d.SQL(expr, flavour), nil
+	return d.JSONSQL(expr, flavour), nil
 }
 
 // derivedFor matches an accessor name ("area", "geometry_type",

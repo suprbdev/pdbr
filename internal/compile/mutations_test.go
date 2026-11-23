@@ -237,9 +237,11 @@ func TestMutationErrors(t *testing.T) {
 	}
 	noPK := &introspect.Table{Schema: "public", Name: "nopk", Kind: introspect.RelTable, Columns: []*introspect.Column{{Name: "a", PGType: "text"}},
 		Uniques: []*introspect.Constraint{{Name: "nopk_a_key", Columns: []string{"a"}}}, Privileges: introspect.Privileges{Select: true, Insert: true, Update: true, Delete: true}}
-	cat := *f.built.Catalog
-	cat.Tables = append(append([]*introspect.Table(nil), cat.Tables...), noPK)
-	built := buildCatalog(t, &cat, true)
+	src := f.built.Catalog
+	cat := &introspect.Catalog{FormatVersion: src.FormatVersion, ServerVersion: src.ServerVersion, ServerVersionNum: src.ServerVersionNum,
+		Schemas: src.Schemas, Tables: append(append([]*introspect.Table(nil), src.Tables...), noPK), Enums: src.Enums,
+		Composites: src.Composites, Functions: src.Functions, Extensions: src.Extensions, Ranges: src.Ranges}
+	built := buildCatalog(t, cat, true)
 	r := built.ByPath["nopk"]
 	if _, err := compile.New(built).Compile(t.Context(), &compile.Request{Plan: &plan.Request{Method: plan.PUT, Resource: r, Body: body(r, map[string]any{"a": "x"})}, Built: built}); err == nil {
 		t.Error("PUT without target on a PK-less table compiled")

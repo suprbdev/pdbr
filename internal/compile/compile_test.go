@@ -1024,7 +1024,7 @@ func TestSpatialOutput(t *testing.T) {
 		{Alias: "gt", Pseudo: &api.PseudoColumn{Key: "location_geometry_type", Column: loc, Accessor: "geometry_type"}},
 	}}
 	stmt := f.compile(p)
-	want := `json_build_object('name', t0."name", 'location', ST_AsGeoJSON(t0."location")::jsonb, 'web', ST_AsGeoJSON(ST_Transform(t0."location", 3857))::jsonb, 'coarse', ST_AsGeoJSON(ST_Transform(ST_SimplifyPreserveTopology(t0."area"::geometry, $1), 3857))::jsonb, 'location_srid', ST_SRID(t0."location"), 'area_centroid', ST_AsGeoJSON(ST_Centroid(t0."area"::geometry))::jsonb, 'gt', ST_GeometryType(t0."location"))`
+	want := `json_build_object('name', t0."name", 'location', ST_AsGeoJSON(t0."location")::json, 'web', ST_AsGeoJSON(ST_Transform(t0."location", 3857))::json, 'coarse', ST_AsGeoJSON(ST_Transform(ST_SimplifyPreserveTopology(t0."area"::geometry, $1), 3857))::json, 'location_srid', ST_SRID(t0."location"), 'area_centroid', ST_AsGeoJSON(ST_Centroid(t0."area"::geometry))::json, 'gt', ST_GeometryType(t0."location"))`
 	if !strings.Contains(stmt.SQL, want) {
 		t.Errorf("spatial output:\nwant %s\n%s", want, stmt.SQL)
 	}
