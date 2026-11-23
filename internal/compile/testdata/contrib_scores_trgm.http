@@ -1,0 +1,1 @@
+GET /api/kb/docs?select=id,title_similarity,title_word_similarity,title_strict_word_similarity&title=trgm_sim.postgres&trgm=postgres

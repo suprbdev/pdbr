@@ -116,7 +116,7 @@ func TestPseudoColumns(t *testing.T) {
 		t.Fatalf("Accessors = %v", got)
 	}
 	notOnPoint := map[string]bool{"z": true, "m": true, "start_point": true, "end_point": true}
-	if n := 2*len(want) - len(notOnPoint); len(places.Pseudo) != n {
+	if n := 2*len(want) - len(notOnPoint) + 2; len(places.Pseudo) != n {
 		t.Fatalf("pseudo-columns = %d, want %d: %v", len(places.Pseudo), n, places.Pseudo)
 	}
 	for _, col := range []string{"location", "area"} {
@@ -155,10 +155,11 @@ func TestPseudoColumns(t *testing.T) {
 	if len(built.ByPath["users"].Pseudo) != 0 {
 		t.Errorf("users pseudo = %v", built.ByPath["users"].Pseudo)
 	}
-	// derived: false registers nothing.
+	// derived: false registers only the distance scores, which belong to
+	// ordering.
 	_, off := build(t, testutil.FixtureCatalog(), New(map[string]any{"derived": false}))
-	if len(off.ByPath["places"].Pseudo) != 0 {
-		t.Errorf("derived=false still registered %v", off.ByPath["places"].Pseudo)
+	if got := sortedKeys(off.ByPath["places"].Pseudo); !reflect.DeepEqual(got, []string{"area_distance", "location_distance"}) {
+		t.Errorf("derived=false registered %v", got)
 	}
 }
 
@@ -171,7 +172,7 @@ func TestRealColumnWins(t *testing.T) {
 	if places.Pseudo["location_srid"] != nil {
 		t.Fatal("pseudo-column shadowed a real column")
 	}
-	if places.Field("location_srid") == nil || len(places.Pseudo) != 45 {
+	if places.Field("location_srid") == nil || len(places.Pseudo) != 47 {
 		t.Fatalf("field/pseudo count: %v %d", places.Field("location_srid"), len(places.Pseudo))
 	}
 	found := false

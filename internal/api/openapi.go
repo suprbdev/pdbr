@@ -575,13 +575,17 @@ func (b *Builder) resourceSchema(r *Resource) *Schema {
 		p := &Schema{}
 		if pc.Schema != nil {
 			p = pc.Schema
-			if !pc.Column.NotNull {
+			if !pc.Column.NotNull || pc.Score != nil {
 				p = Nullable(p)
 			}
 		}
 		cp := *p
 		cp.ReadOnly = true
-		cp.Description = strings.TrimSpace(pc.Description + " Derived from " + pc.Column.Name + ". Select explicitly: select=" + key + ".")
+		sel := key
+		if pc.Score != nil && pc.Score.Param == "near" && postgis.FlavourOf(pc.Column.PGType) == postgis.Geometry {
+			sel += "[(spheroid=true)]"
+		}
+		cp.Description = strings.TrimSpace(pc.Description + " Derived from " + pc.Column.Name + ". Select explicitly: select=" + sel + ".")
 		s.Properties[key] = &cp
 	}
 	for _, key := range sortedKeys(r.Relations) {

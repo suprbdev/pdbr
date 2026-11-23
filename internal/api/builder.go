@@ -268,6 +268,11 @@ func (b *Builder) RemoveField(r *Resource, key string, everywhere bool) {
 	r.Uniques = uniques
 	delete(r.FilterColumns, key)
 	delete(r.OrderColumns, key)
+	for k, pc := range r.Pseudo {
+		if pc.Column == f.Column {
+			delete(r.Pseudo, k)
+		}
+	}
 	if pk := r.Table.PrimaryKey; pk != nil && containsString(pk.Columns, f.Column.Name) {
 		r.HiddenKey = true
 		r.Keyset = false
@@ -941,6 +946,7 @@ type Built struct {
 
 // Build freezes the builder.
 func (b *Builder) Build() (*Built, error) {
+	b.addContribScores()
 	out := &Built{
 		Catalog:    b.Catalog,
 		Options:    b.Options,

@@ -1,0 +1,1 @@
+GET /api/places?select=id,area_distance(spheroid=true)&near=POINT(0%200)

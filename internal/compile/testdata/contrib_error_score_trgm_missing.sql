@@ -1,0 +1,2 @@
+-- request: GET /api/kb/docs?select=id,title_similarity
+-- error: 400 invalid_filter: title_similarity requires trgm=<text>

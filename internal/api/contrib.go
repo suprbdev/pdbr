@@ -85,6 +85,13 @@ var contribSpellings = map[string][]spelling{
 		{"unaccent_eq", "unaccentEqualTo"}, {"unaccent_ilike", "unaccentLike"},
 		{"unaccent_sw", "unaccentStartsWith"}, {"unaccent_includes", "unaccentIncludes"},
 	},
+	contrib.VocabVector: {
+		{"vec_l2_lt", "l2DistanceLessThan"}, {"vec_ip_lt", "negativeInnerProductLessThan"},
+		{"vec_cos_lt", "cosineDistanceLessThan"}, {"vec_l1_lt", "l1DistanceLessThan"},
+	},
+	contrib.VocabBit: {
+		{"vec_hamming_lt", "hammingDistanceLessThan"}, {"vec_jaccard_lt", "jaccardDistanceLessThan"},
+	},
 }
 
 var trgmOrders = []spelling{{"trgm_dist", "distance"}, {"trgm_wdist", "wordDistance"}, {"trgm_swdist", "strictWordDistance"}}
@@ -92,6 +99,8 @@ var trgmOrders = []spelling{{"trgm_dist", "distance"}, {"trgm_wdist", "wordDista
 var vecOrders = []spelling{
 	{"vec_l2", "l2Distance"}, {"vec_ip", "negativeInnerProduct"}, {"vec_cos", "cosineDistance"}, {"vec_l1", "l1Distance"},
 }
+
+var bitOrders = []spelling{{"vec_hamming", "hammingDistance"}, {"vec_jaccard", "jaccardDistance"}}
 
 // distanceOrders maps each vocabulary with distance order terms to them and
 // to the query parameter holding their reference value.
@@ -101,6 +110,7 @@ var distanceOrders = []struct {
 }{
 	{contrib.VocabTrgm, "trgm", trgmOrders},
 	{contrib.VocabVector, "vec", vecOrders},
+	{contrib.VocabBit, "vec", bitOrders},
 }
 
 var rankOrders = []struct {
@@ -133,7 +143,7 @@ func IsFullTextOp(name string) bool {
 
 // IsContribOrder reports whether a modifier is a contrib order term
 // (rank, rank_cd, trgm_dist, trgm_wdist, trgm_swdist, vec_l2, vec_ip,
-// vec_cos, vec_l1).
+// vec_cos, vec_l1, vec_hamming, vec_jaccard).
 func IsContribOrder(name string) bool {
 	for _, r := range rankOrders {
 		if r.name == name {
@@ -170,6 +180,112 @@ func VectorVocabulary(cat *introspect.Catalog, c *introspect.Column) (contrib.Vo
 		}
 	}
 	return contrib.Vocabulary{}, false
+}
+
+// DistanceVocabulary returns the vocabulary holding a column's pgvector
+// distances: the vector vocabulary of a vector, halfvec or sparsevec
+// column, or pgvector's bit vocabulary of a bit or varbit column.
+func DistanceVocabulary(cat *introspect.Catalog, c *introspect.Column) (contrib.Vocabulary, bool) {
+	if c == nil || c.IsArray || strings.HasPrefix(c.PGType, "_") {
+		return contrib.Vocabulary{}, false
+	}
+	for _, v := range contrib.ForColumn(cat, c) {
+		if v.Name == contrib.VocabVector || v.Name == contrib.VocabBit {
+			return v, true
+		}
+	}
+	return contrib.Vocabulary{}, false
+}
+
+// IsVectorThreshold reports whether a filter operator spelling is a
+// pgvector distance threshold (vec_l2_lt, vec_cos_lt, vec_hamming_lt, ...),
+// which measures against vec=.
+func IsVectorThreshold(name string) bool {
+	for _, v := range []string{contrib.VocabVector, contrib.VocabBit} {
+		for _, sp := range contribSpellings[v] {
+			if sp.url == name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// ScoreKey is the pseudo-column suffix of a score expression: its pdbcore
+// name in snake_case (cosineDistance -> cosine_distance, l2Distance ->
+// l2_distance).
+func ScoreKey(expr string) string {
+	var sb strings.Builder
+	for _, ch := range expr {
+		if ch >= 'A' && ch <= 'Z' {
+			sb.WriteByte('_')
+			sb.WriteRune(ch - 'A' + 'a')
+			continue
+		}
+		sb.WriteRune(ch)
+	}
+	return sb.String()
+}
+
+// addContribScores registers the score pseudo-columns of every resource's
+// columns: <key>_similarity, <key>_word_similarity and
+// <key>_strict_word_similarity (pg_trgm, against trgm=) on text columns the
+// filter policy admits trigram operators on, and <key>_<distance>
+// (pgvector, against vec=) on every vector column and on bit columns an
+// index (or the policy) admits pgvector's distances on. A resource with a
+// column or computed column named trgm (vec) has no trgm= (vec=) and gets
+// none of its scores; a real, computed or other pseudo-column owning a key
+// keeps it. It runs in Build, after the API hooks removed hidden columns.
+func (b *Builder) addContribScores() {
+	for _, r := range sortedResources(b.Resources) {
+		for _, f := range r.Columns {
+			for _, v := range contrib.ForColumn(b.Catalog, f.Column) {
+				param, desc := "", ""
+				switch v.Name {
+				case contrib.VocabTrgm:
+					if len(v.Ops) == 0 || !indexServes(b.Options, r, f.Column, v.Ops[0].Index, false) {
+						continue
+					}
+					param, desc = "trgm", "pg_trgm score against trgm=, 0 to 1 (higher is more similar)"
+				case contrib.VocabVector, contrib.VocabBit:
+					if v.Name == contrib.VocabBit {
+						var hints []contrib.IndexHint
+						for _, e := range v.Exprs {
+							hints = append(hints, e.Index...)
+						}
+						if !indexServes(b.Options, r, f.Column, hints, true) {
+							continue
+						}
+					}
+					param, desc = "vec", "pgvector distance from vec= (lower is closer)"
+				default:
+					continue
+				}
+				if r.NameTaken(param) {
+					continue
+				}
+				for _, e := range v.Exprs {
+					if !e.Score {
+						continue
+					}
+					key := f.Key + "_" + ScoreKey(e.Name)
+					if r.Field(key) != nil || r.Computed[key] != nil || r.Pseudo[key] != nil {
+						b.Warn("contrib: score pseudo-column skipped: the key is taken", "resource", r.Path, "column", f.Column.Name, "key", key)
+						continue
+					}
+					if r.Pseudo == nil {
+						r.Pseudo = map[string]*PseudoColumn{}
+					}
+					r.Pseudo[key] = &PseudoColumn{
+						Key: key, Column: f.Column,
+						Score:       &Score{Param: param, Expr: e},
+						Schema:      &Schema{Type: "number"},
+						Description: strings.TrimSuffix(e.Description, ".") + "; " + desc + ", required to select it.",
+					}
+				}
+			}
+		}
+	}
 }
 
 // VectorOperand decodes a vector given as query text: a JSON array of
@@ -291,6 +407,9 @@ func contribFilters(cat *introspect.Catalog, opts Options, r *Resource, c *intro
 				hints = nil
 			}
 			if !ok || seen[sp.url] || !indexServes(opts, r, c, hints, false) {
+				continue
+			}
+			if IsVectorThreshold(sp.url) && r != nil && r.NameTaken("vec") {
 				continue
 			}
 			seen[sp.url] = true

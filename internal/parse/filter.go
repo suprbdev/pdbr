@@ -2,6 +2,7 @@ package parse
 
 import (
 	"encoding/json"
+	"math"
 	"strconv"
 	"strings"
 
@@ -264,6 +265,10 @@ func (p *parser) contribCond(res *api.Resource, f *api.Field, o operand) (plan.E
 	if err != nil {
 		return nil, true, err
 	}
+	if cf.Op.Arg == contrib.ArgVectorDistance {
+		p.vecFilters = append(p.vecFilters, vecFilter{Column: c, Op: cf.Op, Name: o.op})
+		return plan.Cond{Column: c, Op: o.spec.op, Value: v, Negate: o.negate}, true, nil
+	}
 	if _, literal := v.(string); !literal || cf.Op.Arg != contrib.ArgHstore {
 		if _, perr := cf.Op.Params(v); perr != nil {
 			return nil, true, errf(CodeInvalidFilter, "%s %q: %s", o.op, f.Key, perr.Error())
@@ -278,6 +283,12 @@ func contribOperand(arg contrib.ArgKind, o operand) (any, *compile.UserError) {
 	switch arg {
 	case contrib.ArgFullText:
 		return contrib.FullTextQuery{Query: o.value, Config: o.config}, nil
+	case contrib.ArgVectorDistance:
+		d, err := strconv.ParseFloat(strings.TrimSpace(o.value), 64)
+		if err != nil || math.IsNaN(d) || math.IsInf(d, 0) {
+			return nil, errf(CodeInvalidFilter, "%s takes a finite number (the distance threshold; the vector is vec=), got %q", o.op, o.value)
+		}
+		return d, nil
 	case contrib.ArgTextList:
 		items, err := parseArrayLiteral(o.value)
 		if err != nil {

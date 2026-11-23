@@ -1323,3 +1323,20 @@ func TestAggregateOrderGuard(t *testing.T) {
 		t.Fatalf("err = %v, want keyset_unsupported", err)
 	}
 }
+
+// TestCostScores pins score pseudo-columns at the cost of a column: 1 per
+// row, whatever the reference.
+func TestCostScores(t *testing.T) {
+	built := goldenBuilt(t)
+	places := built.ByPath["places"]
+	p := list(places)
+	p.Page = plan.Page{Limit: 20, LimitSet: true}
+	p.Select = &plan.Node{Resource: places, Fields: []plan.FieldSel{
+		{Column: places.Table.Column("id")},
+		{Pseudo: places.Pseudo["location_distance"], Args: map[string]any{"spheroid": true}},
+		{Pseudo: places.Pseudo["area_distance"]},
+	}}
+	if got, want := compile.Cost(p, 100), 1+20*3; got != want {
+		t.Errorf("cost = %d, want %d", got, want)
+	}
+}

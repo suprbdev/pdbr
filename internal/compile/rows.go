@@ -379,6 +379,9 @@ func (s *stmt) spatialArgs(ref string, flavour postgis.Flavour, args map[string]
 // pseudoJSON renders a derived spatial accessor (<col>_area, …). Projection
 // arguments apply to the owning column before the accessor runs.
 func (s *stmt) pseudoJSON(p *api.PseudoColumn, args map[string]any, alias string) (string, error) {
+	if p.Score != nil {
+		return s.scoreSQL(p, args, alias)
+	}
 	d, ok := derivedFor(p.Accessor)
 	if !ok {
 		return "", fmt.Errorf("compile: unknown spatial accessor %q", p.Accessor)

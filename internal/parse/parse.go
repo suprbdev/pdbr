@@ -30,6 +30,9 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/suprbdev/pdbcore/contrib"
+	"github.com/suprbdev/pdbcore/introspect"
+
 	"github.com/suprbdev/pdbr/internal/api"
 	"github.com/suprbdev/pdbr/internal/compile"
 	"github.com/suprbdev/pdbr/internal/plan"
@@ -246,6 +249,20 @@ type parser struct {
 	// wantPartial is a honourable Prefer: partial=items; resolvePartial
 	// confirms it once the body is known to be an array.
 	wantPartial bool
+	// scores are the score pseudo-columns selected anywhere in the request
+	// (root, embeds, spreads), and vecFilters the vector distance
+	// thresholds filtered on: both measure against a reference parameter
+	// bound once the whole query is parsed.
+	scores     []*api.PseudoColumn
+	vecFilters []vecFilter
+}
+
+// vecFilter is a vector distance threshold (vec_cos_lt, ...) on Column,
+// checked against vec= once it is parsed.
+type vecFilter struct {
+	Column *introspect.Column
+	Op     contrib.Op
+	Name   string
 }
 
 func parseMethod(m string) (plan.Method, error) {

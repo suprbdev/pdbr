@@ -248,8 +248,12 @@ func TestContribVector(t *testing.T) {
 			t.Errorf("indexed_only=%v %s orders = %v, want %v", tc.indexedOnly, tc.col, got, tc.want)
 		}
 		if res.FilterColumns[tc.col] {
-			if got := b.FilterOps(res, c); !reflect.DeepEqual(got, []string{"is"}) {
-				t.Errorf("%s ops = %v, want [is]", tc.col, got)
+			want := []string{"is"}
+			if !tc.indexedOnly {
+				want = append(want, "vec_l2_lt", "vec_ip_lt", "vec_cos_lt", "vec_l1_lt")
+			}
+			if got := b.FilterOps(res, c); !reflect.DeepEqual(got, want) {
+				t.Errorf("indexed_only=%v %s ops = %v, want %v", tc.indexedOnly, tc.col, got, want)
 			}
 		}
 	}
@@ -263,10 +267,10 @@ func TestContribVector(t *testing.T) {
 		t.Error("kb.docs documents vec without a vector column")
 	}
 	order := paramByName(get.Parameters, "order").Description
-	if !strings.Contains(order, "emb.vec_l2, emb.vec_ip, emb.vec_cos, emb.vec_l1, half.vec_l2, half.vec_ip, half.vec_cos.") {
+	if !strings.Contains(order, "emb.vec_l2, emb.vec_ip, emb.vec_cos, emb.vec_l1, half.vec_l2, half.vec_ip, half.vec_cos, code.vec_hamming, code.vec_jaccard.") {
 		t.Errorf("order description: %s", order)
 	}
-	if !strings.Contains(order, "Orderable columns: id.") {
+	if !strings.Contains(order, "Orderable columns: id, code.") {
 		t.Errorf("order lists a vector column as plainly orderable: %s", order)
 	}
 

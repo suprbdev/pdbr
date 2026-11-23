@@ -182,15 +182,18 @@ func goldenBuilt(t testing.TB) *api.Built {
 	t.Helper()
 	b := api.New(goldenCatalog(), inflect.Default, api.Options{
 		FilterIndexedOnly: true,
-		AllowColumns:      map[string][]string{testcatalog.ContribSchema + ".docs": {"body", "attrs", "path"}},
-		Functions:         true,
-		BasePath:          goldenBasePath,
-		Schemas:           []string{"public", "audit", testcatalog.ContribSchema},
-		MaxPageSize:       100,
-		Etags:             true,
-		JWTType:           "public.jwt",
-		Version:           "test",
-		Logger:            slog.New(slog.NewTextHandler(io.Discard, nil)),
+		AllowColumns: map[string][]string{
+			testcatalog.ContribSchema + ".docs":       {"body", "attrs", "path"},
+			testcatalog.ContribSchema + ".embeddings": {"emb", "code"},
+		},
+		Functions:   true,
+		BasePath:    goldenBasePath,
+		Schemas:     []string{"public", "audit", testcatalog.ContribSchema},
+		MaxPageSize: 100,
+		Etags:       true,
+		JWTType:     "public.jwt",
+		Version:     "test",
+		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 	// The postgis plugin registers the <col>_<accessor> pseudo-columns the
 	// spatial_* goldens select; the parse gates themselves come from
