@@ -158,3 +158,52 @@ func TestIntegrityErrorsHideHiddenTables(t *testing.T) {
 		t.Errorf("visible unique violation lost its detail: %s", body)
 	}
 }
+
+func TestIntegrityErrorsHideConstraintsOverHiddenColumns(t *testing.T) {
+	dbURL := setupHidden(t)
+	m := hiddenSchema + ".members"
+	execDDL(t, dbURL,
+		`ALTER TABLE `+m+` ALTER COLUMN ssn SET DEFAULT 'zz'`,
+		`ALTER TABLE `+m+` ADD COLUMN code text, ADD COLUMN tag text`,
+		`ALTER TABLE `+m+` ADD CONSTRAINT members_name_not_ssn CHECK (name IS DISTINCT FROM ssn)`,
+		`ALTER TABLE `+m+` ADD CONSTRAINT members_name_short CHECK (length(name) < 20)`,
+		`CREATE UNIQUE INDEX members_code_ssn_expr ON `+m+` (lower(code), lower(ssn))`,
+		`CREATE UNIQUE INDEX members_tag_partial ON `+m+` (tag) WHERE ssn = 'zz'`,
+		`CREATE UNIQUE INDEX members_lower_name ON `+m+` (lower(name))`,
+	)
+	srv := testServer(t, hiddenMutate)
+	internal, public := srv.URL+"/api/internal", srv.URL+"/api/public"
+
+	for _, tc := range []struct {
+		setup, body, code, constraint string
+	}{
+		{"", `{"id":20,"name":"zz"}`, "pg:23514", "members_name_not_ssn"},
+		{`{"id":21,"name":"a","code":"b"}`, `{"id":22,"name":"c","code":"B"}`, "pg:23505", "members_code_ssn_expr"},
+		{`{"id":23,"name":"d","tag":"t"}`, `{"id":24,"name":"e","tag":"t"}`, "pg:23505", "members_tag_partial"},
+	} {
+		if tc.setup != "" {
+			sendJSON(t, "POST", public+"/members", tc.setup, 201, nil)
+		}
+		status := 400
+		if tc.code == "pg:23505" {
+			status = 409
+		}
+		res, body := send(t, "POST", public+"/members", tc.body, nil)
+		if p := wantProblem(t, res, body, status, tc.code); strings.Contains(string(body), tc.constraint) || strings.Contains(string(body), "ssn") {
+			t.Errorf("public %s = %+v", tc.constraint, p)
+		}
+		res, body = send(t, "POST", internal+"/members", tc.body, nil)
+		if p := wantProblem(t, res, body, status, tc.code); !strings.Contains(p.Detail, tc.constraint) {
+			t.Errorf("internal %s lost its detail: %s", tc.constraint, body)
+		}
+	}
+
+	res, body := send(t, "POST", public+"/members", `{"id":30,"name":"a long name that breaks the check"}`, nil)
+	if p := wantProblem(t, res, body, 400, "pg:23514"); !strings.Contains(p.Detail, "members_name_short") {
+		t.Errorf("visible check lost its detail: %s", body)
+	}
+	res, body = send(t, "POST", public+"/members", `{"id":31,"name":"ONE"}`, nil)
+	if p := wantProblem(t, res, body, 409, "pg:23505"); !strings.Contains(p.Detail, "members_lower_name") {
+		t.Errorf("visible expression index lost its detail: %s", body)
+	}
+}
