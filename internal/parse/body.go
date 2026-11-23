@@ -38,6 +38,9 @@ func (p *parser) parseBody(r *http.Request) error {
 		return nil
 	}
 	res := p.match.Resource
+	if err := p.checkColumnsParam(res); err != nil {
+		return err
+	}
 	raw, err := readBody(r)
 	if err != nil {
 		return err
@@ -98,6 +101,56 @@ func (p *parser) parseBody(r *http.Request) error {
 		return err
 	}
 	p.req.Body = body
+	return nil
+}
+
+// parseColumnsParam reads columns=a,b,c: the body keys a write uses.
+func (p *parser) parseColumnsParam(val string) error {
+	p.columns = map[string]bool{}
+	p.columnsOrder = nil
+	for _, name := range strings.Split(val, ",") {
+		name = strings.TrimSpace(strings.Trim(strings.TrimSpace(name), `"`))
+		if name == "" {
+			return errf(CodeInvalidBody, "columns must be a comma-separated list of column names")
+		}
+		if !p.columns[name] {
+			p.columns[name] = true
+			p.columnsOrder = append(p.columnsOrder, name)
+		}
+	}
+	return nil
+}
+
+// checkColumnsParam rejects names columns= lists that the write could never
+// accept: unknown keys, generated columns and (for the method) read-only ones.
+func (p *parser) checkColumnsParam(res *api.Resource) error {
+	if p.columns == nil {
+		return nil
+	}
+	writeAs := api.Method(p.method)
+	if p.method == plan.POST && p.req.Prefer.Resolution == plan.MergeDuplicates {
+		writeAs = api.MethodPut
+	}
+	inputCols := res.InputColumnsFor(writeAs)
+	var nestedKeys map[string]*api.Relation
+	if p.method == plan.POST && p.opts.NestedKeys != nil {
+		nestedKeys = p.opts.NestedKeys(res)
+	}
+	for _, key := range p.columnsOrder {
+		if _, ok := inputCols[key]; ok {
+			continue
+		}
+		if _, ok := res.InputColumns[key]; ok {
+			return errf(CodeInvalidBody, "columns: column %q of %q cannot be written by %s", key, resName(res), p.method)
+		}
+		if f := res.Field(key); f != nil && f.ReadOnly {
+			return errf(CodeColumnReadOnly, "columns: column %q of %q is generated and cannot be written", key, resName(res))
+		}
+		if nestedKeys[key] != nil {
+			continue
+		}
+		return errf(CodeInvalidBody, "columns: unknown column %q of %q", key, resName(res))
+	}
 	return nil
 }
 
@@ -168,6 +221,9 @@ func (p *parser) bodyObject(res *api.Resource, obj map[string]any, allowNested b
 	}
 	inputCols := res.InputColumnsFor(writeAs)
 	for _, key := range sortedKeys(obj) {
+		if p.columns != nil && !p.columns[key] {
+			continue
+		}
 		v := obj[key]
 		if col, ok := inputCols[key]; ok {
 			cv, err := p.coerceBody(col, v)

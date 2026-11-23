@@ -80,7 +80,9 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Aggregate functions in `select=` (PostgREST v12): `count()`, `col.count()`, `sum`, `avg`, `max`, `min`, aliases, input/output casts, implicit `GROUP BY` (columns, casts, JSON paths, computed fields, to-one spread items — spread grouping), aggregates inside to-many embeds and to-one spreads, `order=` on grouping columns, offset paging and group totals, CSV; `server.aggregates` (off → 400 `aggregates_disabled`) — see [aggregates.md](aggregates.md) (parity)
 - [x] Spatial aggregates `col.extent()`, `col.union()`, `col.collect()`, `col.centroid()` → GeoJSON (postgis plugin) (new)
 - [x] `Prefer` tokens `resolution=`, `missing=` on writes (new)
-- [ ] `Prefer: tx=commit|rollback`, `timezone=`; `columns=` query parameter (new)
+- [x] `Prefer: tx=commit|rollback` on writes, gated by `server.tx_end` (PostgREST `db-tx-end`: `commit`, `commit-allow-override`, `rollback`, `rollback-allow-override`); the rolled-back request still answers with its result (parity)
+- [x] `Prefer: timezone=<IANA name>` sets `timezone` for the request's transaction, validated against `pg_timezone_names` (cached); echoed in `Preference-Applied` (parity)
+- [x] `columns=` query parameter on `POST`/`PATCH`/`PUT`: only the listed body keys are used, others ignored; a listed key an element omits takes `DEFAULT`; bulk bodies may be heterogeneous (parity)
 
 ## Filtering & ordering
 
@@ -358,8 +360,16 @@ these are the deliberate departures (each documented in its topic page):
   without `resolution=` is `400 invalid_filter`.
 - **`missing=default` is a no-op**: pdbr always inserts `DEFAULT` for keys a
   bulk element omits; PostgREST inserts `NULL` unless asked.
-- **`Prefer: tx=` and `timezone=` are not supported**: ignored under
-  lenient handling, `400 invalid_preference` under `handling=strict`.
+- **`Prefer: tx=` is honoured on writes only** (resource `POST`/`PUT`/
+  `PATCH`/`DELETE` and volatile RPCs), and `server.tx_end: rollback*` rolls
+  back writes only; reads never need a rollback. PostgREST applies it to
+  every request.
+- **`Prefer: timezone=` is matched case-insensitively** against
+  `pg_timezone_names` and echoed with the canonical name; an unknown zone is
+  ignored, or `400 invalid_preference` under `handling=strict`.
+- **`columns=` lists missing keys as `DEFAULT`**, not `NULL`: a listed
+  column an element omits takes the column default (`missing=default` is
+  pdbr's only behaviour).
 - **Casts** (`select=col::type`, aggregate casts) take allowlisted
   built-in scalar types and the API's enums only, never the `reg*` types,
   pseudo-types or composites; PostgREST casts to any type.

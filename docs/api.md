@@ -471,6 +471,9 @@ drops the `text/csv` content and the `Accept` header parameter.
 | `Prefer: handling=strict` | unknown or malformed tokens → `400 invalid_preference` (default `handling=lenient` ignores them) |
 | `Prefer: handling=strict, max-affected=N` | `PATCH`/`DELETE` writing more than `N` rows → `400 max_affected_exceeded`, rolled back |
 | `Prefer: resolution=merge-duplicates\|ignore-duplicates` | `POST` upserts / skips conflicting rows on `?on_conflict=` or the PK ([mutations.md](mutations.md#post-with-prefer-resolution)) |
+| `Prefer: tx=commit\|rollback` | writes: commit or roll back (the result is still returned); needs `server.tx_end` `commit-allow-override` / `rollback-allow-override`, else ignored (`400` under `handling=strict`) |
+| `Prefer: timezone=<IANA name>` | the transaction runs with that `timezone` (validated against `pg_timezone_names`); unknown → ignored (`400` under `handling=strict`) |
+| `?columns=a,b` on `POST`/`PUT`/`PATCH` | only those body keys are used; others ignored, omitted ones take `DEFAULT` ([mutations.md](mutations.md#columns)) |
 | `Prefer: missing=default` | accepted on `POST`/`PUT`; omitted keys always take their default in pdbr |
 | `Range: <first>-<last>` / `<first>-` (+ `Range-Unit: items`) | list `GET`/`HEAD`: offset/limit as a header, intersected with `offset`/`limit`; `206` when a counted page is a strict subset of the total, `416` past it ([pagination.md](pagination.md#range-request-header)); ignored on writes |
 | `Prefer: count=exact\|planned\|estimated` | list `GET`/`HEAD`: total in `Content-Range` and `X-Total-Count` ([pagination.md](pagination.md#prefer-count-and-content-range)); bulk `PATCH`/`DELETE`: exact written-row total in `Content-Range` |

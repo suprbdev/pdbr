@@ -117,7 +117,7 @@ func TestPrefer(t *testing.T) {
 	if p, _ := patch("/api/users/1", "return=headers-only"); !p.Prefer.Minimal() {
 		t.Error("headers-only is not minimal")
 	}
-	for _, bad := range []string{"tx=commit", "return=nope", "max-affected=x", "max-affected=-2", "handling=maybe", "timezone=UTC"} {
+	for _, bad := range []string{"tx=commit", "return=nope", "max-affected=x", "max-affected=-2", "handling=maybe", "timezone="} {
 		_, err := patch("/api/users/1", "handling=strict, "+bad)
 		wantCode(t, err, CodeInvalidPreference)
 	}

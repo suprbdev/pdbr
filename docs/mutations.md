@@ -223,6 +223,8 @@ return=minimal, handling=strict, max-affected=10`).
 | `resolution=merge-duplicates\|ignore-duplicates` | `POST` | upsert / skip conflicting rows ([above](#post-with-prefer-resolution)) |
 | `missing=default` | `POST`, `PUT` | accepted and echoed; pdbr always defaults omitted keys |
 | `count=exact\|planned\|estimated` | bulk `PATCH`, `DELETE` | `Content-Range: 0-<n-1>/<n>` (the written-row count is always exact, so `Preference-Applied` says `count=exact`); lists: [pagination.md](pagination.md#prefer-count-and-content-range) |
+| `tx=commit\|rollback` | writes (incl. volatile RPCs) | only with `server.tx_end: commit-allow-override` or `rollback-allow-override`: the request runs in a transaction that is committed or rolled back; a rollback still answers with the normal result (status, body, `Location`) and writes nothing. Otherwise ignored, or `400 invalid_preference` under `handling=strict`. Echoed as `tx=<value>` |
+| `timezone=<name>` | any request | sets the transaction's `timezone` (`set_config('timezone', $1, true)`, bound) so `timestamptz` output and `now()` use it. Names are matched case-insensitively against `pg_timezone_names` (loaded once, cached); unknown → ignored, or `400 invalid_preference` under `handling=strict`. Echoed as `timezone=<canonical name>` |
 | `max-affected=N` | `PATCH`, `DELETE` (bulk and keyed) | with `handling=strict` only (ignored and not echoed under lenient handling, as in PostgREST): writing more than `N` rows → `400 max_affected_exceeded`, nothing written (PostgREST `PGRST124`). A keyed write counts as one row |
 
 `max-affected` keeps the single-statement invariant: the statement is
@@ -234,6 +236,27 @@ request carrying the cap always runs in a transaction, even with
 rejected: SQL has no `RAISE` outside PL/pgSQL, and the usual tricks
 (`1/0`, a failing cast in a `CASE`) surface as indistinguishable `22012` /
 `22P02` user errors.
+
+`tx=rollback` (or `server.tx_end: rollback`) is also a single-statement
+request: the batch is sent as `BEGIN`, the statement, and the transaction is
+rolled back once its result has been read (a second round trip, like
+`max-affected`). A statement that fails still answers with its error.
+
+A `timezone=` preference adds one constant statement,
+`SELECT set_config('timezone', $1, true)`, before the request's own in the
+same transaction batch.
+
+### `columns=`
+
+`POST`, `PUT` and `PATCH` (bulk and keyed) accept `?columns=a,b,c`, the body
+keys the write uses (response keys, comma-separated). Every other key in the
+body is ignored, even an unknown one. The written columns are the listed keys
+present in at least one element; an element that omits one takes the column
+`DEFAULT` (so heterogeneous bulk bodies work as before, and `columns=` also
+pins which keys of a wider payload reach the table). A listed key that is not
+a writable column is `400 invalid_body` (`column_readonly` for a generated
+one). The required-column, conflict-target and non-empty-`PATCH` rules apply
+to the filtered body. `columns=` is not reserved on `GET`, `DELETE` or RPCs.
 
 ## PUT — upsert
 
@@ -864,8 +887,6 @@ See [rls.md](rls.md) for the claim mechanism.
 - Nested update / delete / disconnect.
 - Savepoints (`SAVEPOINT` per nested CTE for partial success).
 - Writable views (`INSTEAD OF` triggers / auto-updatable views).
-- `Prefer: tx=` (rejected under `handling=strict`) and a `columns=` query
-  parameter.
 - `PUT` on single-row paths whose key is an identity `BY DEFAULT` column
   (needs a pdbcore catalog field).
 - `ETag` on mutation responses.

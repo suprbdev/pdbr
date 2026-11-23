@@ -88,6 +88,10 @@ type Options struct {
 	// false a PATCH or DELETE on a list route without a root filter is 400
 	// unfiltered_mutation.
 	AllowUnfilteredMutations bool
+	// TxEnd is server.tx_end: commit (default, "" too), commit-allow-override,
+	// rollback or rollback-allow-override. It decides whether a write's
+	// transaction is rolled back and whether Prefer: tx= is honoured.
+	TxEnd string
 	// RelationFilters enables rel.col=, rel!none., rel!every. and
 	// rel=exists. (advanced-filters plugin).
 	RelationFilters bool
@@ -223,6 +227,10 @@ type parser struct {
 	root *plan.Node
 	// rangeHdr is the Range request header of a GET/HEAD (readRange).
 	rangeHdr string
+	// columns is the columns= allowlist of a write (nil = every body key);
+	// columnsOrder keeps the names as written for validation messages.
+	columns      map[string]bool
+	columnsOrder []string
 }
 
 func parseMethod(m string) (plan.Method, error) {

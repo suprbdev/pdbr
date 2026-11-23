@@ -426,7 +426,12 @@ read_committed` (the default) the batch runs in PostgreSQL's implicit
 pipeline transaction at the server's `default_transaction_isolation`;
 `repeatable_read` / `serializable` wrap it in `BEGIN ISOLATION LEVEL …` /
 `COMMIT` in the same batch. A `Prefer: max-affected` write holds the
-`COMMIT` back until the affected-row check passed (a second round trip).
+`COMMIT` back until the affected-row check passed (a second round trip). A
+rolled-back write (`server.tx_end` / `Prefer: tx=rollback`) uses the same
+hold-back: the scan returns a sentinel error, `QueryTx` rolls back, and exec
+treats the sentinel as success. `Prefer: timezone=` queues
+`SELECT set_config('timezone', $1, true)` between the identity and the
+request statement.
 Any error → rollback. Serialization failure / deadlock (`40001` / `40P01`)
 → whole batch re-sent up to `transactions.max_retries` times, no backoff;
 still failing → 409.

@@ -653,6 +653,14 @@ type Prefer struct {
 	// MissingDefault reports missing=default (pdbr always inserts DEFAULT
 	// for keys absent from a bulk element, so it changes nothing).
 	MissingDefault bool
+	// Rollback reports that the request runs in a transaction that is rolled
+	// back instead of committed: the server.tx_end default or an honoured
+	// Prefer: tx=rollback. Only ever set on writes.
+	Rollback bool
+	// Timezone is the Prefer: timezone= value as written (surrounding quotes
+	// removed); "" when absent. The executor validates it against
+	// pg_timezone_names and applies it to the transaction.
+	Timezone string
 	// Applied lists the honoured preferences in canonical token=value form,
 	// in header order, for the Preference-Applied response header.
 	Applied []string
