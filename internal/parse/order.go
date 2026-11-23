@@ -19,7 +19,7 @@ func (p *parser) parseOrder(s string, res *api.Resource) ([]plan.OrderTerm, erro
 	if strings.TrimSpace(s) == "" {
 		return nil, errf(CodeInvalidFilter, "order must not be empty")
 	}
-	raws, ok := splitTop(s, ',')
+	raws, ok := splitTop(s)
 	if !ok {
 		return nil, errf(CodeInvalidFilter, "unbalanced parentheses in order %q", s)
 	}

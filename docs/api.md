@@ -259,11 +259,17 @@ GET /api/places?select=name,web:location(transform=3857),coarse:area(simplify=0.
 ```
 
 Computed columns come from stable/immutable functions whose first argument is
-the table's row type; set-returning ones become arrays. Extra scalar arguments
-are not yet supported — the `field(k=v)` grammar is reserved for them; currently
-parenthesised arguments are accepted only on spatial columns and their
-pseudo-columns (`transform=<srid>` → `ST_Transform`, `simplify=<tolerance>` →
-`ST_SimplifyPreserveTopology`; `postgis` plugin). Spatial values are GeoJSON
+the table's row type; set-returning ones become arrays. Extra arguments are
+passed as `field(k=v,…)`: `select=id,excerpt(max_chars=80)`, aliased
+`short:excerpt(max_chars=40)`. Values are bare text or double-quoted
+(`name="a,b"`), coerced by the argument's type and bound as parameters; an
+omitted argument takes its `DEFAULT`, an omitted argument without one → `400
+missing_argument`, an unknown name → `400 unknown_argument`, a bad value →
+`400 invalid_filter`. A `SETOF <table>` column takes its nested select after
+the arguments: `recent_posts(n=2,id,title)`. Parenthesised arguments on
+spatial columns and their pseudo-columns are `transform=<srid>` →
+`ST_Transform`, `simplify=<tolerance>` → `ST_SimplifyPreserveTopology`
+(`postgis` plugin). Spatial values are GeoJSON
 on output; GeoJSON or WKT/EWKT on input.
 
 ## RPC (functions)

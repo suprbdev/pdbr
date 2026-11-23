@@ -403,7 +403,7 @@ func parseList(s string) ([]string, *compile.UserError) {
 	if strings.TrimSpace(body) == "" {
 		return []string{}, nil
 	}
-	parts, ok := splitTop(body, ',')
+	parts, ok := splitTop(body)
 	if !ok {
 		return nil, errf(CodeInvalidFilter, "unbalanced list %q", s)
 	}

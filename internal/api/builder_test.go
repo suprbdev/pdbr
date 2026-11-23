@@ -191,13 +191,10 @@ func TestFixtureComputed(t *testing.T) {
 	users := b.ByPath["users"]
 	keys := sortedKeys(users.Computed)
 	if !reflect.DeepEqual(keys, []string{"post_count", "recent_posts", "tag_words"}) {
-		// users_recent_posts has an extra arg (n) -> skipped in v1.
-		if !reflect.DeepEqual(keys, []string{"post_count", "tag_words"}) {
-			t.Errorf("computed keys = %v", keys)
-		}
+		t.Errorf("computed keys = %v", keys)
 	}
-	if _, ok := users.Computed["recent_posts"]; ok {
-		t.Error("computed column with extra args should be skipped in v1")
+	if c := users.Computed["recent_posts"]; c == nil || len(c.Args) != 1 || c.Args[0].Name != "n" || c.SetOf == nil {
+		t.Errorf("recent_posts = %+v", c)
 	}
 	if c := users.Computed["post_count"]; c == nil || c.Function.Name != "users_post_count" || c.SetOf != nil {
 		t.Errorf("post_count = %+v", c)
@@ -205,8 +202,9 @@ func TestFixtureComputed(t *testing.T) {
 	if c := users.Computed["tag_words"]; c == nil || !c.Function.ReturnsSet {
 		t.Errorf("tag_words = %+v", c)
 	}
-	if _, ok := b.ByPath["posts"].Computed["excerpt"]; ok {
-		t.Error("posts_excerpt has extra args; should be skipped")
+	c := b.ByPath["posts"].Computed["excerpt"]
+	if c == nil || len(c.Args) != 1 || c.Args[0].Name != "max_chars" || c.Filterable || c.Orderable {
+		t.Errorf("excerpt = %+v (required argument: select-only)", c)
 	}
 }
 

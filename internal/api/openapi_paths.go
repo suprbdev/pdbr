@@ -392,7 +392,11 @@ func (b *Builder) selectParam(r *Resource, lead string) *Parameter {
 	sb.WriteString(" Comma list of items; item = column | alias:column | embed | *. Columns: ")
 	sb.WriteString(strings.Join(fieldKeys(r.Columns), ", "))
 	if len(r.Computed) > 0 {
-		sb.WriteString(". Computed (select explicitly): " + strings.Join(sortedKeys(r.Computed), ", "))
+		keys := sortedKeys(r.Computed)
+		for i, k := range keys {
+			keys[i] = k + computedArgSyntax(r.Computed[k])
+		}
+		sb.WriteString(". Computed (select explicitly): " + strings.Join(keys, ", "))
 	}
 	if len(r.Pseudo) > 0 {
 		sb.WriteString(". Derived (postgis, select explicitly): " + strings.Join(sortedKeys(r.Pseudo), ", "))

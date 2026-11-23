@@ -507,7 +507,10 @@ func (b *Builder) resourceSchema(r *Resource) *Schema {
 		}
 		cp := *p
 		cp.ReadOnly = true
-		cp.Description = "Computed (" + f.Schema + "." + f.Name + "). Select explicitly: select=" + key + "."
+		cp.Description = "Computed (" + f.Schema + "." + f.Name + "). Select explicitly: select=" + key + computedArgSyntax(c) + "."
+		if len(c.Args) > 0 {
+			cp.Description += " Arguments: " + computedArgDocs(c) + "."
+		}
 		if c.Description != "" {
 			cp.Description = c.Description + " " + cp.Description
 		}
@@ -758,4 +761,34 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// computedArgSyntax renders the select= call form of c: "" without extra
+// arguments, "(k=<type>,...)" otherwise.
+func computedArgSyntax(c *Computed) string {
+	if len(c.Args) == 0 {
+		return ""
+	}
+	parts := make([]string, len(c.Args))
+	for i, a := range c.Args {
+		parts[i] = a.Name + "=<" + strings.TrimPrefix(a.PGType, "_") + ">"
+	}
+	return "(" + strings.Join(parts, ",") + ")"
+}
+
+// computedArgDocs lists c's extra arguments with their type and whether
+// they are required or defaulted.
+func computedArgDocs(c *Computed) string {
+	parts := make([]string, len(c.Args))
+	for i, a := range c.Args {
+		parts[i] = a.Name + " (" + a.PGType + ", required)"
+		if a.HasDefault {
+			parts[i] = a.Name + " (" + a.PGType + ", optional"
+			if a.Default != "" {
+				parts[i] += ", default " + a.Default
+			}
+			parts[i] += ")"
+		}
+	}
+	return strings.Join(parts, ", ")
 }
