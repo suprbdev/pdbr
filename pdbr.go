@@ -202,6 +202,7 @@ func (a *App) BuildAPI(ctx context.Context, cat *introspect.Catalog) (*api.Built
 		MaxPageSize:       a.Config.Server.MaxPageSize,
 		Etags:             a.Config.Server.Etags,
 		CSV:               a.Config.Server.CSV,
+		Aggregates:        a.Config.Server.Aggregates,
 		JWTType:           a.Config.RLS.Auth.JWTType,
 		AuthMode:          a.authMode(),
 		Version:           a.Version,
@@ -250,6 +251,7 @@ func (a *App) routeHandler(built *api.Built) *server.Handler {
 	})
 	opts := server.ParseOptions(built, a.Config.Server.MaxEmbedDepth, a.Config.Server.MaxPageSize, a.Config.Server.Etags, a.Config.Server.CSV)
 	opts.AllowUnfilteredMutations = a.Config.Server.AllowUnfilteredMutations
+	opts.Aggregates = a.Config.Server.Aggregates
 	return server.NewHandler(built, ex, opts, a.Config.Server.BasePath, a.Log)
 }
 

@@ -1177,3 +1177,56 @@ func TestComputedSetOf(t *testing.T) {
 		t.Errorf("setof scalar computed:\n%s", stmt.SQL)
 	}
 }
+
+func TestAggregateCost(t *testing.T) {
+	f := newFixture(t)
+	users := f.res("users")
+	posts := f.res("posts")
+	count := plan.FieldSel{Agg: &plan.Aggregate{Func: plan.AggCount}}
+	root := list(posts)
+	root.Page = plan.Page{Limit: 5, LimitSet: true}
+	root.Select = &plan.Node{Resource: posts, Fields: []plan.FieldSel{{Column: f.col("posts", "author_id")}, count}}
+	if got := compile.Cost(root, 100); got != 1+100*2 {
+		t.Errorf("aggregated root cost = %d, want %d (limit does not bound the scan)", got, 1+100*2)
+	}
+	p := list(users)
+	p.Page = plan.Page{Limit: 10, LimitSet: true}
+	p.Select = &plan.Node{Resource: users, Fields: []plan.FieldSel{{Column: f.col("users", "id")}}, Embeds: []plan.Embed{{
+		Key: "posts", Relation: f.rel("users", "posts", ""), Page: plan.Page{Limit: 2, LimitSet: true},
+		Node: &plan.Node{Resource: posts, Fields: []plan.FieldSel{count}},
+	}}}
+	if got := compile.Cost(p, 100); got != 1+10*(1+1+10*1) {
+		t.Errorf("aggregated embed cost = %d, want %d", got, 1+10*(1+1+10*1))
+	}
+	root.Count = true
+	if got := compile.Cost(root, 100); got != 1+100*2+100*1 {
+		t.Errorf("aggregated root with total cost = %d, want %d (the group count scans again)", got, 1+100*2+100*1)
+	}
+	if compile.CountPlannable(root) {
+		t.Error("an aggregated list total counts groups; it is never plannable")
+	}
+}
+
+func TestAggregateOrderGuard(t *testing.T) {
+	f := newFixture(t)
+	posts := f.res("posts")
+	p := list(posts)
+	p.Select = &plan.Node{Resource: posts, Fields: []plan.FieldSel{{Column: f.col("posts", "author_id")}, {Agg: &plan.Aggregate{Func: plan.AggCount}}}}
+	p.Order = []plan.OrderTerm{{Column: f.col("posts", "id")}}
+	_, err := f.c.Compile(context.Background(), &compile.Request{Plan: p, Built: f.built})
+	var ue *compile.UserError
+	if !errors.As(err, &ue) || ue.Code != compile.CodeColumnNotOrderable {
+		t.Fatalf("err = %v, want column_not_orderable", err)
+	}
+	row := &plan.Request{Method: plan.GET, Resource: posts, Key: &plan.Key{Constraint: posts.Table.PrimaryKey, Values: []any{int64(1)}}, Select: p.Select}
+	_, err = f.c.Compile(context.Background(), &compile.Request{Plan: row, Built: f.built})
+	if !errors.As(err, &ue) || ue.Code != compile.CodeInvalidSelect {
+		t.Fatalf("row err = %v, want invalid_select", err)
+	}
+	p.Order = nil
+	p.Page.After = []any{int64(1)}
+	_, err = f.c.Compile(context.Background(), &compile.Request{Plan: p, Built: f.built})
+	if !errors.As(err, &ue) || ue.Code != compile.CodeKeysetUnsupported {
+		t.Fatalf("err = %v, want keyset_unsupported", err)
+	}
+}

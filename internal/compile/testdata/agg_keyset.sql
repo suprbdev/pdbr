@@ -1,0 +1,2 @@
+-- request: GET /api/posts?select=author_id,count()&after=WyJwdWJsaWMucG9zdHMiLDdd
+-- error: 400 keyset_unsupported: after/before cannot be combined with aggregate functions; page grouped results with limit/offset

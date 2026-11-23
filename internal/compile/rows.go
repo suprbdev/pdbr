@@ -43,6 +43,9 @@ func (s *stmt) rowJSON(node *plan.Node, alias string, depth int) (string, []stri
 	}
 	for i := range node.Fields {
 		f := &node.Fields[i]
+		if f.Agg != nil {
+			return "", nil, errUser(CodeInvalidSelect, "aggregate functions are only valid on list reads and in to-many embeds")
+		}
 		key, expr, err := s.fieldJSON(r, f, alias, depth)
 		if err != nil {
 			return "", nil, err
@@ -430,6 +433,9 @@ func (s *stmt) manyEmbed(e *plan.Embed, parentAlias string, depth int) (string, 
 // LIMIT/OFFSET` for an embedded list. corr, when set, renders the condition
 // correlating the subquery to a parent row given the child alias.
 func (s *stmt) listInner(node *plan.Node, filter plan.Expr, order []plan.OrderTerm, page plan.Page, corr func(childAlias string) string, depth int) (string, error) {
+	if node.Aggregated() {
+		return s.aggListInner(node, filter, order, page, corr, depth)
+	}
 	t := node.Resource.Table
 	alias := s.alias("t")
 	jsonExpr, laterals, err := s.rowJSON(node, alias, depth)

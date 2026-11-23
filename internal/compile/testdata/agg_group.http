@@ -1,0 +1,1 @@
+GET /api/posts?select=author_id,count(),id.max()&order=author_id.desc&limit=2

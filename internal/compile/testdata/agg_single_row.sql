@@ -1,0 +1,2 @@
+-- request: GET /api/users/1?select=count()
+-- error: 400 invalid_select: aggregate functions need a collection: a single-row path returns one row

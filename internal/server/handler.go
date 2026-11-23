@@ -44,6 +44,7 @@ func ParseOptions(built *api.Built, maxEmbedDepth, maxPageSize int, etags, csv b
 		SpatialFilters:    built.Surface.SpatialFilters,
 		SpatialOrder:      built.Surface.SpatialOrder,
 		SpatialProjection: built.Surface.SpatialProjection,
+		SpatialAggregates: built.Surface.SpatialAggregates,
 		NestedKeys:        built.Surface.NestedKeys,
 	}
 }

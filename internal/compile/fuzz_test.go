@@ -17,7 +17,8 @@ import (
 // appear in the SQL text, only in the parameter list — any two value sets
 // produce byte-identical SQL and the same parameter count. The second
 // statement covers the pdbcore/contrib operators and order terms over the
-// golden-only kb.docs table.
+// golden-only kb.docs table, the last two an aggregated root (grouped scan,
+// group count, casts) and an aggregated embed.
 func FuzzFilter(f *testing.F) {
 	fx := newFixture(f)
 	cfx := &fixture{t: f, built: goldenBuilt(f)}
@@ -107,8 +108,54 @@ func FuzzFilter(f *testing.F) {
 		}
 		return stmt
 	}
+	compileAgg := func(t testing.TB, e, tag string, n int64) *compile.Statement {
+		t.Helper()
+		pg := func(name string) *plan.TypeRef { return &plan.TypeRef{Schema: "pg_catalog", Name: name} }
+		p := list(users)
+		p.Select = &plan.Node{Resource: users, Fields: []plan.FieldSel{
+			{Column: mood},
+			{Computed: fx.computed("users", "post_count")},
+			{Agg: &plan.Aggregate{Func: plan.AggCount}},
+			{Alias: "total", Column: fx.col("users", "balance"), Agg: &plan.Aggregate{Func: plan.AggSum, OutputCast: pg("text")}},
+			{Column: id, Agg: &plan.Aggregate{Func: plan.AggAvg, InputCast: pg("float8")}},
+		}}
+		p.Filter = plan.And{Terms: []plan.Expr{
+			cond(email, plan.OpSw, e),
+			plan.Or{Terms: []plan.Expr{cond(id, plan.OpGt, n), cond(mood, plan.OpIn, []any{e, tag})}},
+		}}
+		p.Order = []plan.OrderTerm{{Column: mood, Desc: true}}
+		p.Page = plan.Page{Limit: 10, Offset: 2}
+		p.Count = true
+		stmt, err := fx.c.Compile(context.Background(), &compile.Request{Plan: p, Built: fx.built})
+		if err != nil {
+			t.Fatalf("aggregate compile error on valid input: %v", err)
+		}
+		return stmt
+	}
+	compileAggEmbed := func(t testing.TB, e, tag string, n int64) *compile.Statement {
+		t.Helper()
+		posts := fx.res("posts")
+		p := list(users)
+		p.Select = &plan.Node{Resource: users, Fields: []plan.FieldSel{{Column: id}}, Embeds: []plan.Embed{{
+			Key: "posts", Relation: fx.rel("users", "posts", ""), Page: plan.Page{Limit: 3, Offset: 1},
+			Node: &plan.Node{Resource: posts, Fields: []plan.FieldSel{
+				{Column: fx.col("posts", "published")},
+				{Column: fx.col("posts", "id"), Agg: &plan.Aggregate{Func: plan.AggMax}},
+			}},
+			Filter: plan.Or{Terms: []plan.Expr{cond(fx.col("posts", "title"), plan.OpILike, e), cond(fx.col("posts", "id"), plan.OpLt, n)}},
+			Order:  []plan.OrderTerm{{Column: fx.col("posts", "published"), Desc: true}},
+		}}}
+		p.Filter = cond(email, plan.OpEw, tag)
+		stmt, err := fx.c.Compile(context.Background(), &compile.Request{Plan: p, Built: fx.built})
+		if err != nil {
+			t.Fatalf("aggregate embed compile error on valid input: %v", err)
+		}
+		return stmt
+	}
 	baseline := compileWith(f, "a@example.com", "admin", 5)
 	contribBaseline := compileContrib(f, "a@example.com", "admin", 5)
+	aggBaseline := compileAgg(f, "a@example.com", "admin", 5)
+	aggEmbedBaseline := compileAggEmbed(f, "a@example.com", "admin", 5)
 
 	f.Add("a@example.com", "admin", int64(5))
 	f.Add(`'; DROP TABLE users; --`, `"]}`, int64(-1))
@@ -120,6 +167,8 @@ func FuzzFilter(f *testing.F) {
 		for _, c := range []struct{ stmt, baseline *compile.Statement }{
 			{compileWith(t, e, tag, n), baseline},
 			{compileContrib(t, e, tag, n), contribBaseline},
+			{compileAgg(t, e, tag, n), aggBaseline},
+			{compileAggEmbed(t, e, tag, n), aggEmbedBaseline},
 		} {
 			if c.stmt.SQL != c.baseline.SQL {
 				t.Fatalf("SQL text varied with input values:\n--- baseline ---\n%s\n--- got ---\n%s", c.baseline.SQL, c.stmt.SQL)

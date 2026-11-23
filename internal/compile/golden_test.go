@@ -39,6 +39,7 @@ const goldenBasePath = "/api"
 var goldenParseOptions = parse.Options{
 	MaxEmbedDepth: 5, MaxPageSize: 100, Etags: true, CSV: true,
 	RelationFilters: true, ComputedFilters: true, RelationOrder: true, ComputedOrder: true, Spatial: true,
+	Aggregates: true, SpatialAggregates: true,
 	NestedKeys: nestedmutations.NestedKeys,
 }
 

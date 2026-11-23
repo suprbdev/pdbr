@@ -1,0 +1,13 @@
+-- request: GET /api/places?select=owner_id,location.extent(),location.union(),location.collect(),location.centroid(),bbox:area.extent(),n:location.count()
+SELECT jsonb_build_object('rows', coalesce(jsonb_agg(s2.data ORDER BY s2.__rn ASC) FILTER (WHERE s2.__rn <= $2), '[]'::jsonb), 'has_next', coalesce(bool_or(s2.__rn > $2), false), 'has_prev', false) AS data
+FROM (
+  SELECT jsonb_build_object('owner_id', g1."__k0", 'extent', ST_AsGeoJSON(g1."__a0")::jsonb, 'union', ST_AsGeoJSON(g1."__a1")::jsonb, 'collect', ST_AsGeoJSON(g1."__a2")::jsonb, 'centroid', ST_AsGeoJSON(g1."__a3")::jsonb, 'bbox', ST_AsGeoJSON(g1."__a4")::jsonb, 'n', to_jsonb(g1."__a5")) AS data, row_number() OVER (ORDER BY g1."__k0" ASC) AS __rn
+  FROM (
+    SELECT t0."owner_id" AS __k0, ST_SetSRID(ST_Extent(t0."location")::geometry, 4326) AS __a0, ST_Union(t0."location") AS __a1, ST_Collect(t0."location") AS __a2, ST_Centroid(ST_Collect(t0."location")) AS __a3, ST_SetSRID(ST_Extent(t0."area"::geometry)::geometry, 4326) AS __a4, count(t0."location") AS __a5
+    FROM "public"."places" t0
+    GROUP BY 1
+  ) g1
+  ORDER BY g1."__k0" ASC
+  LIMIT $1
+) s2
+-- args: [101,100]

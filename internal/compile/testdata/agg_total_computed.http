@@ -1,0 +1,2 @@
+GET /api/users?select=mood,post_count,count()&limit=2
+Prefer: count=exact

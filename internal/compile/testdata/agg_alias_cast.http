@@ -1,0 +1,1 @@
+GET /api/users?select=mood,total:balance.sum(),mean:id::float8.avg(),newest:created_at.max()::text,id.min()&mood=in.(happy,ok)

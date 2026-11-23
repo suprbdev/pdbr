@@ -1,0 +1,1 @@
+GET /api/rpc/search_posts?term=o&select=author_id,count()&order=author_id

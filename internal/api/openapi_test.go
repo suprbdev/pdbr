@@ -118,6 +118,36 @@ func TestOpenAPICSVOption(t *testing.T) {
 	}
 }
 
+func TestOpenAPIAggregatesOption(t *testing.T) {
+	opts := defaultOptions()
+	opts.Aggregates = true
+	b := New(testutil.FixtureCatalog(), nil, opts)
+	b.Surface.SpatialAggregates = true
+	built, err := b.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := built.OpenAPI
+	sel := func(op *Operation) string { return paramByName(op.Parameters, "select").Description }
+	if d := sel(doc.Paths["/posts"].Get); !strings.Contains(d, "<col>.sum()") || !strings.Contains(d, "count()") || strings.Contains(d, "extent()") {
+		t.Errorf("posts select = %q", d)
+	}
+	if d := sel(doc.Paths["/places"].Get); !strings.Contains(d, "<col>.extent()") {
+		t.Errorf("places select lacks spatial aggregates: %q", d)
+	}
+	if d := sel(doc.Paths["/rpc/search_posts"].Get); !strings.Contains(d, "<col>.sum()") {
+		t.Errorf("SETOF rpc select = %q", d)
+	}
+	for name, op := range map[string]*Operation{"row get": doc.Paths["/posts/{id}"].Get, "post": doc.Paths["/posts"].Post} {
+		if strings.Contains(sel(op), "Aggregate") {
+			t.Errorf("%s documents aggregates", name)
+		}
+	}
+	if strings.Contains(sel(fixture(t).OpenAPI.Paths["/posts"].Get), "Aggregate") {
+		t.Error("aggregates documented without Options.Aggregates")
+	}
+}
+
 func TestOpenAPIInputSchemas(t *testing.T) {
 	s := fixture(t).OpenAPI.Components.Schemas
 	ins := s["posts.insert"]

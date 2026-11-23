@@ -59,6 +59,7 @@ const (
 	CodeUnfilteredMutation   = "unfiltered_mutation"
 	CodeIfMatchUnsupported   = "if_match_unsupported"
 	CodeTemporalConflict     = compile.CodeTemporalConflict
+	CodeAggregatesDisabled   = "aggregates_disabled"
 )
 
 // Options tune the parser; zero values fall back to the documented defaults
@@ -73,6 +74,15 @@ type Options struct {
 	Etags bool
 	// CSV is server.csv; when false Accept: text/csv is never satisfiable.
 	CSV bool
+	// Aggregates is server.aggregates: aggregate functions in select=
+	// (count(), col.sum(), ...). When false any aggregate is 400
+	// aggregates_disabled.
+	Aggregates bool
+	// SpatialAggregates enables the spatial aggregate functions
+	// (col.extent(), col.union(), col.collect(), col.centroid()) on
+	// geometry and geography columns (postgis plugin); they also need
+	// Aggregates.
+	SpatialAggregates bool
 	// AllowUnfilteredMutations is server.allow_unfiltered_mutations: when
 	// false a PATCH or DELETE on a list route without a root filter is 400
 	// unfiltered_mutation.

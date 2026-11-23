@@ -78,10 +78,10 @@ func TestSettings(t *testing.T) {
 	}
 }
 
-type spatialSurface struct{ all, filters, order, projection bool }
+type spatialSurface struct{ all, filters, order, projection, aggregates bool }
 
 func surfaceOf(s api.Surface) spatialSurface {
-	return spatialSurface{s.Spatial, s.SpatialFilters, s.SpatialOrder, s.SpatialProjection}
+	return spatialSurface{s.Spatial, s.SpatialFilters, s.SpatialOrder, s.SpatialProjection, s.SpatialAggregates}
 }
 
 func TestSurfaceMatrix(t *testing.T) {
@@ -89,11 +89,12 @@ func TestSurfaceMatrix(t *testing.T) {
 		settings map[string]any
 		want     spatialSurface
 	}{
-		{nil, spatialSurface{true, true, true, true}},
-		{map[string]any{"filters": false}, spatialSurface{false, false, true, true}},
-		{map[string]any{"ordering": false}, spatialSurface{false, true, false, true}},
-		{map[string]any{"projection": false}, spatialSurface{false, true, true, false}},
-		{map[string]any{"derived": false}, spatialSurface{true, true, true, true}},
+		{nil, spatialSurface{true, true, true, true, true}},
+		{map[string]any{"filters": false}, spatialSurface{false, false, true, true, true}},
+		{map[string]any{"ordering": false}, spatialSurface{false, true, false, true, true}},
+		{map[string]any{"projection": false}, spatialSurface{false, true, true, false, true}},
+		{map[string]any{"derived": false}, spatialSurface{true, true, true, true, true}},
+		{map[string]any{"aggregates": false}, spatialSurface{true, true, true, true, false}},
 	}
 	for _, tc := range cases {
 		_, built := build(t, testutil.FixtureCatalog(), New(tc.settings))

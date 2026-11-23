@@ -19,7 +19,8 @@ const ContentTypeCSV = "text/csv; charset=utf-8"
 // `*` expands to the resource's columns in catalog order (explicit items
 // follow, unaliased duplicates dropped, exactly like the compiled projection),
 // composite sets take the type's attributes, scalar sets a single "value"
-// column. It never returns nil.
+// column, aggregate functions their alias or function name. It never
+// returns nil.
 func csvColumns(op *exec.Operation) []string {
 	var res *api.Resource
 	var node *plan.Node
@@ -62,21 +63,8 @@ func csvColumns(op *exec.Operation) []string {
 	}
 	for i := range node.Fields {
 		f := &node.Fields[i]
-		key := f.Alias
-		if key == "" {
-			switch {
-			case f.Column != nil:
-				key = f.Column.Name
-				if fld := res.FieldByColumn(f.Column.Name); fld != nil {
-					key = fld.Key
-				}
-			case f.Computed != nil:
-				key = f.Computed.Key
-			case f.Pseudo != nil:
-				key = f.Pseudo.Key
-			}
-		}
-		if node.Star && f.Alias == "" && f.Column != nil && seen[key] {
+		key := f.Key(res)
+		if node.Star && f.Alias == "" && f.Column != nil && f.Agg == nil && seen[key] {
 			continue
 		}
 		add(key)

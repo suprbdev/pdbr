@@ -185,7 +185,10 @@ func (p *parser) parseQueryWith(raw string, res *api.Resource, extra func(key, v
 	if p.req.Page.Limit == 0 {
 		p.req.Page.Limit = p.opts.maxPageSize()
 	}
-	return p.checkPaging(res)
+	if err := p.checkPaging(res); err != nil {
+		return err
+	}
+	return p.checkAggregates()
 }
 
 // parseListParam handles order/limit/offset/after/before/count/distinct.

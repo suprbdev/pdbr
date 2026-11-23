@@ -15,7 +15,13 @@ const defaultEmbedFanout = 10
 //	mult(list)   = explicit limit clamped to maxPageSize, else 10 (backward embed)
 //	               / the effective limit (root list)
 //	mult(other)  = 1 (columns, forward embeds, single rows)
-//	cost(column) = 1; `*` costs the number of columns it expands to
+//	cost(column) = 1; `*` costs the number of columns it expands to; an
+//	               aggregate function costs 1 like a column
+//
+// An aggregated list (a node selecting an aggregate function) is costed as
+// if it had no limit: limit bounds the groups it returns, not the rows the
+// aggregate reads (root: maxPageSize, embed: 10). A total on an aggregated
+// root scans again: it adds maxPageSize × its grouping keys.
 //
 // @costMultiplier on an FK replaces a backward embed's multiplier when lower.
 // exec compares the result to server.max_cost before compiling.
@@ -41,11 +47,29 @@ func Cost(req *plan.Request, maxPageSize int) int {
 	mult := 1
 	if req.Key == nil && (req.RPC == nil || req.RPC.Returns == api.ReturnSetOfRows) {
 		mult = req.Page.Limit
-		if mult <= 0 || mult > maxPageSize {
+		if mult <= 0 || mult > maxPageSize || node.Aggregated() {
 			mult = maxPageSize
 		}
 	}
-	return 1 + mult*nodeCost(node, maxPageSize)
+	cost := 1 + mult*nodeCost(node, maxPageSize)
+	if req.Count && node.Aggregated() {
+		cost += maxPageSize * groupKeys(node)
+	}
+	return cost
+}
+
+// groupKeys counts the grouping keys of an aggregated node.
+func groupKeys(node *plan.Node) int {
+	n := 0
+	if node.Star && node.Resource != nil {
+		n = len(node.Resource.Columns)
+	}
+	for i := range node.Fields {
+		if node.Fields[i].Agg == nil {
+			n++
+		}
+	}
+	return n
 }
 
 func nodeCost(node *plan.Node, maxPageSize int) int {
@@ -72,7 +96,7 @@ func nodeCost(node *plan.Node, maxPageSize int) int {
 		mult := 1
 		if e.Relation != nil && e.Relation.ToMany() {
 			mult = defaultEmbedFanout
-			if e.Page.LimitSet && e.Page.Limit > 0 {
+			if e.Page.LimitSet && e.Page.Limit > 0 && !child.Aggregated() {
 				mult = min(e.Page.Limit, maxPageSize)
 			}
 			if cm := e.Relation.CostMultiplier; cm > 0 && cm < mult {

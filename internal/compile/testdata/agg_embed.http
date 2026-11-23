@@ -1,0 +1,1 @@
+GET /api/users?select=id,email,posts(author_id,count(),id.avg())&posts.order=author_id.desc&posts.limit=5&limit=10

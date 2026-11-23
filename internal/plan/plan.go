@@ -112,6 +112,117 @@ type FieldSel struct {
 	// Node is the nested select= of a SETOF <table> computed column
 	// (Computed.SetOf != nil); nil means "*".
 	Node *Node
+	// Agg is set for an aggregate function item (server.aggregates):
+	// Column is its input column, nil for count() over whole rows.
+	Agg *Aggregate
+}
+
+// Key is the response key of the selected field on res: its alias, else
+// the field key of its column, computed column or pseudo-column, else the
+// aggregate function name (amount.sum() answers as "sum", count() as
+// "count").
+func (f *FieldSel) Key(res *api.Resource) string {
+	if f.Alias != "" {
+		return f.Alias
+	}
+	switch {
+	case f.Agg != nil:
+		return string(f.Agg.Func)
+	case f.Column != nil:
+		if res != nil {
+			if fld := res.FieldByColumn(f.Column.Name); fld != nil {
+				return fld.Key
+			}
+		}
+		return f.Column.Name
+	case f.Computed != nil:
+		return f.Computed.Key
+	case f.Pseudo != nil:
+		return f.Pseudo.Key
+	}
+	return ""
+}
+
+// AggFunc names an aggregate function of select= (col.sum(), count(), ...).
+type AggFunc string
+
+// The PostgREST aggregate functions, plus the pdbr spatial extensions over
+// geometry and geography columns (GeoJSON results).
+const (
+	AggCount AggFunc = "count"
+	AggSum   AggFunc = "sum"
+	AggAvg   AggFunc = "avg"
+	AggMax   AggFunc = "max"
+	AggMin   AggFunc = "min"
+
+	AggExtent   AggFunc = "extent"
+	AggUnion    AggFunc = "union"
+	AggCollect  AggFunc = "collect"
+	AggCentroid AggFunc = "centroid"
+)
+
+// Spatial reports whether f is one of the spatial extensions.
+func (f AggFunc) Spatial() bool {
+	switch f {
+	case AggExtent, AggUnion, AggCollect, AggCentroid:
+		return true
+	}
+	return false
+}
+
+// Aggregate is an aggregate function call in a select= item. Every other
+// item of a node holding one is a grouping key (implicit GROUP BY).
+type Aggregate struct {
+	Func AggFunc
+	// InputCast is the type the input column is cast to before
+	// aggregating (amount::int.sum()); OutputCast the type the result is
+	// cast to (amount.sum()::text). The parser admits only allowlisted
+	// built-in types and the catalog's enums (nil = no cast).
+	InputCast  *TypeRef
+	OutputCast *TypeRef
+}
+
+// TypeRef names a type by schema and pg_type name; the compiler renders it
+// schema-qualified and quoted ("pg_catalog"."int4").
+type TypeRef struct {
+	Schema string
+	Name   string
+}
+
+// Aggregated reports whether the node selects any aggregate function, which
+// makes the node's other items its grouping keys.
+func (n *Node) Aggregated() bool {
+	if n == nil {
+		return false
+	}
+	for i := range n.Fields {
+		if n.Fields[i].Agg != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// Aggregates reports whether the node or any node below it (embeds, SETOF
+// computed selections) selects an aggregate function.
+func (n *Node) Aggregates() bool {
+	if n == nil {
+		return false
+	}
+	if n.Aggregated() {
+		return true
+	}
+	for i := range n.Fields {
+		if n.Fields[i].Node.Aggregates() {
+			return true
+		}
+	}
+	for i := range n.Embeds {
+		if n.Embeds[i].Node.Aggregates() {
+			return true
+		}
+	}
+	return false
 }
 
 // Embed is one embedded relation.

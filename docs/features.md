@@ -74,7 +74,8 @@ Checklist of PostgreSQL and REST features pdbr supports. **As built (v0.1.0): ev
 - [x] Single-row weak `ETag: W/"<md5>"` computed in SQL over all columns; `If-None-Match` → `304`; `server.etags` toggle (v1) (new)
 - [x] `Accept: text/csv` on lists and set-returning RPCs → RFC 4180 CSV, header row, arrays/json/composites as JSON text, NULL → empty; embeds → `406`; `server.csv` toggle (v1) (new)
 - [x] `Prefer: return=representation|minimal|headers-only` (v1) (new)
-- [ ] Aggregate endpoints (count/sum/avg on lists) — stretch (parity)
+- [x] Aggregate functions in `select=` (PostgREST v12): `count()`, `col.count()`, `sum`, `avg`, `max`, `min`, aliases, input/output casts, implicit `GROUP BY` (columns and computed fields), aggregates inside to-many embeds, `order=` on grouping columns, offset paging and group totals, CSV; `server.aggregates` (off → 400 `aggregates_disabled`) — see [aggregates.md](aggregates.md) (v1.x) (parity)
+- [x] Spatial aggregates `col.extent()`, `col.union()`, `col.collect()`, `col.centroid()` → GeoJSON (postgis plugin) (v1.x) (new)
 - [x] `Prefer` tokens `resolution=`, `missing=` on writes (v1.x) (new)
 - [ ] `Prefer: tx=commit|rollback`, `timezone=`; `columns=` query parameter (v1.x) (new)
 

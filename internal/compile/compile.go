@@ -339,6 +339,9 @@ func (s *stmt) list() (*Statement, error) {
 	r := s.plan.Resource
 	t := r.Table
 	node := s.rootNode()
+	if node.Aggregated() {
+		return s.aggList(node)
+	}
 	pp, err := s.planPage(r, s.plan.Page)
 	if err != nil {
 		return nil, err
@@ -417,6 +420,14 @@ func (s *stmt) list() (*Statement, error) {
 		inner = fmt.Sprintf("SELECT %s.*, row_number() OVER (ORDER BY %s.__rn0) AS __rn\nFROM (\n%s\n) %s", w, w, indent(inner), w)
 	}
 
+	count := func() (string, error) { return s.totalSQL(node, dcols) }
+	return s.pageEnvelope(inner, pp, count)
+}
+
+// pageEnvelope wraps a page scan (rows carrying data, __rn and, under
+// keyset paging, __key; limit+1 of them) into the ShapePage object; count
+// renders the total when the plan asks for one.
+func (s *stmt) pageEnvelope(inner string, pp pagePlan, count func() (string, error)) (*Statement, error) {
 	sub := s.alias("s")
 	aggOrder := " ORDER BY " + sub + ".__rn ASC"
 	if pp.reversed {
@@ -448,7 +459,7 @@ func (s *stmt) list() (*Statement, error) {
 			"'last'", "("+agg(sub+".__key")+")->-1")
 	}
 	if s.plan.Count {
-		countSQL, err := s.totalSQL(node, dcols)
+		countSQL, err := count()
 		if err != nil {
 			return nil, err
 		}
@@ -461,10 +472,11 @@ func (s *stmt) list() (*Statement, error) {
 // CountPlannable reports whether a list request's total can come from the
 // planner statistics (Prefer: count=planned|estimated): an unfiltered scan of
 // a table or materialized view without row-level security (the statistic
-// would reveal how many rows the policies hide), distinct= or !inner embeds.
+// would reveal how many rows the policies hide), distinct=, !inner embeds
+// or aggregate functions (the total counts groups).
 // Anything else is counted exactly.
 func CountPlannable(p *plan.Request) bool {
-	if p == nil || p.RPC != nil || p.Resource == nil || p.Filter != nil || len(p.Distinct) > 0 || p.Resource.Table.RLSEnabled {
+	if p == nil || p.RPC != nil || p.Resource == nil || p.Filter != nil || len(p.Distinct) > 0 || p.Resource.Table.RLSEnabled || p.Select.Aggregated() {
 		return false
 	}
 	switch p.Resource.Table.Kind {

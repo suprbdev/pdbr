@@ -1,0 +1,2 @@
+-- request: GET /api/posts?select=author_id,count()&order=id
+-- error: 400 column_not_orderable: order by "id" needs "id" selected as a grouping column (a non-aggregated select item)
