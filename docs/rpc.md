@@ -95,7 +95,7 @@ policy is advisory here, but the same rules keep the surface predictable.
 `limit` defaults to and is capped by `server.max_page_size`.
 
 Settled: `SETOF <scalar>` / `SETOF <composite>` get `limit`/`offset` but no
-`count=true` (ignored) in v1.
+`count=true` (ignored).
 
 Record results (`pdbcore/introspect.Function.ReturnColumns`) are compiled
 against a route-less resource named `rpc.<fn path>` whose columns are the
@@ -297,11 +297,11 @@ LIMIT 1
 `computed_field`, `computed_set`, `computed_on_mutation` pin the field, the
 `SETOF` array and the `__mut` mutation-response cases.)
 
-**Passing extra arguments is deferred to v1.x.** Functions with additional
+**Passing extra arguments is not yet supported.** Functions with additional
 named args without a default after the row arg (`posts_excerpt(p posts, len
 int4)`) are skipped as computed columns (and are not RPCs either, because of
 the row arg); defaulted extra args always take their default. The `select=` grammar reserves `field(k=v,…)` for them:
-`select=id,excerpt(len=80)`; in v1 the parenthesised form is only valid for
+`select=id,excerpt(len=80)`; currently the parenthesised form is only valid for
 PostGIS projection args (`geom(transform=4326)`), and using it on a computed
 column → `400`.
 

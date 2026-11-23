@@ -224,7 +224,7 @@ type Cond struct {
 	Negate   bool               // leading not.
 }
 type RelationPath struct {
-	Steps      []*api.Relation // one step in v1 (rel.col); grammar allows more
+	Steps      []*api.Relation // one step today (rel.col); grammar allows more
 	Quantifier Quantifier      // some (default) | none | every | exists
 	Leaf       *Cond           // nil for exists.true/false
 	Exists     *bool           // for exists.true|false

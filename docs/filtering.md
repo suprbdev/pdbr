@@ -167,7 +167,7 @@ hints (`comments!parent_id.body=eq.x`).
   [indexed-only policy](#the-indexed-only-policy) (`users?posts.published=…`
   is `400 column_not_filterable` under the default policy) and may itself be
   a computed column of the related table.
-- Paths are **one level deep** in v1: `posts.comments.body=eq.x` is
+- Paths are **one level deep**: `posts.comments.body=eq.x` is
   `400 invalid_filter`. (The compiler already renders nested `EXISTS`
   chains; the grammar stays one-level until a use case needs more.)
 - Per-object switches, read straight from the catalog by the plugin

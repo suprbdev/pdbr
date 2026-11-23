@@ -305,7 +305,7 @@ integer literal), `simplify` to `ST_SimplifyPreserveTopology(…, $n)` (the
 tolerance is a bind parameter), so the result is never an invalid geometry;
 `simplify` is applied first. `transform` must be a positive integer,
 `simplify` a non-negative number, and they are the only field arguments the
-`select=` grammar accepts in v1 (`400 invalid_select` on anything else, on
+`select=` grammar accepts (`400 invalid_select` on anything else, on
 empty parentheses, or on a non-spatial field). Note that a transformed value
 is no longer WGS84 even though it is still emitted as GeoJSON.
 
