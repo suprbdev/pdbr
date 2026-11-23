@@ -1,0 +1,2 @@
+-- request: GET /api/posts?select=id,...nope(email)
+-- error: 400 unknown_relation: unknown relation "nope" on "posts" (spread ... applies to embeds)

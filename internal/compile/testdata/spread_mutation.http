@@ -1,0 +1,4 @@
+POST /api/posts?select=id,...users(author:email)
+Content-Type: application/json
+
+{"author_id": 1, "title": "Spread"}

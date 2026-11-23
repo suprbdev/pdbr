@@ -34,19 +34,18 @@ type groupedQuery struct {
 
 // grouped compiles node (which selects an aggregate) over its resource
 // with filter and, for an embed, the correlation corr renders against the
-// scan alias.
+// scan alias. The items of to-one spreads are the node's own: their tables
+// are LEFT JOINed to the scan (spread grouping), so their columns group and
+// their aggregates aggregate over the joined rows.
 func (s *stmt) grouped(node *plan.Node, filter plan.Expr, corr func(childAlias string) string, root bool, depth int) (*groupedQuery, error) {
 	if depth > s.maxDepth {
 		return nil, errUser(CodeEmbedDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)
 	}
-	if len(node.Embeds) > 0 {
-		return nil, errUser(CodeInvalidSelect, "embeds cannot be grouping keys of an aggregate select")
-	}
-	r := node.Resource
-	t := r.Table
+	t := node.Resource.Table
 	alias := s.alias("t")
 	g := &groupedQuery{alias: s.alias("g"), cols: map[string]orderTerm{}, paths: map[string]orderTerm{}}
-	var cols, groupBy []string
+	var cols, groupBy, joins []string
+	pl := newPairList()
 	key := func(expr string, term orderTerm) string {
 		name := "__k" + strconv.Itoa(len(g.keys))
 		cols = append(cols, expr+" AS "+name)
@@ -55,67 +54,103 @@ func (s *stmt) grouped(node *plan.Node, filter plan.Expr, corr func(childAlias s
 		g.keys = append(g.keys, term)
 		return name
 	}
-	columnKey := func(c *introspect.Column) string {
-		if term, ok := g.cols[c.Name]; ok {
-			return term.col
-		}
-		name := key(groupKeySQL(alias, c), orderTerm{nullable: !c.NotNull, owner: s.owner(c)})
-		g.cols[c.Name] = g.keys[len(g.keys)-1]
-		return name
-	}
-	columnJSON := func(c *introspect.Column, args map[string]any) (string, error) {
-		kc := *c
-		kc.Name = columnKey(c)
-		return s.columnJSON(g.alias, &kc, args, depth)
-	}
-	pl := newPairList()
-	if node.Star {
-		for _, f := range r.Columns {
-			expr, err := columnJSON(f.Column, nil)
-			if err != nil {
-				return nil, err
-			}
-			if err := pl.add(f.Key, quoteLiteral(f.Key), expr); err != nil {
-				return nil, err
-			}
-		}
-	}
 	nAgg := 0
-	for i := range node.Fields {
-		f := &node.Fields[i]
-		k := f.Key(r)
-		var expr string
-		var err error
-		switch {
-		case f.Agg != nil:
-			name := "__a" + strconv.Itoa(nAgg)
-			nAgg++
-			cols = append(cols, s.aggregateSQL(f, alias)+" AS "+name)
-			expr = aggregateJSON(colRef(g.alias, name), f.Agg)
-		case f.Column != nil && (len(f.Path) > 0 || f.Cast != nil):
-			name := key(s.valueSQL(alias, f, false), orderTerm{nullable: true})
-			if len(f.Path) > 0 && f.Cast == nil {
-				g.paths[pathSignature(f.Column, f.Path)] = g.keys[len(g.keys)-1]
+	var addNode func(n *plan.Node, alias string, top bool, depth int) error
+	addNode = func(n *plan.Node, alias string, top bool, depth int) error {
+		r := n.Resource
+		colKeys := map[string]string{}
+		columnJSON := func(c *introspect.Column, args map[string]any) (string, error) {
+			name, ok := colKeys[c.Name]
+			if !ok {
+				name = key(groupKeySQL(alias, c), orderTerm{nullable: !c.NotNull, owner: s.owner(c)})
+				colKeys[c.Name] = name
+				if top {
+					g.cols[c.Name] = g.keys[len(g.keys)-1]
+				}
 			}
-			expr = colRef(g.alias, name)
-			if f.Cast != nil {
-				expr = "to_json(" + expr + ")"
+			kc := *c
+			kc.Name = name
+			return s.columnJSON(g.alias, &kc, args, depth)
+		}
+		if n.Star {
+			for _, f := range r.Columns {
+				expr, err := columnJSON(f.Column, nil)
+				if err != nil {
+					return err
+				}
+				if err := pl.add(f.Key, quoteLiteral(f.Key), expr); err != nil {
+					return err
+				}
 			}
-		case f.Column != nil:
-			expr, err = columnJSON(f.Column, f.Args)
-		default:
-			_, value, ferr := s.fieldJSON(r, f, alias, depth)
-			if ferr != nil {
-				return nil, ferr
+		}
+		for i := range n.Fields {
+			f := &n.Fields[i]
+			k := f.Key(r)
+			var expr string
+			var err error
+			switch {
+			case f.Agg != nil:
+				name := "__a" + strconv.Itoa(nAgg)
+				nAgg++
+				agg := s.aggregateSQL(f, alias)
+				if !top && f.Column == nil {
+					agg = "count(" + alias + ".*)"
+				}
+				cols = append(cols, agg+" AS "+name)
+				expr = aggregateJSON(colRef(g.alias, name), f.Agg)
+			case f.Column != nil && (len(f.Path) > 0 || f.Cast != nil):
+				name := key(s.valueSQL(alias, f, false), orderTerm{nullable: true})
+				if top && len(f.Path) > 0 && f.Cast == nil {
+					g.paths[pathSignature(f.Column, f.Path)] = g.keys[len(g.keys)-1]
+				}
+				expr = colRef(g.alias, name)
+				if f.Cast != nil {
+					expr = "to_json(" + expr + ")"
+				}
+			case f.Column != nil:
+				expr, err = columnJSON(f.Column, f.Args)
+			default:
+				_, value, ferr := s.fieldJSON(r, f, alias, depth)
+				if ferr != nil {
+					return ferr
+				}
+				expr = colRef(g.alias, key("to_jsonb("+value+")", orderTerm{nullable: true}))
 			}
-			expr = colRef(g.alias, key("to_jsonb("+value+")", orderTerm{nullable: true}))
+			if err != nil {
+				return err
+			}
+			if err := pl.add(k, s.pairKey(f, k), expr); err != nil {
+				return err
+			}
 		}
-		if err != nil {
-			return nil, err
+		for i := range n.Embeds {
+			e := &n.Embeds[i]
+			if !e.SpreadOne() {
+				return errUser(CodeInvalidSelect, "embeds other than to-one spreads cannot be grouping keys of an aggregate select")
+			}
+			if !e.Relation.UniqueTarget() {
+				return errUser(CodeInvalidSelect, "spread grouping over %q needs its referenced columns to be a primary or unique key of the target", e.Key)
+			}
+			if depth+1 > s.maxDepth {
+				return errUser(CodeEmbedDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)
+			}
+			child := embedNode(e)
+			childAlias := s.alias("t")
+			on := []string{s.joinConds(e.Relation, childAlias, alias)}
+			more, err := s.parentConds(child, e.Filter, childAlias)
+			if err != nil {
+				return err
+			}
+			on = append(on, more...)
+			joins = append(joins, fmt.Sprintf("LEFT JOIN %s %s ON %s", s.sourceRef(child.Resource.Table, childAlias), childAlias, strings.Join(on, " AND ")))
+			if err := addNode(child, childAlias, false, depth+1); err != nil {
+				return err
+			}
 		}
-		if err := pl.add(k, s.pairKey(f, k), expr); err != nil {
-			return nil, err
-		}
+		return nil
+	}
+	if err := addNode(node, alias, true, depth); err != nil {
+		return nil, err
 	}
 	var extra []string
 	if corr != nil {
@@ -133,7 +168,7 @@ func (s *stmt) grouped(node *plan.Node, filter plan.Expr, corr func(childAlias s
 	if len(groupBy) > 0 {
 		group = "\nGROUP BY " + strings.Join(groupBy, ", ")
 	}
-	g.sql = fmt.Sprintf("SELECT %s\nFROM %s %s%s%s", strings.Join(cols, ", "), from, alias, where, group)
+	g.sql = fmt.Sprintf("SELECT %s\nFROM %s %s%s%s%s", strings.Join(cols, ", "), from, alias, joinLaterals(joins), where, group)
 	g.obj = pl.object()
 	return g, nil
 }
@@ -152,39 +187,65 @@ func groupKeySQL(alias string, c *introspect.Column) string {
 }
 
 // groupCountSQL renders the number of groups of the aggregated root: a
-// key-only grouped scan with the same filter (no aggregates, no JSON
-// rendering of column keys); 1 when there is no grouping key.
+// key-only grouped scan with the same filter and spread joins (no
+// aggregates, no JSON rendering of column keys); 1 when there is no
+// grouping key.
 func (s *stmt) groupCountSQL(node *plan.Node) (string, error) {
 	r := node.Resource
 	alias := s.alias("c")
-	var keys []string
-	seen := map[string]bool{}
-	column := func(c *introspect.Column) {
-		if !seen[c.Name] {
-			seen[c.Name] = true
-			keys = append(keys, groupKeySQL(alias, c))
-		}
-	}
-	if node.Star {
-		for _, f := range r.Columns {
-			column(f.Column)
-		}
-	}
-	for i := range node.Fields {
-		f := &node.Fields[i]
-		switch {
-		case f.Agg != nil:
-		case f.Column != nil && (len(f.Path) > 0 || f.Cast != nil):
-			keys = append(keys, s.valueSQL(alias, f, false))
-		case f.Column != nil:
-			column(f.Column)
-		default:
-			_, value, err := s.fieldJSON(r, f, alias, 0)
-			if err != nil {
-				return "", err
+	var keys, joins []string
+	var walk func(n *plan.Node, alias string) error
+	walk = func(n *plan.Node, alias string) error {
+		seen := map[string]bool{}
+		column := func(c *introspect.Column) {
+			if !seen[c.Name] {
+				seen[c.Name] = true
+				keys = append(keys, groupKeySQL(alias, c))
 			}
-			keys = append(keys, "to_jsonb("+value+")")
 		}
+		if n.Star {
+			for _, f := range n.Resource.Columns {
+				column(f.Column)
+			}
+		}
+		for i := range n.Fields {
+			f := &n.Fields[i]
+			switch {
+			case f.Agg != nil:
+			case f.Column != nil && (len(f.Path) > 0 || f.Cast != nil):
+				keys = append(keys, s.valueSQL(alias, f, false))
+			case f.Column != nil:
+				column(f.Column)
+			default:
+				_, value, err := s.fieldJSON(n.Resource, f, alias, 0)
+				if err != nil {
+					return err
+				}
+				keys = append(keys, "to_jsonb("+value+")")
+			}
+		}
+		for i := range n.Embeds {
+			e := &n.Embeds[i]
+			if !e.SpreadOne() {
+				continue
+			}
+			child := embedNode(e)
+			childAlias := s.alias("c")
+			on := []string{s.joinConds(e.Relation, childAlias, alias)}
+			more, err := s.parentConds(child, e.Filter, childAlias)
+			if err != nil {
+				return err
+			}
+			on = append(on, more...)
+			joins = append(joins, fmt.Sprintf(" LEFT JOIN %s %s ON %s", s.sourceRef(child.Resource.Table, childAlias), childAlias, strings.Join(on, " AND ")))
+			if err := walk(child, childAlias); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if err := walk(node, alias); err != nil {
+		return "", err
 	}
 	if len(keys) == 0 {
 		return "1", nil
@@ -194,8 +255,8 @@ func (s *stmt) groupCountSQL(node *plan.Node) (string, error) {
 		return "", err
 	}
 	where = strings.Replace(where, "\nWHERE ", " WHERE ", 1)
-	return fmt.Sprintf("(SELECT count(*) FROM (SELECT 1 FROM %s %s%s GROUP BY %s) %s)",
-		s.rootRef(r.Table, alias), alias, where, strings.Join(keys, ", "), s.alias("g")), nil
+	return fmt.Sprintf("(SELECT count(*) FROM (SELECT 1 FROM %s %s%s%s GROUP BY %s) %s)",
+		s.rootRef(r.Table, alias), alias, strings.Join(joins, ""), where, strings.Join(keys, ", "), s.alias("g")), nil
 }
 
 // orderTerms maps a node's order terms onto its grouping keys (the parser

@@ -71,12 +71,13 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Forward-embed filters null out the embed unless `!inner` (new)
 - [x] Field aliases `alias:field` and embed aliases `author:users(name)` (parity)
 - [x] JSON paths `col->key`, `col->0`, `col->>key` in `select=` (response key = last key), filters (`->>` text, `->` jsonb operands) and `order=`, on json/jsonb, array and (select only) composite columns; keys bound as parameters — see [api.md](api.md#json-paths) (parity)
+- [x] Spread embeds `...rel(cols)`: to-one values hoisted into the row, to-many correlated arrays per item (PostgREST 12), nested spreads, `!inner`, per-embed params, CSV — see [api.md](api.md#spread-embeds) (parity)
 - [x] Column casts `col::type`, `col->key::type` in `select=` (allowlisted built-in types and enums) — see [api.md](api.md#casts) (parity)
 - [x] `select=` applies to mutation responses (compiled against `__mut`) (parity)
 - [x] Single-row weak `ETag: W/"<md5>"` computed in SQL over all columns; `If-None-Match` → `304`; `server.etags` toggle (new)
 - [x] `Accept: text/csv` on lists and set-returning RPCs → RFC 4180 CSV, header row, arrays/json/composites as JSON text, NULL → empty; embeds → `406`; `server.csv` toggle (new)
 - [x] `Prefer: return=representation|minimal|headers-only` (new)
-- [x] Aggregate functions in `select=` (PostgREST v12): `count()`, `col.count()`, `sum`, `avg`, `max`, `min`, aliases, input/output casts, implicit `GROUP BY` (columns and computed fields), aggregates inside to-many embeds, `order=` on grouping columns, offset paging and group totals, CSV; `server.aggregates` (off → 400 `aggregates_disabled`) — see [aggregates.md](aggregates.md) (parity)
+- [x] Aggregate functions in `select=` (PostgREST v12): `count()`, `col.count()`, `sum`, `avg`, `max`, `min`, aliases, input/output casts, implicit `GROUP BY` (columns, casts, JSON paths, computed fields, to-one spread items — spread grouping), aggregates inside to-many embeds and to-one spreads, `order=` on grouping columns, offset paging and group totals, CSV; `server.aggregates` (off → 400 `aggregates_disabled`) — see [aggregates.md](aggregates.md) (parity)
 - [x] Spatial aggregates `col.extent()`, `col.union()`, `col.collect()`, `col.centroid()` → GeoJSON (postgis plugin) (new)
 - [x] `Prefer` tokens `resolution=`, `missing=` on writes (new)
 - [ ] `Prefer: tx=commit|rollback`, `timezone=`; `columns=` query parameter (new)
@@ -362,6 +363,13 @@ these are the deliberate departures (each documented in its topic page):
 - **Casts** (`select=col::type`, aggregate casts) take allowlisted
   built-in scalar types and the API's enums only, never the `reg*` types,
   pseudo-types or composites; PostgREST casts to any type.
+- **Spread embeds** take no alias of their own, cannot be ordered by in
+  an aggregate select, and follow pdbr's duplicate-key rule (`400` on a key
+  the parent already has); a to-many spread's arrays follow the embed's
+  `order=` then its primary key, so their order is never unspecified.
+  Spread grouping needs a unique target (below); plain (non-spread) embeds
+  are still not grouping keys, and `count()` inside a to-one spread counts
+  the related rows.
 - **JSON paths on composite columns** work in `select=` only: composites are
   never filterable or orderable in pdbr, so `address->>city=eq.x` is
   `400 column_not_filterable`.

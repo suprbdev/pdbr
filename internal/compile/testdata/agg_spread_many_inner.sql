@@ -1,0 +1,2 @@
+-- request: GET /api/users?select=id,...posts(id.count())
+-- error: 400 invalid_select: aggregate functions are not supported inside to-many spreads (...posts)

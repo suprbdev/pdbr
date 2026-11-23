@@ -3,6 +3,7 @@ package compile
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/suprbdev/pdbcore/introspect"
@@ -20,8 +21,10 @@ const jsonBuildObjectChunk = 40 // pairs (80 args)
 // members answering under the same key are a user error unless they are
 // the same expression (a column selected twice, or named again after *):
 // replacing one would silently drop its value, and with it any bind
-// parameter its SQL holds.
+// parameter its SQL holds. Spread members join their parent's list under
+// the same rule.
 type pairList struct {
+	keys   []string // response keys
 	keySQL []string // rendered keys: literals, or bind parameters for path-derived keys
 	vals   []string
 	pos    map[string]int
@@ -38,6 +41,7 @@ func (l *pairList) add(key, keySQL, val string) error {
 		return errUser(CodeInvalidSelect, "two select items answer under %q; alias one of them", key)
 	}
 	l.pos[key] = len(l.vals)
+	l.keys = append(l.keys, key)
 	l.keySQL = append(l.keySQL, keySQL)
 	l.vals = append(l.vals, val)
 	return nil
@@ -53,15 +57,25 @@ func (l *pairList) object() string {
 }
 
 // rowJSON compiles a projection node over its resource into a json
-// expression plus the LEFT JOIN LATERAL clauses it needs against alias
-// (pairList states the duplicate-key rule).
+// expression plus the LEFT JOIN LATERAL clauses it needs against alias.
 func (s *stmt) rowJSON(node *plan.Node, alias string, depth int) (string, []string, error) {
+	pl, laterals, err := s.rowPairs(node, alias, depth)
+	if err != nil {
+		return "", nil, err
+	}
+	return pl.object(), laterals, nil
+}
+
+// rowPairs is rowJSON before the object is built: the members of a
+// projection node, spread embeds hoisted (pairList states the duplicate-key
+// rule).
+func (s *stmt) rowPairs(node *plan.Node, alias string, depth int) (*pairList, []string, error) {
 	if depth > s.maxDepth {
-		return "", nil, errUser(CodeEmbedDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)
+		return nil, nil, errUser(CodeEmbedDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)
 	}
 	r := node.Resource
 	if r == nil {
-		return "", nil, fmt.Errorf("compile: projection node without resource")
+		return nil, nil, fmt.Errorf("compile: projection node without resource")
 	}
 	pl := newPairList()
 	var laterals []string
@@ -69,30 +83,43 @@ func (s *stmt) rowJSON(node *plan.Node, alias string, depth int) (string, []stri
 		for _, f := range r.Columns {
 			expr, err := s.columnJSON(alias, f.Column, nil, depth)
 			if err != nil {
-				return "", nil, err
+				return nil, nil, err
 			}
 			if err := pl.add(f.Key, quoteLiteral(f.Key), expr); err != nil {
-				return "", nil, err
+				return nil, nil, err
 			}
 		}
 	}
 	for i := range node.Fields {
 		f := &node.Fields[i]
 		if f.Agg != nil {
-			return "", nil, errUser(CodeInvalidSelect, "aggregate functions are only valid on list reads and in to-many embeds")
+			return nil, nil, errUser(CodeInvalidSelect, "aggregate functions are only valid on list reads, in to-many embeds and in to-one spreads")
 		}
 		key, expr, err := s.fieldJSON(r, f, alias, depth)
 		if err != nil {
-			return "", nil, err
+			return nil, nil, err
 		}
 		if err := pl.add(key, s.pairKey(f, key), expr); err != nil {
-			return "", nil, err
+			return nil, nil, err
 		}
 	}
 	for i := range node.Embeds {
 		e := &node.Embeds[i]
 		if e.Relation == nil {
-			return "", nil, fmt.Errorf("compile: embed %q is not resolved", e.Key)
+			return nil, nil, fmt.Errorf("compile: embed %q is not resolved", e.Key)
+		}
+		if e.Spread {
+			child, lat, err := s.spreadEmbed(e, alias, depth+1)
+			if err != nil {
+				return nil, nil, err
+			}
+			for j := range child.vals {
+				if err := pl.add(child.keys[j], child.keySQL[j], child.vals[j]); err != nil {
+					return nil, nil, err
+				}
+			}
+			laterals = append(laterals, lat)
+			continue
 		}
 		key := e.Alias
 		if key == "" {
@@ -106,14 +133,14 @@ func (s *stmt) rowJSON(node *plan.Node, alias string, depth int) (string, []stri
 			expr, lat, err = s.oneEmbed(e, alias, depth+1)
 		}
 		if err != nil {
-			return "", nil, err
+			return nil, nil, err
 		}
 		if err := pl.add(key, quoteLiteral(key), expr); err != nil {
-			return "", nil, err
+			return nil, nil, err
 		}
 		laterals = append(laterals, lat)
 	}
-	return pl.object(), laterals, nil
+	return pl, laterals, nil
 }
 
 // fieldJSON renders one selected field: its response key and value expression.
@@ -498,6 +525,73 @@ func (s *stmt) manyEmbed(e *plan.Embed, parentAlias string, depth int) (string, 
 	return latAlias + ".data", lat, nil
 }
 
+// spreadEmbed compiles a spread embed into the members it hoists into the
+// parent object and the lateral join producing their values (one column
+// per member): a to-one spread selects the related row's values (all null
+// without one), a to-many spread aggregates each value into an array over
+// the related rows, in one pass so the arrays are correlated (same order,
+// the embed's order= then its primary key).
+func (s *stmt) spreadEmbed(e *plan.Embed, parentAlias string, depth int) (*pairList, string, error) {
+	rel := e.Relation
+	node := embedNode(e)
+	var child *pairList
+	project := func(alias string) (string, []string, error) {
+		pl, laterals, err := s.rowPairs(node, alias, depth)
+		if err != nil {
+			return "", nil, err
+		}
+		child = pl
+		cols := make([]string, len(pl.vals))
+		for i, v := range pl.vals {
+			cols[i] = v + " AS v" + strconv.Itoa(i)
+		}
+		if len(cols) == 0 {
+			cols = []string{"NULL AS v"}
+		}
+		return strings.Join(cols, ", "), laterals, nil
+	}
+	latAlias := s.alias("l")
+	var body string
+	if rel.ToMany() {
+		if node.Aggregates() {
+			return nil, "", errUser(CodeInvalidSelect, "aggregate functions are not supported inside to-many spreads")
+		}
+		corr := func(childAlias string) string { return s.joinConds(rel, childAlias, parentAlias) }
+		inner, err := s.listInnerWith(node, e.Filter, e.Order, e.Page, corr, project)
+		if err != nil {
+			return nil, "", err
+		}
+		sub := s.alias("s")
+		aggs := make([]string, len(child.vals))
+		for i := range child.vals {
+			v := "v" + strconv.Itoa(i)
+			aggs[i] = fmt.Sprintf("coalesce(json_agg(%s.%s), '[]'::json) AS %s", sub, v, v)
+		}
+		if len(aggs) == 0 {
+			aggs = []string{"NULL AS v"}
+		}
+		body = fmt.Sprintf("SELECT %s\nFROM (\n%s\n) %s", strings.Join(aggs, ", "), indent(inner), sub)
+	} else {
+		alias := s.alias("t")
+		cols, laterals, err := project(alias)
+		if err != nil {
+			return nil, "", err
+		}
+		conds := []string{s.joinConds(rel, alias, parentAlias)}
+		more, err := s.parentConds(node, e.Filter, alias)
+		if err != nil {
+			return nil, "", err
+		}
+		conds = append(conds, more...)
+		body = fmt.Sprintf("SELECT %s\nFROM %s %s%s\nWHERE %s\nLIMIT 1",
+			cols, s.sourceRef(rel.To.Table, alias), alias, joinLaterals(laterals), strings.Join(conds, " AND "))
+	}
+	for i := range child.vals {
+		child.vals[i] = latAlias + ".v" + strconv.Itoa(i)
+	}
+	return child, fmt.Sprintf("LEFT JOIN LATERAL (\n%s\n) %s ON true", indent(body), latAlias), nil
+}
+
 // listInner builds `SELECT <json> AS data FROM ... WHERE ... ORDER BY ...
 // LIMIT/OFFSET` for an embedded list. corr, when set, renders the condition
 // correlating the subquery to a parent row given the child alias.
@@ -505,9 +599,18 @@ func (s *stmt) listInner(node *plan.Node, filter plan.Expr, order []plan.OrderTe
 	if node.Aggregated() {
 		return s.aggListInner(node, filter, order, page, corr, depth)
 	}
+	return s.listInnerWith(node, filter, order, page, corr, func(alias string) (string, []string, error) {
+		jsonExpr, laterals, err := s.rowJSON(node, alias, depth)
+		return jsonExpr + " AS data", laterals, err
+	})
+}
+
+// listInnerWith is listInner with the select list rendered by project over
+// the scan alias.
+func (s *stmt) listInnerWith(node *plan.Node, filter plan.Expr, order []plan.OrderTerm, page plan.Page, corr func(childAlias string) string, project func(alias string) (string, []string, error)) (string, error) {
 	t := node.Resource.Table
 	alias := s.alias("t")
-	jsonExpr, laterals, err := s.rowJSON(node, alias, depth)
+	selectList, laterals, err := project(alias)
 	if err != nil {
 		return "", err
 	}
@@ -528,7 +631,7 @@ func (s *stmt) listInner(node *plan.Node, filter plan.Expr, order []plan.OrderTe
 	if page.Offset > 0 {
 		pageSQL += "\nOFFSET " + s.param(page.Offset)
 	}
-	return fmt.Sprintf("SELECT %s AS data\nFROM %s %s%s%s%s%s", jsonExpr, s.sourceRef(t, alias), alias, joinLaterals(laterals), where, orderSQL, pageSQL), nil
+	return fmt.Sprintf("SELECT %s\nFROM %s %s%s%s%s%s", selectList, s.sourceRef(t, alias), alias, joinLaterals(laterals), where, orderSQL, pageSQL), nil
 }
 
 // embedLimit resolves an embed's page size: the cap when absent, rejected

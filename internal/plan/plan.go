@@ -303,14 +303,20 @@ type TypeRef struct {
 	Name   string
 }
 
-// Aggregated reports whether the node selects any aggregate function, which
-// makes the node's other items its grouping keys.
+// Aggregated reports whether the node selects any aggregate function,
+// directly or through a to-one spread (whose items are the node's own),
+// which makes the node's other items its grouping keys.
 func (n *Node) Aggregated() bool {
 	if n == nil {
 		return false
 	}
 	for i := range n.Fields {
 		if n.Fields[i].Agg != nil {
+			return true
+		}
+	}
+	for i := range n.Embeds {
+		if e := &n.Embeds[i]; e.SpreadOne() && e.Node.Aggregated() {
 			return true
 		}
 	}
@@ -345,10 +351,20 @@ type Embed struct {
 	Alias    string        // response key ("" = Key)
 	Relation *api.Relation // resolved (direction, FK, hint applied)
 	Inner    bool          // !inner
-	Node     *Node
-	Filter   Expr        // per-embed filters (posts.title=eq.x)
-	Order    []OrderTerm // posts.order=
-	Page     Page        // posts.limit= / posts.offset=
+	// Spread is the ...rel(cols) form: the embed's items are hoisted into
+	// the parent object instead of nesting under a key. A to-one spread
+	// contributes its values, a to-many spread one array per item
+	// (PostgREST 12).
+	Spread bool
+	Node   *Node
+	Filter Expr        // per-embed filters (posts.title=eq.x)
+	Order  []OrderTerm // posts.order=
+	Page   Page        // posts.limit= / posts.offset=
+}
+
+// SpreadOne reports a spread over a to-one relation.
+func (e *Embed) SpreadOne() bool {
+	return e.Spread && e.Relation != nil && !e.Relation.ToMany()
 }
 
 // Expr is a filter tree node: exactly one of And, Or, Not, Cond.

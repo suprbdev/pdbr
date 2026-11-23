@@ -411,7 +411,7 @@ func (b *Builder) selectParam(r *Resource, lead string) *Parameter {
 		sb.WriteString(". Derived (postgis, select explicitly): " + strings.Join(sortedKeys(r.Pseudo), ", "))
 	}
 	if embeds := b.embedKeys(r); len(embeds) > 0 {
-		sb.WriteString(". Embeds: " + strings.Join(embeds, ", ") + " (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>)")
+		sb.WriteString(". Embeds: " + strings.Join(embeds, ", ") + " (rel(...) with a nested select; rel!inner(...) drops parents without a match; ...rel(...) spreads the embed's items into the row: values for a to-one relation, one array per item for a to-many one; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>)")
 	}
 	if b.Surface.SpatialProjection && hasSpatial(r) {
 		sb.WriteString(". Spatial columns and their derived fields take projection args: col(transform=<srid>,simplify=<tolerance>)")
@@ -433,7 +433,7 @@ func (b *Builder) listSelectParam(r *Resource, lead string) *Parameter {
 	if b.Surface.SpatialAggregates && hasSpatial(r) {
 		sb.WriteString(", and on spatial columns <col>.extent(), <col>.union(), <col>.collect(), <col>.centroid() (GeoJSON)")
 	}
-	sb.WriteString("; alias:<col>.sum(), input cast <col>::<type>.sum() (also over a JSON path: <col>->key::numeric.sum()), output cast <col>.sum()::<type>. The other items of the same select (columns, computed fields; not embeds) group the rows; aggregates also apply inside to-many embeds. Casts: built-in scalar types (int, bigint, numeric, float8, text, date, timestamptz, interval, ...) and the API's enums. order= takes only grouping columns; no after/before or distinct.")
+	sb.WriteString("; alias:<col>.sum(), input cast <col>::<type>.sum() (also over a JSON path: <col>->key::numeric.sum()), output cast <col>.sum()::<type>. The other items of the same select (columns, computed fields, the items of to-one spreads ...rel(col); not embeds or to-many spreads) group the rows; aggregates also apply inside to-many embeds and to-one spreads. Casts: built-in scalar types (int, bigint, numeric, float8, text, date, timestamptz, interval, ...) and the API's enums. order= takes only grouping columns; no after/before or distinct.")
 	p.Description = sb.String()
 	return p
 }

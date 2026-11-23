@@ -1,0 +1,2 @@
+-- request: GET /api/posts?select=excerpt(max_chars=5),...users(excerpt:email)
+-- error: 400 invalid_select: two select items answer under "excerpt"; alias one of them

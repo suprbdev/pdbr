@@ -81,9 +81,10 @@ GET /api/users?select=mood,total:balance.sum(),mean:id::float8.avg()
   pseudo-columns; `*` groups by every column. A value cast to `json` cannot
   be a key (json has no equality; cast to `jsonb`).
 - Embeds cannot be grouping keys (`400 invalid_select`): a node with an
-  aggregate has no embeds, `!inner` ones included. Aggregate inside the
-  embed instead (`users?select=id,posts(count())`), or restrict the rows
-  with a [relation filter](filtering.md). Set-returning computed columns
+  aggregate has no embeds, `!inner` ones included, except
+  [to-one spreads](#spread-embeds). Aggregate inside the embed instead
+  (`users?select=id,posts(count())`), spread a to-one relation, or restrict
+  the rows with a [relation filter](filtering.md). Set-returning computed columns
   cannot be keys either, nor columns of a type without equality and
   ordering (`xml`, `point`, `box`, `polygon`, `circle`, `line`, `lseg`,
   `path`, `xid`, `cid`, …, or a composite holding one or a `json`
@@ -107,6 +108,58 @@ cast the result, `col.sum()::text`, for an exact string). `avg` of an integer
 column is `numeric` and keeps its scale (`2.0000000000000000`); cast it
 (`::float8`, `::int`) for a plain number. Timestamps, enums and text come
 back as strings; grouping keys keep the representation of their column.
+
+## Spread embeds
+
+A to-one spread's items belong to the node it is spread into (PostgREST's
+spread grouping): the related table is `LEFT JOIN`ed to the grouped scan,
+its columns are grouping keys and its aggregates aggregate over the joined
+rows.
+
+```http
+GET /api/posts?select=n:count(),...users(mood)                        -- posts per author mood
+GET /api/posts?select=published,...users(newest:created_at.max(),n:count())
+GET /api/users?select=id,posts(count(),...users(mood))                -- inside a to-many embed
+```
+
+```json
+[{"n": 1, "mood": "ok"}, {"n": 3, "mood": "happy"}]
+```
+
+```sql
+SELECT count(*) AS __a0, t2."mood" AS __k0
+FROM "public"."posts" t0
+LEFT JOIN "public"."users" t2 ON t2."id" = t0."author_id"
+GROUP BY 2
+```
+
+- `count()` inside the spread counts the **related** rows,
+  `count(t2.*)` over the join: a group whose rows have no related row
+  answers `0`. Outside the spread `count()` still counts the node's rows
+  (`select=n:count(),...users(c:count())`). PostgREST's documentation does
+  not specify this case.
+- The relation must match at most one row: its referenced columns must be
+  the primary key or a unique key of the target (catalog foreign keys
+  always are). A smart-comment `@foreignKey` onto non-unique columns, or
+  onto a view without `@primaryKey`, would duplicate the scanned rows in
+  the join, so spread grouping over it is `400 invalid_select`; a plain
+  spread over it still works (it reads one related row).
+- An embed filter on the spread (`users.mood=neq.sad`) moves into the join
+  condition, so it nulls the spread's keys rather than dropping rows;
+  `!inner` drops the rows without a (matching) related row.
+- Spreads nest (`...posts(published,...users(mood))` joins both), but a
+  spread's items obey the grouping-key rules: no plain embeds and no to-many
+  spreads inside (`400 invalid_select`); duplicate response keys across the
+  node and its spreads are `400 invalid_select`.
+- `order=` takes the node's own grouping columns; spread columns cannot be
+  ordered by (`400 column_not_orderable`), and groups are always ordered by
+  every key, spread keys included.
+- Totals (`count=true`) count the groups of the joined scan.
+- Cost: the join adds one row per scanned row (the spread's items count
+  like the node's own), and a total adds `max_page_size` × every grouping
+  key, the spread's included.
+- Aggregates inside a **to-many** spread, and to-many spreads in an
+  aggregated node, are `400 invalid_select` (PostgREST supports neither).
 
 ## Aggregates and embeds
 
@@ -228,7 +281,7 @@ grouping columns of the aggregates you expose, and keep
 | Request | Response |
 |---|---|
 | any aggregate while `server.aggregates` is off | `400 aggregates_disabled` |
-| bad grammar (`col.sum(x)`, a hint on an aggregate), a cast type outside the allowlist (`::regclass`, `::record`, an unknown name), an aggregate over a computed or derived field, a type without the aggregate (`text.sum()`, `jsonb.max()`, `uuid.max()`), an embed, set-returning computed column or ungroupable column as a grouping key, duplicate response keys, aggregates outside list reads or in to-one embeds, `distinct=` | `400 invalid_select` |
+| bad grammar (`col.sum(x)`, a hint on an aggregate), a cast type outside the allowlist (`::regclass`, `::record`, an unknown name), an aggregate over a computed or derived field, a type without the aggregate (`text.sum()`, `jsonb.max()`, `uuid.max()`), an embed (other than a to-one spread), a to-many spread, set-returning computed column or ungroupable column as a grouping key, aggregates inside a to-many spread, duplicate response keys, aggregates outside list reads or in to-one embeds, `distinct=` | `400 invalid_select` |
 | unknown column | `400 unknown_column` |
 | `order=` on something other than a grouping column (a JSON path term needs the same uncast path selected as a key) | `400 column_not_orderable` |
 | `after=` / `before=` | `400 keyset_unsupported` |
@@ -242,10 +295,9 @@ differs:
   pdbr extension.
 - **Embeds as grouping keys** (`orders?select=amount.sum(),customers(name)`)
   are rejected: an embed is evaluated per scanned row, which `limit` cannot
-  bound. **Spread embeds** (`...customers(name)`) do not exist in pdbr, so
-  neither does grouping by a spread nor hoisting the aggregates of a to-one
-  spread; aggregates inside a non-spread to-one embed are rejected rather
-  than computed over its single row.
+  bound. Spread the relation instead (`...customers(name)`, one join).
+  Aggregates inside a non-spread to-one embed are rejected rather than
+  computed over its single row; spread it to hoist them.
 - **Casts** take only the allowlisted built-in types and the API's enums;
   PostgREST casts to any type.
 - **Validation before the database**: `sum`/`avg` of a non-numeric column,

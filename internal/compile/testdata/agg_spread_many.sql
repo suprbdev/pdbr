@@ -1,0 +1,2 @@
+-- request: GET /api/users?select=mood,count(),...posts(title)
+-- error: 400 invalid_select: a to-many spread cannot be a grouping key of an aggregate select (...posts): it yields arrays

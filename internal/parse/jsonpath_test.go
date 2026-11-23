@@ -4,6 +4,9 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/suprbdev/pdbcore/introspect"
+	"github.com/suprbdev/pdbcore/testutil"
+
 	"github.com/suprbdev/pdbr/internal/plan"
 )
 
@@ -205,5 +208,74 @@ func TestMatchAndModifiers(t *testing.T) {
 	} {
 		_, err := doParse(t, b, req{url: u}, allOn)
 		wantCode(t, err, CodeInvalidFilter)
+	}
+}
+
+func TestSpreadSelect(t *testing.T) {
+	b := buildFixture(t, false)
+	p := mustParse(t, b, "/api/posts?select=id,...users!inner(a:email,...places(name))&users.mood=eq.ok&users.places.order=id")
+	e := p.Select.Embeds[0]
+	if !e.Spread || !e.Inner || !e.SpreadOne() || e.Filter == nil || e.Alias != "" {
+		t.Fatalf("spread = %+v", e)
+	}
+	inner := e.Node.Embeds[0]
+	if !inner.Spread || inner.SpreadOne() || len(inner.Order) != 1 {
+		t.Fatalf("nested spread = %+v", inner)
+	}
+	p, err := doParse(t, b, req{url: "/api/posts?select=n:count(),...users(mood,newest:created_at.max())&order=published"}, aggOn)
+	if err == nil {
+		t.Fatalf("order by a non-key: %+v", p)
+	}
+	p, err = doParse(t, b, req{url: "/api/posts?select=published,n:count(),...users(mood,newest:created_at.max())&order=published.desc"}, aggOn)
+	if err != nil || !p.Select.Aggregated() || p.Select.Embeds[0].Node.Fields[1].Agg == nil {
+		t.Fatalf("spread grouping: %v", err)
+	}
+	if _, err := doParse(t, b, req{url: "/api/posts?select=id,...users(count())"}, aggOn); err != nil {
+		t.Fatalf("hoisted aggregate: %v", err)
+	}
+	for _, c := range []struct{ url, code string }{
+		{"/api/posts?select=x:...users(email)", CodeInvalidSelect},
+		{"/api/posts?select=...nope(id)", CodeUnknownRelation},
+		{"/api/posts?select=...users", CodeInvalidSelect},
+		{"/api/posts?select=...users(email)::text", CodeInvalidSelect},
+		{"/api/users?select=mood,count(),...posts(title)", CodeInvalidSelect},
+		{"/api/users?select=...posts(id.count())", CodeInvalidSelect},
+		{"/api/posts?select=count(),...users(mood,places(id))", CodeInvalidSelect},
+		{"/api/posts?select=id,count(),...users(id)", CodeInvalidSelect},
+		{"/api/posts?select=*,count(),...users(*)", CodeInvalidSelect},
+	} {
+		_, err := doParse(t, b, req{url: c.url}, aggOn)
+		wantCode(t, err, c.code)
+	}
+	if _, err := doParse(t, b, req{url: "/api/posts?select=id,...users(email)", header: map[string]string{"Accept": "text/csv"}}, allOn); err != nil {
+		t.Fatalf("csv with a to-one spread: %v", err)
+	}
+	_, err = doParse(t, b, req{url: "/api/posts?select=id,...users(email,places(id))", header: map[string]string{"Accept": "text/csv"}}, allOn)
+	wantCode(t, err, CodeNotAcceptable)
+}
+
+func TestSpreadGroupingUniqueTarget(t *testing.T) {
+	cat := testutil.FixtureCatalog()
+	cat.Tables = append(cat.Tables, &introspect.Table{
+		Schema: "public", Name: "notes", Kind: introspect.RelTable,
+		Columns: []*introspect.Column{
+			{Name: "id", Position: 1, PGType: "int4", NotNull: true},
+			{Name: "author_name", Position: 2, PGType: "text"},
+		},
+		PrimaryKey:  &introspect.Constraint{Name: "notes_pkey", Columns: []string{"id"}},
+		ForeignKeys: []*introspect.ForeignKey{{Name: "@foreignKey (author_name) references users (full_name)", Columns: []string{"author_name"}, RefSchema: "public", RefTable: "users", RefColumns: []string{"full_name"}}},
+		Privileges:  introspect.Privileges{Select: true},
+	})
+	b := buildCatalog(t, cat, false, []string{"public"}, nil)
+	if b.ByPath["notes"].Relations["users"][0].UniqueTarget() || !b.ByPath["posts"].Relations["users"][0].UniqueTarget() {
+		t.Fatal("UniqueTarget")
+	}
+	_, err := doParse(t, b, req{url: "/api/notes?select=count(),...users(mood)"}, aggOn)
+	wantCode(t, err, CodeInvalidSelect)
+	if _, err := doParse(t, b, req{url: "/api/notes?select=id,...users(mood)"}, aggOn); err != nil {
+		t.Fatalf("plain to-one spread: %v", err)
+	}
+	if _, err := doParse(t, b, req{url: "/api/posts?select=count(),...users(mood)"}, aggOn); err != nil {
+		t.Fatalf("catalog FK spread grouping: %v", err)
 	}
 }

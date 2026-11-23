@@ -401,7 +401,10 @@ function](aggregates.md#cost)) is costed as if it had no `limit` — the root
 at `server.max_page_size`, an embed at 10 — because `limit` bounds the groups
 it returns, not the rows the aggregate reads; each aggregate costs 1 like a
 column, and a total on an aggregated root adds `server.max_page_size` × its
-grouping keys.
+grouping keys. A [spread embed](api.md#spread-embeds) costs what the same
+embed costs; the items of a to-one spread in an aggregate select are
+grouping keys of the node they are spread into (spread grouping joins one
+row per scanned row).
 
 `@costMultiplier n` on an FK comment replaces the multiplier of that backward
 embed when `n` is lower — it only ever lowers an estimate (values < 1 are

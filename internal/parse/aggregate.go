@@ -244,10 +244,12 @@ func (p *parser) checkAggregates() error {
 			return errf(CodeKeysetUnsupported, "after/before cannot be combined with aggregate functions; page grouped results with limit/offset")
 		}
 	}
-	return p.checkAggNode(root, p.req.Order)
+	return p.checkAggNode(root, p.req.Order, false)
 }
 
-func (p *parser) checkAggNode(n *plan.Node, order []plan.OrderTerm) error {
+// checkAggNode checks n and the nodes below it; hoisted marks the node of a
+// to-one spread, whose items are checked with the node it is spread into.
+func (p *parser) checkAggNode(n *plan.Node, order []plan.OrderTerm, hoisted bool) error {
 	for i := range n.Fields {
 		if f := &n.Fields[i]; f.Node.Aggregates() {
 			return errf(CodeInvalidSelect, "aggregate functions are not supported inside the set-returning computed column %q", f.Computed.Key)
@@ -255,14 +257,17 @@ func (p *parser) checkAggNode(n *plan.Node, order []plan.OrderTerm) error {
 	}
 	for i := range n.Embeds {
 		e := &n.Embeds[i]
-		if e.Node.Aggregated() && !e.Relation.ToMany() {
-			return errf(CodeInvalidSelect, "aggregate functions are only supported in to-many embeds; %q embeds one row", embedKey(e))
+		switch {
+		case e.Spread && e.Relation.ToMany() && e.Node.Aggregates():
+			return errf(CodeInvalidSelect, "aggregate functions are not supported inside to-many spreads (...%s)", e.Key)
+		case e.Node.Aggregated() && !e.Relation.ToMany() && !e.Spread:
+			return errf(CodeInvalidSelect, "aggregate functions are only supported in to-many embeds and to-one spreads; %q embeds one row (spread it: ...%s(...))", embedKey(e), e.Key)
 		}
-		if err := p.checkAggNode(e.Node, e.Order); err != nil {
+		if err := p.checkAggNode(e.Node, e.Order, e.SpreadOne()); err != nil {
 			return err
 		}
 	}
-	if !n.Aggregated() {
+	if hoisted || !n.Aggregated() {
 		return nil
 	}
 	if err := p.checkGroupKeys(n); err != nil {
@@ -289,12 +294,25 @@ func (p *parser) checkAggNode(n *plan.Node, order []plan.OrderTerm) error {
 }
 
 // checkGroupKeys rejects grouping keys whose cost the limit cannot bound or
-// that PostgreSQL cannot group: embeds (evaluated per scanned row; pdbr has
-// no spread embeds), set-returning computed columns, and columns of types
-// without equality and ordering.
+// that PostgreSQL cannot group: embeds other than to-one spreads (evaluated
+// per scanned row; a to-one spread is one join), set-returning computed
+// columns, and columns of types without equality and ordering. The items of
+// to-one spreads are checked as keys of n.
 func (p *parser) checkGroupKeys(n *plan.Node) error {
-	if len(n.Embeds) > 0 {
-		return errf(CodeInvalidSelect, "embeds cannot be grouping keys of an aggregate select (%q); aggregate inside the embed instead (rel(count())) or filter on the relation", embedKey(&n.Embeds[0]))
+	for i := range n.Embeds {
+		e := &n.Embeds[i]
+		switch {
+		case e.SpreadOne() && !e.Relation.UniqueTarget():
+			return errf(CodeInvalidSelect, "spread grouping over %q needs its referenced columns (%s) to be the primary key or a unique key of %q; this relation may match several rows (a @foreignKey onto non-unique columns, or a view without @primaryKey)", e.Key, strings.Join(e.Relation.FK.RefColumns, ", "), e.Relation.To.Path)
+		case e.SpreadOne():
+			if err := p.checkGroupKeys(e.Node); err != nil {
+				return err
+			}
+		case e.Spread:
+			return errf(CodeInvalidSelect, "a to-many spread cannot be a grouping key of an aggregate select (...%s): it yields arrays", e.Key)
+		default:
+			return errf(CodeInvalidSelect, "embeds cannot be grouping keys of an aggregate select (%q); spread a to-one relation (...%s(col)), aggregate inside the embed (rel(count())) or filter on the relation", embedKey(e), e.Key)
+		}
 	}
 	check := func(c *introspect.Column) error {
 		if !p.groupable(c, false, 0) {
@@ -375,15 +393,14 @@ func groupsByPath(n *plan.Node, col *introspect.Column, path plan.JSONPath) bool
 }
 
 // checkAggKeys rejects two items of an aggregated node answering under the
-// same response key (amount.sum(),price.sum() are both "sum").
+// same response key (amount.sum(),price.sum() are both "sum"), the items of
+// its to-one spreads included.
 func checkAggKeys(n *plan.Node) error {
+	return aggKeys(n, map[string]bool{})
+}
+
+func aggKeys(n *plan.Node, seen map[string]bool) error {
 	res := n.Resource
-	seen := map[string]bool{}
-	if n.Star {
-		for _, f := range res.Columns {
-			seen[f.Key] = true
-		}
-	}
 	add := func(key string) error {
 		if seen[key] {
 			return errf(CodeInvalidSelect, "two select items answer under %q; alias one of them (total:amount.sum())", key)
@@ -391,10 +408,19 @@ func checkAggKeys(n *plan.Node) error {
 		seen[key] = true
 		return nil
 	}
+	star := map[string]bool{}
+	if n.Star {
+		for _, f := range res.Columns {
+			if err := add(f.Key); err != nil {
+				return err
+			}
+			star[f.Key] = true
+		}
+	}
 	for i := range n.Fields {
 		f := &n.Fields[i]
 		key := f.Key(res)
-		if n.Star && f.Alias == "" && f.Column != nil && f.Agg == nil && len(f.Path) == 0 && f.Cast == nil && seen[key] {
+		if star[key] && f.Alias == "" && f.Column != nil && f.Agg == nil && len(f.Path) == 0 && f.Cast == nil {
 			continue
 		}
 		if err := add(key); err != nil {
@@ -402,6 +428,12 @@ func checkAggKeys(n *plan.Node) error {
 		}
 	}
 	for i := range n.Embeds {
+		if e := &n.Embeds[i]; e.SpreadOne() {
+			if err := aggKeys(e.Node, seen); err != nil {
+				return err
+			}
+			continue
+		}
 		if err := add(embedKey(&n.Embeds[i])); err != nil {
 			return err
 		}
