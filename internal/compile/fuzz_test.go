@@ -19,7 +19,8 @@ import (
 // appear in the SQL text, only in the parameter list — any two value sets
 // produce byte-identical SQL and the same parameter count. The second
 // statement covers the pdbcore/contrib operators and order terms over the
-// golden-only kb.docs table, the next two an aggregated root (grouped scan,
+// golden-only kb.docs table, the third pgvector distance ordering, output
+// and input over kb.embeddings, the next two an aggregated root (grouped scan,
 // group count, casts) and an aggregated embed, the last two JSON paths
 // (keys, indexes and the path-derived response keys are values) in select,
 // filters, order, casts and grouping, then spread embeds (to-one, to-many,
@@ -103,6 +104,9 @@ func FuzzFilter(f *testing.F) {
 			cond(dc("pages"), plan.OpCs, n),
 			cond(dc("net"), "cd_strict", e),
 			plan.Not{Term: cond(dc("net"), plan.OpOv, tag)},
+			cond(dc("body"), "unaccent_eq", e),
+			cond(dc("body"), "unaccent_ilike", tag),
+			plan.Or{Terms: []plan.Expr{cond(dc("body"), "unaccent_sw", e), plan.Not{Term: cond(dc("title"), "unaccent_includes", tag)}}},
 		}}
 		p.Order = []plan.OrderTerm{
 			{Contrib: &plan.ContribOrder{Column: dc("search"), Name: "rank", Rank: "ts_rank", Filter: &ftsFilter}, Desc: true},
@@ -336,6 +340,33 @@ func FuzzFilter(f *testing.F) {
 	pathBaseline := compilePath(f, "a@example.com", "admin", 5)
 	pathAggBaseline := compilePathAgg(f, "a@example.com", "admin", 5)
 	contribBaseline := compileContrib(f, "a@example.com", "admin", 5)
+	compileVector := func(t testing.TB, e, tag string, n int64) *compile.Statement {
+		t.Helper()
+		emb := cfx.res("kb.embeddings")
+		ec := func(name string) *introspect.Column { return cfx.col("kb.embeddings", name) }
+		vo := func(col, name, expr string) plan.OrderTerm {
+			return plan.OrderTerm{Contrib: &plan.ContribOrder{Column: ec(col), Name: name, Expr: expr}}
+		}
+		p := list(emb)
+		p.Select = fields(emb, "id", "emb", "half", "sparse")
+		p.Filter = plan.And{Terms: []plan.Expr{cond(ec("title"), plan.OpEq, e), plan.Not{Term: cond(ec("emb"), plan.OpIs, nil)}}}
+		p.Order = []plan.OrderTerm{vo("emb", "vec_l2", "l2Distance"), vo("half", "vec_cos", "cosineDistance"), vo("sparse", "vec_ip", "negativeInnerProduct")}
+		p.Order[1].Desc = true
+		p.Vec = []any{float64(n), 1.5, float64(len(tag))}
+		p.Page = plan.Page{Limit: 10, After: []any{n}}
+		read, err := cfx.c.Compile(context.Background(), &compile.Request{Plan: p, Built: cfx.built})
+		if err != nil {
+			t.Fatalf("vector compile error on valid input: %v", err)
+		}
+		w := &plan.Request{Method: plan.POST, Resource: emb, Select: fields(emb, "id", "emb"),
+			Body: body(emb, map[string]any{"title": e, "emb": []any{float64(n), 2.0}, "half": "[" + tag + "]", "sparse": nil})}
+		write, err := cfx.c.Compile(context.Background(), &compile.Request{Plan: w, Built: cfx.built})
+		if err != nil {
+			t.Fatalf("vector insert compile error on valid input: %v", err)
+		}
+		return &compile.Statement{SQL: read.SQL + "\n" + write.SQL, Args: append(read.Args, write.Args...)}
+	}
+	vectorBaseline := compileVector(f, "a@example.com", "admin", 5)
 	aggBaseline := compileAgg(f, "a@example.com", "admin", 5)
 	aggEmbedBaseline := compileAggEmbed(f, "a@example.com", "admin", 5)
 
@@ -350,6 +381,7 @@ func FuzzFilter(f *testing.F) {
 		for _, c := range []struct{ stmt, baseline *compile.Statement }{
 			{compileWith(t, e, tag, n), baseline},
 			{compileContrib(t, e, tag, n), contribBaseline},
+			{compileVector(t, e, tag, n), vectorBaseline},
 			{compileAgg(t, e, tag, n), aggBaseline},
 			{compileAggEmbed(t, e, tag, n), aggEmbedBaseline},
 			{compilePath(t, e, tag, n), pathBaseline},
@@ -394,6 +426,8 @@ func FuzzSpatial(f *testing.F) {
 			cond(loc, "bbox_leftof", wkt),
 			cond(loc, "st_exactlyequals", wkt),
 			cond(loc, "bbox_intersectsnd", wkt),
+			cond(loc, "bbox_intersects2d", wkt),
+			cond(fx.col("places", "area"), "bbox_intersects2d", wkt),
 		}}
 		p.Order = []plan.OrderTerm{{Distance: loc}}
 		p.Near = wkt

@@ -1,0 +1,1 @@
+GET /api/kb/embeddings?order=emb.vec_cos

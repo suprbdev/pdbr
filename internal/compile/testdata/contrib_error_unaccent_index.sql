@@ -1,0 +1,2 @@
+-- request: GET /api/kb/docs?select=id&title=unaccent_eq.Cafe
+-- error: 400 column_not_filterable: operator "unaccent_eq" on column "title" of "kb.docs" needs an index that serves it (filters.indexed_only) or the column in filters.allow_columns

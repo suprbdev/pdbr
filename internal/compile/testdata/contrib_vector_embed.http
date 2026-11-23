@@ -1,0 +1,1 @@
+GET /api/kb/embeddings?select=id,chunks(id,emb)&chunks.order=emb.vec_cos&chunks.limit=3&order=id&vec=%5B1%2C2%2C3%5D&limit=5

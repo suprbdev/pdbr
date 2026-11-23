@@ -13,7 +13,7 @@ import (
 
 // TestFilterOpsMatchParser pins the OpenAPI operator vocabulary
 // (api.Built.FilterOps) to what the parser actually accepts: for every
-// filterable column of the fixture plus the contrib-typed kb.docs, under
+// filterable column of the fixture plus the contrib-typed kb tables, under
 // both filter policies, and every operator (core and contrib), the request
 // parses iff the operator is documented for the column.
 func TestFilterOpsMatchParser(t *testing.T) {
@@ -26,7 +26,7 @@ func TestFilterOpsMatchParser(t *testing.T) {
 	}
 	for _, indexedOnly := range []bool{false, true} {
 		built := buildContrib(t, indexedOnly)
-		for _, path := range []string{"users", "posts", "places", "events", "kb.docs"} {
+		for _, path := range []string{"users", "posts", "places", "events", "kb.docs", "kb.embeddings"} {
 			res := built.ByPath[path]
 			for _, f := range res.Columns {
 				if !res.FilterColumns[f.Key] {
@@ -53,27 +53,32 @@ func TestFilterOpsMatchParser(t *testing.T) {
 // (api.Built.ContribOrders, rendered into the order parameter) to the
 // parser.
 func TestContribOrdersMatchParser(t *testing.T) {
+	mods := []string{"rank", "rank_cd", "trgm_dist", "trgm_wdist", "trgm_swdist", "vec_l2", "vec_ip", "vec_cos", "vec_l1"}
 	for _, indexedOnly := range []bool{false, true} {
 		built := buildContrib(t, indexedOnly)
-		res := built.ByPath["kb.docs"]
-		for _, f := range res.Columns {
-			documented := map[string]bool{}
-			if res.OrderColumns[f.Key] {
-				for _, o := range built.ContribOrders(res, f.Column) {
-					documented[o.Name] = o.Rank == "" || res.FilterColumns[f.Key]
+		for _, path := range []string{"kb.docs", "kb.embeddings"} {
+			res := built.ByPath[path]
+			for _, f := range res.Columns {
+				documented := map[string]bool{}
+				if res.OrderColumns[f.Key] {
+					for _, o := range built.ContribOrders(res, f.Column) {
+						documented[o.Name] = o.Rank == "" || res.FilterColumns[f.Key]
+					}
 				}
-			}
-			for _, mod := range []string{"rank", "rank_cd", "trgm_dist", "trgm_wdist", "trgm_swdist"} {
-				q := "order=" + f.Key + "." + mod + ".desc"
-				switch {
-				case !strings.HasPrefix(mod, "rank"):
-					q += "&trgm=x"
-				case res.FilterColumns[f.Key]:
-					q += "&" + f.Key + "=fts.x"
-				}
-				_, err := doParse(t, built, req{url: "/api/kb/docs?" + q}, allOn)
-				if (err == nil) != documented[mod] {
-					t.Errorf("indexed_only=%v %s.%s: parse err=%v, documented=%v", indexedOnly, f.Key, mod, err, documented[mod])
+				for _, mod := range mods {
+					q := "order=" + f.Key + "." + mod + ".desc"
+					switch {
+					case strings.HasPrefix(mod, "vec_"):
+						q += "&vec=" + url.QueryEscape("[1,2,3]")
+					case !strings.HasPrefix(mod, "rank"):
+						q += "&trgm=x"
+					case res.FilterColumns[f.Key]:
+						q += "&" + f.Key + "=fts.x"
+					}
+					_, err := doParse(t, built, req{url: "/api/" + strings.ReplaceAll(path, ".", "/") + "?" + q}, allOn)
+					if (err == nil) != documented[mod] {
+						t.Errorf("indexed_only=%v %s %s.%s: parse err=%v, documented=%v", indexedOnly, path, f.Key, mod, err, documented[mod])
+					}
 				}
 			}
 		}

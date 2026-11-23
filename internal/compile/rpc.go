@@ -176,7 +176,7 @@ func (s *stmt) valueJSON(ref string, fn *introspect.Function, depth int) (string
 	if postgis.IsSpatial(ret.PGType) {
 		return postgis.OutputJSONSQL(ref), nil
 	}
-	return "to_json(" + exprJSON(ref, ret) + ")", nil
+	return "to_json(" + s.exprJSON(ref, ret) + ")", nil
 }
 
 // rpcValue compiles scalar and composite returns.

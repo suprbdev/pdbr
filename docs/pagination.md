@@ -268,6 +268,7 @@ order  := term ("," term)*
 term   := path [ "." dir ] [ "." nulls ]
 path   := column | column jsonpath | computed | relkey "(" column ")" | spatialcol ".dist"
         | column ( ".rank" | ".rank_cd" | ".trgm_dist" | ".trgm_wdist" | ".trgm_swdist" )
+        | column ( ".vec_l2" | ".vec_ip" | ".vec_cos" | ".vec_l1" )
 dir    := "asc" | "desc"
 nulls  := "nullsfirst" | "nullslast"
 ```
@@ -331,19 +332,22 @@ computed columns are not orderable; `@omit order` on the function comment,
 `computed_opt_in`, `computed: false` and the plugin being disabled all answer
 `400 column_not_orderable`.
 
-### Full-text relevance and trigram distance
+### Full-text relevance, trigram and vector distance
 
 ```http
 GET /api/articles?search=wfts(english).fat%20cat&order=search.rank.desc
 GET /api/articles?order=title.trgm_dist&trgm=postgres&limit=10
+GET /api/items?order=embedding.vec_cos&vec=%5B0.1%2C0.2%2C0.3%5D&limit=10
 ```
 
 `<col>.rank` / `<col>.rank_cd` order by `ts_rank` / `ts_rank_cd` against the
 request's top-level full-text filter on the same column (missing or
 ambiguous → `400 invalid_filter`); `<col>.trgm_dist` (and `trgm_wdist`,
 `trgm_swdist`) by the `pg_trgm` distance to the `trgm=` parameter (missing →
-`400 invalid_filter`), nearest-first under `asc`. Details and the index
-policy for both in [contrib.md](contrib.md#ordering).
+`400 invalid_filter`), nearest-first under `asc`; `<col>.vec_l2` (and
+`vec_ip`, `vec_cos`, `vec_l1`) by the pgvector distance to the `vec=`
+parameter in the same way. Details and the index policy in
+[contrib.md](contrib.md#ordering) and [contrib.md](contrib.md#pgvector-pdbr).
 
 ### Distance (`postgis` plugin)
 

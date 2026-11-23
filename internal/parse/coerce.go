@@ -29,6 +29,9 @@ const (
 	kindEnum
 	kindSpatial
 	kindComposite
+	// kindVector is a pgvector vector, halfvec or sparsevec: no comparisons,
+	// distance ordering only.
+	kindVector
 )
 
 // colType is the parser's view of a column (or function argument) type.
@@ -42,8 +45,8 @@ type colType struct {
 	// owner names the extension vocabulary owning a scalar type (citext,
 	// hstore, ltree); "" otherwise.
 	owner string
-	// codec converts the JSON object / list form of an hstore, range or
-	// multirange (element) type; nil otherwise.
+	// codec converts the JSON object / list form of an hstore, range,
+	// multirange (element) or pgvector type; nil otherwise.
 	codec *contrib.Codec
 }
 
@@ -95,6 +98,9 @@ func (p *parser) typeFor(pgType, typeSchema string, isArray bool, enumRef string
 	}
 	if c, ok := api.CodecFor(p.built.Catalog, &introspect.Column{PGType: base, TypeSchema: typeSchema}); ok {
 		t.codec = c
+		if c.Arg == contrib.ArgVector && !t.isArray {
+			t.kind = kindVector
+		}
 	}
 	return t
 }
@@ -308,10 +314,10 @@ func (p *parser) coerceJSON(t colType, v any) (any, *compile.UserError) {
 	return nil, errf(CodeInvalidFilter, "expected a JSON scalar for %s", t.name())
 }
 
-// contribLiteral renders the JSON form of an hstore, range or multirange
-// value (validated by its contrib codec) as the type's text literal, for
-// places that bind one text parameter per value: RPC arguments and array
-// elements.
+// contribLiteral renders the JSON form of an hstore, range, multirange or
+// vector value (validated by its contrib codec) as the type's text literal,
+// for places that bind one text parameter per value: RPC arguments and
+// array elements.
 func contribLiteral(c *contrib.Codec, v any) (string, error) {
 	params, err := c.Params(v)
 	if err != nil {
@@ -353,6 +359,8 @@ func contribLiteral(c *contrib.Codec, v any) (string, error) {
 			parts[i] = rangeLit(lo[i], hi[i], bounds[i])
 		}
 		return "{" + strings.Join(parts, ",") + "}", nil
+	case contrib.ArgVector:
+		return params[0].(string), nil
 	}
 	return "", fmt.Errorf("no literal form for %s values", c.Arg)
 }

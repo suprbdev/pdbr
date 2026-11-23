@@ -187,7 +187,8 @@ func (s *stmt) nearExpr(col *introspect.Column) string {
 
 // contribOrderSQL renders a contrib order term: the relevance of the
 // column's full-text filter (Op.RankSQL over fresh placeholders for the same
-// operand) or the trigram distance to trgm= (Expr.Render).
+// operand), the trigram distance to trgm= or the vector distance to vec=
+// (Expr.Render).
 func (s *stmt) contribOrderSQL(co *plan.ContribOrder, alias string) string {
 	if co.Column == nil {
 		s.fail(fmt.Errorf("compile: contrib order term without column"))
@@ -216,13 +217,17 @@ func (s *stmt) contribOrderSQL(co *plan.ContribOrder, alias string) string {
 		if !ok {
 			continue
 		}
-		if s.plan.Trgm == nil {
-			s.fail(errUser(CodeInvalidFilter, "order by %s.%s requires trgm=", co.Column.Name, co.Name))
+		param, val := "trgm", s.plan.Trgm
+		if v.Name == contrib.VocabVector {
+			param, val = "vec", s.plan.Vec
+		}
+		if val == nil {
+			s.fail(errUser(CodeInvalidFilter, "order by %s.%s requires %s=", co.Column.Name, co.Name, param))
 			return "NULL"
 		}
-		params, err := e.Params(s.plan.Trgm)
+		params, err := e.Params(val)
 		if err != nil {
-			s.fail(errUser(CodeInvalidFilter, "trgm: %s", err.Error()))
+			s.fail(errUser(CodeInvalidFilter, "%s: %s", param, err.Error()))
 			return "NULL"
 		}
 		return e.Render(ref, s.params(params)...)

@@ -43,13 +43,13 @@ func splitQuery(raw string) ([]param, error) {
 var reserved = map[string]bool{
 	"select": true, "order": true, "limit": true, "offset": true, "after": true,
 	"before": true, "count": true, "distinct": true, "near": true, "on_conflict": true,
-	"trgm": true, "columns": true,
+	"trgm": true, "vec": true, "columns": true,
 }
 
 // softReserved are the reserved params that yield to a column, computed
 // column or RPC argument of the same name on the route: there the name is a
 // filter (or the argument) and the parameter is unavailable.
-var softReserved = map[string]bool{"near": true, "trgm": true}
+var softReserved = map[string]bool{"near": true, "trgm": true, "vec": true}
 
 // isReserved reports whether key is a reserved parameter on this route.
 func (p *parser) isReserved(key string, res *api.Resource) bool {
@@ -140,8 +140,8 @@ func (p *parser) parseQueryWith(raw string, res *api.Resource, extra func(key, v
 		}
 	}
 	p.root = root
-	var near, trgm string
-	hasNear, hasTrgm := false, false
+	var near, trgm, vec string
+	hasNear, hasTrgm, hasVec := false, false, false
 	for _, q := range params {
 		switch {
 		case q.key == "select":
@@ -154,6 +154,9 @@ func (p *parser) parseQueryWith(raw string, res *api.Resource, extra func(key, v
 			continue
 		case q.key == "trgm" && p.isReserved(q.key, res):
 			trgm, hasTrgm = q.val, true
+			continue
+		case q.key == "vec" && p.isReserved(q.key, res):
+			vec, hasVec = q.val, true
 			continue
 		case q.key == "columns" && p.isReserved(q.key, res):
 			if err := p.parseColumnsParam(q.val); err != nil {
@@ -187,7 +190,7 @@ func (p *parser) parseQueryWith(raw string, res *api.Resource, extra func(key, v
 	if err := p.resolveNear(near, hasNear); err != nil {
 		return err
 	}
-	if err := p.resolveContribOrders(trgm, hasTrgm); err != nil {
+	if err := p.resolveContribOrders(trgm, hasTrgm, vec, hasVec); err != nil {
 		return err
 	}
 	if err := p.applyRange(); err != nil {

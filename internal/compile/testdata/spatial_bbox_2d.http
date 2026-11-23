@@ -1,0 +1,1 @@
+GET /api/places?select=id&location=bbox_intersects2d.SRID%3D4326%3BLINESTRING(-1%2051,1%2052)&area=not.bbox_intersects2d.SRID%3D4326%3BPOINT(10%2010)&or=(area.bbox_intersects2d."{\"type\":\"Point\",\"coordinates\":[-0.128,51.508]}",location.is.null)&order=id

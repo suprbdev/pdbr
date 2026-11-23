@@ -45,7 +45,7 @@ has a `code`, see the note below the table):
 | `code` | Status | Meaning |
 |---|---|---|
 | `not_found` | 404 | no such route/resource/function, or single-row path matched zero rows (incl. rows hidden by RLS), or a nested `connect` / `update` / `delete` matched no row (detail `nested "<path>": matched 0 rows`; the whole statement is rolled back) |
-| `invalid_filter` | 400 | filter grammar: bad `op`, unparsable value, bad `and=`/`or=` nesting, missing `near=` with distance order, bad `in.(…)` list, uncoercible RPC GET arg |
+| `invalid_filter` | 400 | filter grammar: bad `op`, unparsable value, bad `and=`/`or=` nesting, missing `near=` / `trgm=` / `vec=` with distance order (or one of them without such a term), a `vec=` that is not a vector, a comparison on a pgvector column, bad `in.(…)` list, uncoercible RPC GET arg |
 | `invalid_select` | 400 | `select=` grammar: unbalanced parens, empty item, bad alias, unknown hint, `col(k=v)` args on a non-spatial column; aggregates ([aggregates.md](aggregates.md#errors)): a cast outside an aggregate or to a type outside the allowlist (`::regclass`), an aggregate without the input type (`text.sum()`), an embed or ungroupable column as a grouping key, duplicate response keys, aggregates on single-row paths, mutations or in to-one embeds, `distinct=` with aggregates |
 | `aggregates_disabled` | 400 | an aggregate function in `select=` while `server.aggregates` is off (PostgREST `PGRST123`) |
 | `unknown_column` | 400 | column / computed name not on the resource — in `select=`, filters, `order=`, `distinct=`, `on_conflict=` |

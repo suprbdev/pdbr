@@ -1068,7 +1068,7 @@ func TestSpatialOutput(t *testing.T) {
 		{Alias: "gt", Pseudo: &api.PseudoColumn{Key: "location_geometry_type", Column: loc, Accessor: "geometry_type"}},
 	}}
 	stmt := f.compile(p)
-	want := `json_build_object('name', t0."name", 'location', ST_AsGeoJSON(t0."location")::json, $1::text, ST_AsGeoJSON(ST_Transform(t0."location", 3857))::json, $3::text, ST_AsGeoJSON(ST_Transform(ST_SimplifyPreserveTopology(t0."area"::geometry, $2), 3857))::json, 'location_srid', ST_SRID(t0."location"), 'area_centroid', ST_AsGeoJSON(ST_Centroid(t0."area"::geometry))::json, $4::text, ST_GeometryType(t0."location"))`
+	want := `json_build_object('name', t0."name", 'location', ST_AsGeoJSON(t0."location")::json, $1::text, ST_AsGeoJSON(ST_Transform(t0."location", 3857))::json, $3::text, ST_AsGeoJSON(ST_Transform(ST_SimplifyPreserveTopology(t0."area"::geometry, $2), 3857))::json, 'location_srid', ST_SRID(t0."location"), 'area_centroid', ST_AsGeoJSON(CASE WHEN ST_GeometryType(t0."area"::geometry) = 'ST_GeometryCollection' THEN ST_Centroid(t0."area"::geometry) ELSE ST_Centroid(t0."area")::geometry END)::json, $4::text, ST_GeometryType(t0."location"))`
 	if !strings.Contains(stmt.SQL, want) {
 		t.Errorf("spatial output:\nwant %s\n%s", want, stmt.SQL)
 	}

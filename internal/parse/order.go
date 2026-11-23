@@ -14,7 +14,8 @@ import (
 // term := path [.asc|.desc] [.nullsfirst|.nullslast] and
 // path := column | computed | relkey[!hint](column) | spatialcol.dist |
 // column.rank | column.rank_cd | column.trgm_dist | column.trgm_wdist |
-// column.trgm_swdist.
+// column.trgm_swdist | column.vec_l2 | column.vec_ip | column.vec_cos |
+// column.vec_l1.
 func (p *parser) parseOrder(s string, res *api.Resource) ([]plan.OrderTerm, error) {
 	if strings.TrimSpace(s) == "" {
 		return nil, errf(CodeInvalidFilter, "order must not be empty")
@@ -143,6 +144,9 @@ func (p *parser) resolveOrderPath(t *plan.OrderTerm, path string, res *api.Resou
 		if !rel.To.OrderColumns[col] {
 			return errf(CodeColumnNotOrderable, "column %q on %q is not orderable", col, rel.To.Path)
 		}
+		if p.typeOf(f.Column).kind == kindVector {
+			return errf(CodeColumnNotOrderable, "vector column %q on %q is orderable by distance only", col, rel.To.Path)
+		}
 		t.Relation = &plan.RelationOrder{Relation: rel, Column: f.Column}
 		return nil
 	}
@@ -152,6 +156,9 @@ func (p *parser) resolveOrderPath(t *plan.OrderTerm, path string, res *api.Resou
 		}
 		if postgis.IsSpatial(f.Column.PGType) {
 			return errf(CodeColumnNotOrderable, "spatial column %q is orderable by distance only (%s.dist with near=)", path, path)
+		}
+		if p.typeOf(f.Column).kind == kindVector {
+			return errf(CodeColumnNotOrderable, "vector column %q is orderable by distance only (%s.vec_l2|vec_ip|vec_cos|vec_l1 with vec=)", path, path)
 		}
 		t.Column = f.Column
 		return nil
@@ -187,8 +194,9 @@ func (p *parser) resolveOrderPath(t *plan.OrderTerm, path string, res *api.Resou
 }
 
 // resolveContribOrder resolves order=<key>.<mod> for a contrib modifier;
-// the full-text filter a rank term needs and the trgm= text a distance term
-// needs are bound once the whole query is parsed (resolveContribOrders).
+// the full-text filter a rank term needs and the trgm= text or vec= vector
+// a distance term needs are bound once the whole query is parsed
+// (resolveContribOrders).
 func (p *parser) resolveContribOrder(t *plan.OrderTerm, key, mod string, res *api.Resource) error {
 	f := res.Field(key)
 	if f == nil {
@@ -198,7 +206,7 @@ func (p *parser) resolveContribOrder(t *plan.OrderTerm, key, mod string, res *ap
 		return errf(CodeColumnNotOrderable, "column %q on %q is not orderable", key, res.Path)
 	}
 	for _, o := range p.built.ContribOrders(res, f.Column) {
-		if o.Rank == "" && !p.isReserved("trgm", p.rootResource()) {
+		if o.Param != "" && !p.isReserved(o.Param, p.rootResource()) {
 			continue
 		}
 		if o.Name != mod || (o.Rank != "" && !res.FilterColumns[key]) {
@@ -210,8 +218,12 @@ func (p *parser) resolveContribOrder(t *plan.OrderTerm, key, mod string, res *ap
 	if strings.HasPrefix(mod, "rank") {
 		return errf(CodeColumnNotOrderable, "%s.%s needs a column that takes full-text filters", key, mod)
 	}
-	if res.NameTaken("trgm") || !p.isReserved("trgm", p.rootResource()) {
-		return errf(CodeColumnNotOrderable, "%s.%s needs trgm=, which is a column or argument filter on this route", key, mod)
+	param := api.DistanceParam(mod)
+	if res.NameTaken(param) || !p.isReserved(param, p.rootResource()) {
+		return errf(CodeColumnNotOrderable, "%s.%s needs %s=, which is a column or argument filter on this route", key, mod, param)
+	}
+	if param == "vec" {
+		return errf(CodeColumnNotOrderable, "%s.%s needs an index serving it on the column under filters.indexed_only (HNSW; IVFFlat also serves vec_l2, vec_ip and vec_cos on vector and halfvec), or the column in filters.allow_columns", key, mod)
 	}
 	return errf(CodeColumnNotOrderable, "%s.%s needs a pg_trgm text column with an ordering (GiST) index under filters.indexed_only, or the column in filters.allow_columns", key, mod)
 }
@@ -227,14 +239,21 @@ func (p *parser) rootResource() *api.Resource {
 
 // resolveContribOrders binds the contrib order terms of the root and of
 // every embed: a rank term to the one full-text filter on its column in
-// the same scope, a trigram distance term to trgm= (missing, or trgm=
-// without such a term → 400, like near= for .dist).
-func (p *parser) resolveContribOrders(trgm string, hasTrgm bool) error {
+// the same scope, a trigram distance term to trgm= and a vector distance
+// term to vec= (missing, or the parameter without such a term → 400, like
+// near= for .dist). vec= is checked against every vector term's column
+// type.
+func (p *parser) resolveContribOrders(trgm string, hasTrgm bool, vec string, hasVec bool) error {
 	needTrgm := ""
+	var vecTerms []*plan.ContribOrder
 	bind := func(terms []plan.OrderTerm, filter plan.Expr) error {
 		for i := range terms {
 			co := terms[i].Contrib
 			if co == nil {
+				continue
+			}
+			if api.DistanceParam(co.Name) == "vec" {
+				vecTerms = append(vecTerms, co)
 				continue
 			}
 			if co.Rank == "" {
@@ -281,6 +300,36 @@ func (p *parser) resolveContribOrders(trgm string, hasTrgm bool) error {
 	if hasTrgm {
 		p.req.Trgm = trgm
 	}
+	return p.bindVec(vecTerms, vec, hasVec)
+}
+
+// bindVec parses vec= for the vector distance terms collected over the
+// root and every embed, checking it against each term's column type.
+func (p *parser) bindVec(terms []*plan.ContribOrder, vec string, hasVec bool) error {
+	if len(terms) == 0 {
+		if hasVec {
+			return errf(CodeInvalidFilter, "vec= applies to order=<col>.vec_l2|vec_ip|vec_cos|vec_l1 only, and no such term is present")
+		}
+		return nil
+	}
+	if !hasVec {
+		return errf(CodeInvalidFilter, "order by %s.%s requires vec=<vector>", terms[0].Column.Name, terms[0].Name)
+	}
+	v, err := api.VectorOperand(vec)
+	if err != nil {
+		return errf(CodeInvalidFilter, "vec: %s", err.Error())
+	}
+	for _, co := range terms {
+		voc, _ := api.VectorVocabulary(p.built.Catalog, co.Column)
+		e, ok := voc.Expr(co.Expr)
+		if !ok {
+			return errf(CodeColumnNotOrderable, "%s.%s is not available on this column", co.Column.Name, co.Name)
+		}
+		if _, err := e.Params(v); err != nil {
+			return errf(CodeInvalidFilter, "vec: %s", err.Error())
+		}
+	}
+	p.req.Vec = v
 	return nil
 }
 
@@ -340,7 +389,7 @@ func (p *parser) parseDistinct(s string, res *api.Resource) ([]*introspect.Colum
 		if !res.OrderColumns[k] {
 			return nil, errf(CodeColumnNotOrderable, "column %q on %q is not orderable", k, res.Path)
 		}
-		if t := p.typeOf(f.Column); t.kind == kindSpatial || t.kind == kindComposite {
+		if t := p.typeOf(f.Column); t.kind == kindSpatial || t.kind == kindComposite || t.kind == kindVector {
 			return nil, errf(CodeInvalidFilter, "distinct is not supported on %s column %q", t.name(), k)
 		}
 		out = append(out, f.Column)

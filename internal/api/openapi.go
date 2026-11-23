@@ -199,11 +199,51 @@ func (b *Built) TypeSchema(pgType, typeSchema string, enumRef string) *Schema {
 }
 
 func (b *Builder) typeSchema(pgType, typeSchema, enumRef string) *Schema {
+	if s := vectorSchema(b.Catalog, pgType, "", false); s != nil {
+		return s
+	}
 	return typeSchemaWith(b.Enums, b.Composites, b.Extra.Types, pgType, typeSchema, enumRef)
 }
 
 func (b *Built) typeSchema(pgType, typeSchema, enumRef string) *Schema {
+	if s := vectorSchema(b.Catalog, pgType, "", false); s != nil {
+		return s
+	}
 	return typeSchemaWith(b.Enums, b.Composites, b.Extra.Types, pgType, typeSchema, enumRef)
+}
+
+// vectorSchema is the schema of a pgvector value (nil for other types):
+// vector and halfvec are output as arrays of numbers, sparsevec as its text
+// form; on input (request bodies) every type also takes the other form.
+// baseSchema is the schema of the resolved base type ("" matches by name).
+func vectorSchema(cat *introspect.Catalog, pgType, baseSchema string, input bool) *Schema {
+	if strings.HasPrefix(pgType, "_") {
+		return nil
+	}
+	qualified := pgType
+	if baseSchema != "" {
+		qualified = baseSchema + "." + pgType
+	}
+	for _, v := range contrib.ForType(cat, qualified, false) {
+		if v.Name != contrib.VocabVector {
+			continue
+		}
+		list := &Schema{Type: "array", Items: &Schema{Type: "number"}, Description: "pgvector " + v.Type + ", as an array of numbers."}
+		text := &Schema{Type: "string", Description: "pgvector " + v.Type + " text form, e.g. [1,2,3]."}
+		if v.Type == "sparsevec" {
+			list.Description = "Dense array of numbers; zero elements are left out of the sparse vector."
+			text.Description = "pgvector sparsevec text form {index:value,...}/dimensions, e.g. {1:1.5,3:2}/5 (1-based indices)."
+			if input {
+				return &Schema{OneOf: []*Schema{text, list}}
+			}
+			return text
+		}
+		if input {
+			return &Schema{OneOf: []*Schema{list, text}}
+		}
+		return list
+	}
+	return nil
 }
 
 // inputTypeSchema is typeSchema for request bodies: Extra.InputTypes wins
@@ -212,6 +252,9 @@ func (b *Built) typeSchema(pgType, typeSchema, enumRef string) *Schema {
 func (b *Builder) inputTypeSchema(pgType, typeSchema, baseSchema, enumRef string) *Schema {
 	if b.Extra.InputTypes[pgType] == nil {
 		if s := rangeInputSchema(b.Catalog, pgType, baseSchema); s != nil {
+			return s
+		}
+		if s := vectorSchema(b.Catalog, pgType, baseSchema, true); s != nil {
 			return s
 		}
 	}
@@ -693,7 +736,8 @@ func (b *Builder) nestedInputProps(r *Resource, s *Schema, required map[string]b
 // the parser's op/type compatibility (parse.coerceOperand): plugin types
 // come from Extra.FilterOps, spatial columns without the plugin only
 // support is, arrays and json have their containment operators, text its
-// pattern operators, hstore no ordering comparisons; the contrib operators
+// pattern operators, hstore no ordering comparisons, pgvector types only
+// is; the contrib operators
 // the filter policy admits (ContribFilters) follow the core ones.
 func (b *Builder) filterOps(r *Resource, c *introspect.Column) []string {
 	base := strings.TrimPrefix(c.PGType, "_")
@@ -719,6 +763,9 @@ func coreFilterOps(cat *introspect.Catalog, c *introspect.Column, base string, i
 	}
 	if v, ok := OwnerVocabulary(cat, c); ok && v.Name == contrib.VocabHstore {
 		return []string{"eq", "neq", "in", "is", "isdistinct"}
+	}
+	if _, ok := VectorVocabulary(cat, c); ok {
+		return []string{"is"}
 	}
 	switch base {
 	case "jsonb":

@@ -55,7 +55,11 @@ type Request struct {
 	Near any
 	// Trgm is the reference text (a string) for trigram distance ordering
 	// (trgm=; nil when absent).
-	Trgm        any
+	Trgm any
+	// Vec is the reference vector for pgvector distance ordering (vec=; a
+	// []any of numbers from a JSON array, or the pgvector text form as a
+	// string; nil when absent).
+	Vec         any
 	IfMatch     string // raw ETag from If-Match ("" = absent)
 	IfNoneMatch string
 	Prefer      Prefer
@@ -513,6 +517,7 @@ const (
 	OpStOrderingEquals      Op = "st_orderingequals"
 	OpStIntersects3D        Op = "st_intersects3d"
 	OpBBoxIntersectsND      Op = "bbox_intersectsnd"
+	OpBBoxIntersects2D      Op = "bbox_intersects2d"
 )
 
 // SpatialOps maps the URL spelling of every spatial operator to the
@@ -551,6 +556,7 @@ var SpatialOps = map[Op]string{
 	OpStOrderingEquals:      "orderingEquals",
 	OpStIntersects3D:        "intersects3D",
 	OpBBoxIntersectsND:      "bboxIntersectsND",
+	OpBBoxIntersects2D:      "bboxIntersects2D",
 }
 
 // Quantifier selects how a relation filter applies over related rows.
@@ -587,25 +593,26 @@ type OrderTerm struct {
 	Computed   *api.Computed
 	Relation   *RelationOrder     // users(name) — forward: scalar subquery, backward: MIN/MAX
 	Distance   *introspect.Column // spatial column for `.dist` (uses Request.Near)
-	Contrib    *ContribOrder      // .rank / .rank_cd / .trgm_dist ... (pdbcore/contrib)
+	Contrib    *ContribOrder      // .rank / .rank_cd / .trgm_dist / .vec_l2 ... (pdbcore/contrib)
 	Desc       bool
 	NullsFirst bool // both directions default to NULLS LAST
 }
 
 // ContribOrder orders by a pdbcore/contrib value expression over Column:
-// full-text relevance against Filter (Rank set) or a trigram distance to
-// Request.Trgm (Expr set).
+// full-text relevance against Filter (Rank set), a trigram distance to
+// Request.Trgm or a vector distance to Request.Vec (Expr set).
 type ContribOrder struct {
 	Column *introspect.Column
-	// Name is the order modifier (rank, rank_cd, trgm_dist, ...).
+	// Name is the order modifier (rank, rank_cd, trgm_dist, vec_l2, ...).
 	Name string
 	// Rank is "ts_rank" or "ts_rank_cd" for a relevance term.
 	Rank string
 	// Filter is the full-text condition on Column whose query a relevance
 	// term ranks against (same operator, query and config).
 	Filter *Cond
-	// Expr names the trigram distance expression (distance, wordDistance,
-	// strictWordDistance) of a distance term.
+	// Expr names the distance expression of a distance term: trigram
+	// (distance, wordDistance, strictWordDistance) or vector (l2Distance,
+	// negativeInnerProduct, cosineDistance, l1Distance).
 	Expr string
 }
 

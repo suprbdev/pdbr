@@ -1,0 +1,1 @@
+GET /api/kb/embeddings?select=id&order=emb.vec_cos&vec=%5B1%2C2%2C3%5D&limit=2&after=WyJrYi5lbWJlZGRpbmdzIiwgM10

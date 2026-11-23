@@ -227,15 +227,19 @@ func (s *stmt) columnJSON(alias string, c *introspect.Column, args map[string]an
 		}
 		return "to_json(" + ref + ")", nil
 	}
-	return exprJSON(ref, c), nil
+	return s.exprJSON(ref, c), nil
 }
 
 // exprJSON renders a scalar value expression for the JSON response: 64-bit
 // and arbitrary-precision numbers as strings (no precision loss), bytea as
-// base64, spatial values as GeoJSON; enum labels pass through verbatim.
-func exprJSON(ref string, c *introspect.Column) string {
+// base64, spatial values as GeoJSON, pgvector vector and halfvec values as
+// arrays of numbers; enum labels pass through verbatim.
+func (s *stmt) exprJSON(ref string, c *introspect.Column) string {
 	if postgis.IsSpatial(c.PGType) {
 		return postgis.OutputJSONSQL(ref)
+	}
+	if v, ok := api.VectorVocabulary(s.catalog(), c); ok {
+		return v.Codec.OutputJSONSQL(ref)
 	}
 	switch strings.TrimPrefix(c.PGType, "_") {
 	case "int8", "numeric", "money":
@@ -355,7 +359,7 @@ func (s *stmt) computedJSON(c *api.Computed, node *plan.Node, args map[string]an
 		}
 		elem := s.alias("v")
 		return fmt.Sprintf("(SELECT coalesce(json_agg(%s), '[]'::json) FROM %s %s(v))",
-			exprJSON(elem+".v", ret), call, elem), nil
+			s.exprJSON(elem+".v", ret), call, elem), nil
 	}
 	if comp := s.compositeFor(ret); comp != nil {
 		return s.compositeJSON(call, comp, ret.IsArray, depth)
@@ -367,7 +371,7 @@ func (s *stmt) computedJSON(c *api.Computed, node *plan.Node, args map[string]an
 		}
 		return "to_json(" + call + ")", nil
 	}
-	return exprJSON(call, ret), nil
+	return s.exprJSON(call, ret), nil
 }
 
 // rowParamSQL renders alias's row as an explicit ROW(...)::table value.
@@ -464,7 +468,7 @@ func (s *stmt) compositeJSON(ref string, comp *introspect.Composite, isArray boo
 				expr = "to_json(" + attr + ")"
 			}
 		} else {
-			expr = exprJSON(attr, f)
+			expr = s.exprJSON(attr, f)
 		}
 		pairs = append(pairs, quoteLiteral(f.Name), expr)
 	}

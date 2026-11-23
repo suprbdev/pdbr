@@ -1,0 +1,1 @@
+GET /api/kb/docs?select=id&body=unaccent_ilike.*cr%C3%A8me*br%C3%BBl%C3%A9e&and=(body.not.unaccent_eq.Caf%C3%A9)&or=(body.unaccent_includes.50%25,body.not.unaccent_sw.Zo%C3%AB_)&order=id

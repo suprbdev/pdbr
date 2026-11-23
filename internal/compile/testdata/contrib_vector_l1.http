@@ -1,0 +1,1 @@
+GET /api/kb/embeddings?select=id&order=emb.vec_l1&vec=[1,2,3]&emb=not.is.null&limit=5

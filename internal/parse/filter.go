@@ -81,6 +81,7 @@ var ops = map[string]opSpec{
 	"st_orderingequals":      {op: plan.OpStOrderingEquals, spatial: true},
 	"st_intersects3d":        {op: plan.OpStIntersects3D, spatial: true},
 	"bbox_intersectsnd":      {op: plan.OpBBoxIntersectsND, spatial: true},
+	"bbox_intersects2d":      {op: plan.OpBBoxIntersects2D, spatial: true},
 }
 
 // operand is a parsed "[not.]op[(config)].value".
@@ -310,6 +311,9 @@ func (p *parser) coerceOperand(t colType, key string, o operand) (any, error) {
 	spec := o.spec
 	if t.kind == kindComposite {
 		return nil, errf(CodeColumnNotFilterable, "composite column %q is not filterable", key)
+	}
+	if t.kind == kindVector && spec.op != plan.OpIs {
+		return nil, errf(CodeInvalidFilter, "operator %q is not supported on %s column %q (is.null only; order by distance with vec=)", o.op, t.name(), key)
 	}
 	if spec.contrib {
 		return nil, errf(CodeInvalidFilter, "operator %q is not supported on %s column %q", o.op, t.name(), key)

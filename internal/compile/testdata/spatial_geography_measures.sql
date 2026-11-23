@@ -1,0 +1,9 @@
+-- request: GET /api/places?select=id,area_perimeter,area_centroid,area_area,area_length&order=id&limit=5
+SELECT json_build_object('has_next', coalesce(bool_or(s1.__rn > $1), false), 'has_prev', false, 'first', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $1))->0, 'last', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $1))->-1, 'n', count(*) FILTER (WHERE s1.__rn <= $1), 'rows', coalesce(json_agg(s1.data ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $1), '[]'::json)) AS data
+FROM (
+  SELECT json_build_object('id', t0."id", 'area_perimeter', ST_Perimeter(t0."area"), 'area_centroid', ST_AsGeoJSON(CASE WHEN ST_GeometryType(t0."area"::geometry) = 'ST_GeometryCollection' THEN ST_Centroid(t0."area"::geometry) ELSE ST_Centroid(t0."area")::geometry END)::json, 'area_area', ST_Area(t0."area"), 'area_length', ST_Length(t0."area")) AS data, jsonb_build_array(t0."id") AS __key, row_number() OVER (ORDER BY t0."id" ASC) AS __rn
+  FROM "public"."places" t0
+  ORDER BY t0."id" ASC
+  LIMIT 6
+) s1
+-- args: [5]

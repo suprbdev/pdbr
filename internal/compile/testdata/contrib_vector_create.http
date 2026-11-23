@@ -1,0 +1,3 @@
+POST /api/kb/embeddings
+
+{"id": 7, "title": "t", "emb": [0.1, 0.2, 0.3], "half": "[1,2,3]", "sparse": [0, 1.5, 0]}

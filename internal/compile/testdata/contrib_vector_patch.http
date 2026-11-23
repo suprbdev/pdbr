@@ -1,0 +1,4 @@
+PATCH /api/kb/embeddings?id=eq.7
+Prefer: return=representation
+
+{"emb": null, "sparse": "{1:2}/3"}

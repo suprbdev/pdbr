@@ -80,7 +80,7 @@ func TestContribGatedOnExtensions(t *testing.T) {
 func TestContribFilterOps(t *testing.T) {
 	cases := map[string][]string{
 		"title":  {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew", "match", "imatch", "trgm_sim", "trgm_wsim", "trgm_swsim"},
-		"body":   {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew", "match", "imatch", "fts", "plfts", "phfts", "wfts", "trgm_sim", "trgm_wsim", "trgm_swsim"},
+		"body":   {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew", "match", "imatch", "fts", "plfts", "phfts", "wfts", "trgm_sim", "trgm_wsim", "trgm_swsim", "unaccent_eq", "unaccent_ilike", "unaccent_sw", "unaccent_includes"},
 		"search": {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "fts", "plfts", "phfts", "wfts"},
 		"email":  {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew", "match", "imatch"},
 		"attrs":  {"eq", "neq", "in", "is", "isdistinct", "hk", "hk_all", "hk_any", "cs"},
@@ -172,5 +172,128 @@ func TestContribCustomRanges(t *testing.T) {
 	}
 	if s := schemas["kb.docs.insert"].Properties["fake"]; len(s.AnyOf) == 2 && len(s.AnyOf[0].OneOf) == 2 {
 		t.Errorf("fake input schema = %+v, want the plain literal", s)
+	}
+}
+
+// TestContribUnaccent: the unaccent operators follow the other text
+// operators on text-like columns when the extension is installed, and no
+// index serves them, so filters.indexed_only admits them only through
+// filters.allow_columns.
+func TestContribUnaccent(t *testing.T) {
+	unaccent := []string{"unaccent_eq", "unaccent_ilike", "unaccent_sw", "unaccent_includes"}
+	b := build(t, testcatalog.Contrib(testutil.FixtureCatalog()), contribOptions(false))
+	docs := b.ByPath["kb.docs"]
+	for _, col := range []string{"title", "body", "email"} {
+		if got := b.FilterOps(docs, docs.Table.Column(col)); !reflect.DeepEqual(got[len(got)-4:], unaccent) {
+			t.Errorf("%s ops = %v, want the unaccent operators last", col, got)
+		}
+	}
+	for _, col := range []string{"id", "attrs", "path", "pages"} {
+		if got := b.FilterOps(docs, docs.Table.Column(col)); slices.Contains(got, "unaccent_eq") {
+			t.Errorf("%s got unaccent ops: %v", col, got)
+		}
+	}
+	b = build(t, testcatalog.Contrib(testutil.FixtureCatalog()), contribOptions(true))
+	docs = b.ByPath["kb.docs"]
+	if got := b.FilterOps(docs, docs.Table.Column("title")); slices.Contains(got, "unaccent_eq") {
+		t.Errorf("indexed title (gist) admits unaccent ops: %v", got)
+	}
+	if got := b.FilterOps(docs, docs.Table.Column("body")); !slices.Contains(got, "unaccent_includes") {
+		t.Errorf("allow-listed body lacks unaccent ops: %v", got)
+	}
+
+	cat := testcatalog.Contrib(testutil.FixtureCatalog())
+	var exts []*introspect.Extension
+	for _, e := range cat.Extensions {
+		if e.Name != "unaccent" {
+			exts = append(exts, e)
+		}
+	}
+	cat.Extensions = exts
+	b = build(t, cat, contribOptions(false))
+	docs = b.ByPath["kb.docs"]
+	if got := b.FilterOps(docs, docs.Table.Column("body")); slices.Contains(got, "unaccent_eq") {
+		t.Errorf("unaccent ops without the extension: %v", got)
+	}
+}
+
+// TestContribVector: pgvector columns take is only, order by the distances
+// their indexes serve (any distance without the policy), document vec=,
+// and are arrays of numbers (sparsevec: text) in the schemas.
+func TestContribVector(t *testing.T) {
+	names := func(os []ContribOrder) []string {
+		var out []string
+		for _, o := range os {
+			out = append(out, o.Name)
+		}
+		return out
+	}
+	all := []string{"vec_l2", "vec_ip", "vec_cos", "vec_l1"}
+	for _, tc := range []struct {
+		indexedOnly bool
+		col         string
+		want        []string
+	}{
+		{false, "emb", all},
+		{false, "half", all},
+		{false, "sparse", all},
+		{true, "emb", all},
+		{true, "half", []string{"vec_l2", "vec_ip", "vec_cos"}},
+		{true, "sparse", nil},
+	} {
+		b := build(t, testcatalog.Contrib(testutil.FixtureCatalog()), contribOptions(tc.indexedOnly))
+		res := b.ByPath["kb.embeddings"]
+		c := res.Table.Column(tc.col)
+		if got := names(b.ContribOrders(res, c)); !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("indexed_only=%v %s orders = %v, want %v", tc.indexedOnly, tc.col, got, tc.want)
+		}
+		if res.FilterColumns[tc.col] {
+			if got := b.FilterOps(res, c); !reflect.DeepEqual(got, []string{"is"}) {
+				t.Errorf("%s ops = %v, want [is]", tc.col, got)
+			}
+		}
+	}
+
+	b := build(t, testcatalog.Contrib(testutil.FixtureCatalog()), contribOptions(true))
+	get := b.OpenAPI.Paths["/kb/embeddings"].Get
+	if paramByName(get.Parameters, "vec") == nil {
+		t.Error("kb.embeddings lacks the vec param")
+	}
+	if paramByName(b.OpenAPI.Paths["/kb/docs"].Get.Parameters, "vec") != nil {
+		t.Error("kb.docs documents vec without a vector column")
+	}
+	order := paramByName(get.Parameters, "order").Description
+	if !strings.Contains(order, "emb.vec_l2, emb.vec_ip, emb.vec_cos, emb.vec_l1, half.vec_l2, half.vec_ip, half.vec_cos.") {
+		t.Errorf("order description: %s", order)
+	}
+	if !strings.Contains(order, "Orderable columns: id.") {
+		t.Errorf("order lists a vector column as plainly orderable: %s", order)
+	}
+
+	schemas := b.OpenAPI.Components.Schemas
+	out := schemas["kb.embeddings"].Properties
+	if s := out["emb"]; !reflect.DeepEqual(s.Type, []string{"array", "null"}) || s.Items == nil || s.Items.Type != "number" {
+		t.Errorf("emb output schema = %+v", s)
+	}
+	if s := out["sparse"]; !reflect.DeepEqual(s.Type, []string{"string", "null"}) {
+		t.Errorf("sparse output schema = %+v", s)
+	}
+	in := schemas["kb.embeddings.insert"].Properties
+	for _, col := range []string{"emb", "half", "sparse"} {
+		if s := in[col]; len(s.AnyOf) != 2 || len(s.AnyOf[0].OneOf) != 2 {
+			t.Errorf("%s input schema = %+v", col, s)
+		}
+	}
+
+	cat := testcatalog.Contrib(testutil.FixtureCatalog())
+	cat.Table(testcatalog.ContribSchema, "embeddings").Columns = append(cat.Table(testcatalog.ContribSchema, "embeddings").Columns,
+		&introspect.Column{Name: "vec", Position: 6, PGType: "int4", TypeSchema: "pg_catalog"})
+	b = build(t, cat, contribOptions(false))
+	res := b.ByPath["kb.embeddings"]
+	if got := b.ContribOrders(res, res.Table.Column("emb")); len(got) != 0 {
+		t.Errorf("vector orders with a column named vec = %v", names(got))
+	}
+	if paramByName(b.OpenAPI.Paths["/kb/embeddings"].Get.Parameters, "vec").XFilterOps == nil {
+		t.Error("the vec column lost its filter parameter")
 	}
 }
