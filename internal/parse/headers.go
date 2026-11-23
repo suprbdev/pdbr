@@ -49,7 +49,7 @@ func (p *parser) parseHeaders(r *http.Request) error {
 }
 
 type preference struct {
-	key, val, raw string
+	key, val, raw, orig string
 }
 
 // parsePrefer reads the Prefer header(s) per docs/mutations.md "Prefer". Tokens
@@ -67,10 +67,12 @@ func (p *parser) parsePrefer(headers []string) error {
 			}
 			kv, _, _ := strings.Cut(tok, ";")
 			k, v, _ := strings.Cut(kv, "=")
+			orig := strings.Trim(strings.TrimSpace(v), `"`)
 			prefs = append(prefs, preference{
-				key: strings.ToLower(strings.TrimSpace(k)),
-				val: strings.ToLower(strings.Trim(strings.TrimSpace(v), `"`)),
-				raw: tok,
+				key:  strings.ToLower(strings.TrimSpace(k)),
+				val:  strings.ToLower(orig),
+				raw:  tok,
+				orig: orig,
 			})
 		}
 	}
@@ -91,6 +93,9 @@ func (p *parser) parsePrefer(headers []string) error {
 		applied = append(applied, key+"="+val)
 	}
 	write := p.isMutation()
+	txWrite := write || (p.match.RPC != nil && p.match.RPC.Mutation)
+	pf.Rollback = txWrite && strings.HasPrefix(p.opts.TxEnd, "rollback")
+	override := strings.HasSuffix(p.opts.TxEnd, "-allow-override")
 	for _, pr := range prefs {
 		ok := true
 		switch pr.key {
@@ -130,6 +135,25 @@ func (p *parser) parsePrefer(headers []string) error {
 				pf.MissingDefault = true
 				apply("missing", pr.val)
 			}
+		case "tx":
+			if pr.val != "commit" && pr.val != "rollback" {
+				ok = false
+				break
+			}
+			if !override {
+				ok = false
+				break
+			}
+			if txWrite {
+				pf.Rollback = pr.val == "rollback"
+				apply("tx", pr.val)
+			}
+		case "timezone":
+			if pr.orig == "" {
+				ok = false
+				break
+			}
+			pf.Timezone = pr.orig
 		case "count":
 			switch m := plan.CountMode(pr.val); m {
 			case plan.CountExact, plan.CountPlanned, plan.CountEstimated:

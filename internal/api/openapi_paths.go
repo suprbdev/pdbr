@@ -136,7 +136,7 @@ func (b *Builder) listItem(item *PathItem, rt *Route) {
 	}
 	if rt.Allows(MethodPost) {
 		post := b.operation(rt, r.Path+".create", "Create "+r.Path, createStatuses)
-		post.Parameters = []*Parameter{b.selectParam(r, "Columns and embeds of the created row(s) to return."), createPreferParam()}
+		post.Parameters = []*Parameter{b.selectParam(r, "Columns and embeds of the created row(s) to return."), createPreferParam(), columnsParam()}
 		if r.Keyset || len(r.Uniques) > 0 {
 			post.Parameters = append(post.Parameters, &Parameter{Name: "on_conflict", In: "query", Schema: &Schema{Type: "string"},
 				Description: "Conflict target for Prefer: resolution= (default: the primary key): comma list equal to a unique constraint's columns. " + b.uniqueProse(r)})
@@ -156,6 +156,7 @@ func (b *Builder) listItem(item *PathItem, rt *Route) {
 			{Name: "on_conflict", In: "query", Schema: &Schema{Type: "string"},
 				Description: "Conflict target: comma list equal to a unique constraint's columns (default: the primary key). " + b.uniqueProse(r)},
 			preferParam(false, false),
+			columnsParam(),
 		}
 		put.RequestBody = jsonBody(objectOrArray(r.Path+".upsert"), true, "One row, or an array of rows; the conflict-target columns must be present in every element.")
 		put.Responses["200"] = &Response{Description: "Updated (single object that hit an existing row, or any array).", Headers: writeHeaders(nil),
@@ -169,6 +170,7 @@ func (b *Builder) listItem(item *PathItem, rt *Route) {
 	if rt.Allows(MethodPatch) {
 		patch := b.operation(rt, r.Path+".bulk_update", "Update the "+r.Path+" rows matching the filters", createStatuses)
 		patch.Parameters = append([]*Parameter{b.selectParam(r, "Columns and embeds of the updated rows to return."), preferParam(true, true)}, b.bulkParams(r)...)
+		patch.Parameters = append(patch.Parameters, columnsParam())
 		appendDescription(patch, bulkProse)
 		appendDescription(patch, b.filterProse(r))
 		patch.RequestBody = jsonBody(SchemaRef(r.Path+".update"), true, "Columns to set on every matching row.")
@@ -245,7 +247,7 @@ func (b *Builder) rowItem(item *PathItem, rt *Route) {
 	}
 	if rt.Allows(MethodPut) {
 		put := b.operation(rt, id+".put", "Insert or update one "+r.Path+" "+what, createStatuses)
-		put.Parameters = []*Parameter{b.selectParam(r, "Columns and embeds of the row to return."), preferParam(false, false)}
+		put.Parameters = []*Parameter{b.selectParam(r, "Columns and embeds of the row to return."), preferParam(false, false), columnsParam()}
 		put.RequestBody = jsonBody(b.keyedPutSchema(r, cols), true, "The row; key columns may be omitted (taken from the path) or must equal the path values. Upserts on this path's key: unprovided columns keep their values on update.")
 		put.Responses["200"] = &Response{Description: "Updated (the row existed).", Headers: writeHeaders(nil), Content: map[string]*MediaType{mediaJSON: {Schema: SchemaRef(r.Path)}}}
 		put.Responses["201"] = &Response{Description: "Inserted (Prefer: return=minimal omits the body).",
@@ -257,7 +259,7 @@ func (b *Builder) rowItem(item *PathItem, rt *Route) {
 	if rt.Allows(MethodPatch) {
 		patch := b.operation(rt, id+".update", "Update one "+r.Path+" "+what, updateStatuses)
 		patch.Parameters = append([]*Parameter{b.selectParam(r, "Columns and embeds of the updated row to return.")}, b.ifMatchParam(r)...)
-		patch.Parameters = append(patch.Parameters, preferParam(true, false))
+		patch.Parameters = append(patch.Parameters, preferParam(true, false), columnsParam())
 		patch.RequestBody = jsonBody(SchemaRef(r.Path+".update"), true, "Columns to change (partial update).")
 		patch.Responses["200"] = &Response{Description: "Updated", Headers: writeHeaders(nil), Content: map[string]*MediaType{mediaJSON: {Schema: SchemaRef(r.Path)}}}
 		patch.Responses["204"] = &Response{Description: "Updated with Prefer: return=minimal.", Headers: writeHeaders(nil)}
@@ -601,7 +603,7 @@ func (b *Builder) ifMatchParam(r *Resource) []*Parameter {
 // preferParam documents the Prefer header of a write; maxAffected adds the
 // PATCH / DELETE row cap, count the bulk-write count= token.
 func preferParam(maxAffected, count bool) *Parameter {
-	desc := "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference."
+	desc := "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. tx=commit | rollback ends the transaction accordingly (rollback still answers with the result; honoured only when server.tx_end is commit-allow-override or rollback-allow-override). timezone=<IANA name> sets the transaction's timezone (names from pg_timezone_names; unknown names are ignored)."
 	if maxAffected {
 		desc += " max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing."
 	}
@@ -609,6 +611,12 @@ func preferParam(maxAffected, count bool) *Parameter {
 		desc += " count=exact|planned|estimated puts the number of written rows into the Content-Range total."
 	}
 	return &Parameter{Name: "Prefer", In: "header", Schema: &Schema{Type: "string"}, Description: desc}
+}
+
+// columnsParam documents the columns= query parameter of POST, PUT and PATCH.
+func columnsParam() *Parameter {
+	return &Parameter{Name: "columns", In: "query", Schema: &Schema{Type: "string"},
+		Description: "Comma list of body keys to use; any other key in the body is ignored. A listed key an element lacks takes the column DEFAULT (a bulk body inserts the listed columns in one statement)."}
 }
 
 // createPreferParam documents the Prefer header of a POST.

@@ -724,3 +724,64 @@ func TestRangeLinkCarriesLimit(t *testing.T) {
 		}
 	}
 }
+
+func TestExecuteRollback(t *testing.T) {
+	b := built(t)
+	users := b.ByPath["users"]
+	data := []byte(`{"n":1,"rows":[{"id":1}]}`)
+	op := func(pf plan.Prefer) *Operation {
+		pf.Return = "representation"
+		return &Operation{Method: "DELETE", Path: "/users", Resource: users, Mutation: true, Plan: &plan.Request{
+			Method: plan.DELETE, Resource: users, Page: plan.Page{Limit: 100},
+			Filter: plan.Cond{Column: users.Table.Column("id"), Op: plan.OpGt, Value: int64(0)},
+			Prefer: pf,
+		}}
+	}
+	db := &fakeDB{row: fakeRow{data: data}}
+	res := newExec(db, b, nil, Options{TxMutations: false}).Execute(context.Background(), op(plan.Prefer{Rollback: true, Applied: []string{"tx=rollback"}}))
+	if res.Err != nil || res.Status != 200 || string(res.Data) != `[{"id":1}]` {
+		t.Fatalf("rollback result: %+v", res)
+	}
+	if len(db.txs) != 1 || db.txs[0].committed || !db.txs[0].rolled || !db.txs[0].opts.ScanBeforeCommit {
+		t.Fatalf("rollback must discard the tx: %+v", db.txs)
+	}
+	if got := res.Headers.Get("Preference-Applied"); got != "tx=rollback" {
+		t.Errorf("Preference-Applied = %q", got)
+	}
+
+	db = &fakeDB{row: fakeRow{err: errors.New("boom")}}
+	res = newExec(db, b, nil, Options{}).Execute(context.Background(), op(plan.Prefer{Rollback: true}))
+	if res.Err == nil {
+		t.Fatalf("a failing statement must still be an error: %+v", res)
+	}
+}
+
+func TestExecuteTimezone(t *testing.T) {
+	b := built(t)
+	e := newExec(&fakeDB{row: fakeRow{data: []byte(`{"rows":[],"has_next":false,"has_prev":false,"n":0}`)}}, b, nil, Options{})
+	e.tzNames = map[string]string{"asia/tokyo": "Asia/Tokyo"}
+	db := e.DB.(*fakeDB)
+	op := listOp(b, "/users")
+	op.Plan.Prefer = plan.Prefer{Return: "representation", Timezone: "asia/TOKYO"}
+	res := e.Execute(context.Background(), op)
+	if res.Err != nil || len(db.txs) != 1 || len(db.txs[0].stmts) != 2 || db.txs[0].stmts[0] != timezoneSQL {
+		t.Fatalf("timezone batch: %+v %+v", res, db.txs)
+	}
+	if got := res.Headers.Get("Preference-Applied"); got != "timezone=Asia/Tokyo" {
+		t.Errorf("Preference-Applied = %q", got)
+	}
+
+	db.txs = nil
+	op = listOp(b, "/users")
+	op.Plan.Prefer = plan.Prefer{Return: "representation", Timezone: "Mars/Base"}
+	res = e.Execute(context.Background(), op)
+	if res.Err != nil || len(db.txs) != 0 || res.Headers.Get("Preference-Applied") != "" {
+		t.Fatalf("unknown zone must be ignored: %+v txs=%d", res, len(db.txs))
+	}
+
+	op.Plan.Prefer.Strict = true
+	res = e.Execute(context.Background(), op)
+	if xe := errOf(t, res); xe.Status != 400 || xe.Code != CodeInvalidPreference {
+		t.Fatalf("strict unknown zone: %+v", xe)
+	}
+}

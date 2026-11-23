@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -80,6 +81,9 @@ const (
 	// CodeMaxAffectedExceeded: a PATCH / DELETE under Prefer: handling=strict,
 	// max-affected=N touched more than N rows; the transaction is rolled back.
 	CodeMaxAffectedExceeded = "max_affected_exceeded"
+	// CodeInvalidPreference: Prefer: timezone= names a zone pg_timezone_names
+	// does not list, under handling=strict.
+	CodeInvalidPreference = "invalid_preference"
 	// CodeRangeNotSatisfiable: the requested offset lies beyond the counted
 	// total (416 with Content-Range: */<total>).
 	CodeRangeNotSatisfiable = "range_not_satisfiable"
@@ -143,6 +147,9 @@ type Executor struct {
 	Compile compile.Func
 	Hooks   []RequestHook
 	Opts    Options
+
+	tzMu    sync.Mutex
+	tzNames map[string]string
 
 	queryTx func(ctx context.Context, db pgexec.ConnAcquirer, opts pgexec.TxOptions, id pgexec.Identity, stmts ...pgexec.Stmt) error
 }
@@ -282,10 +289,12 @@ func (e *Executor) errResult(err error) *Result {
 }
 
 // needsTx is the transaction decision table (docs/architecture.md).
-func (e *Executor) needsTx(op *Operation, stmt *compile.Statement) bool {
+func (e *Executor) needsTx(op *Operation, stmt *compile.Statement, tz bool) bool {
 	return op.ForceTx ||
 		((op.Mutation || stmt.Mutation) && e.Opts.TxMutations) ||
 		maxAffected(op) != nil ||
+		rollsBack(op) ||
+		tz ||
 		(e.Opts.RLS && (op.Role != "" || len(op.Claims) > 0))
 }
 
@@ -300,7 +309,7 @@ func (e *Executor) run(ctx context.Context, op *Operation, stmt *compile.Stateme
 	}
 	var raw []byte
 	var found bool
-	scan := func(row pgx.Row) error {
+	scanRow := func(row pgx.Row) error {
 		raw, found = nil, false
 		err := row.Scan(&raw)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -322,8 +331,18 @@ func (e *Executor) run(ctx context.Context, op *Operation, stmt *compile.Stateme
 		}
 		return nil
 	}
-	var err error
-	if e.needsTx(op, stmt) {
+	scan := func(row pgx.Row) error {
+		err := scanRow(row)
+		if err == nil && rollsBack(op) {
+			return errRollback
+		}
+		return err
+	}
+	applied, tzStmt, err := e.timezone(ctx, op)
+	if err != nil {
+		return e.errResult(err)
+	}
+	if e.needsTx(op, stmt, len(tzStmt) > 0) {
 		queryTx := e.queryTx
 		if queryTx == nil {
 			queryTx = pgexec.QueryTx
@@ -332,14 +351,17 @@ func (e *Executor) run(ctx context.Context, op *Operation, stmt *compile.Stateme
 			Isolation:        batchIsolation(e.Opts.Isolation),
 			MaxRetries:       e.Opts.MaxRetries,
 			RLS:              e.Opts.RLS,
-			ScanBeforeCommit: maxAffected(op) != nil,
+			ScanBeforeCommit: maxAffected(op) != nil || rollsBack(op),
 			Log:              e.Opts.Logger,
 			Observer:         e.Opts.Metrics.DBObserver(),
 		}, pgexec.Identity{
 			Role:         op.Role,
 			Claims:       op.Claims,
 			ClaimsPrefix: e.Opts.ClaimsPrefix,
-		}, pgexec.Stmt{SQL: stmt.SQL, Args: stmt.Args, Scan: scan})
+		}, append(tzStmt, pgexec.Stmt{SQL: stmt.SQL, Args: stmt.Args, Scan: scan})...)
+		if errors.Is(err, errRollback) {
+			err = nil
+		}
 	} else {
 		start := time.Now()
 		err = scan(e.DB.QueryRow(ctx, stmt.SQL, stmt.Args...))
@@ -361,13 +383,85 @@ func (e *Executor) run(ctx context.Context, op *Operation, stmt *compile.Stateme
 	if err != nil {
 		return e.errResult(err)
 	}
-	if op.Plan != nil && len(op.Plan.Prefer.Applied) > 0 {
-		res.Headers.Set("Preference-Applied", strings.Join(op.Plan.Prefer.Applied, ", "))
+	if len(applied) > 0 {
+		res.Headers.Set("Preference-Applied", strings.Join(applied, ", "))
 	}
 	if err := e.mint(res, stmt); err != nil {
 		return e.errResult(err)
 	}
 	return res
+}
+
+// errRollback is the sentinel a Scan returns to make QueryTx roll the
+// transaction back; run maps it to success.
+var errRollback = errors.New("exec: rollback requested")
+
+// rollsBack reports that the operation runs in a transaction that is rolled
+// back (server.tx_end or Prefer: tx=rollback).
+func rollsBack(op *Operation) bool {
+	return op != nil && op.Plan != nil && op.Plan.Prefer.Rollback
+}
+
+// timezoneSQL sets the transaction-local timezone from a bind parameter, so
+// the statement text is constant.
+const timezoneSQL = `SELECT set_config('timezone', $1, true)`
+
+// timezone resolves Prefer: timezone= against pg_timezone_names. It returns
+// the Preference-Applied tokens of the request (the parser's plus
+// timezone=<canonical name>) and the statement that applies the zone before
+// the request's own. A zone the database does not know is ignored, or
+// 400 invalid_preference under handling=strict.
+func (e *Executor) timezone(ctx context.Context, op *Operation) ([]string, []pgexec.Stmt, error) {
+	if op == nil || op.Plan == nil {
+		return nil, nil, nil
+	}
+	applied := op.Plan.Prefer.Applied
+	want := op.Plan.Prefer.Timezone
+	if want == "" {
+		return applied, nil, nil
+	}
+	names, err := e.timezoneNames(ctx)
+	if err != nil {
+		return nil, nil, e.dbError(ctx, op, err)
+	}
+	name, ok := names[strings.ToLower(want)]
+	if !ok {
+		if op.Plan.Prefer.Strict {
+			return nil, nil, &Error{Status: http.StatusBadRequest, Code: CodeInvalidPreference,
+				Detail: fmt.Sprintf("invalid preference %q: unknown timezone (Prefer: handling=strict rejects unknown or malformed preferences)", "timezone="+want)}
+		}
+		return applied, nil, nil
+	}
+	applied = append(append([]string(nil), applied...), "timezone="+name)
+	return applied, []pgexec.Stmt{{SQL: timezoneSQL, Args: []any{name}}}, nil
+}
+
+// timezoneNames returns pg_timezone_names keyed by lower-cased name, loaded
+// on first use and kept for the life of the executor.
+func (e *Executor) timezoneNames(ctx context.Context) (map[string]string, error) {
+	e.tzMu.Lock()
+	defer e.tzMu.Unlock()
+	if e.tzNames != nil {
+		return e.tzNames, nil
+	}
+	rows, err := e.DB.Query(ctx, `SELECT name FROM pg_timezone_names`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	names := map[string]string{}
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			return nil, err
+		}
+		names[strings.ToLower(n)] = n
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	e.tzNames = names
+	return names, nil
 }
 
 // batchIsolation is the pgexec.QueryTx isolation for transactions.isolation:

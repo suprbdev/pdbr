@@ -1,0 +1,4 @@
+PATCH /api/users?id=eq.1&columns=full_name&select=id,full_name
+Content-Type: application/json
+
+{"full_name": "B", "email": "ignored@example.com"}

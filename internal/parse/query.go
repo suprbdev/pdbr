@@ -43,7 +43,7 @@ func splitQuery(raw string) ([]param, error) {
 var reserved = map[string]bool{
 	"select": true, "order": true, "limit": true, "offset": true, "after": true,
 	"before": true, "count": true, "distinct": true, "near": true, "on_conflict": true,
-	"trgm": true,
+	"trgm": true, "columns": true,
 }
 
 // softReserved are the reserved params that yield to a column, computed
@@ -55,6 +55,9 @@ var softReserved = map[string]bool{"near": true, "trgm": true}
 func (p *parser) isReserved(key string, res *api.Resource) bool {
 	if !reserved[key] {
 		return false
+	}
+	if key == "columns" {
+		return p.isMutation() && p.method != plan.DELETE
 	}
 	return !softReserved[key] || !nameTaken(key, res, p.match.RPC)
 }
@@ -151,6 +154,11 @@ func (p *parser) parseQueryWith(raw string, res *api.Resource, extra func(key, v
 			continue
 		case q.key == "trgm" && p.isReserved(q.key, res):
 			trgm, hasTrgm = q.val, true
+			continue
+		case q.key == "columns" && p.isReserved(q.key, res):
+			if err := p.parseColumnsParam(q.val); err != nil {
+				return err
+			}
 			continue
 		case q.key == "on_conflict":
 			if err := p.parseOnConflict(q.val, res); err != nil {

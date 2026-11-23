@@ -50,6 +50,8 @@ server:
   allow_unfiltered_mutations: false
   # Allow aggregate functions in select= (count(), col.sum(), col.avg(), col.max(), col.min(); col.extent(), col.union(), col.collect(), col.centroid() on spatial columns), grouped by the other selected items. Off by default (PostgREST db-aggregates-enabled): an aggregate reads every row its filters match, which limit does not bound; requests answer 400 aggregates_disabled.
   aggregates: false
+  # How a write's transaction ends (PostgREST db-tx-end): commit, commit-allow-override, rollback or rollback-allow-override. rollback runs every write (POST, PUT, PATCH, DELETE, volatile RPCs) and discards its effects while still answering with the result; the -allow-override forms honour Prefer: tx=commit|rollback, echoed in Preference-Applied. Without an override form Prefer: tx= is ignored, or 400 invalid_preference under handling=strict.
+  tx_end: "commit"
 
 schema:
   # PostgreSQL schemas to expose.

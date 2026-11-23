@@ -57,6 +57,7 @@ type Server struct {
 	CSVEscapeFormulas        bool          `koanf:"csv_escape_formulas" doc:"Prefix CSV header and string cells that start with =, +, -, @, a tab or a carriage return with a single quote, so spreadsheets do not evaluate them as formulas (CSV injection). Numbers are never escaped. Disable only when every consumer reads the CSV as data."`
 	AllowUnfilteredMutations bool          `koanf:"allow_unfiltered_mutations" doc:"Allow PATCH and DELETE on a collection route without a filter (every visible row). Off by default: such requests answer 400 unfiltered_mutation."`
 	Aggregates               bool          `koanf:"aggregates" doc:"Allow aggregate functions in select= (count(), col.sum(), col.avg(), col.max(), col.min(); col.extent(), col.union(), col.collect(), col.centroid() on spatial columns), grouped by the other selected items. Off by default (PostgREST db-aggregates-enabled): an aggregate reads every row its filters match, which limit does not bound; requests answer 400 aggregates_disabled."`
+	TxEnd                    string        `koanf:"tx_end" doc:"How a write's transaction ends (PostgREST db-tx-end): commit, commit-allow-override, rollback or rollback-allow-override. rollback runs every write (POST, PUT, PATCH, DELETE, volatile RPCs) and discards its effects while still answering with the result; the -allow-override forms honour Prefer: tx=commit|rollback, echoed in Preference-Applied. Without an override form Prefer: tx= is ignored, or 400 invalid_preference under handling=strict."`
 }
 
 // Schema is the shared schema section plus pdbr's own keys.
@@ -87,6 +88,7 @@ func DefaultConfig() Config {
 			Etags:             true,
 			CSV:               true,
 			CSVEscapeFormulas: true,
+			TxEnd:             "commit",
 		},
 		Schema: Schema{Schema: confx.Schema{
 			Schemas:   []string{"public"},
@@ -212,6 +214,11 @@ func validateServer(s Server) []string {
 	}
 	if s.MaxEmbedDepth < 1 {
 		errs = append(errs, "server.max_embed_depth must be >= 1")
+	}
+	switch s.TxEnd {
+	case "commit", "commit-allow-override", "rollback", "rollback-allow-override":
+	default:
+		errs = append(errs, fmt.Sprintf("server.tx_end: %q must be commit, commit-allow-override, rollback or rollback-allow-override", s.TxEnd))
 	}
 	return errs
 }

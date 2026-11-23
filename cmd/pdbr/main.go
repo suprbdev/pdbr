@@ -55,6 +55,7 @@ func configFlags(cmd *cobra.Command) {
 	fs.Bool("server.read_only", false, "answer every write with 405 (read-only mode)")
 	fs.Bool("server.allow_unfiltered_mutations", false, "allow PATCH/DELETE on a collection without a filter")
 	fs.Bool("server.aggregates", false, "allow aggregate functions in select= (count(), col.sum(), ...)")
+	fs.String("server.tx_end", "", "how a write's transaction ends: commit|commit-allow-override|rollback|rollback-allow-override")
 	fs.StringSlice("schema.schemas", nil, "PostgreSQL schemas to expose")
 	fs.String("schema.cache_path", "", "boot from schema cache file")
 	fs.Bool("schema.expose_partitions", false, "expose table partitions as resources of their own")
@@ -66,6 +67,7 @@ func configFlags(cmd *cobra.Command) {
 	fs.Bool("metrics.enabled", false, "serve Prometheus metrics")
 	fs.String("metrics.path", "", "URL path of the metrics endpoint (default /metrics)")
 	fs.String("metrics.addr", "", "separate listen address for the metrics endpoint, e.g. :9090")
+	registerEnumCompletion(cmd, "server.tx_end", "commit", "commit-allow-override", "rollback", "rollback-allow-override")
 	registerEnumCompletion(cmd, "errors.detail", "dev", "prod", "strict")
 	registerEnumCompletion(cmd, "log.level", "debug", "info", "warn", "error")
 }

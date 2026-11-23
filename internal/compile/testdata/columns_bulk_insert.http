@@ -1,0 +1,4 @@
+POST /api/users?columns=email,full_name&select=id,email
+Content-Type: application/json
+
+[{"email": "a@example.com", "full_name": "A", "tags": ["x"]}, {"email": "b@example.com", "bogus": 1}]

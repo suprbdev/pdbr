@@ -364,7 +364,10 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.2b39ade7"
+            "$ref": "#/components/parameters/header.Prefer.a88f77f8"
+          },
+          {
+            "$ref": "#/components/parameters/query.columns"
           },
           {
             "$ref": "#/components/parameters/query.on_conflict.202d185c"
@@ -492,7 +495,10 @@
             "$ref": "#/components/parameters/query.on_conflict.9f24a859"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.7ac54358"
+            "$ref": "#/components/parameters/header.Prefer.eedd9759"
+          },
+          {
+            "$ref": "#/components/parameters/query.columns"
           }
         ],
         "requestBody": {
@@ -633,7 +639,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.c67a3025"
+            "$ref": "#/components/parameters/header.Prefer.8766eda2"
           },
           {
             "$ref": "#/components/parameters/query.and"
@@ -655,6 +661,9 @@
           },
           {
             "$ref": "#/components/parameters/query.parent_id"
+          },
+          {
+            "$ref": "#/components/parameters/query.columns"
           }
         ],
         "requestBody": {
@@ -765,7 +774,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.c67a3025"
+            "$ref": "#/components/parameters/header.Prefer.8766eda2"
           },
           {
             "$ref": "#/components/parameters/query.and"
@@ -1001,7 +1010,10 @@
             "$ref": "#/components/parameters/header.If-Match"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.7e56c4fd"
+            "$ref": "#/components/parameters/header.Prefer.b9bddbbb"
+          },
+          {
+            "$ref": "#/components/parameters/query.columns"
           }
         ],
         "requestBody": {
@@ -1105,7 +1117,7 @@
             "$ref": "#/components/parameters/header.If-Match"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.7e56c4fd"
+            "$ref": "#/components/parameters/header.Prefer.b9bddbbb"
           }
         ],
         "responses": {
@@ -1511,7 +1523,10 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.2b39ade7"
+            "$ref": "#/components/parameters/header.Prefer.a88f77f8"
+          },
+          {
+            "$ref": "#/components/parameters/query.columns"
           },
           {
             "$ref": "#/components/parameters/query.on_conflict.202d185c"
@@ -1639,7 +1654,10 @@
             "$ref": "#/components/parameters/query.on_conflict.9f24a859"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.7ac54358"
+            "$ref": "#/components/parameters/header.Prefer.eedd9759"
+          },
+          {
+            "$ref": "#/components/parameters/query.columns"
           }
         ],
         "requestBody": {
@@ -1780,7 +1798,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.c67a3025"
+            "$ref": "#/components/parameters/header.Prefer.8766eda2"
           },
           {
             "$ref": "#/components/parameters/query.and"
@@ -1799,6 +1817,9 @@
           },
           {
             "$ref": "#/components/parameters/query.type_code"
+          },
+          {
+            "$ref": "#/components/parameters/query.columns"
           }
         ],
         "requestBody": {
@@ -1909,7 +1930,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.c67a3025"
+            "$ref": "#/components/parameters/header.Prefer.8766eda2"
           },
           {
             "$ref": "#/components/parameters/query.and"
@@ -2142,7 +2163,10 @@
             "$ref": "#/components/parameters/header.If-Match"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.7e56c4fd"
+            "$ref": "#/components/parameters/header.Prefer.b9bddbbb"
+          },
+          {
+            "$ref": "#/components/parameters/query.columns"
           }
         ],
         "requestBody": {
@@ -2246,7 +2270,7 @@
             "$ref": "#/components/parameters/header.If-Match"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.7e56c4fd"
+            "$ref": "#/components/parameters/header.Prefer.b9bddbbb"
           }
         ],
         "responses": {
@@ -2926,7 +2950,10 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.2b39ade7"
+            "$ref": "#/components/parameters/header.Prefer.a88f77f8"
+          },
+          {
+            "$ref": "#/components/parameters/query.columns"
           },
           {
             "$ref": "#/components/parameters/query.on_conflict.202d185c"
@@ -3054,7 +3081,10 @@
             "$ref": "#/components/parameters/query.on_conflict.9f24a859"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.7ac54358"
+            "$ref": "#/components/parameters/header.Prefer.eedd9759"
+          },
+          {
+            "$ref": "#/components/parameters/query.columns"
           }
         ],
         "requestBody": {
@@ -3195,7 +3225,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.c67a3025"
+            "$ref": "#/components/parameters/header.Prefer.8766eda2"
           },
           {
             "$ref": "#/components/parameters/query.and"
@@ -3220,6 +3250,9 @@
           },
           {
             "$ref": "#/components/parameters/query.area"
+          },
+          {
+            "$ref": "#/components/parameters/query.columns"
           }
         ],
         "requestBody": {
@@ -3330,7 +3363,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.c67a3025"
+            "$ref": "#/components/parameters/header.Prefer.8766eda2"
           },
           {
             "$ref": "#/components/parameters/query.and"
@@ -3569,7 +3602,10 @@
             "$ref": "#/components/parameters/header.If-Match"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.7e56c4fd"
+            "$ref": "#/components/parameters/header.Prefer.b9bddbbb"
+          },
+          {
+            "$ref": "#/components/parameters/query.columns"
           }
         ],
         "requestBody": {
@@ -3673,7 +3709,7 @@
             "$ref": "#/components/parameters/header.If-Match"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.7e56c4fd"
+            "$ref": "#/components/parameters/header.Prefer.b9bddbbb"
           }
         ],
         "responses": {
@@ -4085,7 +4121,10 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.2b39ade7"
+            "$ref": "#/components/parameters/header.Prefer.a88f77f8"
+          },
+          {
+            "$ref": "#/components/parameters/query.columns"
           },
           {
             "$ref": "#/components/parameters/query.on_conflict.202d185c"
@@ -4213,7 +4252,10 @@
             "$ref": "#/components/parameters/query.on_conflict.9f24a859"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.7ac54358"
+            "$ref": "#/components/parameters/header.Prefer.eedd9759"
+          },
+          {
+            "$ref": "#/components/parameters/query.columns"
           }
         ],
         "requestBody": {
@@ -4354,7 +4396,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.c67a3025"
+            "$ref": "#/components/parameters/header.Prefer.8766eda2"
           },
           {
             "$ref": "#/components/parameters/query.and"
@@ -4376,6 +4418,9 @@
           },
           {
             "$ref": "#/components/parameters/query.title"
+          },
+          {
+            "$ref": "#/components/parameters/query.columns"
           }
         ],
         "requestBody": {
@@ -4486,7 +4531,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.c67a3025"
+            "$ref": "#/components/parameters/header.Prefer.8766eda2"
           },
           {
             "$ref": "#/components/parameters/query.and"
@@ -4722,7 +4767,10 @@
             "$ref": "#/components/parameters/header.If-Match"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.7e56c4fd"
+            "$ref": "#/components/parameters/header.Prefer.b9bddbbb"
+          },
+          {
+            "$ref": "#/components/parameters/query.columns"
           }
         ],
         "requestBody": {
@@ -4826,7 +4874,7 @@
             "$ref": "#/components/parameters/header.If-Match"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.7e56c4fd"
+            "$ref": "#/components/parameters/header.Prefer.b9bddbbb"
           }
         ],
         "responses": {
@@ -6816,7 +6864,10 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.2b39ade7"
+            "$ref": "#/components/parameters/header.Prefer.a88f77f8"
+          },
+          {
+            "$ref": "#/components/parameters/query.columns"
           },
           {
             "name": "on_conflict",
@@ -6954,7 +7005,10 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.7ac54358"
+            "$ref": "#/components/parameters/header.Prefer.eedd9759"
+          },
+          {
+            "$ref": "#/components/parameters/query.columns"
           }
         ],
         "requestBody": {
@@ -7095,7 +7149,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.c67a3025"
+            "$ref": "#/components/parameters/header.Prefer.8766eda2"
           },
           {
             "$ref": "#/components/parameters/query.and"
@@ -7126,6 +7180,9 @@
           },
           {
             "$ref": "#/components/parameters/query.moods"
+          },
+          {
+            "$ref": "#/components/parameters/query.columns"
           }
         ],
         "requestBody": {
@@ -7236,7 +7293,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.c67a3025"
+            "$ref": "#/components/parameters/header.Prefer.8766eda2"
           },
           {
             "$ref": "#/components/parameters/query.and"
@@ -7478,7 +7535,10 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.7ac54358"
+            "$ref": "#/components/parameters/header.Prefer.eedd9759"
+          },
+          {
+            "$ref": "#/components/parameters/query.columns"
           }
         ],
         "requestBody": {
@@ -7664,7 +7724,10 @@
             "$ref": "#/components/parameters/header.If-Match"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.7e56c4fd"
+            "$ref": "#/components/parameters/header.Prefer.b9bddbbb"
+          },
+          {
+            "$ref": "#/components/parameters/query.columns"
           }
         ],
         "requestBody": {
@@ -7763,7 +7826,7 @@
             "$ref": "#/components/parameters/header.If-Match"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.7e56c4fd"
+            "$ref": "#/components/parameters/header.Prefer.b9bddbbb"
           }
         ],
         "responses": {
@@ -7975,7 +8038,10 @@
             "$ref": "#/components/parameters/header.If-Match"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.7e56c4fd"
+            "$ref": "#/components/parameters/header.Prefer.b9bddbbb"
+          },
+          {
+            "$ref": "#/components/parameters/query.columns"
           }
         ],
         "requestBody": {
@@ -8074,7 +8140,7 @@
             "$ref": "#/components/parameters/header.If-Match"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.7e56c4fd"
+            "$ref": "#/components/parameters/header.Prefer.b9bddbbb"
           }
         ],
         "responses": {
@@ -9170,14 +9236,6 @@
           "type": "string"
         }
       },
-      "header.Prefer.2b39ade7": {
-        "name": "Prefer",
-        "in": "header",
-        "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. resolution=merge-duplicates upserts on the conflict target (the primary key or ?on_conflict=; needs the PUT method), resolution=ignore-duplicates skips conflicting rows (only inserted rows are returned; a skipped single object answers 204). missing=default is accepted and changes nothing: keys absent from a bulk element always take the column DEFAULT.",
-        "schema": {
-          "type": "string"
-        }
-      },
       "header.Prefer.608c0edc": {
         "name": "Prefer",
         "in": "header",
@@ -9186,26 +9244,34 @@
           "type": "string"
         }
       },
-      "header.Prefer.7ac54358": {
+      "header.Prefer.8766eda2": {
         "name": "Prefer",
         "in": "header",
-        "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference.",
+        "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. tx=commit | rollback ends the transaction accordingly (rollback still answers with the result; honoured only when server.tx_end is commit-allow-override or rollback-allow-override). timezone=<IANA name> sets the transaction's timezone (names from pg_timezone_names; unknown names are ignored). max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing. count=exact|planned|estimated puts the number of written rows into the Content-Range total.",
         "schema": {
           "type": "string"
         }
       },
-      "header.Prefer.7e56c4fd": {
+      "header.Prefer.a88f77f8": {
         "name": "Prefer",
         "in": "header",
-        "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
+        "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. tx=commit | rollback ends the transaction accordingly (rollback still answers with the result; honoured only when server.tx_end is commit-allow-override or rollback-allow-override). timezone=<IANA name> sets the transaction's timezone (names from pg_timezone_names; unknown names are ignored). resolution=merge-duplicates upserts on the conflict target (the primary key or ?on_conflict=; needs the PUT method), resolution=ignore-duplicates skips conflicting rows (only inserted rows are returned; a skipped single object answers 204). missing=default is accepted and changes nothing: keys absent from a bulk element always take the column DEFAULT.",
         "schema": {
           "type": "string"
         }
       },
-      "header.Prefer.c67a3025": {
+      "header.Prefer.b9bddbbb": {
         "name": "Prefer",
         "in": "header",
-        "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing. count=exact|planned|estimated puts the number of written rows into the Content-Range total.",
+        "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. tx=commit | rollback ends the transaction accordingly (rollback still answers with the result; honoured only when server.tx_end is commit-allow-override or rollback-allow-override). timezone=<IANA name> sets the transaction's timezone (names from pg_timezone_names; unknown names are ignored). max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "header.Prefer.eedd9759": {
+        "name": "Prefer",
+        "in": "header",
+        "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. tx=commit | rollback ends the transaction accordingly (rollback still answers with the result; honoured only when server.tx_end is commit-allow-override or rollback-allow-override). timezone=<IANA name> sets the transaction's timezone (names from pg_timezone_names; unknown names are ignored).",
         "schema": {
           "type": "string"
         }
@@ -9279,6 +9345,14 @@
         "name": "before",
         "in": "query",
         "description": "Keyset cursor (X-Prev-Cursor): the page before this row under the same order=.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "query.columns": {
+        "name": "columns",
+        "in": "query",
+        "description": "Comma list of body keys to use; any other key in the body is ignored. A listed key an element lacks takes the column DEFAULT (a bulk body inserts the listed columns in one statement).",
         "schema": {
           "type": "string"
         }
