@@ -90,8 +90,8 @@ internal/
     smartcomments/ priority 50  — pdbcore/smartcomments/catalog CatalogHook + InflectionHook + APIHook.
     advancedfilters/ priority 150 — APIHook only: relation filters/existence, related order, computed filter/order (bindings read by the core compiler).
     postgis/       priority 160 — APIHook only: spatial filter params, pseudo-columns, projection args, distance order (spatial SQL lives in core via pdbcore/postgis).
-    nestedmutations/ priority 200 — nested create/connect: APIHook (input schemas), CompileHook
-                   (multi-CTE), RequestHook (ForceTx).
+    nestedmutations/ priority 200 — nested create/connect/update/delete/disconnect: APIHook (input
+                   schemas), CompileHook (multi-CTE + guards), RequestHook (ForceTx).
   inflect/         pdbr Kind constants + Default (identity + computed prefix strip + relation-key rules)
                    on top of pdbcore/inflect helpers.
 test/              e2e suite (httptest server over the real handler; PDBR_TEST_DATABASE_URL).
@@ -352,7 +352,7 @@ Body shape)`:
 | RPC single row | `SELECT CASE WHEN t0 IS NULL THEN NULL ELSE json_build_object(…) END AS data FROM "public"."publish_post"($1::"int4") AS t0 <laterals>` — shape `scalar` (NULL row → body `null`, 200) |
 | RPC `SETOF <table>` | the list statement (`page` shape) with the root scan replaced by `FROM "public"."search_posts"("term" => $1::"text") t0` (`stmt.rootSource`), the resource's filters/order/limit/offset/count, cursors off (offset `Link`s only) |
 | RPC `SETOF <scalar>` / `SETOF <composite>` | `SELECT coalesce(json_agg(<value>), '[]') AS data FROM (SELECT __v.v FROM "public"."f"($1) AS __v(v) LIMIT $2 [OFFSET $3]) AS __s` — shape `scalar` |
-| nested mutations | `WITH __p_1 AS (INSERT INTO users … RETURNING *), __mut AS (INSERT INTO posts (author_id, …) SELECT __p_1.id, $n FROM __p_1 RETURNING …), __c_2 AS (INSERT INTO comments … FROM __mut RETURNING *), __vis_1 AS NOT MATERIALIZED (SELECT <cols> FROM comments UNION ALL SELECT <cols> FROM __c_2) SELECT … FROM __mut t0 <laterals reading __vis_*>` — built by the nested-mutations CompileHook via `MutationWithCTEs`; new rows are `UNION ALL`ed with the table into a visibility CTE so embeds in the response see them |
+| nested mutations | `WITH __p_1 AS (INSERT INTO users … RETURNING *), __mut AS (INSERT INTO posts (author_id, …) SELECT __p_1.id, $n FROM __p_1 RETURNING …), __c_2 AS (INSERT INTO comments … FROM __mut RETURNING *), __vis_1 AS NOT MATERIALIZED (SELECT <cols> FROM comments UNION ALL SELECT <cols> FROM __c_2) SELECT … FROM __mut t0 <laterals reading __vis_*>` — built by the nested-mutations CompileHook via `MutationChain`; written rows are `UNION ALL`ed with the table (minus the rows the chain replaced or deleted) into a visibility CTE so embeds in the response see them, and `__guard AS MATERIALIZED (…)` makes a nested lookup that matched nothing abort the statement |
 | mutation embed back to the mutated table | `__vis AS NOT MATERIALIZED (SELECT <cols> FROM t WHERE <rows the DML left alone> UNION ALL SELECT __mut.<cols> FROM __mut)` (no `UNION ALL` for `DELETE`), emitted only when an embed reads `t` ([mutations.md](mutations.md#embeds-back-to-the-mutated-table)) |
 
 Notes:

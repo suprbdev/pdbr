@@ -1,0 +1,4 @@
+PATCH /api/posts/1?select=id,title,users(id,full_name)
+Content-Type: application/json
+
+{"title": "Engine notes", "users": {"update": {"full_name": "Ada L."}}}

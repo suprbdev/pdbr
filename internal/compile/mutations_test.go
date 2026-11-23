@@ -273,3 +273,17 @@ func TestBulkMutationShapes(t *testing.T) {
 		t.Error("a filter rendering no condition compiled to an unrestricted DELETE")
 	}
 }
+
+func TestGuardSQL(t *testing.T) {
+	g := compile.GuardSQL("__c_1", `nested "posts.update[0]":`)
+	want := `(SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard: nested "posts.update[0]": matched ', count(*), ' rows')::boolean END FROM __c_1)`
+	if g != want {
+		t.Fatalf("GuardSQL = %s", g)
+	}
+	if d, ok := compile.GuardFailure(`invalid input syntax for type boolean: "pdbr guard: nested "posts.update[0]": matched 0 rows"`); !ok || d != `nested "posts.update[0]": matched 0 rows` {
+		t.Fatalf("GuardFailure = %q %v", d, ok)
+	}
+	if _, ok := compile.GuardFailure(`invalid input syntax for type boolean: "yes please"`); ok {
+		t.Fatal("plain 22P02 taken for a guard")
+	}
+}

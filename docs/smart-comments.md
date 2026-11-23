@@ -58,10 +58,10 @@ Disable everything with `plugins.disabled: [smart-comments]` (see
 | Tag | Applies to | REST effect |
 |---|---|---|
 | `@omit` | table, column, FK, unique, function | remove the object everywhere (routes, schema, embeds, params) |
-| `@omit read` | table, column | table: no `GET`/`HEAD` on `/{t}`, `/{t}/{pk}`, `/{t}/by/…` (still embeddable); column: absent from responses, `select=`, filters, `order=`, `distinct=`, aggregates, `/by/…` routes and cursors |
+| `@omit read` | table, column | table: no `GET`/`HEAD` on `/{t}`, `/{t}/{pk}`, `/{t}/by/…` (still embeddable); column: absent from responses, `select=`, filters, `order=`, `distinct=`, aggregates, `/by/…` routes, cursors and nested-mutation keys; a FK referencing it offers no nested `create` / `connect` / `disconnect` (they would copy the hidden value into the readable FK column) |
 | `@omit all` | table | no `GET`/`HEAD /{t}` collection; row paths stay |
-| `@omit many` | table, FK | not embeddable/filterable/orderable as a **backward** relation |
-| `@omit create` / `update` / `delete` | table, column | table: method removed → `405` + `Allow`; column: key rejected in that body (`400`) |
+| `@omit many` | table, FK | not embeddable/filterable/orderable as a **backward** relation, no backward nested-mutation key |
+| `@omit create` / `update` / `delete` | table, column | table: method removed → `405` + `Allow`, and the matching nested-mutation operation (`create`, `update` / backward `connect` / `disconnect`, `delete`) on that table → `400 unknown_relation`; column: key rejected in that body (`400`), including nested rows and patches, and on a FK column no nested operation that would set it in a body of that kind |
 | `@omit filter` / `@omit order` | table, column, FK, computed | filter params / `order=` values removed → `400` if used |
 | `@name x` | table, column, function, enum | path segment / JSON key / RPC path / schema name |
 | `@fieldName x` / `@foreignFieldName y` | FK | forward / backward relation key (embeds, filter & order paths, nested-mutation body keys) |

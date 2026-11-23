@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -404,36 +405,43 @@ func TestOpenAPINestedInputs(t *testing.T) {
 		}
 		return out
 	}
-	b.Extra.Schemas["users.connect"] = &Schema{Type: "object"}
+	var calls []string
+	b.Surface.NestedSchema = func(r *Resource, rel *Relation, m Method) *Schema {
+		calls = append(calls, r.Path+"."+rel.Key+"."+string(m))
+		if rel.Key == "places" {
+			return nil
+		}
+		return &Schema{Type: "object", Description: string(m)}
+	}
 	built, err := b.Build()
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := built.OpenAPI.Components.Schemas
 	posts := s["posts.insert"]
-	users := posts.Properties["users"]
-	if users == nil || users.Properties["create"].Ref != "#/components/schemas/users.insert" || users.Properties["connect"].Ref != "#/components/schemas/users.connect" ||
-		users.MinProperties == nil || *users.MinProperties != 1 || *users.MaxProperties != 1 {
+	if users := posts.Properties["users"]; users == nil || users.Description != "POST" {
 		t.Fatalf("posts.insert.users = %+v", users)
 	}
 	if !reflect.DeepEqual(posts.Required, []string{"title"}) {
 		t.Errorf("FK column still required with nested key: %v", posts.Required)
 	}
-	back := s["users.insert"].Properties["posts"]
-	if back == nil || back.Properties["create"].Type != "array" || back.Properties["create"].Items.Ref != "#/components/schemas/posts.insert" || !reflect.DeepEqual(back.Required, []string{"create"}) {
+	if back := s["users.insert"].Properties["posts"]; back == nil || back.Description != "POST" {
 		t.Errorf("users.insert.posts = %+v", back)
 	}
-	// Forward key without a connect schema and whose target has POST: create only.
-	if ev := s["events.insert"].Properties["event_type"]; ev != nil {
-		t.Errorf("event_type is a hidden enum table; got %+v", ev)
+	if up := s["users.update"].Properties["posts"]; up == nil || up.Description != "PATCH" {
+		t.Errorf("users.update.posts = %+v", up)
 	}
-	// Update/upsert bodies never take nested input.
-	if s["posts.update"].Properties["users"] != nil || s["posts.upsert"].Properties["users"] != nil {
-		t.Error("nested input leaked into update/upsert")
+	if s["users.insert"].Properties["places"] != nil || s["users.update"].Properties["places"] != nil {
+		t.Error("a nil NestedSchema still rendered a property")
 	}
-	// Without the plugin surface nothing nested renders.
+	if s["posts.upsert"].Properties["users"] != nil {
+		t.Error("nested input leaked into the upsert body")
+	}
+	if !slices.Contains(calls, "users.posts.PATCH") || slices.ContainsFunc(calls, func(c string) bool { return strings.HasSuffix(c, ".PUT") }) {
+		t.Errorf("NestedSchema calls = %v", calls)
+	}
 	if plain := fixture(t).OpenAPI.Components.Schemas["posts.insert"]; plain.Properties["users"] != nil {
-		t.Error("nested props without NestedKeys")
+		t.Error("nested props without the plugin surface")
 	}
 }
 

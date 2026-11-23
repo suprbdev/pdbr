@@ -157,7 +157,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Nested mutations via `nested-mutations` plugin on `POST` create: forward `{"create":…}` **or** `{"connect":…}`, backward `{"create":[…]}`, depth ≤ `max_depth` (3), forced transaction, multi-CTE single statement, visibility CTE for response embeds (parity)
 - [x] `PATCH|DELETE {base}/{table}?<filters>` bulk-by-filter: read filter grammar and policy, `200` + array / `204`, unfiltered → `400 unfiltered_mutation` unless `server.allow_unfiltered_mutations` (parity)
 - [x] `Prefer: handling=strict|lenient` (`400 invalid_preference`), `max-affected=N` on `PATCH`/`DELETE` (`400 max_affected_exceeded`, rolled back), `return=headers-only`, `Preference-Applied` (new)
-- [ ] Nested `connect` on reverse relations and nested update/delete/disconnect (parity)
+- [x] Nested `connect` on reverse relations (`{"connect":[{<key>}]}`) and, on single-row `PATCH`, nested update/delete/disconnect both ways (forward `{"update":{…}}`/`{"delete":true}`/`{"disconnect":true}`, backward `update:[{"where","data"}]`/`delete:[…]`/`disconnect:[…]`); guards (`404`, whole statement rolled back), RLS-scoped, `@omit` per action, `max_operations` (50), visibility CTEs exclude replaced/deleted rows — see [mutations.md](mutations.md#nested-mutations-plugin-nested-mutations) (parity)
 - [x] `PUT {base}/{table}/{pk}` and `…/by/{cols}/{vals}` single-row upsert by path key (body key columns optional, must match; writable keys only) (new)
 - [x] `POST` + `Prefer: resolution=merge-duplicates|ignore-duplicates` with `?on_conflict=` (ignore returns only inserted rows); `Prefer: missing=default` accepted (parity)
 
@@ -243,7 +243,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] `info` (title `pdbr`, version = binary version), `servers: [{url: base_path}]` (new)
 - [x] `tags`: one per resource (`users`, `audit.users`) + `rpc` / `<schema>.rpc`; operations tagged by resource, not schema (new)
 - [x] `components.schemas`: one per resource (`users` / `audit.users`), `<name>.insert`, `<name>.update`, `<name>.upsert` (new)
-- [x] Nested-input schema variants when `nested-mutations` is on (new) — M5 publishes `Surface.NestedKeys` + `<name>.connect` schemas; M6 renders the `.insert` properties (forward `create`/`connect` exactly-one, backward `create` list, FK columns optional)
+- [x] Nested-input schema variants when `nested-mutations` is on (new) — the plugin publishes `Surface.NestedKeys`, `Surface.NestedSchema` and `<name>.connect` schemas; the core renders the `.insert` and `.update` properties (only the operations each key offers there; forward `create`/`connect` exactly-one on `.insert`, FK columns optional)
 - [x] One schema per enum and per composite; `GeoJSON`; `Problem` (new) — `GeoJSON` (+ spatial columns `$ref`, read-only pseudo-column properties, `oneOf [GeoJSON, string]` inputs) by the `postgis` plugin; enum/composite/`Problem` core
 - [x] Type map per "Type mapping" section; nullable via `type: [T, "null"]`; `readOnly` for generated columns; `deprecated: true` + `x-deprecation-reason` from `@deprecated`; descriptions from pg comments (tags stripped) (new)
 - [x] `paths`: list path (GET/HEAD/POST/PUT) with all query params — one param per filterable column with op vocabulary in its description, plus `select`, `order`, `limit`, `offset`, `after`, `before`, `count`, `distinct`, `and`/`or`/`not.and`/`not.or`, `near` (new)
@@ -296,7 +296,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Built-in: `smart-comments` (50) — catalog via pdbcore + inflection + APIHook (route/method/param removal, deprecation, description stripping) — see [smart-comments.md](smart-comments.md) (parity)
 - [x] Built-in: `advanced-filters` (150) — relation filters/existence, related order, computed filter/order; settings `relations`, `computed`, `relation_order`, `relations_opt_in`, `computed_opt_in`; `@omit filter|order` / `@filterable` read from the catalog (parity)
 - [x] Built-in: `postgis` (160) — spatial filter params, pseudo-columns, projection args, distance order + `near`; settings `filters`, `derived`, `ordering`, `projection` (parity) — OpenAPI query params (`near`, spatial `x-pdbr-filter-ops` from `Built.Extra.FilterOps`, `oneOf [GeoJSON, string]` inputs from `Extra.InputTypes`) rendered by the core generator
-- [x] Built-in: `nested-mutations` (200) — APIHook input schemas, CompileHook multi-CTE, RequestHook `ForceTx`; settings `force_transactions`, `max_depth` (parity)
+- [x] Built-in: `nested-mutations` (200) — APIHook input schemas, CompileHook multi-CTE, RequestHook `ForceTx`; settings `force_transactions`, `max_depth`, `max_operations` (parity)
 - [ ] Out-of-process plugins (go-plugin gRPC or wasm) (parity)
 
 ## Ops & delivery

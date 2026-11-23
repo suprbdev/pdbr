@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/suprbdev/pdbcore/jwtmint"
 	"github.com/suprbdev/pdbcore/metrics"
@@ -488,6 +489,12 @@ func connectionLost(err error) bool {
 func (e *Executor) dbError(ctx context.Context, op *Operation, err error) error {
 	if ctx.Err() != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return &Error{Status: http.StatusGatewayTimeout, Code: CodeTimeout, Detail: "request timed out"}
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "22P02" {
+		if detail, ok := compile.GuardFailure(pgErr.Message); ok {
+			return &Error{Status: http.StatusNotFound, Code: CodeNotFound, Detail: detail}
+		}
 	}
 	c := pgexec.Classify(err, e.Opts.Detail)
 	if c.SQLState == "" && (c.Class == pgexec.Resource || (c.Class == pgexec.Internal && connectionLost(err))) {

@@ -413,12 +413,16 @@ POST /api/rpc/search_posts            {"q": "hello"}
   default are required; on `PATCH` everything is optional.
 - `select=` applies to mutation responses (compiled against the `__mut` CTE,
   embeds work; `RETURNING` lists only referenced columns).
-- Nested writes on `POST` (plugin `nested-mutations`): forward key →
-  `{"create": {…}}` or `{"connect": {<key cols>}}` (exactly one; the key is
-  the referenced columns, the primary key or one unique constraint —
-  `{"email": "…"}` connects a user); backward key → `{"create": [{…}, …]}`;
-  depth ≤ 3 (`plugins.settings.nested-mutations.max_depth`); FK columns
-  become optional when nested input is provided
+- Nested writes on `POST` and single-row `PATCH` (plugin
+  `nested-mutations`): forward key → `{"create": {…}}` or `{"connect":
+  {<key cols>}}` (exactly one on `POST`; the key is the referenced columns,
+  the primary key or one unique constraint — `{"email": "…"}` connects a
+  user), on `PATCH` also `{"disconnect": true}`, `{"update": {…}}`,
+  `{"delete": true}`; backward key → lists under `create` and `connect`,
+  on `PATCH` also `update` (`[{"where": {…}, "data": {…}}]`), `delete`,
+  `disconnect`; depth ≤ 3 (`plugins.settings.nested-mutations.max_depth`);
+  FK columns become optional when nested input is provided; a nested
+  lookup that matches nothing is `404` and rolls the request back
   ([mutations.md](mutations.md#nested-mutations-plugin-nested-mutations)).
 
 ## Content negotiation

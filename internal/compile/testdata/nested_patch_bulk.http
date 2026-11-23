@@ -1,0 +1,4 @@
+PATCH /api/users?id=eq.1
+Content-Type: application/json
+
+{"places": {"delete": [{"id": 2}]}}

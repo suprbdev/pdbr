@@ -503,6 +503,14 @@ func TestDBErrorMapping(t *testing.T) {
 			t.Errorf("%s: pg object leaked outside dev", tc.code)
 		}
 	}
+	for _, detail := range []pgexec.Detail{pgexec.Dev, pgexec.Prod, pgexec.Strict} {
+		guard := &pgconn.PgError{Code: "22P02", Message: `invalid input syntax for type boolean: "pdbr guard: nested "posts.update[0]": matched 0 rows"`}
+		e := newExec(&fakeDB{row: fakeRow{err: guard}}, b, nil, Options{Detail: detail})
+		xe := errOf(t, e.Execute(context.Background(), listOp(b, "/users")))
+		if xe.Status != 404 || xe.Code != CodeNotFound || xe.Detail != `nested "posts.update[0]": matched 0 rows` || xe.PG != nil {
+			t.Errorf("guard failure under %v: %+v", detail, xe)
+		}
+	}
 	// dev: pg object; prod: message policy.
 	pgErr := &pgconn.PgError{Code: "23505", Message: "dup", Detail: "Key (email)=(x) already exists.", TableName: "users", ConstraintName: "users_email_key"}
 	e := newExec(&fakeDB{row: fakeRow{err: pgErr}}, b, nil, Options{Detail: pgexec.Dev})

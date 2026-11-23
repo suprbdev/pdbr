@@ -1,0 +1,4 @@
+POST /api/users?select=id,email,posts(id,title)
+Content-Type: application/json
+
+{"email": "golden-nested@example.com", "posts": {"connect": [{"id": 3}], "create": [{"title": "New"}]}}

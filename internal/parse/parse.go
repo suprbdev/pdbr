@@ -205,6 +205,9 @@ func Parse(built *api.Built, m *api.Match, r *http.Request, opts Options) (*plan
 				return nil, errf(CodeIfMatchUnsupported, "If-Match applies to single-row paths only; %s on the collection path cannot honour it", method)
 			}
 		}
+		if req.IfMatch != "" && req.Body != nil && len(req.Body.Nested) > 0 {
+			return nil, errf(CodeIfMatchUnsupported, "If-Match cannot be combined with nested-mutation keys; send the nested writes in a separate request")
+		}
 		if method == plan.PUT && req.Key != nil && req.IfMatch != "" {
 			return nil, errf(CodeIfMatchUnsupported, "If-Match is not supported on PUT; use PATCH on this path for a conditional update")
 		}

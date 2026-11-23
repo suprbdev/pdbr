@@ -1,0 +1,4 @@
+PATCH /api/tk_rooms/1
+Prefer: return=minimal
+
+{"tk_bookings": {"connect": [{"room_id": 2}]}}

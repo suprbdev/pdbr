@@ -95,17 +95,99 @@ func (c *Compiler) RowJSON(req *Request, node *plan.Node, alias string, ps *Para
 // This is the extension point the nested-mutations CompileHook uses to
 // replace the DML while reusing response compilation.
 func (c *Compiler) MutationWithCTEs(req *Request, ctes string, ps *ParamSet, inserted map[string][]string) (*Statement, error) {
+	writes := make(map[string]TableWrites, len(inserted))
+	for name, rows := range inserted {
+		writes[name] = TableWrites{Rows: rows}
+	}
+	return c.MutationChain(req, Chain{CTEs: ctes, Params: ps, Writes: writes})
+}
+
+// Chain is a caller-built CTE chain for MutationChain.
+type Chain struct {
+	// CTEs is the text between WITH and the final SELECT; it must define
+	// __mut (see MutationWithCTEs for the __mut rules and %%RETURNING%%).
+	CTEs string
+	// Params is the set the chain was rendered with (nil: none).
+	Params *ParamSet
+	// RootKeep is set when __mut updates or locks existing rows of the
+	// mutated table instead of inserting: a condition over the bare table
+	// reference (`"schema"."table"`) that holds for the rows __mut left
+	// alone. The visibility CTE of the mutated table keeps those rows and
+	// adds __mut's.
+	RootKeep string
+	// Writes maps "schema.table" to the chain's other writes to that table
+	// (the mutated one included).
+	Writes map[string]TableWrites
+	// Guards are conditions that must hold, rendered with GuardSQL. They
+	// are evaluated even when the response yields no row, and a failing one
+	// aborts the whole statement.
+	Guards []string
+}
+
+// TableWrites describes how a chain's CTEs change one table.
+type TableWrites struct {
+	// Rows are CTEs returning every column of rows that are in the table
+	// once the statement completes (inserted or updated rows).
+	Rows []string
+	// Keep are conditions over the bare table reference that hold for the
+	// pre-statement rows the chain left alone (updated and deleted rows
+	// fail one of them).
+	Keep []string
+}
+
+// MutationChain is MutationWithCTEs for a chain that may also update,
+// delete or lock rows: the visibility CTE of every table the response
+// reads is the table restricted to Chain.Writes[t].Keep (and RootKeep for
+// the mutated table) UNION ALL __mut and the Rows CTEs. With guards, the
+// response is read through a materialized guard CTE, so a statement whose
+// response yields no row still evaluates them; the data column is then
+// NULL instead of absent, which unwraps the same way.
+func (c *Compiler) MutationChain(req *Request, ch Chain) (*Statement, error) {
 	if req == nil || req.Plan == nil || req.Plan.Resource == nil {
 		return nil, fmt.Errorf("compile: MutationWithCTEs needs a resource request")
 	}
-	if strings.TrimSpace(ctes) == "" {
+	if strings.TrimSpace(ch.CTEs) == "" {
 		return nil, fmt.Errorf("compile: MutationWithCTEs needs a CTE chain")
 	}
+	ps := ch.Params
 	if ps == nil {
 		ps = &ParamSet{}
 	}
 	s := c.newStmt(req, ps)
-	return s.finish(s.mutationResponse(strings.TrimSpace(ctes), replaced{}, inserted))
+	s.guards = ch.Guards
+	rep := replaced{}
+	if ch.RootKeep != "" {
+		rep.cond = ch.RootKeep
+	}
+	return s.finish(s.mutationResponse(strings.TrimSpace(ch.CTEs), rep, ch.Writes))
+}
+
+// guardMarker prefixes the message a failed guard raises (GuardSQL).
+const guardMarker = "pdbr guard: "
+
+// GuardSQL renders a guard requiring the CTE named cte to yield at least
+// one row. A failed guard casts its message (built from count(*), so the
+// planner cannot fold the cast into a plan-time error) to boolean, which
+// raises SQLSTATE 22P02; the executor answers 404 not_found with
+// "<label> matched 0 rows" as the detail. label must not depend on request
+// values (the SQL text stays a function of the request shape).
+func GuardSQL(cte, label string) string {
+	return fmt.Sprintf("(SELECT CASE WHEN count(*) > 0 THEN true ELSE concat(%s, count(*), ' rows')::boolean END FROM %s)",
+		quoteLiteral(guardMarker+label+" matched "), cte)
+}
+
+// GuardFailure reports whether a database error message is a failed
+// GuardSQL guard, and returns its "<label> matched 0 rows" text.
+func GuardFailure(message string) (string, bool) {
+	i := strings.Index(message, guardMarker)
+	if i < 0 {
+		return "", false
+	}
+	rest := message[i+len(guardMarker):]
+	if j := strings.LastIndexByte(rest, '"'); j >= 0 {
+		rest = rest[:j]
+	}
+	return rest, true
 }
 
 // CoerceInput converts an input value into a driver-friendly parameter for

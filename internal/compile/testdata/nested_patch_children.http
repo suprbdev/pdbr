@@ -1,0 +1,4 @@
+PATCH /api/users/1?select=id,full_name,places(id,name)
+Content-Type: application/json
+
+{"full_name": "Ada", "places": {"connect": [{"id": 3}], "delete": [{"id": 2}], "update": [{"where": {"id": 1}, "data": {"name": "Trafalgar"}}]}}

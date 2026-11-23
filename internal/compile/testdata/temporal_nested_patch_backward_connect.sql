@@ -1,0 +1,2 @@
+-- request: PATCH /api/tk_rooms/1
+-- error: 400 invalid_body: nested "tk_bookings.connect[0]": "connect" keys must be the primary key or one unique constraint of "tk_bookings"

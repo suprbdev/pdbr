@@ -381,7 +381,7 @@ SELECT json_build_object('n', (SELECT count(*) FROM __mut)) AS data
 | conflict columns | **not** required in the body (unlike `PUT`): an element without them is a plain insert (surrogate keys from their default) |
 | status | `201` (single object also for a merge that updated, as in PostgREST), `Location` from the row's key |
 | `?on_conflict=` without `resolution=` | `400 invalid_filter` |
-| nested-mutation keys | `400 invalid_body` (nested inserts cannot be resolved) |
+| nested-mutation keys | `400 invalid_body` (nested writes cannot be combined with conflict resolution) |
 | bulk gaps | missing keys insert `DEFAULT`; with `merge-duplicates` a gap on a conflicting row therefore writes the column default (`EXCLUDED.c` is the default), exactly like PostgREST with `missing=default` |
 
 `Prefer: missing=default` is accepted on `POST`/`PUT` and echoed in
@@ -514,7 +514,7 @@ prefixed `element N:` and keep their code.
 |---|---|
 | top-level must be an object (POST/PUT: object or non-empty array of objects) | `invalid_body` |
 | key that is not a column of the resource (or a nested-mutation relation key) | `400 invalid_body` |
-| nested-mutation `create` on a related resource without `POST` (no INSERT / `@omit create`) | `400 unknown_relation` |
+| nested-mutation operation the relation does not offer (no privilege, `@omit create\|update\|delete`, FK column not writable, referenced column hidden; see [Availability](#availability-omit-per-action)) | `400 unknown_relation` |
 | generated (`GENERATED ALWAYS AS … STORED`) or identity `ALWAYS` column | `400 column_readonly` |
 | POST: `NOT NULL && !HasDefault` column missing | `400 invalid_body` listing the missing columns |
 | PATCH: no required keys; empty patch | `400 invalid_body` |
@@ -681,66 +681,183 @@ ROLE` at request time may still yield `42501` → `403`.
 Built in M5 (`internal/plugins/nestedmutations`, priority 200, enabled by
 default) on the core seams: `parse.Options.NestedKeys` (set from
 `api.Surface.NestedKeys`, which the plugin's `APIHook` publishes → the body
-parser stores claimed keys raw in `plan.Body.Nested[key].Raw`, single-object
-`POST` only, and drops the FK columns of a forward relation from the required
-set), `parse.CoerceObject` / `parse.CoerceValue` (body-rule coercion of nested
-rows and `connect` keys), `compile.InputValue` (the core's value rendering:
-composites, arrays, json, PostGIS constructors) and
-`compile.MutationWithCTEs(req, ctes, ps, inserted)` (response compilation
-over the plugin's CTE chain; the `%%RETURNING%%` placeholder in `__mut`
-receives the narrow column list; `inserted` maps `"schema.table"` to the
-chain's insert CTEs, from which the core builds the visibility CTEs).
+parser stores claimed keys raw in `plan.Body.Nested[key].Raw` and drops the
+FK columns of a forward relation from the required set),
+`parse.CoerceObject` / `parse.CoerceObjectFor` / `parse.CoerceValue`
+(body-rule coercion of nested rows, patches and keys), `compile.InputValue`
+(the core's value rendering: composites, arrays, json, PostGIS
+constructors), `compile.MutationChain` (response compilation over the
+plugin's CTE chain: the `%%RETURNING%%` placeholder in `__mut` receives the
+narrow column list, `Chain.Writes` tells the core which CTEs added, updated
+or deleted rows of which table so it can build the visibility CTEs, and
+`Chain.Guards` are evaluated before the response) and
+`api.Surface.NestedSchema` (the OpenAPI body schemas).
 
-`POST` create only (single object; bulk bodies never accept nested keys).
-Relation keys inside a body use the same names as `select=` embeds (forward
-FK → referenced table name, backward FK → referencing table name); `!hint`
-is not accepted in bodies, so an ambiguous key (two FKs to the same table,
-or a self-reference) is not offered at all until `@fieldName` /
+Nested keys are accepted on a single-object `POST` and on `PATCH` of a
+single-row path (`/{table}/{pk}`, `/{table}/by/{cols}/{vals}`). Bulk
+`POST`, `PUT`, `PATCH` by filter and `POST` with `Prefer: resolution=`
+treat them as unknown body keys (`400 invalid_body`), and `If-Match` on a
+`PATCH` carrying them is `400 if_match_unsupported`. Relation keys inside
+a body use the same names as `select=` embeds (forward FK → referenced
+table name, backward FK → referencing table name); `!hint` is not accepted
+in bodies, so an ambiguous key (two FKs to the same table, or a
+self-reference) is not offered at all until `@fieldName` /
 `@foreignFieldName` gives each direction its own name.
 
-| Direction | Body | Meaning |
-|---|---|---|
-| forward (`posts.author_id → users`) | `"users": {"create": {…}}` **or** `"users": {"connect": {"id": 7}}` | exactly one of the two → else `400 invalid_body`; `connect` keys must be exactly the primary key, one unique constraint or the referenced columns of `users` (`{"email": "…"}` works too); values non-null |
-| backward (`users ← posts.author_id`) | `"posts": {"create": [{…}, {…}]}` | non-empty list of child rows; the FK columns are filled from the parent (`connect` here is not yet supported) |
+### Operations
 
-Rules:
+A **forward** key (`posts.users`: the FK is on this row) takes an object
+with one property per operation:
 
+| Operation | Value | Created row | Updated row | Effect |
+|---|---|---|---|---|
+| `create` | the related `.insert` body (may nest) | ✓ | ✓ | insert the referenced row and point this row's FK at it |
+| `connect` | key of an existing row | ✓ | ✓ | look the row up and point this row's FK at it |
+| `disconnect` | `true` | | ✓ | set this row's FK to `NULL` (nullable FKs only) |
+| `update` | the related `.update` body (may nest) | | ✓ | patch the row this row referenced **before** the request |
+| `delete` | `true` | | ✓ | delete the row this row referenced before the request |
+
+A created row takes exactly one of `create` / `connect`. An updated row
+takes at most one of `create` / `connect` / `disconnect` (they set the FK),
+plus `update` **or** `delete`. `delete` leaves this row's FK alone, so the
+FK's `ON DELETE` action applies, and a `NO ACTION` / `RESTRICT` FK still
+pointing at the row fails the request at the end of the statement (`409
+pg:23503`); pair it with `disconnect` to clear a nullable FK in the same
+request.
+
+A **backward** key (`users.posts`: the FK points at this row) takes an
+object of non-empty lists:
+
+| Operation | Items | Created row | Updated row | Effect |
+|---|---|---|---|---|
+| `create` | the related `.insert` body (may nest) | ✓ | ✓ | insert rows referencing this row (their FK filled in) |
+| `connect` | key of an existing row | ✓ | ✓ | point an existing row's FK at this row (it may reference another row, or none, before) |
+| `update` | `{"where": <key>, "data": <.update body>}` | | ✓ | patch a row that references this row |
+| `delete` | key | | ✓ | delete a row that references this row |
+| `disconnect` | key | | ✓ | set the FK of a row that references this row to `NULL` (nullable FKs only) |
+
+A **key** names exactly the primary key or the columns of one unique
+constraint of the related resource (`{"id": 7}`, `{"email": "…"}`), with
+non-null values; a forward `connect` also accepts the FK's referenced
+columns (and, over a `PERIOD` FK, the referenced entity: see
+[Temporal relations](#temporal-period-relations)). Columns hidden by
+`@omit read` cannot form a key.
+
+```http
+PATCH /api/users/1?select=id,full_name,places(id,name)
+Content-Type: application/json
+
+{"full_name": "Ada",
+ "places": {"connect": [{"id": 3}],
+            "delete": [{"id": 2}],
+            "update": [{"where": {"id": 1}, "data": {"name": "Trafalgar"}}]}}
+```
+
+```http
+PATCH /api/places/4
+Content-Type: application/json
+
+{"name": "Opera House", "users": {"disconnect": true}}
+```
+
+```http
+POST /api/users?select=id,posts(id,title)
+Content-Type: application/json
+
+{"email": "a@b.c", "posts": {"connect": [{"id": 3}], "create": [{"title": "New"}]}}
+```
+
+### Availability (`@omit` per action)
+
+An operation is offered only when the role may run it and the rows may be
+written the way it writes them; otherwise it is `400 unknown_relation`, and
+the OpenAPI schemas leave it out:
+
+| Operation | Needs |
+|---|---|
+| `create` | `POST` on the related resource (INSERT privilege, not `@omit create`) |
+| `update` | `PATCH` on the related resource (UPDATE privilege, not `@omit update`) |
+| `delete` | `DELETE` on the related resource (DELETE privilege, not `@omit delete`) |
+| backward `connect` / `disconnect` | `PATCH` on the related resource |
+| every operation that sets an FK (`create`, `connect`, `disconnect`) | the FK columns writable by the body of the row holding them: `POST` columns for a row being created, `PATCH` columns for one being updated (an FK column under `@omit create` / `@omit update` removes them), and the referenced columns readable (an FK referencing a column under `@omit read` gets none: they would copy the hidden value into the readable FK column) |
+| `disconnect` | every FK column nullable |
+
+`@omit many` on a FK (or `@omit` on the FK, or either table) removes the
+key itself. With contracts, each contract's API is built from its own
+catalog copy, so a key or operation hidden there is absent from that
+contract's bodies and schemas.
+
+### Rules
+
+- `connect`, `update` and `delete` must match a row, and so must the
+  addressed row of a `PATCH` carrying nested keys: a key that matches
+  nothing (missing, referencing another parent for a backward `update` /
+  `delete`, not referenced by the row for a forward `update` / `delete`, or
+  filtered out by RLS) fails the **whole** request with `404 not_found`,
+  detail `nested "posts.update[0]": matched 0 rows` (or `row of "users":
+  matched 0 rows` for the addressed row). A `disconnect` of a row that is
+  not linked does nothing.
 - Depth ≤ `plugins.settings.nested-mutations.max_depth` (default 3; the root
-  row is depth 1, every `create` — parent or child — adds one, `connect`
-  adds none because it inserts nothing) → else `400 embed_depth_exceeded`
-  (the code is shared with `select=` nesting; no plugin-specific code —
-  resolved).
-- Nested rows follow the body-validation table: unknown key `invalid_body`,
-  generated column `column_readonly`, `NOT NULL` without default required
-  (FK columns supplied by the parent or by a nested forward key excepted),
-  values coerced per column type. Errors are prefixed with the body path:
-  `nested "posts[1]": missing required column(s): title`,
-  `nested "posts.users": …`.
-- FK columns of a forward relation become optional in the body when the
+  row is depth 1, every `create` or `update` — of a parent or a child —
+  adds one, `connect` / `delete` / `disconnect` add none) → else `400
+  embed_depth_exceeded` (the code is shared with `select=` nesting).
+- At most `plugins.settings.nested-mutations.max_operations` operations
+  (default 50; every list item and every forward operation counts once)
+  per request → else `400 invalid_body`.
+- Nested rows and patches follow the body-validation table of their method
+  (`POST` rules for `create`, `PATCH` rules for `update`): unknown key
+  `invalid_body`, generated column `column_readonly`, `NOT NULL` without
+  default required on `create` (FK columns supplied by the parent or by a
+  nested forward key excepted), values coerced per column type. Errors are
+  prefixed with the body path: `nested "posts[1]": missing required
+  column(s): title`, `nested "posts.users": …`, `nested
+  "places.update[0]": …`.
+- FK columns of a forward relation become optional in a create body when the
   nested key is provided; providing both the FK column and the nested key →
   `400 invalid_body`. A child row cannot set the FK filled from its parent
-  (nor carry a forward key over the same columns) → `400 invalid_body`.
+  (nor carry a forward key over the same columns) → `400 invalid_body`; a
+  backward `update`'s `data` cannot set the FK linking the child to this
+  row (use `connect` / `disconnect`).
+- A `PATCH` may not change a column that one of its backward keys matches
+  the children on (the referenced key) → `400 invalid_body`.
+- A row is modified at most once per statement (a PostgreSQL rule for
+  data-modifying CTEs): two operations updating the same row leave only one
+  change, and an operation that then finds nothing to update reports
+  `matched 0 rows`.
+- Referential actions are not reflected in the response: `ON DELETE
+  CASCADE` / `SET NULL` / `SET DEFAULT` and `ON UPDATE CASCADE` run after
+  the statement's last query, so rows they change still show as they were.
+  The database is right; read again to see it.
 - The request is forced into a transaction
   (`plugins.settings.nested-mutations.force_transactions`, default `true`,
   sets `exec.Operation.ForceTx` in `BeforeRequest`), even with
   `transactions.mutations: false`. The chain is one statement either way, so
   a failure never leaves partial rows; the transaction matters for the role
   / claim settings around it.
-- `create` needs `POST` on the related resource (INSERT privilege, not
-  `@omit create`) → else `400 unknown_relation`; `connect` only needs the
-  resource to exist (SELECT). Keys that match no relation are plain unknown
-  body keys (`400 invalid_body`), exactly as with the plugin disabled.
-- OpenAPI: the plugin publishes `api.Surface.NestedKeys` (the per-resource
-  key → relation map M6 renders into the `.insert` schemas) and a
-  `<name>.connect` schema per connectable resource
-  ([openapi.md](openapi.md)).
+- Every operation runs as the request's role: `UPDATE` / `DELETE` policies
+  narrow what `connect`, `update`, `delete` and `disconnect` can match (a
+  filtered row is `404`, as above), `WITH CHECK` failures and `RETURNING`
+  rows hidden by `SELECT` policies are `403 pg:42501`, and a `PATCH` that
+  only carries nested keys still locks its row with `SELECT … FOR UPDATE`,
+  which needs the `UPDATE` privilege and passes the `UPDATE` policies.
+- Keys that match no relation are plain unknown body keys (`400
+  invalid_body`), exactly as with the plugin disabled.
+- OpenAPI: the `.insert` and `.update` schemas carry one property per
+  nested key with the operations it offers there (`Surface.NestedSchema`),
+  and `<name>.connect` describes the key of an existing row
+  ([openapi.md](openapi.md)). `.update` is shared with `PATCH` by filter,
+  which rejects nested keys; the property descriptions say so.
 
-Shape — parents first (`__p_n`), then the main row (`__mut`), then children
-(`__c_n`), all numbered by one counter in emission order, then one
-visibility CTE per table the response reads that received inserts
-(`__vis_n`, numbered in the order the response first reads them; `__vis`
-for the root table). Children are inserted from `SELECT … FROM <parent cte>`
-so FK values come from the parent's `RETURNING`:
+### SQL shape
+
+Parents and forward operations first (`__p_n` for created, connected and
+updated referenced rows, `__d_n` for a deleted one), then the main row
+(`__mut`), then the backward operations (`__c_n`), all numbered by one
+counter in emission order, then one visibility CTE per table the response
+reads that the chain wrote (`__vis_n`, numbered in the order the response
+first reads them; `__vis` for the root table), then `__guard` when an
+operation must match a row. Children are inserted from `SELECT … FROM
+<parent cte>` so FK values come from the parent's `RETURNING`:
 
 ```http
 POST /api/users?select=id,email,posts(id,title)
@@ -781,35 +898,123 @@ LEFT JOIN LATERAL (
     FROM __vis_1 t1
     WHERE t1."author_id" = t0."id"
     ORDER BY t1."id" ASC
-    LIMIT $4
+    LIMIT 100
   ) s2
 ) l3 ON true
--- args: ["a@b.c","One","Two",100]
+-- args: ["a@b.c","One","Two"]
 ```
 
-(goldens `nested_children`, `nested_create_parent`, `nested_connect`.)
+A `PATCH` updates the addressed row in `__mut` and scopes every backward
+operation to the rows referencing it (`UPDATE … FROM __mut WHERE <key> AND
+<fk> = __mut."id"`, `DELETE … USING __mut …`); a backward `connect`
+matches by key alone. The visibility CTE drops the rows the chain replaced
+or deleted (by a `NOT NULL` key the operation left alone, matched against
+its returned rows, or by the operation's own lookup when it changed every
+such key) and adds the returned rows; the guards are evaluated in a
+materialized CTE scanned as the outer side of a lateral join with the
+response, so they run even when the response is empty, and a failing guard
+raises inside the statement (`22P02` carrying `pdbr guard: …`, which the
+executor answers as `404 not_found`):
+
+```http
+PATCH /api/users/1?select=id,full_name,places(id,name)
+
+{"full_name": "Ada", "places": {"connect": [{"id": 3}], "delete": [{"id": 2}], "update": [{"where": {"id": 1}, "data": {"name": "Trafalgar"}}]}}
+```
+
+```sql
+WITH __mut AS (
+  UPDATE "public"."users"
+  SET "full_name" = $2
+  WHERE "public"."users"."id" = $1
+  RETURNING "id", "full_name"
+),
+__c_1 AS (
+  UPDATE "public"."places"
+  SET "owner_id" = __mut."id"
+  FROM __mut
+  WHERE "public"."places"."id" = $3
+  RETURNING "public"."places".*
+),
+__c_2 AS (
+  DELETE FROM "public"."places"
+  USING __mut
+  WHERE "public"."places"."id" = $4 AND "public"."places"."owner_id" = __mut."id"
+  RETURNING "public"."places".*
+),
+__c_3 AS (
+  UPDATE "public"."places"
+  SET "name" = $6
+  FROM __mut
+  WHERE "public"."places"."id" = $5 AND "public"."places"."owner_id" = __mut."id"
+  RETURNING "public"."places".*
+),
+__vis_1 AS NOT MATERIALIZED (
+  SELECT "id", "owner_id", "name" FROM "public"."places" WHERE NOT EXISTS (SELECT 1 FROM __c_1 __m WHERE __m."id" = "public"."places"."id") AND NOT EXISTS (SELECT 1 FROM __c_2 __m WHERE __m."id" = "public"."places"."id") AND NOT EXISTS (SELECT 1 FROM __c_3 __m WHERE __m."id" = "public"."places"."id")
+  UNION ALL SELECT "id", "owner_id", "name" FROM __c_1
+  UNION ALL SELECT "id", "owner_id", "name" FROM __c_3
+),
+__guard AS MATERIALIZED (
+  SELECT (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard: row of "users": matched ', count(*), ' rows')::boolean END FROM __mut)
+    AND (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard: nested "places.connect[0]": matched ', count(*), ' rows')::boolean END FROM __c_1)
+    AND (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard: nested "places.delete[0]": matched ', count(*), ' rows')::boolean END FROM __c_2)
+    AND (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard: nested "places.update[0]": matched ', count(*), ' rows')::boolean END FROM __c_3) AS ok
+)
+SELECT __guarded.data
+FROM __guard
+LEFT JOIN LATERAL (
+  SELECT json_build_object('id', t0."id", 'full_name', t0."full_name", 'places', l3.data) AS data
+  FROM __mut t0
+  LEFT JOIN LATERAL (
+    SELECT coalesce(json_agg(s2.data), '[]'::json) AS data
+    FROM (
+      SELECT json_build_object('id', t1."id", 'name', t1."name") AS data
+      FROM __vis_1 t1
+      WHERE t1."owner_id" = t0."id"
+      ORDER BY t1."id" ASC
+      LIMIT 100
+    ) s2
+  ) l3 ON true
+) __guarded ON true
+WHERE __guard.ok
+-- args: [1,"Ada",3,2,1,"Trafalgar"]
+```
+
+(goldens `nested_children`, `nested_create_parent`, `nested_connect`,
+`nested_reverse_connect`, `nested_patch_children`, `nested_patch_disconnect`,
+`nested_patch_forward_update`, `nested_patch_forward_connect`,
+`nested_patch_forward_create`, `nested_patch_forward_disconnect`.)
 
 Forward `create` inserts the parent in `__p_n AS (INSERT … RETURNING *)`
 and the main insert reads its key: `INSERT INTO "public"."posts" ("title",
 "author_id") SELECT $3, __p_1."id" FROM __p_1`; `connect` replaces the
-insert with `__p_n AS (SELECT * FROM "public"."users" WHERE "id" = $1)` —
-zero rows there means zero rows inserted → `404 not_found` for the whole
-request (also under `Prefer: return=minimal`). Column values go through the
-core's `inputValue` (`compile.InputValue`), so composites, arrays, `jsonb`
-and PostGIS GeoJSON/WKT inside nested rows render exactly as in a plain
-`POST`; the SQL text stays a pure function of the body shape.
+insert with `__p_n AS (SELECT * FROM "public"."users" WHERE "id" = $1)`
+and a guard. In an `UPDATE` the FK is set from a scalar subquery
+(`"owner_id" = (SELECT "id" FROM __p_1)`, plus `EXISTS (SELECT 1 FROM
+__p_1)`), `disconnect` sets it to `NULL`, and a forward `update` / `delete`
+targets the referenced row through the row as it was before the statement:
+`WHERE EXISTS (SELECT 1 FROM "public"."posts" __o1 WHERE __o1."id" = $1 AND
+__o1."author_id" = "public"."users"."id")`. A `PATCH` that sets no column
+locks its row instead of updating it (`__mut AS (SELECT … FROM … WHERE …
+FOR UPDATE)`; a nested `update` whose `data` only carries nested keys does
+the same with `FOR UPDATE OF`). Column values go through the core's
+`inputValue` (`compile.InputValue`), so composites, arrays, `jsonb` and
+PostGIS GeoJSON/WKT inside nested rows render exactly as in a plain write;
+the SQL text stays a pure function of the body shape.
 
 Visibility: rows written by a CTE are invisible to plain table scans in the
-same statement, so the response reads every table that received nested
-inserts — children **and** created parents — from a visibility CTE: the
-table `UNION ALL` its insert CTEs (`__vis_n`, built by the core from the
-`inserted` map passed to `MutationWithCTEs`), projected to the columns the
-response reads. Embeds back to the root table read `__vis` (table plus
-`__mut`, plus any nested insert into the same table), exactly as for a
+same statement, so the response reads every table that the chain wrote —
+children, created and updated parents, rows connected or disconnected —
+from a visibility CTE: the table minus the rows the chain replaced or
+deleted, `UNION ALL` the rows it inserted or updated (`__vis_n`, built by
+the core from `Chain.Writes`), projected to the columns the response reads.
+Embeds back to the root table read `__vis` (table plus `__mut`, plus any
+nested write to the same table), exactly as for a
 [plain mutation](#embeds-back-to-the-mutated-table). A `connect`ed parent is
-an existing row and appears through the table half. Nested CTEs use
-`RETURNING *` (they are internal row sources); the column-grant-friendly
-narrow `RETURNING` applies to `__mut` and the outer response only.
+an existing row and appears through the table half. Nested CTEs return
+every column (`RETURNING *` / `RETURNING "schema"."table".*`: they are
+internal row sources); the column-grant-friendly narrow `RETURNING` applies
+to `__mut` and the outer response only.
 
 ### Temporal (`PERIOD`) relations
 
@@ -826,9 +1031,12 @@ otherwise).
 | forward `connect` | `"room_bookings": {"connect": {"room_id": 1}}` | names the referenced entity: the equality columns of the referenced key (or one of its plain keys); `__p_n AS (SELECT DISTINCT "room_id" FROM … WHERE "room_id" = $1)`, so one row is inserted however many periods match |
 | forward `create` | `"room_bookings": {"create": {"room_id": 1, "valid_at": "…", …}}` | inserts the parent; the child takes `room_id` from it and keeps its own `valid_at`. The response's embed reads the table **and** the new parent (`__vis_n AS NOT MATERIALIZED (SELECT … FROM "public"."room_bookings" UNION ALL SELECT … FROM __p_1)`, like every visibility CTE), because the child may overlap existing periods too |
 | backward `create` | `"booking_notes": {"create": [{"note": "…", "valid_at": "…"}]}` | children take `room_id` from the new parent, each with its own period |
+| forward `update` / `delete` (on `PATCH`) | `"room_bookings": {"update": {"guest": "…"}}` | reach every referenced row whose period overlaps the row's own (`__o1."room_id" = "room_bookings"."room_id" AND __o1."valid_at" && "room_bookings"."valid_at"`) |
+| backward `update` / `delete` / `disconnect` (on `PATCH`) | `"booking_notes": {"delete": [{"id": 4}]}` | reach the children whose period overlaps the parent's; a row is named by a plain key, so a table with only a temporal key cannot be a backward `connect` / `update` / `delete` / `disconnect` target (`400 invalid_body`) |
 
 (goldens `temporal_nested_connect`, `temporal_nested_create_parent`,
-`temporal_nested_children`.)
+`temporal_nested_children`, `temporal_nested_patch_forward_update`,
+`temporal_nested_patch_backward_connect`.)
 
 Atomicity — a child failure rolls back the parent:
 
@@ -846,7 +1054,8 @@ Content-Type: application/problem+json
 
 No `users` row exists afterwards: one statement, one transaction
 (`test/e2e_nestedmutations_test.go` checks it with and without
-`force_transactions`).
+`force_transactions`; `test/e2e_nested_writes_test.go` checks a `PATCH`
+whose nested operation fails, by a database error or a guard).
 
 ## RLS caveats for `RETURNING`
 
@@ -883,8 +1092,6 @@ See [rls.md](rls.md) for the claim mechanism.
 ## Not yet supported
 
 - `limit`/`order` on bulk `PATCH`/`DELETE` (PostgREST's limited update/delete).
-- Nested `connect` on backward relations (`"posts": {"connect": [{"id": 1}]}`).
-- Nested update / delete / disconnect.
 - Savepoints (`SAVEPOINT` per nested CTE for partial success).
 - Writable views (`INSTEAD OF` triggers / auto-updatable views).
 - `PUT` on single-row paths whose key is an identity `BY DEFAULT` column

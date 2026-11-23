@@ -192,6 +192,8 @@ type stmt struct {
 	// return (order rendering and the spatial builders it calls); Compile
 	// surfaces it so a bad value never reaches the database.
 	deferred error
+	// guards are the GuardSQL conditions of a plugin chain (MutationChain).
+	guards []string
 }
 
 func (s *stmt) fail(err error) {

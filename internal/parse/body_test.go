@@ -204,10 +204,18 @@ func TestBodyNestedKeys(t *testing.T) {
 	// ...but not both
 	_, err = doParse(t, b, req{method: "POST", url: "/api/posts", body: `{"title":"t","author_id":1,"users":{"connect":{"id":1}}}`, header: hdr}, opts)
 	wantCode(t, err, CodeInvalidBody)
-	// bulk bodies and PATCH never take nested keys
+	// bulk bodies and bulk PATCH never take nested keys
 	_, err = doParse(t, b, req{method: "POST", url: "/api/users", body: `[{"email":"a","posts":{}}]`, header: hdr}, opts)
 	wantCode(t, err, CodeInvalidBody)
-	_, err = doParse(t, b, req{method: "PATCH", url: "/api/users/1", body: `{"posts":{}}`, header: hdr}, opts)
+	_, err = doParse(t, b, req{method: "PATCH", url: "/api/users?id=eq.1", body: `{"posts":{}}`, header: hdr}, opts)
+	wantCode(t, err, CodeInvalidBody)
+	p, err = doParse(t, b, req{method: "PATCH", url: "/api/users/1", body: `{"posts":{"delete":[{"id":1}]}}`, header: hdr}, opts)
+	if err != nil || p.Body.Nested["posts"] == nil || len(p.Body.Object) != 0 {
+		t.Fatalf("PATCH nested: %+v %v", p.Body, err)
+	}
+	_, err = doParse(t, b, req{method: "PATCH", url: "/api/users/1", body: `{"posts":{"delete":[{"id":1}]}}`, header: withHeader(hdr, "If-Match", `W/"x"`)}, opts)
+	wantCode(t, err, CodeIfMatchUnsupported)
+	_, err = doParse(t, b, req{method: "PATCH", url: "/api/users/1", body: `{}`, header: hdr}, opts)
 	wantCode(t, err, CodeInvalidBody)
 	// CoerceObject mirrors the body rules for plugins
 	obj, err := CoerceObject(b, b.ByPath["users"], map[string]any{"email": "a", "balance": json.Number("7")})

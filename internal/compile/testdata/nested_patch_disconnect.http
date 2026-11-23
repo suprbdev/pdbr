@@ -1,0 +1,4 @@
+PATCH /api/users/1?select=id,places(id)
+Content-Type: application/json
+
+{"places": {"disconnect": [{"id": 1}]}}
