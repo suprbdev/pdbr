@@ -537,3 +537,53 @@ func TestOpenAPIBulkWrites(t *testing.T) {
 		t.Errorf("POST Prefer mentions max-affected: %s", p.Description)
 	}
 }
+
+func TestOpenAPIHoistedParameters(t *testing.T) {
+	doc := fixture(t).OpenAPI
+	before := paramByName(doc.Paths["/users"].Get.Parameters, "select")
+	if before == nil || before.Ref != "" {
+		t.Fatalf("model parameters must stay inline, got %+v", before)
+	}
+	raw, err := doc.JSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out struct {
+		Paths      map[string]map[string]json.RawMessage          `json:"paths"`
+		Components struct{ Parameters map[string]map[string]any } `json:"components"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Components.Parameters) == 0 {
+		t.Fatal("no components/parameters")
+	}
+	refs := 0
+	for _, item := range out.Paths {
+		for key, rawOp := range item {
+			if key == "parameters" {
+				continue
+			}
+			var op struct{ Parameters []map[string]any }
+			if err := json.Unmarshal(rawOp, &op); err != nil {
+				t.Fatal(err)
+			}
+			for _, p := range op.Parameters {
+				if ref, ok := p["$ref"].(string); ok {
+					refs++
+					name := strings.TrimPrefix(ref, "#/components/parameters/")
+					if out.Components.Parameters[name] == nil {
+						t.Errorf("dangling %s", ref)
+					}
+				}
+			}
+		}
+	}
+	if refs == 0 {
+		t.Error("no parameter refs rendered")
+	}
+	compact, err := doc.CompactJSON()
+	if err != nil || len(compact) >= len(raw) {
+		t.Errorf("compact %d vs indented %d (%v)", len(compact), len(raw), err)
+	}
+}

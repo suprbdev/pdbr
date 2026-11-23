@@ -1,12 +1,15 @@
 package server
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -336,5 +339,61 @@ func TestSwap(t *testing.T) {
 	res, _ := do(t, "GET", srv.URL+"/api/users", nil)
 	if res.StatusCode != 204 || s.Runtime() != rt2 {
 		t.Errorf("swap not effective: %d", res.StatusCode)
+	}
+}
+
+func TestOpenAPIServing(t *testing.T) {
+	cfg := serverCfg()
+	cfg.Compression = true
+	srv := testServer(t, cfg, nil, nil)
+	client := &http.Client{Transport: &http.Transport{DisableCompression: true}}
+	get := func(method string, hdr map[string]string) (*http.Response, []byte) {
+		t.Helper()
+		req, err := http.NewRequest(method, srv.URL+"/api/openapi.json", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for k, v := range hdr {
+			req.Header.Set(k, v)
+		}
+		res, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		b, _ := io.ReadAll(res.Body)
+		return res, b
+	}
+
+	res, plain := get("GET", nil)
+	etag := res.Header.Get("ETag")
+	if etag == "" || res.Header.Get("Content-Encoding") != "" || bytes.Contains(plain, []byte("\n  ")) {
+		t.Fatalf("plain: etag=%q enc=%q", etag, res.Header.Get("Content-Encoding"))
+	}
+
+	res, zipped := get("GET", map[string]string{"Accept-Encoding": "gzip"})
+	if res.Header.Get("Content-Encoding") != "gzip" || res.Header.Get("ETag") != etag {
+		t.Fatalf("gzip: enc=%q etag=%q", res.Header.Get("Content-Encoding"), res.Header.Get("ETag"))
+	}
+	zr, err := gzip.NewReader(bytes.NewReader(zipped))
+	if err != nil {
+		t.Fatal(err)
+	}
+	unz, _ := io.ReadAll(zr)
+	if !bytes.Equal(unz, plain) {
+		t.Error("gzip body differs from plain body")
+	}
+
+	res, body := get("GET", map[string]string{"If-None-Match": etag})
+	if res.StatusCode != http.StatusNotModified || len(body) != 0 {
+		t.Errorf("If-None-Match = %d (%d bytes)", res.StatusCode, len(body))
+	}
+	res, _ = get("GET", map[string]string{"If-None-Match": `"other"`})
+	if res.StatusCode != http.StatusOK {
+		t.Errorf("stale If-None-Match = %d", res.StatusCode)
+	}
+	res, body = get("HEAD", map[string]string{"Accept-Encoding": "gzip"})
+	if res.StatusCode != http.StatusOK || len(body) != 0 || res.Header.Get("Content-Length") != strconv.Itoa(len(zipped)) {
+		t.Errorf("HEAD = %d len=%q", res.StatusCode, res.Header.Get("Content-Length"))
 	}
 }

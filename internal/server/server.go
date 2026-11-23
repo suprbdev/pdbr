@@ -7,10 +7,15 @@
 package server
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync/atomic"
 
@@ -39,19 +44,41 @@ func (f RouteHandlerFunc) ServeRoute(w http.ResponseWriter, r *http.Request, m *
 // read-only across requests. Swap replaces it atomically.
 type Runtime struct {
 	Built *api.Built
-	// OpenAPI is the rendered JSON document served at {base}/openapi.json.
+	// OpenAPI is the compact JSON document served at {base}/openapi.json.
 	OpenAPI []byte
+	// OpenAPIGzip is OpenAPI compressed once at build time.
+	OpenAPIGzip []byte
+	// OpenAPIETag is the strong ETag (quoted) of OpenAPI.
+	OpenAPIETag string
 	// Handler serves matched routes (nil answers 501).
 	Handler RouteHandler
 }
 
 // NewRuntime renders the OpenAPI document once and wraps the model.
 func NewRuntime(built *api.Built, h RouteHandler) (*Runtime, error) {
-	doc, err := built.OpenAPI.JSON()
+	doc, err := built.OpenAPI.CompactJSON()
 	if err != nil {
 		return nil, err
 	}
-	return &Runtime{Built: built, OpenAPI: doc, Handler: h}, nil
+	var zbuf bytes.Buffer
+	zw, err := gzip.NewWriterLevel(&zbuf, gzip.BestCompression)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := zw.Write(doc); err != nil {
+		return nil, err
+	}
+	if err := zw.Close(); err != nil {
+		return nil, err
+	}
+	sum := sha256.Sum256(doc)
+	return &Runtime{
+		Built:       built,
+		OpenAPI:     doc,
+		OpenAPIGzip: zbuf.Bytes(),
+		OpenAPIETag: `"` + hex.EncodeToString(sum[:16]) + `"`,
+		Handler:     h,
+	}, nil
 }
 
 // Server is the HTTP front end.
@@ -85,9 +112,6 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", readOnlyRoute(httpx.Healthz))
 	mux.HandleFunc("/readyz", readOnlyRoute(httpx.Healthz))
-	if s.cfg.OpenAPI {
-		mux.HandleFunc(base+"/openapi.json", readOnlyRoute(s.handleOpenAPI))
-	}
 	apiRouter := s.withAuth(http.HandlerFunc(s.handleAPI))
 	if base == "" {
 		mux.Handle("/", apiRouter)
@@ -107,6 +131,20 @@ func (s *Server) Handler() http.Handler {
 	}
 	if s.cfg.RequestTimeout > 0 {
 		h = withTimeout(h, s.cfg.RequestTimeout)
+	}
+	if s.cfg.OpenAPI {
+		var doc http.Handler = readOnlyRoute(s.handleOpenAPI)
+		if len(s.cfg.CORSOrigins) > 0 {
+			doc = httpx.CORSWithPreflight(s.cfg.CORSOrigins, "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS", doc)
+		}
+		full, docPath := h, base+"/openapi.json"
+		h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == docPath {
+				doc.ServeHTTP(w, r)
+				return
+			}
+			full.ServeHTTP(w, r)
+		})
 	}
 	return s.withRecover(h)
 }
@@ -136,12 +174,41 @@ func readOnlyRoute(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// handleOpenAPI writes the pre-rendered document straight to the connection,
+// outside the timeout buffer and the gzip middleware: the gzip bytes built
+// with the runtime when the client accepts gzip, with ETag/If-None-Match
+// revalidation.
 func (s *Server) handleOpenAPI(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	rt := s.rt.Load()
+	h := w.Header()
+	h.Set("Content-Type", "application/json; charset=utf-8")
+	h.Set("ETag", rt.OpenAPIETag)
+	h.Set("Cache-Control", "no-cache")
+	h.Add("Vary", "Accept-Encoding")
+	if etagMatches(r.Header.Get("If-None-Match"), rt.OpenAPIETag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	body := rt.OpenAPI
+	if s.cfg.Compression && httpx.AcceptsGzip(r.Header.Get("Accept-Encoding")) {
+		h.Set("Content-Encoding", "gzip")
+		body = rt.OpenAPIGzip
+	}
+	h.Set("Content-Length", strconv.Itoa(len(body)))
 	if r.Method == http.MethodHead {
 		return
 	}
-	w.Write(s.rt.Load().OpenAPI) //nolint:errcheck
+	w.Write(body) //nolint:errcheck
+}
+
+func etagMatches(header, etag string) bool {
+	for _, part := range strings.Split(header, ",") {
+		part = strings.TrimPrefix(strings.TrimSpace(part), "W/")
+		if part == etag || part == "*" {
+			return true
+		}
+	}
+	return false
 }
 
 // handleAPI resolves the path below base_path against the current runtime's
