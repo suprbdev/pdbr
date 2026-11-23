@@ -1,0 +1,2 @@
+-- request: PATCH /api/users/1
+-- error: 400 invalid_preference: invalid preference "tx=rollback" (Prefer: handling=strict rejects unknown or malformed preferences)

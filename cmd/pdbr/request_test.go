@@ -89,7 +89,7 @@ func TestPrintSQLMatchesGolden(t *testing.T) {
 		t.Errorf("openapi.json --print-sql: err %v out %q err %q", err, stdout.String(), stderr.String())
 	}
 	stdout.Reset()
-	err = runRequest(context.Background(), cfg, requestSpec{method: "PATCH", path: "/users", printSQL: true}, &stdout, &stderr)
+	err = runRequest(context.Background(), cfg, requestSpec{method: "POST", path: "/users/1", printSQL: true}, &stdout, &stderr)
 	if !errors.As(err, &ee) || ee.code != 2 || !strings.Contains(stdout.String(), `"code":"method_not_allowed"`) {
 		t.Errorf("405 --print-sql: err %v out %q", err, stdout.String())
 	}

@@ -98,10 +98,10 @@ func TestFixtureRoutes(t *testing.T) {
 		got[rt.Pattern] = rt.AllowHeader()
 	}
 	want := map[string]string{
-		"/users":                  "GET, HEAD, POST, PUT",
+		"/users":                  "GET, HEAD, POST, PUT, PATCH, DELETE",
 		"/users/{id}":             "GET, HEAD, PATCH, DELETE",
 		"/users/by/email/{email}": "GET, HEAD, PATCH, DELETE",
-		"/posts":                  "GET, HEAD, POST, PUT",
+		"/posts":                  "GET, HEAD, POST, PUT, PATCH, DELETE",
 		"/posts/{id}":             "GET, HEAD, PATCH, DELETE",
 		"/metrics":                "GET, HEAD",
 		"/rpc/search_posts":       "GET, HEAD, POST",

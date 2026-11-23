@@ -1,0 +1,1 @@
+DELETE /api/posts?users.email=eq.ada@example.com&select=id

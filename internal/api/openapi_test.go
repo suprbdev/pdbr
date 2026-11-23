@@ -508,3 +508,32 @@ func TestOpenAPIYAML(t *testing.T) {
 		t.Error("YAML rendering is not deterministic")
 	}
 }
+
+func TestOpenAPIBulkWrites(t *testing.T) {
+	doc := fixture(t).OpenAPI
+	users := doc.Paths["/users"]
+	if users.Patch == nil || users.Patch.OperationID != "users.bulk_update" || users.Delete == nil || users.Delete.OperationID != "users.bulk_delete" {
+		t.Fatalf("bulk operations missing: %+v %+v", users.Patch, users.Delete)
+	}
+	for _, op := range []*Operation{users.Patch, users.Delete} {
+		got := strings.Join(paramNames(op.Parameters, "query"), ",")
+		if !strings.Contains(got, "select,and,or,not.and,not.or,id,email") || strings.Contains(got, "limit") || strings.Contains(got, "order") {
+			t.Errorf("%s params = %s", op.OperationID, got)
+		}
+		if p := paramByName(op.Parameters, "Prefer"); p == nil || !strings.Contains(p.Description, "max-affected") {
+			t.Errorf("%s Prefer = %+v", op.OperationID, p)
+		}
+		if op.Responses["200"].Headers["Preference-Applied"] == nil || op.Responses["204"] == nil || op.Responses["404"] != nil {
+			t.Errorf("%s responses = %v", op.OperationID, op.Responses)
+		}
+		if !strings.Contains(op.Description, "unfiltered_mutation") {
+			t.Errorf("%s description = %q", op.OperationID, op.Description)
+		}
+	}
+	if doc.Paths["/metrics"].Patch != nil || doc.Paths["/metrics"].Delete != nil {
+		t.Error("view offers bulk writes")
+	}
+	if p := paramByName(doc.Paths["/users"].Post.Parameters, "Prefer"); strings.Contains(p.Description, "max-affected") {
+		t.Errorf("POST Prefer mentions max-affected: %s", p.Description)
+	}
+}

@@ -21,21 +21,70 @@ type mutationWrapper struct {
 	N        *int64          `json:"n"`
 }
 
+type bulkWrapper struct {
+	N    int64           `json:"n"`
+	Rows json.RawMessage `json:"rows"`
+}
+
+// affectedRows counts the rows a PATCH / DELETE statement wrote, from its
+// data column: n of the bulk wrapper, otherwise 0 or 1 for a keyed write.
+func affectedRows(stmt *compile.Statement, raw []byte, found bool) (int64, error) {
+	if !found || raw == nil {
+		return 0, nil
+	}
+	switch stmt.Shape {
+	case compile.ShapeMutBulk:
+		var w bulkWrapper
+		if err := json.Unmarshal(raw, &w); err != nil {
+			return 0, err
+		}
+		return w.N, nil
+	case compile.ShapeMutWrap:
+		var w mutationWrapper
+		if err := json.Unmarshal(raw, &w); err != nil {
+			return 0, err
+		}
+		if w.N != nil {
+			return *w.N, nil
+		}
+		if len(w.Row) == 0 || bytes.Equal(w.Row, []byte("null")) {
+			return 0, nil
+		}
+	}
+	return 1, nil
+}
+
 // unwrapMutation maps the mutation shapes (compile.ShapeMutRow / MutList /
-// MutWrap) to status, Location and body per docs/mutations.md: 201 for
+// MutWrap / MutBulk) to status, Location and body per docs/mutations.md: 201 for
 // POST and for a single-object PUT that inserted, 200 otherwise, 204 under
 // Prefer: return=minimal (201 + Location stays for creates); zero rows on a
 // keyed path 404; If-Match found-but-unchanged 412 etag_mismatch.
 func unwrapMutation(op *Operation, stmt *compile.Statement, raw []byte, found bool, basePath string) (*Result, error) {
 	res := &Result{Status: http.StatusOK, Headers: http.Header{}}
 	method := plan.Method(op.Method)
-	minimal := op.Plan != nil && op.Plan.Prefer.Return == "minimal"
+	minimal := op.Plan != nil && op.Plan.Prefer.Minimal()
 	switch stmt.Shape {
 	case compile.ShapeMutRow:
 		if !found || raw == nil {
 			return nil, notFound(op)
 		}
 		res.Data = raw
+		return res, nil
+	case compile.ShapeMutBulk:
+		var w bulkWrapper
+		if found && raw != nil {
+			if err := json.Unmarshal(raw, &w); err != nil {
+				return nil, &Error{Status: http.StatusInternalServerError, Code: CodeInternal, Detail: "malformed bulk mutation wrapper"}
+			}
+		}
+		if minimal {
+			res.Status = http.StatusNoContent
+			return res, nil
+		}
+		res.Data = w.Rows
+		if res.Data == nil {
+			res.Data = json.RawMessage("[]")
+		}
 		return res, nil
 	case compile.ShapeMutList:
 		if !found || raw == nil {

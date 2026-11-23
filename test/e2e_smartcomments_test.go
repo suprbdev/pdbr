@@ -131,6 +131,8 @@ func TestSmartCommentsRoutesAndMethods(t *testing.T) {
 	if allow := res.Header.Get("Allow"); allow != "POST, PUT" {
 		t.Fatalf("sc_tags Allow = %q", allow)
 	}
+	res, body = do(t, http.MethodDelete, srv+"/api/sc_tags?id=eq.1", nil)
+	wantProblem(t, res, body, 405, "method_not_allowed")
 	var tag row
 	getJSON(t, srv+"/api/sc_tags/1", &tag)
 	if tag["label"] != "a" {

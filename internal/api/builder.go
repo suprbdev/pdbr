@@ -882,8 +882,8 @@ func (b *Builder) Build() (*Built, error) {
 		out.byResource[r] = map[RouteKind]*Route{}
 		out.byUnique[r] = map[string]*Route{}
 		base := r.urlPrefix()
-		listMethods := methodList(r.Methods, MethodGet, MethodHead, MethodPost, MethodPut)
-		if r.OmitList {
+		listMethods := methodList(r.Methods, MethodGet, MethodHead, MethodPost, MethodPut, MethodPatch, MethodDelete)
+		if r.OmitList || !r.Methods[MethodGet] {
 			listMethods = methodList(r.Methods, MethodPost, MethodPut)
 		}
 		if ms := listMethods; len(ms) > 0 {

@@ -497,3 +497,42 @@ func TestExecuteListThroughFake(t *testing.T) {
 		t.Fatal("bare context has no operation")
 	}
 }
+
+func TestExecuteMaxAffected(t *testing.T) {
+	b := built(t)
+	users := b.ByPath["users"]
+	bulkOp := func(limit *int64, applied ...string) *Operation {
+		return &Operation{Method: "DELETE", Path: "/users", Resource: users, Mutation: true, Plan: &plan.Request{
+			Method: plan.DELETE, Resource: users, Page: plan.Page{Limit: 100},
+			Filter: plan.Cond{Column: users.Table.Column("id"), Op: plan.OpGt, Value: int64(0)},
+			Prefer: plan.Prefer{Return: "representation", Strict: limit != nil, MaxAffected: limit, Applied: applied},
+		}}
+	}
+	two := int64(2)
+	three := int64(3)
+	data := []byte(`{"n":3,"rows":[{"id":1},{"id":2},{"id":3}]}`)
+
+	db := &fakeDB{row: fakeRow{data: data}}
+	res := newExec(db, b, nil, Options{TxMutations: false}).Execute(context.Background(), bulkOp(&two, "handling=strict", "max-affected=2"))
+	if xe := errOf(t, res); xe.Status != 400 || xe.Code != CodeMaxAffectedExceeded || !strings.Contains(xe.Detail, "affects 3 rows") {
+		t.Fatalf("exceeded: %+v", xe)
+	}
+	if len(db.txs) != 1 || db.txs[0].committed || !db.txs[0].rolled {
+		t.Fatalf("exceeded must run in a rolled-back tx even with transactions.mutations off: %+v", db.txs)
+	}
+
+	db = &fakeDB{row: fakeRow{data: data}}
+	res = newExec(db, b, nil, Options{TxMutations: true}).Execute(context.Background(), bulkOp(&three, "handling=strict", "max-affected=3"))
+	if res.Err != nil || res.Status != 200 || len(db.txs) != 1 || !db.txs[0].committed {
+		t.Fatalf("within cap: %+v %v", res, db.txs)
+	}
+	if got := res.Headers.Get("Preference-Applied"); got != "handling=strict, max-affected=3" {
+		t.Errorf("Preference-Applied = %q", got)
+	}
+
+	db = &fakeDB{row: fakeRow{data: data}}
+	res = newExec(db, b, nil, Options{TxMutations: false}).Execute(context.Background(), bulkOp(nil))
+	if res.Err != nil || len(db.txs) != 0 || res.Headers.Get("Preference-Applied") != "" {
+		t.Fatalf("no cap: %+v txs=%d", res, len(db.txs))
+	}
+}

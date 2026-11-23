@@ -1,0 +1,4 @@
+PATCH /api/posts?id=eq.1
+If-Match: W/"abc"
+
+{"title": "x"}

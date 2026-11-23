@@ -9,7 +9,8 @@ import (
 	"github.com/suprbdev/pdbr/internal/compile"
 )
 
-// FuzzParse feeds random paths, query strings, headers and RPC bodies
+// FuzzParse feeds random paths, query strings, headers (the accept input
+// doubles as the Prefer header) and RPC bodies
 // through Parse: it must never panic, and every error must be a
 // *compile.UserError with a code and a status.
 func FuzzParse(f *testing.F) {
@@ -28,6 +29,8 @@ func FuzzParse(f *testing.F) {
 		{"PUT", "/users", "on_conflict=email", "", `{}`},
 		{"DELETE", "/users/1", "", "", ""},
 		{"HEAD", "/metrics", "limit=5&offset=5", "", ""},
+		{"PATCH", "/users", "id=gt.1&select=id", "handling=strict, max-affected=2", `{"mood":"ok"}`},
+		{"DELETE", "/posts", "or=(id.eq.1,title.like.x*)", "return=headers-only, tx=rollback", ""},
 	}
 	for _, s := range seeds {
 		f.Add(s.method, s.path, s.query, s.accept, s.body)
@@ -57,6 +60,7 @@ func FuzzParse(f *testing.F) {
 		}
 		if accept != "" {
 			r.Header.Set("Accept", accept)
+			r.Header.Set("Prefer", accept)
 		}
 		r.Header.Set("Content-Type", "application/json")
 		m, ok := built.Match(strings.TrimPrefix(r.URL.EscapedPath(), "/api"))

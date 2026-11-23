@@ -122,7 +122,7 @@ answers both forms.
 
 | Path | Operations | Notes |
 |---|---|---|
-| `{r}` | `GET`, `HEAD`, `POST`, `PUT` | `GET`/`HEAD`: list (`HEAD` mirrors `GET`'s parameters and response headers, no content). `POST`: body `<name>.insert` or a non-empty array of it (`oneOf`), `201` + `Location` header, `Prefer` header param. `PUT`: body `<name>.upsert` or array, `200` (updated) / `201` (inserted, `Location`) / `204` (`return=minimal`), `on_conflict` param listing the unique column sets |
+| `{r}` | `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE` | `GET`/`HEAD`: list (`HEAD` mirrors `GET`'s parameters and response headers, no content). `POST`: body `<name>.insert` or a non-empty array of it (`oneOf`), `201` + `Location` header, `Prefer` header param. `PUT`: body `<name>.upsert` or array, `200` (updated) / `201` (inserted, `Location`) / `204` (`return=minimal`), `on_conflict` param listing the unique column sets. `PATCH`/`DELETE`: bulk write by filter — `select`, `Prefer`, the logic params and one filter param per filterable column (no paging/order params), `PATCH` body `<name>.update`, `200` array / `204` |
 | `{r}/{pk}` | `GET`, `HEAD`, `PATCH`, `DELETE` | path param per PK column, named after the column (`/users/{id}`; composite `/memberships/{org_id},{user_id}`); `ETag` header + `304` + `If-None-Match` param on `GET` when `server.etags`; `If-Match` param + `412` on `PATCH`/`DELETE`; `PATCH` body `<name>.update`; `200` / `204` (`return=minimal`) |
 | `{r}/by/{cols}/{vals}` | `GET`, `HEAD`, `PATCH`, `DELETE` | one **concrete** path per unique constraint, columns in constraint order: `/users/by/email/{email}`, `/memberships/by/org_id,slug/{org_id},{slug}` — the runtime also accepts other column orders, the document lists one |
 | `{base}/rpc/{fn}` (`/rpc/search_posts`, `/audit/rpc/fn`) | `GET`, `HEAD` (stable/immutable only) and `POST` | `GET`: one query param per argument (typed by the column map; composites/arrays/json/GeoJSON travel as `string` — JSON or WKT text; `required` unless the argument has a `DEFAULT`, whose expression the description shows — an omitted arg takes it; a `VARIADIC` arg is an `array` param, `style: form`, `explode: true`); `POST`: body object with the same properties (`additionalProperties: false`, `required` = the arguments without a default; the body itself is `required` when that list is non-empty). Response per return type: scalar → the mapped type (nullable); `void` → `204`; row → nullable resource/composite schema (record of `OUT` params → the `rpc.<fn>` component schema, one property per output parameter, not nullable); `SETOF table` / `SETOF record` (`RETURNS TABLE`) → array + the list read params (`select`, `order`, `limit`, `offset`, `count`, logic and filter params — filter params shadowed by an argument name are omitted: arguments win) + `X-Total-Count`/`Link` headers + `text/csv`; `SETOF scalar|composite` → array + `limit`/`offset` + `text/csv`; `rls.auth.jwt_type` return → `string`, `format: jwt` |
@@ -133,10 +133,12 @@ absent at runtime (`405` + `Allow`). A table with `@omit all` keeps its
 collection path for the write methods only. `server.read_only` is **not**
 reflected in the document (the document is a function of `api.Built`;
 read-only is a runtime toggle via `App.SetReadOnly` and answers `405` at
-request time — the `405` response is documented on every write). Bare
-`PATCH`/`DELETE` on the list path are not documented (`405`).
+request time — the `405` response is documented on every write).
+Write operations document the `Prefer` header (`return=`, `handling=`, and
+`max-affected=` on `PATCH`/`DELETE`) and a `Preference-Applied` response
+header.
 
-`operationId` scheme: `<name>.list|create|upsert` on the collection,
+`operationId` scheme: `<name>.list|create|upsert|bulk_update|bulk_delete` on the collection,
 `<name>.get|update|delete` on the primary-key path,
 `<name>.by_<cols joined by _>[.update|.delete]` on unique-constraint paths,
 `rpc.<fn>` (`GET`) / `rpc.<fn>.post`; every `HEAD` operation is the `GET`

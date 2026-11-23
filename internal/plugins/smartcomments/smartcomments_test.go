@@ -257,15 +257,15 @@ func TestOmitTableActions(t *testing.T) {
 	}{
 		{"@omit read", "POST, PUT", "PATCH, DELETE", "PATCH, DELETE", true, true},
 		{"@omit all", "POST, PUT", "GET, HEAD, PATCH, DELETE", "GET, HEAD, PATCH, DELETE", true, true},
-		{"@omit create", "GET, HEAD", "GET, HEAD, PATCH, DELETE", "GET, HEAD, PATCH, DELETE", true, true},
-		{"@omit update", "GET, HEAD, POST", "GET, HEAD, DELETE", "GET, HEAD, DELETE", true, true},
-		{"@omit delete", "GET, HEAD, POST, PUT", "GET, HEAD, PATCH", "GET, HEAD, PATCH", true, true},
-		{"@omit create, delete", "GET, HEAD", "GET, HEAD, PATCH", "GET, HEAD, PATCH", true, true},
+		{"@omit create", "GET, HEAD, PATCH, DELETE", "GET, HEAD, PATCH, DELETE", "GET, HEAD, PATCH, DELETE", true, true},
+		{"@omit update", "GET, HEAD, POST, DELETE", "GET, HEAD, DELETE", "GET, HEAD, DELETE", true, true},
+		{"@omit delete", "GET, HEAD, POST, PUT, PATCH", "GET, HEAD, PATCH", "GET, HEAD, PATCH", true, true},
+		{"@omit create, delete", "GET, HEAD, PATCH", "GET, HEAD, PATCH", "GET, HEAD, PATCH", true, true},
 		{"@omit read, update, delete", "POST", "-", "-", true, true},
-		{"@behavior -insert -delete", "GET, HEAD", "GET, HEAD, PATCH", "GET, HEAD, PATCH", true, true},
-		{"@omit many", "GET, HEAD, POST, PUT", "GET, HEAD, PATCH, DELETE", "GET, HEAD, PATCH, DELETE", true, true},
-		{"@omit filter", "GET, HEAD, POST, PUT", "GET, HEAD, PATCH, DELETE", "GET, HEAD, PATCH, DELETE", false, true},
-		{"@omit order", "GET, HEAD, POST, PUT", "GET, HEAD, PATCH, DELETE", "GET, HEAD, PATCH, DELETE", true, false},
+		{"@behavior -insert -delete", "GET, HEAD, PATCH", "GET, HEAD, PATCH", "GET, HEAD, PATCH", true, true},
+		{"@omit many", "GET, HEAD, POST, PUT, PATCH, DELETE", "GET, HEAD, PATCH, DELETE", "GET, HEAD, PATCH, DELETE", true, true},
+		{"@omit filter", "GET, HEAD, POST, PUT, PATCH, DELETE", "GET, HEAD, PATCH, DELETE", "GET, HEAD, PATCH, DELETE", false, true},
+		{"@omit order", "GET, HEAD, POST, PUT, PATCH, DELETE", "GET, HEAD, PATCH, DELETE", "GET, HEAD, PATCH, DELETE", true, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.tag, func(t *testing.T) {

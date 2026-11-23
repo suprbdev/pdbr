@@ -77,6 +77,11 @@ const (
 	// POST and for PUT with inserted, else 200 (204 under return=minimal,
 	// which never carries a body); Location on 201 from key.
 	ShapeMutWrap Shape = "mut_wrap"
+	// ShapeMutBulk: data is {"n": int, "rows": [...]} for a PATCH or DELETE
+	// on a list route (rows filtered by the query string); rows is absent
+	// under return=minimal. exec answers 200 with rows (an empty array when
+	// nothing matched — never 404) or 204 under return=minimal.
+	ShapeMutBulk Shape = "mut_bulk"
 )
 
 // Statement is one compiled SQL statement. It always returns one row with

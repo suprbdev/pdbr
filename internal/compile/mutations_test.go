@@ -230,9 +230,6 @@ func TestMutationErrors(t *testing.T) {
 	if err := f.compileErr(&plan.Request{Method: plan.POST, Resource: users}); err == nil || strings.Contains(err.Error(), "not implemented") {
 		t.Errorf("missing body: %v", err)
 	}
-	if err := f.compileErr(&plan.Request{Method: plan.PATCH, Resource: users, Body: body(users, map[string]any{"full_name": "x"})}); err == nil {
-		t.Error("PATCH without key compiled")
-	}
 	err := f.compileErr(&plan.Request{Method: plan.PATCH, Resource: users, Key: pkKey(users, int64(1)), Body: &plan.Body{Object: map[string]any{}}})
 	var ue *compile.UserError
 	if !errors.As(err, &ue) || ue.Code != compile.CodeInvalidBody {
@@ -253,4 +250,24 @@ func TestMutationErrors(t *testing.T) {
 	}
 	has(t, st.SQL, `ON CONFLICT ("a")`, "'inserted', t0.__inserted")
 	lacks(t, st.SQL, "'key'")
+}
+
+func TestBulkMutationShapes(t *testing.T) {
+	f := newFixture(t)
+	users := f.res("users")
+	st := f.compile(&plan.Request{Method: plan.PATCH, Resource: users, Body: body(users, map[string]any{"full_name": "x"})})
+	if st.Shape != compile.ShapeMutBulk || !st.Mutation || strings.Contains(st.SQL, "WHERE") || !strings.Contains(st.SQL, `UPDATE "public"."users" m0`) {
+		t.Fatalf("unfiltered bulk PATCH = %s %s", st.Shape, st.SQL)
+	}
+	st = f.compile(&plan.Request{Method: plan.DELETE, Resource: users, Prefer: plan.Prefer{Return: "headers-only"},
+		Filter: plan.Cond{Column: users.Table.Column("id"), Op: plan.OpEq, Value: int64(1)}})
+	if st.Shape != compile.ShapeMutBulk || !strings.Contains(st.SQL, `WHERE m0."id" = $1`) || !strings.Contains(st.SQL, "RETURNING 1") || strings.Contains(st.SQL, "'rows'") {
+		t.Fatalf("minimal bulk DELETE = %s %s", st.Shape, st.SQL)
+	}
+	if err := f.compileErr(&plan.Request{Method: plan.PATCH, Resource: users, Body: &plan.Body{Object: map[string]any{}}}); err == nil {
+		t.Error("empty bulk PATCH compiled")
+	}
+	if err := f.compileErr(&plan.Request{Method: plan.DELETE, Resource: users, Filter: plan.And{}}); err == nil {
+		t.Error("a filter rendering no condition compiled to an unrestricted DELETE")
+	}
 }

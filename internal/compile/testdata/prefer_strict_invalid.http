@@ -1,0 +1,4 @@
+PATCH /api/users/1
+Prefer: handling=strict, tx=rollback
+
+{"full_name": "Grace"}

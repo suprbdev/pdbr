@@ -20,13 +20,14 @@ const (
 // negotiation (406) and the database/infrastructure statuses; keyed paths
 // add 404, writes add the read-only/constraint/body statuses.
 var (
-	readStatuses   = []int{400, 401, 403, 406, 500, 503, 504}
-	rowStatuses    = []int{400, 401, 403, 404, 406, 500, 503, 504}
-	createStatuses = []int{400, 401, 403, 405, 406, 409, 413, 415, 500, 503, 504}
-	updateStatuses = []int{400, 401, 403, 404, 405, 406, 409, 412, 413, 415, 500, 503, 504}
-	deleteStatuses = []int{400, 401, 403, 404, 405, 406, 409, 412, 500, 503, 504}
-	rpcGetStatuses = []int{400, 401, 403, 406, 500, 503, 504}
-	rpcPostStatus  = []int{400, 401, 403, 405, 406, 413, 415, 500, 503, 504}
+	readStatuses       = []int{400, 401, 403, 406, 500, 503, 504}
+	rowStatuses        = []int{400, 401, 403, 404, 406, 500, 503, 504}
+	createStatuses     = []int{400, 401, 403, 405, 406, 409, 413, 415, 500, 503, 504}
+	updateStatuses     = []int{400, 401, 403, 404, 405, 406, 409, 412, 413, 415, 500, 503, 504}
+	deleteStatuses     = []int{400, 401, 403, 404, 405, 406, 409, 412, 500, 503, 504}
+	bulkDeleteStatuses = []int{400, 401, 403, 405, 406, 409, 500, 503, 504}
+	rpcGetStatuses     = []int{400, 401, 403, 406, 500, 503, 504}
+	rpcPostStatus      = []int{400, 401, 403, 405, 406, 413, 415, 500, 503, 504}
 )
 
 // pathItem renders one route: the operations its methods allow, with the
@@ -131,10 +132,10 @@ func (b *Builder) listItem(item *PathItem, rt *Route) {
 	}
 	if rt.Allows(MethodPost) {
 		post := b.operation(rt, r.Path+".create", "Create "+r.Path, createStatuses)
-		post.Parameters = []*Parameter{b.selectParam(r, "Columns and embeds of the created row(s) to return."), preferParam()}
+		post.Parameters = []*Parameter{b.selectParam(r, "Columns and embeds of the created row(s) to return."), preferParam(false)}
 		post.RequestBody = jsonBody(objectOrArray(r.Path+".insert"), true, "One row, or an array of rows for a bulk insert (one INSERT, columns = union, missing keys take DEFAULT).")
 		post.Responses["201"] = &Response{Description: "Created (Prefer: return=minimal omits the body).",
-			Headers: map[string]*Header{"Location": {Schema: &Schema{Type: "string"}, Description: "URL of the new row for a single-object body on a resource with a single-column primary key."}},
+			Headers: writeHeaders(map[string]*Header{"Location": {Schema: &Schema{Type: "string"}, Description: "URL of the new row for a single-object body on a resource with a single-column primary key."}}),
 			Content: map[string]*MediaType{mediaJSON: {Schema: &Schema{OneOf: []*Schema{SchemaRef(r.Path), {Type: "array", Items: SchemaRef(r.Path)}}}}},
 		}
 		item.Post = post
@@ -145,17 +146,55 @@ func (b *Builder) listItem(item *PathItem, rt *Route) {
 			b.selectParam(r, "Columns and embeds of the affected row(s) to return."),
 			{Name: "on_conflict", In: "query", Schema: &Schema{Type: "string"},
 				Description: "Conflict target: comma list equal to a unique constraint's columns (default: the primary key). " + b.uniqueProse(r)},
-			preferParam(),
+			preferParam(false),
 		}
 		put.RequestBody = jsonBody(objectOrArray(r.Path+".upsert"), true, "One row, or an array of rows; the conflict-target columns must be present in every element.")
-		put.Responses["200"] = &Response{Description: "Updated (single object that hit an existing row, or any array).",
+		put.Responses["200"] = &Response{Description: "Updated (single object that hit an existing row, or any array).", Headers: writeHeaders(nil),
 			Content: map[string]*MediaType{mediaJSON: {Schema: &Schema{OneOf: []*Schema{SchemaRef(r.Path), {Type: "array", Items: SchemaRef(r.Path)}}}}}}
 		put.Responses["201"] = &Response{Description: "Inserted (single object that created a row; Prefer: return=minimal omits the body).",
-			Headers: map[string]*Header{"Location": {Schema: &Schema{Type: "string"}, Description: "URL of the new row when the resource has a single-column primary key."}},
+			Headers: writeHeaders(map[string]*Header{"Location": {Schema: &Schema{Type: "string"}, Description: "URL of the new row when the resource has a single-column primary key."}}),
 			Content: map[string]*MediaType{mediaJSON: {Schema: SchemaRef(r.Path)}}}
-		put.Responses["204"] = &Response{Description: "Updated with Prefer: return=minimal."}
+		put.Responses["204"] = &Response{Description: "Updated with Prefer: return=minimal.", Headers: writeHeaders(nil)}
 		item.Put = put
 	}
+	if rt.Allows(MethodPatch) {
+		patch := b.operation(rt, r.Path+".bulk_update", "Update the "+r.Path+" rows matching the filters", createStatuses)
+		patch.Parameters = append([]*Parameter{b.selectParam(r, "Columns and embeds of the updated rows to return."), preferParam(true)}, b.bulkParams(r)...)
+		appendDescription(patch, bulkProse)
+		appendDescription(patch, b.filterProse(r))
+		patch.RequestBody = jsonBody(SchemaRef(r.Path+".update"), true, "Columns to set on every matching row.")
+		patch.Responses["200"] = &Response{Description: "Updated (the changed rows; an empty array when nothing matched).", Headers: writeHeaders(nil),
+			Content: map[string]*MediaType{mediaJSON: {Schema: &Schema{Type: "array", Items: SchemaRef(r.Path)}}}}
+		patch.Responses["204"] = &Response{Description: "Updated with Prefer: return=minimal.", Headers: writeHeaders(nil)}
+		item.Patch = patch
+	}
+	if rt.Allows(MethodDelete) {
+		del := b.operation(rt, r.Path+".bulk_delete", "Delete the "+r.Path+" rows matching the filters", bulkDeleteStatuses)
+		del.Parameters = append([]*Parameter{b.selectParam(r, "Columns and embeds of the deleted rows to return."), preferParam(true)}, b.bulkParams(r)...)
+		appendDescription(del, bulkProse)
+		appendDescription(del, b.filterProse(r))
+		del.Responses["200"] = &Response{Description: "Deleted (the removed rows; an empty array when nothing matched).", Headers: writeHeaders(nil),
+			Content: map[string]*MediaType{mediaJSON: {Schema: &Schema{Type: "array", Items: SchemaRef(r.Path)}}}}
+		del.Responses["204"] = &Response{Description: "Deleted with Prefer: return=minimal.", Headers: writeHeaders(nil)}
+		item.Delete = del
+	}
+}
+
+const bulkProse = "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless server.allow_unfiltered_mutations is on."
+
+// bulkParams are the row-selecting parameters of a bulk PATCH / DELETE: the
+// logic params and one filter param per filterable column.
+func (b *Builder) bulkParams(r *Resource) []*Parameter {
+	return append(b.logicParams(), b.filterParams(r, nil)...)
+}
+
+// writeHeaders adds Preference-Applied to a write response's headers.
+func writeHeaders(h map[string]*Header) map[string]*Header {
+	out := map[string]*Header{"Preference-Applied": {Schema: &Schema{Type: "string"}, Description: "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated."}}
+	for k, v := range h {
+		out[k] = v
+	}
+	return out
 }
 
 func (b *Builder) rowItem(item *PathItem, rt *Route) {
@@ -193,18 +232,18 @@ func (b *Builder) rowItem(item *PathItem, rt *Route) {
 	if rt.Allows(MethodPatch) {
 		patch := b.operation(rt, id+".update", "Update one "+r.Path+" "+what, updateStatuses)
 		patch.Parameters = append([]*Parameter{b.selectParam(r, "Columns and embeds of the updated row to return.")}, b.ifMatchParam(r)...)
-		patch.Parameters = append(patch.Parameters, preferParam())
+		patch.Parameters = append(patch.Parameters, preferParam(true))
 		patch.RequestBody = jsonBody(SchemaRef(r.Path+".update"), true, "Columns to change (partial update).")
-		patch.Responses["200"] = &Response{Description: "Updated", Content: map[string]*MediaType{mediaJSON: {Schema: SchemaRef(r.Path)}}}
-		patch.Responses["204"] = &Response{Description: "Updated with Prefer: return=minimal."}
+		patch.Responses["200"] = &Response{Description: "Updated", Headers: writeHeaders(nil), Content: map[string]*MediaType{mediaJSON: {Schema: SchemaRef(r.Path)}}}
+		patch.Responses["204"] = &Response{Description: "Updated with Prefer: return=minimal.", Headers: writeHeaders(nil)}
 		item.Patch = patch
 	}
 	if rt.Allows(MethodDelete) {
 		del := b.operation(rt, id+".delete", "Delete one "+r.Path+" "+what, deleteStatuses)
 		del.Parameters = append([]*Parameter{b.selectParam(r, "Columns and embeds of the deleted row to return.")}, b.ifMatchParam(r)...)
-		del.Parameters = append(del.Parameters, preferParam())
-		del.Responses["200"] = &Response{Description: "Deleted (the removed row)", Content: map[string]*MediaType{mediaJSON: {Schema: SchemaRef(r.Path)}}}
-		del.Responses["204"] = &Response{Description: "Deleted with Prefer: return=minimal."}
+		del.Parameters = append(del.Parameters, preferParam(true))
+		del.Responses["200"] = &Response{Description: "Deleted (the removed row)", Headers: writeHeaders(nil), Content: map[string]*MediaType{mediaJSON: {Schema: SchemaRef(r.Path)}}}
+		del.Responses["204"] = &Response{Description: "Deleted with Prefer: return=minimal.", Headers: writeHeaders(nil)}
 		item.Delete = del
 	}
 }
@@ -458,9 +497,14 @@ func (b *Builder) ifMatchParam(r *Resource) []*Parameter {
 		Description: "Weak ETag(s) (or *) the row must still carry; a mismatch answers 412 etag_mismatch, a missing row 404."}}
 }
 
-func preferParam() *Parameter {
-	return &Parameter{Name: "Prefer", In: "header", Schema: &Schema{Type: "string", Enum: []string{"return=representation", "return=minimal"}},
-		Description: "return=minimal answers 204 without a body (201 + Location for a single-object create)."}
+// preferParam documents the Prefer header of a write; maxAffected adds the
+// PATCH / DELETE row cap.
+func preferParam(maxAffected bool) *Parameter {
+	desc := "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference."
+	if maxAffected {
+		desc += " max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing."
+	}
+	return &Parameter{Name: "Prefer", In: "header", Schema: &Schema{Type: "string"}, Description: desc}
 }
 
 func (b *Builder) listHeaders(keyset bool) map[string]*Header {

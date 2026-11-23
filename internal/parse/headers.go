@@ -34,25 +34,99 @@ func (p *parser) checkContentType(r *http.Request) error {
 }
 
 // parseHeaders reads Prefer, If-Match and If-None-Match.
-func (p *parser) parseHeaders(r *http.Request) {
-	p.req.Prefer = plan.Prefer{Return: "representation"}
-	for _, h := range r.Header.Values("Prefer") {
-		for _, tok := range strings.Split(h, ",") {
-			k, v, _ := strings.Cut(strings.TrimSpace(tok), "=")
-			if strings.EqualFold(strings.TrimSpace(k), "return") {
-				switch strings.ToLower(strings.TrimSpace(v)) {
-				case "minimal":
-					p.req.Prefer.Return = "minimal"
-				case "representation":
-					p.req.Prefer.Return = "representation"
-				}
-			}
-		}
+func (p *parser) parseHeaders(r *http.Request) error {
+	if err := p.parsePrefer(r.Header.Values("Prefer")); err != nil {
+		return err
 	}
 	if p.opts.Etags {
 		p.req.IfMatch = r.Header.Get("If-Match")
 		p.req.IfNoneMatch = r.Header.Get("If-None-Match")
 	}
+	return nil
+}
+
+type preference struct {
+	key, val, raw string
+}
+
+// parsePrefer reads the Prefer header(s) per docs/mutations.md "Prefer". Tokens
+// are case-insensitive and may repeat (the last wins, handling= included). Under the default
+// handling=lenient anything unknown or malformed is ignored; handling=strict
+// turns it into 400 invalid_preference and enables max-affected.
+func (p *parser) parsePrefer(headers []string) error {
+	p.req.Prefer = plan.Prefer{Return: "representation"}
+	var prefs []preference
+	for _, h := range headers {
+		for _, tok := range strings.Split(h, ",") {
+			tok = strings.TrimSpace(tok)
+			if tok == "" {
+				continue
+			}
+			kv, _, _ := strings.Cut(tok, ";")
+			k, v, _ := strings.Cut(kv, "=")
+			prefs = append(prefs, preference{
+				key: strings.ToLower(strings.TrimSpace(k)),
+				val: strings.ToLower(strings.Trim(strings.TrimSpace(v), `"`)),
+				raw: tok,
+			})
+		}
+	}
+	for _, pr := range prefs {
+		if pr.key == "handling" && (pr.val == "strict" || pr.val == "lenient") {
+			p.req.Prefer.Strict = pr.val == "strict"
+		}
+	}
+	pf := &p.req.Prefer
+	var applied []string
+	apply := func(key, val string) {
+		for i, a := range applied {
+			if strings.HasPrefix(a, key+"=") {
+				applied = append(applied[:i], applied[i+1:]...)
+				break
+			}
+		}
+		applied = append(applied, key+"="+val)
+	}
+	write := p.isMutation()
+	for _, pr := range prefs {
+		ok := true
+		switch pr.key {
+		case "return":
+			switch pr.val {
+			case "representation", "minimal", "headers-only":
+				pf.Return = pr.val
+				if write {
+					apply("return", pr.val)
+				}
+			default:
+				ok = false
+			}
+		case "handling":
+			switch pr.val {
+			case "strict", "lenient":
+				apply("handling", pr.val)
+			default:
+				ok = false
+			}
+		case "max-affected":
+			n, err := strconv.ParseInt(pr.val, 10, 64)
+			if err != nil || n < 0 {
+				ok = false
+				break
+			}
+			if pf.Strict && write && (p.method == plan.PATCH || p.method == plan.DELETE) {
+				pf.MaxAffected = &n
+				apply("max-affected", pr.val)
+			}
+		default:
+			ok = false
+		}
+		if !ok && pf.Strict {
+			return errf(CodeInvalidPreference, "invalid preference %q (Prefer: handling=strict rejects unknown or malformed preferences)", pr.raw)
+		}
+	}
+	pf.Applied = applied
+	return nil
 }
 
 type mediaRange struct {

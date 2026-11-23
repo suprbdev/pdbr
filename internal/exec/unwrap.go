@@ -77,7 +77,7 @@ func Unwrap(op *Operation, stmt *compile.Statement, raw []byte, found bool, base
 		pageHeaders(res.Headers, op, stmt, &w, basePath)
 	case compile.ShapeVoid, compile.ShapeScalar, compile.ShapeJWT, compile.ShapeJWTSet:
 		unwrapRPC(res, stmt, raw, found)
-	case compile.ShapeMutRow, compile.ShapeMutList, compile.ShapeMutWrap:
+	case compile.ShapeMutRow, compile.ShapeMutList, compile.ShapeMutWrap, compile.ShapeMutBulk:
 		return unwrapMutation(op, stmt, raw, found, basePath)
 	default:
 		if !found || raw == nil {

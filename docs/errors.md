@@ -59,13 +59,17 @@ has a `code`, see the note below the table):
 | `column_readonly` | 400 | generated / identity-`ALWAYS` column in a write body |
 | `read_only` | 405 | write attempted while `server.read_only` (config or `App.SetReadOnly`) |
 | `etag_mismatch` | 412 | `If-Match` did not match the current row hash |
+| (`unfiltered_mutation`) | 400 | bulk `PATCH`/`DELETE` on a collection path without a root filter or `!inner` embed while `server.allow_unfiltered_mutations` is off |
+| (`if_match_unsupported`) | 400 | `If-Match` on a write that cannot honour it (bulk `PATCH`/`DELETE` on a collection path) while `server.etags` is on |
+| (`invalid_preference`) | 400 | `Prefer: handling=strict` with an unknown token or a malformed value (PostgREST `PGRST122`) |
+| (`max_affected_exceeded`) | 400 | `Prefer: handling=strict, max-affected=N` and the write touched more than `N` rows; rolled back (PostgREST `PGRST124`) |
 | `not_acceptable` | 406 | `Accept` unsatisfiable (incl. `text/csv` with embeds or on non-list responses) |
 | `unsupported_media_type` | 415 | request body `Content-Type` is not `application/json` |
 | `role_not_allowed` | 403 | credential valid, but the resolved role is not in `rls.allowed_roles` |
 | `invalid_token` | 401 | JWT/headers present but invalid (signature, exp, iss/aud, JWKS miss, malformed) |
 | (`unknown_relation`) | 400 | relation key in `select=`, a filter/order path, a per-embed param, or a nested-mutation body that matches no FK of the resource |
 | (`invalid_cursor`) | 400 | `after`/`before` cursor undecodable or minted for a different resource |
-| (`method_not_allowed`) | 405 | method not registered on the path (view, missing privilege, `@omit`, keyless PATCH/DELETE, volatile GET) |
+| (`method_not_allowed`) | 405 | method not registered on the path (view, missing privilege, `@omit`, volatile GET) |
 | (`unknown_argument`) | 400 | RPC argument name not declared by the function |
 | (`missing_argument`) | 400 | RPC call omits an argument that has no `DEFAULT` (or, on a variadic function, one before a passed argument); detail lists them |
 | (`body_too_large`) | 413 | body > `server.max_body_bytes` |
@@ -80,6 +84,9 @@ minimum needed so every response has a `code` (`unknown_relation` and
 [pagination.md](pagination.md)); folding them into neighbours
 (`unknown_column`, `keyset_unsupported`, `invalid_body`) or emitting no
 `code` on 405/413/500/503/504 was rejected because clients branch on `code`.
+The PostgREST-parity codes (`unfiltered_mutation`, `invalid_preference`,
+`max_affected_exceeded`, `if_match_unsupported`) were added later under the
+same rule.
 
 Codes are stable across releases; new codes may be added in minor versions,
 existing ones are never renamed.
@@ -92,7 +99,7 @@ returns `{Class, SQLState, Message(detail)}`):
 
 | Condition | Status | `code` |
 |---|---|---|
-| URL grammar, query param, body validation errors | 400 | pdbr code |
+| URL grammar, query param, body validation errors, unfiltered bulk write, invalid `Prefer` under `handling=strict`, `max-affected` exceeded | 400 | pdbr code |
 | `22*` data exception (`22P02` invalid text representation, `22001` value too long, `22003` out of range, …) | 400 | `pg:22…` |
 | `23502` not-null violation | 400 | `pg:23502` |
 | `23514` check violation | 400 | `pg:23514` |
@@ -203,14 +210,13 @@ static per path until a hot swap):
 
 | Path | Typical `Allow` |
 |---|---|
-| `/{table}` (full privileges) | `GET, HEAD, POST, PUT` (+ `OPTIONS` when `server.cors_origins` set) |
+| `/{table}` (full privileges) | `GET, HEAD, POST, PUT, PATCH, DELETE` (+ `OPTIONS` when `server.cors_origins` set) |
 | `/{table}` (view) | `GET, HEAD` |
 | `/{table}/{pk}` | `GET, HEAD, PATCH, DELETE` |
 | `/{table}/{pk}` on a table without UPDATE grant (*unreachable in e2e*: the fixture's connection role owns everything) | `GET, HEAD, DELETE` |
 | `/rpc/{stable_fn}` | `GET, HEAD, POST` |
 | `/rpc/{volatile_fn}` | `POST` |
 | anything under `server.read_only` | writes removed from the list; `code: read_only` when the request was a write that would otherwise exist, `method_not_allowed` otherwise. A volatile function's route keeps an **empty** `Allow` (RFC 9110 §10.2.1: no method is available) |
-| `/{table}` PATCH/DELETE without key | `Allow` = the list route's methods |
 | `/openapi.json`, `/healthz`, `/readyz` | `GET, HEAD` (problem+json like every other 405, not the mux's text/plain) |
 
 `OPTIONS` on a known path with CORS enabled is a preflight (`204`), never a
@@ -234,7 +240,8 @@ static per path until a hot swap):
 `If-Match` on `PATCH`/`DELETE` single-row paths ([mutations.md](mutations.md#if-match-on-patch--delete)):
 row exists and hash differs → `412 etag_mismatch`, transaction rolled back,
 no body change. Row missing → `404` (takes precedence over `412`).
-`If-Match` on other routes is ignored. `If-None-Match` on single-row `GET`
+`If-Match` on bulk `PATCH`/`DELETE` is `400 if_match_unsupported`; on other
+routes it is ignored. `If-None-Match` on single-row `GET`
 match → `304` (no body, not a problem document).
 
 ## `413`

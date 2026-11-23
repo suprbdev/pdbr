@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"syscall"
 
@@ -46,7 +47,7 @@ type Operation struct {
 // Result is what execution produced.
 type Result struct {
 	Status  int
-	Headers http.Header     // ETag, X-Total-Count, X-Next-Cursor, X-Prev-Cursor, Link, Location, Allow
+	Headers http.Header     // ETag, X-Total-Count, X-Next-Cursor, X-Prev-Cursor, Link, Location, Allow, Preference-Applied
 	Data    json.RawMessage // the client JSON (already unwrapped); nil for 204/304/HEAD or on error
 	Err     error           // *Error; the server renders problem+json
 }
@@ -72,6 +73,9 @@ const (
 	CodeInternal    = "internal"
 	CodeTimeout     = "timeout"
 	CodeUnavailable = "unavailable"
+	// CodeMaxAffectedExceeded: a PATCH / DELETE under Prefer: handling=strict,
+	// max-affected=N touched more than N rows; the transaction is rolled back.
+	CodeMaxAffectedExceeded = "max_affected_exceeded"
 )
 
 // RequestHook mirrors plugin.RequestHook (redeclared here to avoid an
@@ -254,6 +258,7 @@ func (e *Executor) errResult(err error) *Result {
 func (e *Executor) needsTx(op *Operation, stmt *compile.Statement) bool {
 	return op.ForceTx ||
 		((op.Mutation || stmt.Mutation) && e.Opts.TxMutations) ||
+		maxAffected(op) != nil ||
 		(e.Opts.RLS && (op.Role != "" || len(op.Claims) > 0))
 }
 
@@ -275,6 +280,16 @@ func (e *Executor) run(ctx context.Context, op *Operation, stmt *compile.Stateme
 			return err
 		}
 		found = true
+		if limit := maxAffected(op); limit != nil {
+			n, err := affectedRows(stmt, raw, found)
+			if err != nil {
+				return &Error{Status: http.StatusInternalServerError, Code: CodeInternal, Detail: "malformed mutation wrapper"}
+			}
+			if n > *limit {
+				return &Error{Status: http.StatusBadRequest, Code: CodeMaxAffectedExceeded,
+					Detail: fmt.Sprintf("the request affects %d rows, more than Prefer: max-affected=%d; nothing was written", n, *limit)}
+			}
+		}
 		return nil
 	}
 	var err error
@@ -293,16 +308,31 @@ func (e *Executor) run(ctx context.Context, op *Operation, stmt *compile.Stateme
 		err = query(e.DB)
 	}
 	if err != nil {
+		var xe *Error
+		if errors.As(err, &xe) {
+			return e.errResult(xe)
+		}
 		return e.errResult(e.dbError(ctx, op, err))
 	}
 	res, err := Unwrap(op, stmt, raw, found, e.Opts.BasePath)
 	if err != nil {
 		return e.errResult(err)
 	}
+	if op.Plan != nil && len(op.Plan.Prefer.Applied) > 0 {
+		res.Headers.Set("Preference-Applied", strings.Join(op.Plan.Prefer.Applied, ", "))
+	}
 	if err := e.mint(res, stmt); err != nil {
 		return e.errResult(err)
 	}
 	return res
+}
+
+// maxAffected is the Prefer: max-affected cap of a resource write, or nil.
+func maxAffected(op *Operation) *int64 {
+	if op == nil || op.Plan == nil || op.Resource == nil {
+		return nil
+	}
+	return op.Plan.Prefer.MaxAffected
 }
 
 func connectionLost(err error) bool {

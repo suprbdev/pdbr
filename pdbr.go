@@ -249,6 +249,7 @@ func (a *App) routeHandler(built *api.Built) *server.Handler {
 		Logger:        a.Log,
 	})
 	opts := server.ParseOptions(built, a.Config.Server.MaxEmbedDepth, a.Config.Server.MaxPageSize, a.Config.Server.Etags, a.Config.Server.CSV)
+	opts.AllowUnfilteredMutations = a.Config.Server.AllowUnfilteredMutations
 	return server.NewHandler(built, ex, opts, a.Config.Server.BasePath, a.Log)
 }
 

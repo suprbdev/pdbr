@@ -1,0 +1,2 @@
+-- request: DELETE /api/posts
+-- error: 400 unfiltered_mutation: DELETE on "posts" without a filter would affect every row; add a filter (or enable server.allow_unfiltered_mutations)

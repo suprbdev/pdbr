@@ -64,6 +64,12 @@ func (p *parser) isMutation() bool {
 	return false
 }
 
+// isBulkWrite reports a PATCH or DELETE on a list route: the root filters
+// select the rows to write.
+func (p *parser) isBulkWrite() bool {
+	return p.match.RPC == nil && p.match.Route.Kind == api.RouteList && (p.method == plan.PATCH || p.method == plan.DELETE)
+}
+
 // parseQuery processes the query string against res (the list/row resource
 // or the SETOF <table> RPC's resource). extra, when non-nil, is consulted
 // first for non-reserved keys (RPC GET arguments); it returns true when it
@@ -394,7 +400,7 @@ func findEmbed(node *plan.Node, name string) *plan.Embed {
 // embed owning node.
 func (p *parser) addFilter(node *plan.Node, expr plan.Expr) error {
 	if node == p.root {
-		if p.isMutation() {
+		if p.isMutation() && !p.isBulkWrite() {
 			return errf(CodeInvalidFilter, "filters are not valid on a mutation route")
 		}
 		p.req.Filter = andExpr(p.req.Filter, expr)
