@@ -327,8 +327,10 @@ these are the deliberate departures (each documented in its topic page):
   every column in the body (`PUT /t?id=eq.1`); pdbr keeps its collection
   `PUT` semantics (unprovided columns keep their values on update), takes
   the key from the path (body key columns optional, `400 invalid_body` when
-  they differ — PostgREST `PGRST115`), and offers `PUT` only on paths whose
-  key columns are writable (no identity/generated keys).
+  they differ — PostgREST `PGRST115`), offers `PUT` only on paths whose
+  key columns a `PUT` body may write (no identity/generated or
+  `@omit create|update` keys), and answers `If-Match` with
+  `400 if_match_unsupported`.
 - **`POST` with `resolution=`**: always `201` (as PostgREST), but a
   single-object body skipped by `ignore-duplicates` answers `204` (pdbr
   returns objects, not arrays, for single-object bodies); `on_conflict=`

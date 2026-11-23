@@ -61,6 +61,9 @@ func TestUnwrapMutation(t *testing.T) {
 		{"bulk delete headers-only none", op("DELETE", "headers-only"), compile.ShapeMutBulk, `{"n":0}`, true, want{204, "", "", ""}},
 		{"post ignored", ignoreOp("representation"), compile.ShapeMutWrap, ``, false, want{204, "", "", ""}},
 		{"post ignored minimal", ignoreOp("minimal"), compile.ShapeMutWrap, `{"n":0}`, true, want{204, "", "", ""}},
+		{"post ignored row shape", ignoreOp("representation"), compile.ShapeMutRow, ``, false, want{204, "", "", ""}},
+		{"post row shape", op("POST", ""), compile.ShapeMutRow, `{"a":1}`, true, want{201, `{"a":1}`, "", ""}},
+		{"post row shape miss", op("POST", ""), compile.ShapeMutRow, ``, false, want{404, "", "", CodeNotFound}},
 		{"post ignore inserted", ignoreOp("representation"), compile.ShapeMutWrap, `{"row":{"id":5},"key":[5]}`, true, want{201, `{"id":5}`, "/api/users/5", ""}},
 		{"bulk malformed", op("DELETE", ""), compile.ShapeMutBulk, `[`, true, want{500, "", "", CodeInternal}},
 	}

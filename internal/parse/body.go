@@ -162,7 +162,11 @@ func (p *parser) bodyObject(res *api.Resource, obj map[string]any, allowNested b
 	}
 	out := make(map[string]any, len(obj))
 	var nested map[string]*plan.Nested
-	inputCols := res.InputColumnsFor(api.Method(p.method))
+	writeAs := api.Method(p.method)
+	if p.method == plan.POST && p.req != nil && p.req.Prefer.Resolution == plan.MergeDuplicates {
+		writeAs = api.MethodPut
+	}
+	inputCols := res.InputColumnsFor(writeAs)
 	for _, key := range sortedKeys(obj) {
 		v := obj[key]
 		if col, ok := inputCols[key]; ok {

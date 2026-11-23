@@ -658,3 +658,19 @@ func keys[V any](m map[string]V) []string {
 	}
 	return out
 }
+
+func TestKeyedPutNeedsWritableKey(t *testing.T) {
+	for _, tag := range []string{"@omit create", "@omit update"} {
+		b := build(t, func(c *introspect.Catalog) {
+			table(c, "users").Column("email").Comment = tag
+		})
+		users := b.ByPath["users"]
+		if got := routeMethods(b, users, api.RouteUnique); got != "GET, HEAD, PATCH, DELETE" {
+			t.Errorf("%s on the key column: unique methods = %q", tag, got)
+		}
+	}
+	b := build(t, nil)
+	if got := routeMethods(b, b.ByPath["users"], api.RouteUnique); got != "GET, HEAD, PUT, PATCH, DELETE" {
+		t.Errorf("writable key: unique methods = %q", got)
+	}
+}

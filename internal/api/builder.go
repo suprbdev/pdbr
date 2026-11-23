@@ -931,12 +931,16 @@ func (b *Builder) Build() (*Built, error) {
 	return out, nil
 }
 
-// keyedMethods drops PUT from a single-row route whose key has a generated
-// or identity column: the upsert would have to insert the path value into a
-// column bodies may never write.
+// keyedMethods drops PUT from a single-row route whose key has a column a
+// PUT body may not write (generated, identity, @omit create or update): the
+// upsert would insert the path value into it.
 func keyedMethods(r *Resource, methods []Method, key []string) []Method {
+	writable := map[string]bool{}
+	for _, c := range r.InputColumnsFor(MethodPut) {
+		writable[c.Name] = true
+	}
 	for _, name := range key {
-		if c := r.Table.Column(name); c == nil || c.Generated {
+		if c := r.Table.Column(name); c == nil || c.Generated || !writable[name] {
 			out := make([]Method, 0, len(methods))
 			for _, m := range methods {
 				if m != MethodPut {

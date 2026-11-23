@@ -129,3 +129,59 @@ func TestKeyedPut(t *testing.T) {
 	res, body = send(t, "PUT", base, `{"code":"zz","label":"y"}`, nil)
 	wantProblem(t, res, body, 400, "invalid_body")
 }
+
+func TestResolutionProbes(t *testing.T) {
+	dbURL := os.Getenv("PDBR_TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("PDBR_TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, dbURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS e2e_merge_probe, e2e_pair_probe;
+		CREATE TABLE e2e_merge_probe (id serial PRIMARY KEY, code text UNIQUE NOT NULL, locked text, note text);
+		COMMENT ON COLUMN e2e_merge_probe.locked IS '@omit update';
+		CREATE TABLE e2e_pair_probe (a int, b int, label text, PRIMARY KEY (a, b))`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		c, err := pgx.Connect(context.Background(), dbURL)
+		if err != nil {
+			return
+		}
+		defer c.Close(context.Background())
+		_, _ = c.Exec(context.Background(), `DROP TABLE IF EXISTS e2e_merge_probe, e2e_pair_probe`)
+	})
+	srv := testServer(t, nil)
+	merge := map[string]string{"Prefer": "resolution=merge-duplicates"}
+
+	var r row
+	sendJSON(t, "POST", srv.URL+"/api/e2e_merge_probe", `{"code":"a","locked":"orig"}`, 201, &r)
+	res, body := send(t, "POST", srv.URL+"/api/e2e_merge_probe?on_conflict=code", `{"code":"a","locked":"overwritten"}`, merge)
+	wantProblem(t, res, body, 400, "invalid_body")
+	res, body = send(t, "POST", srv.URL+"/api/e2e_merge_probe?on_conflict=code", `{"code":"a","note":"n"}`, merge)
+	if res.StatusCode != 201 || json.Unmarshal(body, &r) != nil || r["locked"] != "orig" || r["note"] != "n" {
+		t.Fatalf("merge without the no-update column = %d %s", res.StatusCode, body)
+	}
+
+	ignore := map[string]string{"Prefer": "resolution=ignore-duplicates"}
+	sendJSON(t, "POST", srv.URL+"/api/e2e_pair_probe", `{"a":1,"b":2,"label":"first"}`, 201, &r)
+	res, body = send(t, "POST", srv.URL+"/api/e2e_pair_probe", `{"a":1,"b":2,"label":"second"}`, ignore)
+	if res.StatusCode != 204 || len(body) != 0 {
+		t.Fatalf("composite-key ignored single = %d %q", res.StatusCode, body)
+	}
+	res, body = send(t, "POST", srv.URL+"/api/e2e_pair_probe", `{"a":1,"b":3,"label":"third"}`, ignore)
+	if res.StatusCode != 201 || json.Unmarshal(body, &r) != nil || r["label"] != "third" {
+		t.Fatalf("composite-key ignore insert = %d %s", res.StatusCode, body)
+	}
+	var got row
+	getJSON(t, srv.URL+"/api/e2e_pair_probe/1,2", &got)
+	if got["label"] != "first" {
+		t.Fatalf("ignored row overwritten: %v", got)
+	}
+	res, body = send(t, "PUT", srv.URL+"/api/e2e_pair_probe/1,2", `{"label":"put"}`, map[string]string{"If-Match": `W/"x"`})
+	wantProblem(t, res, body, 400, "if_match_unsupported")
+}

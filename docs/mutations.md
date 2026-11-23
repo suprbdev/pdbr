@@ -323,7 +323,8 @@ FROM __mut t0
 | other columns | provided ones are set on conflict; unprovided ones keep their values (same partial semantics as the collection `PUT`) |
 | status | `201` + `Location` when inserted, `200` when updated, `204` under `return=minimal` (`201` + `Location` if inserted) |
 | `?on_conflict=`, filters | `400 invalid_filter` (the path is the target) |
-| availability | wherever the collection `PUT` exists **and** every key column is writable: a key with an identity or generated column (the fixture's `users.id`) has no `PUT` on that path (`405`), because inserting the path value would write a column bodies may never set (identity `BY DEFAULT` keys included until pdbcore tells the two identity kinds apart) |
+| `If-Match` | `400 if_match_unsupported` (use `PATCH` on the same path for a conditional update) |
+| availability | wherever the collection `PUT` exists **and** every key column is writable by a `PUT` body: a key with an identity or generated column (the fixture's `users.id`), or one under `@omit create` / `@omit update`, has no `PUT` on that path (`405`), because inserting the path value would write a column bodies may never set (identity `BY DEFAULT` keys included until pdbcore tells the two identity kinds apart) |
 
 Golden files: `put_by_pk`, `put_by_unique`, `put_by_pk_mismatch`,
 `put_by_pk_array`, `put_by_identity_pk`, `put_by_unique_on_conflict`.
@@ -350,8 +351,8 @@ SELECT jsonb_build_object('n', (SELECT count(*) FROM __mut)) AS data
 
 | Rule | Behaviour |
 |---|---|
-| `merge-duplicates` | `ON CONFLICT (<target>) DO UPDATE SET c = EXCLUDED.c` for every provided non-target column (as `PUT`); needs the resource's `PUT` method (INSERT + UPDATE and a key) → else `400 invalid_preference`; a PK-less table needs `?on_conflict=` → else `400 invalid_body` |
-| `ignore-duplicates` | `ON CONFLICT (<target>) DO NOTHING`; a table with neither a PK nor `?on_conflict=` gets `ON CONFLICT DO NOTHING` (any unique constraint). The response holds only the inserted rows (PostgREST semantics); a skipped single object answers `204` without a body |
+| `merge-duplicates` | `ON CONFLICT (<target>) DO UPDATE SET c = EXCLUDED.c` for every provided non-target column (as `PUT`); the body is validated with the `PUT` rules, so a column under `@omit create` or `@omit update` is `400 invalid_body`; needs the resource's `PUT` method (INSERT + UPDATE and a key) → else `400 invalid_preference`; a PK-less table needs `?on_conflict=` → else `400 invalid_body` |
+| `ignore-duplicates` | `ON CONFLICT (<target>) DO NOTHING`; a table with neither a PK nor `?on_conflict=` gets `ON CONFLICT DO NOTHING` (any unique constraint). The response holds only the inserted rows (PostgREST semantics); a skipped single object answers `204` without a body, on every table (also composite-key and PK-less ones) |
 | conflict columns | **not** required in the body (unlike `PUT`): an element without them is a plain insert (surrogate keys from their default) |
 | status | `201` (single object also for a merge that updated, as in PostgREST), `Location` from the row's key |
 | `?on_conflict=` without `resolution=` | `400 invalid_filter` |

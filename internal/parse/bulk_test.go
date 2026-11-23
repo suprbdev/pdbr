@@ -200,6 +200,15 @@ func TestPreferResolution(t *testing.T) {
 		_, err := post(tc.url, tc.prefer, tc.body)
 		wantCode(t, err, tc.code)
 	}
+	locked := buildFixture(t, true)
+	locked.ByPath["users"].NoUpdate = map[string]bool{"full_name": true}
+	_, err = doParse(t, locked, req{method: "POST", url: "/api/users?on_conflict=email", header: withHeader(jsonCT, "Prefer", "resolution=merge-duplicates"), body: `{"email":"a@b.c","full_name":"x"}`}, allOn)
+	wantCode(t, err, CodeInvalidBody)
+	for _, prefer := range []string{"", "resolution=ignore-duplicates"} {
+		if _, err := doParse(t, locked, req{method: "POST", url: "/api/users", header: withHeader(jsonCT, "Prefer", prefer), body: `{"email":"a@b.c","full_name":"x"}`}, allOn); err != nil {
+			t.Fatalf("create may still set a no-update column (%q): %v", prefer, err)
+		}
+	}
 	cat := testutil.FixtureCatalog()
 	for _, tb := range cat.Tables {
 		if tb.Name == "posts" {
@@ -244,6 +253,8 @@ func TestKeyedPut(t *testing.T) {
 		_, err := doParse(t, b, req{method: "PUT", url: tc.url, header: jsonCT, body: tc.body}, allOn)
 		wantCode(t, err, tc.code)
 	}
+	_, err = doParse(t, b, req{method: "PUT", url: "/api/users/by/email/a%40b.c", header: withHeader(jsonCT, "If-Match", `W/"x"`), body: `{"full_name":"x"}`}, allOn)
+	wantCode(t, err, CodeIfMatchUnsupported)
 	if m, ok := b.Match("/users/1"); !ok || m.Route.Allows("PUT") {
 		t.Error("PUT offered on an identity primary key")
 	}

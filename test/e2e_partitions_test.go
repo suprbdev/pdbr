@@ -88,7 +88,7 @@ func TestPartitions(t *testing.T) {
 		wantProblem(t, res, body, 404, "not_found")
 	}
 	var created row
-	sendJSON(t, "POST", srv.URL+"/api/e2e_orders", `{"id": 3, "customer_id": 1, "placed_at": "2025-07-01"}`, 200, &created)
+	sendJSON(t, "POST", srv.URL+"/api/e2e_orders", `{"id": 3, "customer_id": 1, "placed_at": "2025-07-01"}`, 201, &created)
 	if created["id"] != float64(3) {
 		t.Errorf("insert through the parent = %v", created)
 	}

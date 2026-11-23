@@ -64,10 +64,18 @@ func unwrapMutation(op *Operation, stmt *compile.Statement, raw []byte, found bo
 	res := &Result{Status: http.StatusOK, Headers: http.Header{}}
 	method := plan.Method(op.Method)
 	minimal := op.Plan != nil && op.Plan.Prefer.Minimal()
+	ignoring := method == plan.POST && op.Plan != nil && op.Plan.Prefer.Resolution == plan.IgnoreDuplicates
 	switch stmt.Shape {
 	case compile.ShapeMutRow:
 		if !found || raw == nil {
+			if ignoring {
+				res.Status = http.StatusNoContent
+				return res, nil
+			}
 			return nil, notFound(op)
+		}
+		if method == plan.POST {
+			res.Status = http.StatusCreated
 		}
 		res.Data = raw
 		return res, nil
@@ -103,7 +111,6 @@ func unwrapMutation(op *Operation, stmt *compile.Statement, raw []byte, found bo
 		res.Data = raw
 		return res, nil
 	}
-	ignoring := method == plan.POST && op.Plan != nil && op.Plan.Prefer.Resolution == plan.IgnoreDuplicates
 	if !found || raw == nil {
 		if ignoring {
 			res.Status = http.StatusNoContent
