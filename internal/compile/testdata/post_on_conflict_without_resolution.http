@@ -1,0 +1,3 @@
+POST /api/users?on_conflict=email
+
+{"email": "a@b.c"}

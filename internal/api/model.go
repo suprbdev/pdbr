@@ -37,7 +37,7 @@ type Resource struct {
 	Bare bool
 	// Methods are the resource-level methods after privilege gating (and
 	// plugin edits): GET/HEAD read, POST create, PUT upsert, PATCH update,
-	// DELETE delete. Row/unique routes offer PATCH/DELETE of one row; the
+	// DELETE delete. Row/unique routes offer PUT/PATCH/DELETE of one row; the
 	// list route POST/PUT and, while the collection is listable (GET, no
 	// OmitList), the filtered bulk PATCH/DELETE.
 	Methods map[Method]bool

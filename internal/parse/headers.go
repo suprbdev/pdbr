@@ -110,6 +110,25 @@ func (p *parser) parsePrefer(headers []string) error {
 			default:
 				ok = false
 			}
+		case "resolution":
+			switch pr.val {
+			case plan.MergeDuplicates, plan.IgnoreDuplicates:
+				if write && p.method == plan.POST {
+					pf.Resolution = pr.val
+					apply("resolution", pr.val)
+				}
+			default:
+				ok = false
+			}
+		case "missing":
+			if pr.val != "default" {
+				ok = false
+				break
+			}
+			if write && (p.method == plan.POST || p.method == plan.PUT) {
+				pf.MissingDefault = true
+				apply("missing", pr.val)
+			}
 		case "count":
 			switch m := plan.CountMode(pr.val); m {
 			case plan.CountExact, plan.CountPlanned, plan.CountEstimated:

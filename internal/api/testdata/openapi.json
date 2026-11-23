@@ -530,7 +530,15 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference.",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. resolution=merge-duplicates upserts on the conflict target (the primary key or ?on_conflict=; needs the PUT method), resolution=ignore-duplicates skips conflicting rows (only inserted rows are returned; a skipped single object answers 204). missing=default is accepted and changes nothing: keys absent from a bulk element always take the column DEFAULT.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "on_conflict",
+            "in": "query",
+            "description": "Conflict target for Prefer: resolution= (default: the primary key): comma list equal to a unique constraint's columns. This resource has no unique constraint.",
             "schema": {
               "type": "string"
             }
@@ -589,6 +597,17 @@
                       }
                     }
                   ]
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Single object skipped by Prefer: resolution=ignore-duplicates (nothing inserted).",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured, comma-separated.",
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -1992,7 +2011,15 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference.",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. resolution=merge-duplicates upserts on the conflict target (the primary key or ?on_conflict=; needs the PUT method), resolution=ignore-duplicates skips conflicting rows (only inserted rows are returned; a skipped single object answers 204). missing=default is accepted and changes nothing: keys absent from a bulk element always take the column DEFAULT.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "on_conflict",
+            "in": "query",
+            "description": "Conflict target for Prefer: resolution= (default: the primary key): comma list equal to a unique constraint's columns. This resource has no unique constraint.",
             "schema": {
               "type": "string"
             }
@@ -2051,6 +2078,17 @@
                       }
                     }
                   ]
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Single object skipped by Prefer: resolution=ignore-duplicates (nothing inserted).",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured, comma-separated.",
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -3778,7 +3816,15 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference.",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. resolution=merge-duplicates upserts on the conflict target (the primary key or ?on_conflict=; needs the PUT method), resolution=ignore-duplicates skips conflicting rows (only inserted rows are returned; a skipped single object answers 204). missing=default is accepted and changes nothing: keys absent from a bulk element always take the column DEFAULT.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "on_conflict",
+            "in": "query",
+            "description": "Conflict target for Prefer: resolution= (default: the primary key): comma list equal to a unique constraint's columns. This resource has no unique constraint.",
             "schema": {
               "type": "string"
             }
@@ -3837,6 +3883,17 @@
                       }
                     }
                   ]
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Single object skipped by Prefer: resolution=ignore-duplicates (nothing inserted).",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured, comma-separated.",
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -5292,7 +5349,15 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference.",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. resolution=merge-duplicates upserts on the conflict target (the primary key or ?on_conflict=; needs the PUT method), resolution=ignore-duplicates skips conflicting rows (only inserted rows are returned; a skipped single object answers 204). missing=default is accepted and changes nothing: keys absent from a bulk element always take the column DEFAULT.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "on_conflict",
+            "in": "query",
+            "description": "Conflict target for Prefer: resolution= (default: the primary key): comma list equal to a unique constraint's columns. This resource has no unique constraint.",
             "schema": {
               "type": "string"
             }
@@ -5351,6 +5416,17 @@
                       }
                     }
                   ]
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Single object skipped by Prefer: resolution=ignore-duplicates (nothing inserted).",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured, comma-separated.",
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -8780,7 +8856,15 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference.",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. resolution=merge-duplicates upserts on the conflict target (the primary key or ?on_conflict=; needs the PUT method), resolution=ignore-duplicates skips conflicting rows (only inserted rows are returned; a skipped single object answers 204). missing=default is accepted and changes nothing: keys absent from a bulk element always take the column DEFAULT.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "on_conflict",
+            "in": "query",
+            "description": "Conflict target for Prefer: resolution= (default: the primary key): comma list equal to a unique constraint's columns. Unique column sets: email.",
             "schema": {
               "type": "string"
             }
@@ -8839,6 +8923,17 @@
                       }
                     }
                   ]
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Single object skipped by Prefer: resolution=ignore-duplicates (nothing inserted).",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured, comma-separated.",
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -9673,6 +9768,199 @@
             "$ref": "#/components/responses/Problem"
           },
           "406": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Insert or update one users by unique constraint users_email_key",
+        "operationId": "users.by_email.put",
+        "parameters": [
+          {
+            "name": "select",
+            "in": "query",
+            "description": "Columns and embeds of the row to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "The row; key columns may be omitted (taken from the path) or must equal the path values. Upserts on this path's key: unprovided columns keep their values on update.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Upsert body for one users row addressed by the path; key columns are optional and must match the path when present.",
+                "properties": {
+                  "address": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/address"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "balance": {
+                    "type": "string",
+                    "description": "int8, serialized as a string to preserve precision."
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "full_name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "mood": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/mood"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "moods": {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "$ref": "#/components/schemas/mood"
+                    }
+                  },
+                  "prev_addresses": {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "$ref": "#/components/schemas/address"
+                    }
+                  },
+                  "settings": {},
+                  "tags": {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated (the row existed).",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured, comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/users"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Inserted (Prefer: return=minimal omits the body).",
+            "headers": {
+              "Location": {
+                "description": "URL of the new row when the resource has a single-column primary key.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured, comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/users"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Updated with Prefer: return=minimal.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured, comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "406": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "415": {
             "$ref": "#/components/responses/Problem"
           },
           "500": {

@@ -265,8 +265,13 @@ func (p *parser) checkPaging(res *api.Resource) error {
 }
 
 func (p *parser) parseOnConflict(val string, res *api.Resource) error {
-	if p.method != plan.PUT || res == nil {
-		return errf(CodeInvalidFilter, "on_conflict is only valid on PUT")
+	switch {
+	case res == nil, p.match.Route.Kind != api.RouteList:
+		return errf(CodeInvalidFilter, "on_conflict is only valid on the collection path (PUT, or POST with Prefer: resolution=)")
+	case p.method == plan.POST && p.req.Prefer.Resolution == "":
+		return errf(CodeInvalidFilter, "on_conflict on POST needs Prefer: resolution=merge-duplicates or resolution=ignore-duplicates")
+	case p.method != plan.PUT && p.method != plan.POST:
+		return errf(CodeInvalidFilter, "on_conflict is only valid on PUT, or POST with Prefer: resolution=")
 	}
 	var cols []string
 	for _, k := range strings.Split(val, ",") {

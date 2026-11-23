@@ -1,0 +1,2 @@
+-- request: PUT /api/memberships/7,eng
+-- error: 400 invalid_body: body "user_id" = 8 does not match the path key 7

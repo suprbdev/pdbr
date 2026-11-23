@@ -16,6 +16,8 @@ Routes (per table with the matching privilege; see [Method availability](#method
 | `PATCH {base}/{table}/{pk}` · `…/by/{cols}/{vals}` | `UPDATE … WHERE key` | `200` + row |
 | `DELETE {base}/{table}/{pk}` · `…/by/{cols}/{vals}` | `DELETE … WHERE key` | `200` + row (`204` with `Prefer: return=minimal`) |
 | `PUT {base}/{table}` | `INSERT … ON CONFLICT DO UPDATE` | `201` inserted / `200` updated; array → `200` |
+| `PUT {base}/{table}/{pk}` · `…/by/{cols}/{vals}` | `INSERT … ON CONFLICT (<path key>) DO UPDATE` | `201` inserted / `200` updated ([single-row PUT](#put-on-a-single-row-path)) |
+| `POST {base}/{table}` + `Prefer: resolution=` | `INSERT … ON CONFLICT DO UPDATE` / `DO NOTHING` | `201` ([resolution](#post-with-prefer-resolution)) |
 | `PATCH {base}/{table}?<filters>` | `UPDATE … WHERE <filters>` | `200` + array of updated rows (`[]` when nothing matched) |
 | `DELETE {base}/{table}?<filters>` | `DELETE … WHERE <filters>` | `200` + array of deleted rows (`204` with `Prefer: return=minimal`) |
 
@@ -218,6 +220,8 @@ return=minimal, handling=strict, max-affected=10`).
 | `return=headers-only` | writes | same as `minimal` (pdbr's `minimal` already keeps `Location`) |
 | `handling=lenient` | any request | default: unknown tokens and malformed values are ignored |
 | `handling=strict` | any request | unknown tokens or malformed values → `400 invalid_preference` (PostgREST `PGRST122`); enables `max-affected` |
+| `resolution=merge-duplicates\|ignore-duplicates` | `POST` | upsert / skip conflicting rows ([above](#post-with-prefer-resolution)) |
+| `missing=default` | `POST`, `PUT` | accepted and echoed; pdbr always defaults omitted keys |
 | `count=exact\|planned\|estimated` | bulk `PATCH`, `DELETE` | `Content-Range: 0-<n-1>/<n>` (the written-row count is always exact, so `Preference-Applied` says `count=exact`); lists: [pagination.md](pagination.md#prefer-count-and-content-range) |
 | `max-affected=N` | `PATCH`, `DELETE` (bulk and keyed) | with `handling=strict` only (ignored and not echoed under lenient handling, as in PostgREST): writing more than `N` rows → `400 max_affected_exceeded`, nothing written (PostgREST `PGRST124`). A keyed write counts as one row |
 
@@ -284,6 +288,84 @@ identity-`BY DEFAULT` keys are fine).
 The `xmax` trick relies on `xmax` being 0 for a freshly inserted tuple in the
 same transaction, which holds for `INSERT … ON CONFLICT` in every supported PG
 version.
+
+## PUT on a single-row path
+
+`PUT {base}/{table}/{pk}` and `PUT {base}/{table}/by/{cols}/{vals}` upsert
+the one row the path names: the path's constraint (primary key or that
+unique constraint) is the conflict target, and the key values come from the
+path.
+
+```http
+PUT /api/users/by/email/a%40b.c?select=id,full_name
+Content-Type: application/json
+
+{"full_name": "Ada"}
+```
+
+```sql
+WITH __mut AS (
+  INSERT INTO "public"."users" ("email", "full_name")
+  VALUES ($1, $2)
+  ON CONFLICT ("email") DO UPDATE
+  SET "full_name" = EXCLUDED."full_name"
+  RETURNING "id", "full_name", (xmax = 0) AS __inserted
+)
+SELECT jsonb_build_object('row', jsonb_build_object('id', t0."id", 'full_name', t0."full_name"), 'inserted', t0.__inserted, 'key', jsonb_build_array(t0."id")) AS data
+FROM __mut t0
+-- args: ["a@b.c","Ada"]
+```
+
+| Rule | Behaviour |
+|---|---|
+| key columns in the body | optional; when present they must equal the path values (compared after coercion) → else `400 invalid_body` |
+| body | one JSON object (arrays → `400 invalid_body`); `NOT NULL` columns without a default are required as for an insert |
+| other columns | provided ones are set on conflict; unprovided ones keep their values (same partial semantics as the collection `PUT`) |
+| status | `201` + `Location` when inserted, `200` when updated, `204` under `return=minimal` (`201` + `Location` if inserted) |
+| `?on_conflict=`, filters | `400 invalid_filter` (the path is the target) |
+| availability | wherever the collection `PUT` exists **and** every key column is writable: a key with an identity or generated column (the fixture's `users.id`) has no `PUT` on that path (`405`), because inserting the path value would write a column bodies may never set (identity `BY DEFAULT` keys included until pdbcore tells the two identity kinds apart) |
+
+Golden files: `put_by_pk`, `put_by_unique`, `put_by_pk_mismatch`,
+`put_by_pk_array`, `put_by_identity_pk`, `put_by_unique_on_conflict`.
+
+## POST with `Prefer: resolution=`
+
+`Prefer: resolution=merge-duplicates` turns a `POST` into an upsert and
+`resolution=ignore-duplicates` skips rows that conflict, on `?on_conflict=`
+(a unique constraint's columns) or the primary key:
+
+```sql
+-- POST /api/users?on_conflict=email
+-- Prefer: resolution=ignore-duplicates, return=minimal
+-- [{"email": "a@b.c"}, {"email": "d@e.f", "mood": "ok"}]
+WITH __mut AS (
+  INSERT INTO "public"."users" ("email", "mood")
+  VALUES ($1, DEFAULT), ($2, $3)
+  ON CONFLICT ("email") DO NOTHING
+  RETURNING 1
+)
+SELECT jsonb_build_object('n', (SELECT count(*) FROM __mut)) AS data
+-- args: ["a@b.c","d@e.f","ok"]
+```
+
+| Rule | Behaviour |
+|---|---|
+| `merge-duplicates` | `ON CONFLICT (<target>) DO UPDATE SET c = EXCLUDED.c` for every provided non-target column (as `PUT`); needs the resource's `PUT` method (INSERT + UPDATE and a key) → else `400 invalid_preference`; a PK-less table needs `?on_conflict=` → else `400 invalid_body` |
+| `ignore-duplicates` | `ON CONFLICT (<target>) DO NOTHING`; a table with neither a PK nor `?on_conflict=` gets `ON CONFLICT DO NOTHING` (any unique constraint). The response holds only the inserted rows (PostgREST semantics); a skipped single object answers `204` without a body |
+| conflict columns | **not** required in the body (unlike `PUT`): an element without them is a plain insert (surrogate keys from their default) |
+| status | `201` (single object also for a merge that updated, as in PostgREST), `Location` from the row's key |
+| `?on_conflict=` without `resolution=` | `400 invalid_filter` |
+| nested-mutation keys | `400 invalid_body` (nested inserts cannot be resolved) |
+| bulk gaps | missing keys insert `DEFAULT`; with `merge-duplicates` a gap on a conflicting row therefore writes the column default (`EXCLUDED.c` is the default), exactly like PostgREST with `missing=default` |
+
+`Prefer: missing=default` is accepted on `POST`/`PUT` and echoed in
+`Preference-Applied`, but changes nothing: pdbr always inserts `DEFAULT`
+for keys an element omits (PostgREST inserts `NULL` unless
+`missing=default` is given).
+
+Golden files: `post_merge_duplicates`, `post_ignore_duplicates`,
+`post_ignore_pk`, `post_merge_identity_pk`,
+`post_on_conflict_without_resolution`.
 
 ## `select=` on mutation responses
 
@@ -481,6 +563,7 @@ a known path → `405` with an `Allow` header listing what exists:
 | no UPDATE privilege | no `PATCH`, no `PUT` |
 | no DELETE privilege | no `DELETE` |
 | no PK and no unique constraint | no `/{pk}`, no `/by/…` → no `PATCH`/`DELETE` at all |
+| key with an identity / generated column | no `PUT` on that single-row path |
 | `@omit create|update|delete` (smart-comments) | method removed |
 | `server.read_only: true` (or `App.SetReadOnly(true)` at runtime) | every write on every resource → `405 read_only`, `Allow: GET, HEAD` (`OPTIONS` when CORS is on); answered before the body is read |
 | `PATCH`/`DELETE {base}/{table}` without a filter | not a `405`: `400 unfiltered_mutation` ([bulk writes](#bulk-patch--delete-by-filter)) |
@@ -672,6 +755,8 @@ See [rls.md](rls.md) for the claim mechanism.
 - Nested update / delete / disconnect.
 - Savepoints (`SAVEPOINT` per nested CTE for partial success).
 - Writable views (`INSTEAD OF` triggers / auto-updatable views).
-- `Prefer: resolution=merge-duplicates|ignore-duplicates`, `Prefer: tx=`
-  (rejected under `handling=strict`).
+- `Prefer: tx=` (rejected under `handling=strict`) and a `columns=` query
+  parameter.
+- `PUT` on single-row paths whose key is an identity `BY DEFAULT` column
+  (needs a pdbcore catalog field).
 - `ETag` on mutation responses.

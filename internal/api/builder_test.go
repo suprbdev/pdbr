@@ -100,7 +100,7 @@ func TestFixtureRoutes(t *testing.T) {
 	want := map[string]string{
 		"/users":                  "GET, HEAD, POST, PUT, PATCH, DELETE",
 		"/users/{id}":             "GET, HEAD, PATCH, DELETE",
-		"/users/by/email/{email}": "GET, HEAD, PATCH, DELETE",
+		"/users/by/email/{email}": "GET, HEAD, PUT, PATCH, DELETE",
 		"/posts":                  "GET, HEAD, POST, PUT, PATCH, DELETE",
 		"/posts/{id}":             "GET, HEAD, PATCH, DELETE",
 		"/metrics":                "GET, HEAD",

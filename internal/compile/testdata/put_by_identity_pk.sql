@@ -1,0 +1,2 @@
+-- request: PUT /api/users/1
+-- error: 405 method_not_allowed: Allow: GET, HEAD, PATCH, DELETE

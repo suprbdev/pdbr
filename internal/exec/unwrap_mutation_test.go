@@ -15,6 +15,11 @@ func TestUnwrapMutation(t *testing.T) {
 		return &Operation{Method: method, Path: "/users", Resource: users, Plan: &plan.Request{Method: plan.Method(method), Prefer: plan.Prefer{Return: prefer}}}
 	}
 	stmt := func(sh compile.Shape) *compile.Statement { return &compile.Statement{Shape: sh, Mutation: true} }
+	ignoreOp := func(ret string) *Operation {
+		o := op("POST", ret)
+		o.Plan.Prefer.Resolution = plan.IgnoreDuplicates
+		return o
+	}
 	type want struct {
 		status int
 		body   string
@@ -54,6 +59,9 @@ func TestUnwrapMutation(t *testing.T) {
 		{"bulk patch none", op("PATCH", ""), compile.ShapeMutBulk, `{"n":0,"rows":[]}`, true, want{200, `[]`, "", ""}},
 		{"bulk delete minimal", op("DELETE", "minimal"), compile.ShapeMutBulk, `{"n":3}`, true, want{204, "", "", ""}},
 		{"bulk delete headers-only none", op("DELETE", "headers-only"), compile.ShapeMutBulk, `{"n":0}`, true, want{204, "", "", ""}},
+		{"post ignored", ignoreOp("representation"), compile.ShapeMutWrap, ``, false, want{204, "", "", ""}},
+		{"post ignored minimal", ignoreOp("minimal"), compile.ShapeMutWrap, `{"n":0}`, true, want{204, "", "", ""}},
+		{"post ignore inserted", ignoreOp("representation"), compile.ShapeMutWrap, `{"row":{"id":5},"key":[5]}`, true, want{201, `{"id":5}`, "/api/users/5", ""}},
 		{"bulk malformed", op("DELETE", ""), compile.ShapeMutBulk, `[`, true, want{500, "", "", CodeInternal}},
 	}
 	for _, tc := range cases {

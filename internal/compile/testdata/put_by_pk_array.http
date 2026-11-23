@@ -1,0 +1,3 @@
+PUT /api/memberships/7,eng
+
+[{"role": "admin"}]

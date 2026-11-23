@@ -132,12 +132,17 @@ func (b *Builder) listItem(item *PathItem, rt *Route) {
 	}
 	if rt.Allows(MethodPost) {
 		post := b.operation(rt, r.Path+".create", "Create "+r.Path, createStatuses)
-		post.Parameters = []*Parameter{b.selectParam(r, "Columns and embeds of the created row(s) to return."), preferParam(false, false)}
+		post.Parameters = []*Parameter{b.selectParam(r, "Columns and embeds of the created row(s) to return."), createPreferParam()}
+		if r.Keyset || len(r.Uniques) > 0 {
+			post.Parameters = append(post.Parameters, &Parameter{Name: "on_conflict", In: "query", Schema: &Schema{Type: "string"},
+				Description: "Conflict target for Prefer: resolution= (default: the primary key): comma list equal to a unique constraint's columns. " + b.uniqueProse(r)})
+		}
 		post.RequestBody = jsonBody(objectOrArray(r.Path+".insert"), true, "One row, or an array of rows for a bulk insert (one INSERT, columns = union, missing keys take DEFAULT).")
 		post.Responses["201"] = &Response{Description: "Created (Prefer: return=minimal omits the body).",
 			Headers: writeHeaders(map[string]*Header{"Location": {Schema: &Schema{Type: "string"}, Description: "URL of the new row for a single-object body on a resource with a single-column primary key."}}),
 			Content: map[string]*MediaType{mediaJSON: {Schema: &Schema{OneOf: []*Schema{SchemaRef(r.Path), {Type: "array", Items: SchemaRef(r.Path)}}}}},
 		}
+		post.Responses["204"] = &Response{Description: "Single object skipped by Prefer: resolution=ignore-duplicates (nothing inserted).", Headers: writeHeaders(nil)}
 		item.Post = post
 	}
 	if rt.Allows(MethodPut) {
@@ -205,8 +210,8 @@ func writeHeaders(h map[string]*Header) map[string]*Header {
 func (b *Builder) rowItem(item *PathItem, rt *Route) {
 	r := rt.Resource
 	var cols []string
-	// operationIds: <name>.get|update|delete on the primary-key path,
-	// <name>.by_<cols>[.update|.delete] on unique-constraint paths.
+	// operationIds: <name>.get|put|update|delete on the primary-key path,
+	// <name>.by_<cols>[.put|.update|.delete] on unique-constraint paths.
 	id, getID := r.Path, r.Path+".get"
 	what := "by primary key"
 	if rt.Kind == RouteRow {
@@ -233,6 +238,17 @@ func (b *Builder) rowItem(item *PathItem, rt *Route) {
 		if rt.Allows(MethodHead) {
 			item.Head = headOf(get, getID+".head")
 		}
+	}
+	if rt.Allows(MethodPut) {
+		put := b.operation(rt, id+".put", "Insert or update one "+r.Path+" "+what, createStatuses)
+		put.Parameters = []*Parameter{b.selectParam(r, "Columns and embeds of the row to return."), preferParam(false, false)}
+		put.RequestBody = jsonBody(b.keyedPutSchema(r, cols), true, "The row; key columns may be omitted (taken from the path) or must equal the path values. Upserts on this path's key: unprovided columns keep their values on update.")
+		put.Responses["200"] = &Response{Description: "Updated (the row existed).", Headers: writeHeaders(nil), Content: map[string]*MediaType{mediaJSON: {Schema: SchemaRef(r.Path)}}}
+		put.Responses["201"] = &Response{Description: "Inserted (Prefer: return=minimal omits the body).",
+			Headers: writeHeaders(map[string]*Header{"Location": {Schema: &Schema{Type: "string"}, Description: "URL of the new row when the resource has a single-column primary key."}}),
+			Content: map[string]*MediaType{mediaJSON: {Schema: SchemaRef(r.Path)}}}
+		put.Responses["204"] = &Response{Description: "Updated with Prefer: return=minimal.", Headers: writeHeaders(nil)}
+		item.Put = put
 	}
 	if rt.Allows(MethodPatch) {
 		patch := b.operation(rt, id+".update", "Update one "+r.Path+" "+what, updateStatuses)
@@ -516,6 +532,34 @@ func preferParam(maxAffected, count bool) *Parameter {
 		desc += " count=exact|planned|estimated puts the number of written rows into the Content-Range total."
 	}
 	return &Parameter{Name: "Prefer", In: "header", Schema: &Schema{Type: "string"}, Description: desc}
+}
+
+// createPreferParam documents the Prefer header of a POST.
+func createPreferParam() *Parameter {
+	p := preferParam(false, false)
+	p.Description += " resolution=merge-duplicates upserts on the conflict target (the primary key or ?on_conflict=; needs the PUT method), resolution=ignore-duplicates skips conflicting rows (only inserted rows are returned; a skipped single object answers 204). missing=default is accepted and changes nothing: keys absent from a bulk element always take the column DEFAULT."
+	return p
+}
+
+// keyedPutSchema is the body of PUT on a single-row path: the .upsert
+// properties, with the path's key columns no longer required.
+func (b *Builder) keyedPutSchema(r *Resource, key []string) *Schema {
+	s := b.inputSchema(r, MethodPut)
+	s.Description = "Upsert body for one " + r.Path + " row addressed by the path; key columns are optional and must match the path when present."
+	isKey := map[string]bool{}
+	for _, c := range key {
+		if f := r.FieldByColumn(c); f != nil {
+			isKey[f.Key] = true
+		}
+	}
+	var req []string
+	for _, k := range s.Required {
+		if !isKey[k] {
+			req = append(req, k)
+		}
+	}
+	s.Required = req
+	return s
 }
 
 // countPreferParam documents Prefer: count= on list reads.

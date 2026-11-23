@@ -58,7 +58,8 @@ func affectedRows(stmt *compile.Statement, raw []byte, found bool) (int64, error
 // MutWrap / MutBulk) to status, Location and body per docs/mutations.md: 201 for
 // POST and for a single-object PUT that inserted, 200 otherwise, 204 under
 // Prefer: return=minimal (201 + Location stays for creates); zero rows on a
-// keyed path 404; If-Match found-but-unchanged 412 etag_mismatch.
+// keyed path 404; If-Match found-but-unchanged 412 etag_mismatch; a
+// single-object POST whose row resolution=ignore-duplicates skipped 204.
 func unwrapMutation(op *Operation, stmt *compile.Statement, raw []byte, found bool, basePath string) (*Result, error) {
 	res := &Result{Status: http.StatusOK, Headers: http.Header{}}
 	method := plan.Method(op.Method)
@@ -102,7 +103,12 @@ func unwrapMutation(op *Operation, stmt *compile.Statement, raw []byte, found bo
 		res.Data = raw
 		return res, nil
 	}
+	ignoring := method == plan.POST && op.Plan != nil && op.Plan.Prefer.Resolution == plan.IgnoreDuplicates
 	if !found || raw == nil {
+		if ignoring {
+			res.Status = http.StatusNoContent
+			return res, nil
+		}
 		return nil, notFound(op)
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
@@ -116,6 +122,9 @@ func unwrapMutation(op *Operation, stmt *compile.Statement, raw []byte, found bo
 	}
 	rowNull := len(w.Row) == 0 || bytes.Equal(w.Row, []byte("null"))
 	switch {
+	case ignoring && w.N != nil && *w.N == 0:
+		res.Status = http.StatusNoContent
+		return res, nil
 	case w.N != nil && *w.N == 0:
 		return nil, notFound(op)
 	case w.N == nil && rowNull && w.Found != nil:

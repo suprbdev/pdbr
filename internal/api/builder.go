@@ -891,9 +891,9 @@ func (b *Builder) Build() (*Built, error) {
 			out.Routes = append(out.Routes, rt)
 			out.byResource[r][RouteList] = rt
 		}
-		rowMethods := methodList(r.Methods, MethodGet, MethodHead, MethodPatch, MethodDelete)
+		rowMethods := methodList(r.Methods, MethodGet, MethodHead, MethodPut, MethodPatch, MethodDelete)
 		if r.Table.PrimaryKey != nil && len(rowMethods) > 0 {
-			rt := &Route{Kind: RouteRow, Pattern: base + "/" + r.keyTemplate(r.Table.PrimaryKey.Columns), Methods: rowMethods, Resource: r}
+			rt := &Route{Kind: RouteRow, Pattern: base + "/" + r.keyTemplate(r.Table.PrimaryKey.Columns), Methods: keyedMethods(r, rowMethods, r.Table.PrimaryKey.Columns), Resource: r}
 			out.Routes = append(out.Routes, rt)
 			out.byResource[r][RouteRow] = rt
 		}
@@ -902,7 +902,7 @@ func (b *Builder) Build() (*Built, error) {
 				rt := &Route{
 					Kind:     RouteUnique,
 					Pattern:  base + "/by/" + strings.Join(r.keys(u.Columns), ",") + "/" + r.keyTemplate(u.Columns),
-					Methods:  rowMethods,
+					Methods:  keyedMethods(r, rowMethods, u.Columns),
 					Resource: r,
 					Unique:   u,
 				}
@@ -929,6 +929,24 @@ func (b *Builder) Build() (*Built, error) {
 	}
 	out.OpenAPI = b.openAPI(out)
 	return out, nil
+}
+
+// keyedMethods drops PUT from a single-row route whose key has a generated
+// or identity column: the upsert would have to insert the path value into a
+// column bodies may never write.
+func keyedMethods(r *Resource, methods []Method, key []string) []Method {
+	for _, name := range key {
+		if c := r.Table.Column(name); c == nil || c.Generated {
+			out := make([]Method, 0, len(methods))
+			for _, m := range methods {
+				if m != MethodPut {
+					out = append(out, m)
+				}
+			}
+			return out
+		}
+	}
+	return methods
 }
 
 func sortedResources(m map[string]*Resource) []*Resource {

@@ -32,7 +32,7 @@ func (s *stmt) mutation() (*Statement, error) {
 	var err error
 	switch p.Method {
 	case plan.POST:
-		dml = s.insertDML()
+		dml = s.insertDML() + s.resolutionSQL()
 	case plan.PUT:
 		dml, err = s.upsertDML()
 	case plan.PATCH, plan.DELETE:
@@ -192,6 +192,58 @@ func (s *stmt) insertDML() string {
 	return fmt.Sprintf("INSERT INTO %s (%s)\nVALUES %s", tableRef(t), columnList(cols), strings.Join(tuples, ", "))
 }
 
+// resolutionSQL renders the ON CONFLICT clause of a POST under Prefer:
+// resolution=: merge-duplicates updates like PUT, ignore-duplicates skips
+// conflicting rows (on any unique constraint when the table has no primary
+// key and no ?on_conflict= names one).
+func (s *stmt) resolutionSQL() string {
+	p := s.plan
+	switch p.Prefer.Resolution {
+	case plan.MergeDuplicates:
+		if p.OnConflict == nil {
+			s.fail(errUser(CodeInvalidBody, "resolution=merge-duplicates needs a primary key or ?on_conflict="))
+			return ""
+		}
+		return "\n" + conflictUpdate(p.OnConflict, p.Body.Columns)
+	case plan.IgnoreDuplicates:
+		if p.OnConflict == nil {
+			return "\nON CONFLICT DO NOTHING"
+		}
+		return "\nON CONFLICT (" + strings.Join(quotedNames(p.OnConflict.Columns), ", ") + ") DO NOTHING"
+	}
+	return ""
+}
+
+// conflictUpdate renders ON CONFLICT (target) DO UPDATE SET c = EXCLUDED.c
+// for every provided non-target column, or the target onto itself when the
+// body carries nothing else (DO NOTHING would return zero rows).
+func conflictUpdate(target *introspect.Constraint, cols []*introspect.Column) string {
+	isTarget := map[string]bool{}
+	for _, c := range target.Columns {
+		isTarget[c] = true
+	}
+	var sets []string
+	for _, c := range cols {
+		if !isTarget[c.Name] {
+			sets = append(sets, quoteIdent(c.Name)+" = EXCLUDED."+quoteIdent(c.Name))
+		}
+	}
+	if len(sets) == 0 {
+		for _, c := range target.Columns {
+			sets = append(sets, quoteIdent(c)+" = EXCLUDED."+quoteIdent(c))
+		}
+	}
+	return "ON CONFLICT (" + strings.Join(quotedNames(target.Columns), ", ") + ") DO UPDATE\nSET " + strings.Join(sets, ", ")
+}
+
+func quotedNames(names []string) []string {
+	out := make([]string, len(names))
+	for i, n := range names {
+		out[i] = quoteIdent(n)
+	}
+	return out
+}
+
 // upsertDML renders INSERT ... ON CONFLICT (target) DO UPDATE SET c =
 // EXCLUDED.c for every provided non-target column; a body carrying only the
 // target updates the target to itself so the conflict branch still returns
@@ -210,25 +262,6 @@ func (s *stmt) upsertDML() (string, error) {
 	if len(cols) == 0 {
 		return "", errUser(CodeInvalidBody, "upsert body must set at least the conflict target columns")
 	}
-	isTarget := map[string]bool{}
-	for _, c := range target.Columns {
-		isTarget[c] = true
-	}
-	var sets []string
-	for _, c := range cols {
-		if !isTarget[c.Name] {
-			sets = append(sets, quoteIdent(c.Name)+" = EXCLUDED."+quoteIdent(c.Name))
-		}
-	}
-	if len(sets) == 0 {
-		for _, c := range target.Columns {
-			sets = append(sets, quoteIdent(c)+" = EXCLUDED."+quoteIdent(c))
-		}
-	}
-	targetCols := make([]string, len(target.Columns))
-	for i, c := range target.Columns {
-		targetCols[i] = quoteIdent(c)
-	}
 	var tuples []string
 	if body.Objects == nil {
 		tuples = []string{s.tupleSQL(cols, body.Object)}
@@ -238,8 +271,8 @@ func (s *stmt) upsertDML() (string, error) {
 			tuples[i] = s.tupleSQL(cols, obj)
 		}
 	}
-	return fmt.Sprintf("INSERT INTO %s (%s)\nVALUES %s\nON CONFLICT (%s) DO UPDATE\nSET %s",
-		tableRef(t), columnList(cols), strings.Join(tuples, ", "), strings.Join(targetCols, ", "), strings.Join(sets, ", ")), nil
+	return fmt.Sprintf("INSERT INTO %s (%s)\nVALUES %s\n%s",
+		tableRef(t), columnList(cols), strings.Join(tuples, ", "), conflictUpdate(target, cols)), nil
 }
 
 // keyedDML renders the UPDATE / DELETE of a keyed path plus, under

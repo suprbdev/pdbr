@@ -74,7 +74,8 @@ Checklist of PostgreSQL and REST features pdbr supports. **As built (v0.1.0): ev
 - [x] `Accept: text/csv` on lists and set-returning RPCs → RFC 4180 CSV, header row, arrays/json/composites as JSON text, NULL → empty; embeds → `406`; `server.csv` toggle (v1) (new)
 - [x] `Prefer: return=representation|minimal|headers-only` (v1) (new)
 - [ ] Aggregate endpoints (count/sum/avg on lists) — stretch (parity)
-- [ ] Other `Prefer` tokens (`resolution=`, `missing=`) (v1.x) (new)
+- [x] `Prefer` tokens `resolution=`, `missing=` on writes (v1.x) (new)
+- [ ] `Prefer: tx=commit|rollback`, `timezone=`; `columns=` query parameter (v1.x) (new)
 
 ## Filtering & ordering
 
@@ -140,7 +141,8 @@ Checklist of PostgreSQL and REST features pdbr supports. **As built (v0.1.0): ev
 - [x] `PATCH|DELETE {base}/{table}?<filters>` bulk-by-filter: read filter grammar and policy, `200` + array / `204`, unfiltered → `400 unfiltered_mutation` unless `server.allow_unfiltered_mutations` (v1.x) (parity)
 - [x] `Prefer: handling=strict|lenient` (`400 invalid_preference`), `max-affected=N` on `PATCH`/`DELETE` (`400 max_affected_exceeded`, rolled back), `return=headers-only`, `Preference-Applied` (v1.x) (new)
 - [ ] Nested `connect` on reverse relations and nested update/delete/disconnect (v1.x) (parity)
-- [ ] `PUT {base}/{table}/{pk}` single-row upsert by path key (v1.x) (new)
+- [x] `PUT {base}/{table}/{pk}` and `…/by/{cols}/{vals}` single-row upsert by path key (body key columns optional, must match; writable keys only) (v1.x) (new)
+- [x] `POST` + `Prefer: resolution=merge-duplicates|ignore-duplicates` with `?on_conflict=` (ignore returns only inserted rows); `Prefer: missing=default` accepted (v1.x) (parity)
 
 ## RPC & computed columns
 
@@ -321,6 +323,18 @@ these are the deliberate departures (each documented in its topic page):
 - **Counted list responses stay `200`** (PostgREST: `206 Partial Content`);
   keyset pages carry no `Content-Range`; the `Range` request header is not
   supported. `X-Total-Count` is kept next to `Content-Range`.
+- **`PUT` on a single-row path is a partial upsert**: PostgREST requires
+  every column in the body (`PUT /t?id=eq.1`); pdbr keeps its collection
+  `PUT` semantics (unprovided columns keep their values on update), takes
+  the key from the path (body key columns optional, `400 invalid_body` when
+  they differ — PostgREST `PGRST115`), and offers `PUT` only on paths whose
+  key columns are writable (no identity/generated keys).
+- **`POST` with `resolution=`**: always `201` (as PostgREST), but a
+  single-object body skipped by `ignore-duplicates` answers `204` (pdbr
+  returns objects, not arrays, for single-object bodies); `on_conflict=`
+  without `resolution=` is `400 invalid_filter`.
+- **`missing=default` is a no-op**: pdbr always inserts `DEFAULT` for keys a
+  bulk element omits; PostgREST inserts `NULL` unless asked.
 - **`Prefer: tx=` and `timezone=` are not supported**: ignored under
   lenient handling, `400 invalid_preference` under `handling=strict`.
 - Error codes are pdbr's stable `code` vocabulary, not `PGRST…` numbers

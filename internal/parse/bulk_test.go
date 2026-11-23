@@ -4,6 +4,10 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/suprbdev/pdbcore/testutil"
+
+	"github.com/suprbdev/pdbr/internal/api"
+	"github.com/suprbdev/pdbr/internal/inflect"
 	"github.com/suprbdev/pdbr/internal/plan"
 )
 
@@ -161,4 +165,86 @@ func TestPreferCount(t *testing.T) {
 	}
 	_, err := doParse(t, b, req{url: "/api/users", header: map[string]string{"Prefer": "handling=strict, count=nope"}}, allOn)
 	wantCode(t, err, CodeInvalidPreference)
+}
+
+func TestPreferResolution(t *testing.T) {
+	b := buildFixture(t, true)
+	post := func(url, prefer, body string) (*plan.Request, error) {
+		return doParse(t, b, req{method: "POST", url: url, header: withHeader(jsonCT, "Prefer", prefer), body: body}, allOn)
+	}
+	p, err := post("/api/users?on_conflict=email", "resolution=merge-duplicates, missing=default", `[{"email":"a@b.c"},{"email":"d@e.f","mood":"ok"}]`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Prefer.Resolution != plan.MergeDuplicates || !p.Prefer.MissingDefault || p.OnConflict == nil || p.OnConflict.Columns[0] != "email" ||
+		!reflect.DeepEqual(p.Prefer.Applied, []string{"resolution=merge-duplicates", "missing=default"}) {
+		t.Fatalf("merge plan = %+v / %+v", p.Prefer, p.OnConflict)
+	}
+	p, err = post("/api/posts", "resolution=ignore-duplicates", `{"author_id":1,"title":"x"}`)
+	if err != nil || p.OnConflict == nil || p.OnConflict.Columns[0] != "id" {
+		t.Fatalf("ignore defaults to the PK: %+v %v", p, err)
+	}
+	p, err = post("/api/posts", "resolution=merge-duplicates", `{"author_id":1,"title":"x"}`)
+	if err != nil || p.OnConflict == nil {
+		t.Fatalf("merge without target columns in the body: %+v %v", p, err)
+	}
+	for _, tc := range []struct {
+		url, prefer, body, code string
+	}{
+		{"/api/users?on_conflict=email", "", `{"email":"a@b.c"}`, CodeInvalidFilter},
+		{"/api/users?on_conflict=email", "resolution=nope", `{"email":"a@b.c"}`, CodeInvalidFilter},
+		{"/api/users?on_conflict=full_name", "resolution=merge-duplicates", `{"email":"a@b.c"}`, CodeInvalidBody},
+		{"/api/users", "handling=strict, resolution=nope", `{"email":"a@b.c"}`, CodeInvalidPreference},
+		{"/api/users", "handling=strict, missing=null", `{"email":"a@b.c"}`, CodeInvalidPreference},
+	} {
+		_, err := post(tc.url, tc.prefer, tc.body)
+		wantCode(t, err, tc.code)
+	}
+	cat := testutil.FixtureCatalog()
+	for _, tb := range cat.Tables {
+		if tb.Name == "posts" {
+			tb.Privileges.Update = false
+		}
+	}
+	noUpdate, err := api.New(cat, inflect.Default, api.Options{Schemas: []string{"public"}, BasePath: "/api", Logger: quiet()}).Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = doParse(t, noUpdate, req{method: "POST", url: "/api/posts", header: withHeader(jsonCT, "Prefer", "resolution=merge-duplicates"), body: `{"author_id":1,"title":"x"}`}, allOn)
+	wantCode(t, err, CodeInvalidPreference)
+	if _, err := doParse(t, noUpdate, req{method: "POST", url: "/api/posts", header: withHeader(jsonCT, "Prefer", "resolution=ignore-duplicates"), body: `{"author_id":1,"title":"x"}`}, allOn); err != nil {
+		t.Fatalf("ignore-duplicates needs no UPDATE: %v", err)
+	}
+	p, err = doParse(t, b, req{method: "PATCH", url: "/api/users/1", header: withHeader(jsonCT, "Prefer", "resolution=merge-duplicates, missing=default"), body: `{"mood":"ok"}`}, allOn)
+	if err != nil || p.Prefer.Resolution != "" || p.Prefer.MissingDefault || len(p.Prefer.Applied) != 0 {
+		t.Fatalf("resolution/missing on PATCH must be ignored: %+v %v", p.Prefer, err)
+	}
+}
+
+func TestKeyedPut(t *testing.T) {
+	b := buildFixture(t, true)
+	p, err := doParse(t, b, req{method: "PUT", url: "/api/users/by/email/a%40b.c", header: jsonCT, body: `{"full_name":"Ada"}`}, allOn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Body.Object["email"] != "a@b.c" || p.OnConflict == nil || p.OnConflict.Columns[0] != "email" || len(p.Body.Columns) != 2 {
+		t.Fatalf("keyed PUT plan = %+v %+v", p.Body, p.OnConflict)
+	}
+	if _, err := doParse(t, b, req{method: "PUT", url: "/api/users/by/email/a%40b.c", header: jsonCT, body: `{"email":"a@b.c","mood":"ok"}`}, allOn); err != nil {
+		t.Fatalf("matching key in body: %v", err)
+	}
+	for _, tc := range []struct {
+		url, body, code string
+	}{
+		{"/api/users/by/email/a%40b.c", `{"email":"x@y.z"}`, CodeInvalidBody},
+		{"/api/users/by/email/a%40b.c", `[{"full_name":"x"}]`, CodeInvalidBody},
+		{"/api/users/by/email/a%40b.c?on_conflict=email", `{"full_name":"x"}`, CodeInvalidFilter},
+		{"/api/users/by/email/a%40b.c?id=eq.1", `{"full_name":"x"}`, CodeInvalidFilter},
+	} {
+		_, err := doParse(t, b, req{method: "PUT", url: tc.url, header: jsonCT, body: tc.body}, allOn)
+		wantCode(t, err, tc.code)
+	}
+	if m, ok := b.Match("/users/1"); !ok || m.Route.Allows("PUT") {
+		t.Error("PUT offered on an identity primary key")
+	}
 }

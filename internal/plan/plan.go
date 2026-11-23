@@ -340,10 +340,22 @@ type Prefer struct {
 	// Count is the requested count= mode ("" = none) as written; the
 	// effective mode is Request.CountMode.
 	Count CountMode
+	// Resolution is the resolution= of a POST: "merge-duplicates" (upsert)
+	// or "ignore-duplicates" (ON CONFLICT DO NOTHING); "" = plain insert.
+	Resolution string
+	// MissingDefault reports missing=default (pdbr always inserts DEFAULT
+	// for keys absent from a bulk element, so it changes nothing).
+	MissingDefault bool
 	// Applied lists the honoured preferences in canonical token=value form,
 	// in header order, for the Preference-Applied response header.
 	Applied []string
 }
+
+// Resolution values of Prefer.Resolution.
+const (
+	MergeDuplicates  = "merge-duplicates"
+	IgnoreDuplicates = "ignore-duplicates"
+)
 
 // Minimal reports return=minimal or return=headers-only.
 func (p Prefer) Minimal() bool { return p.Return == "minimal" || p.Return == "headers-only" }
