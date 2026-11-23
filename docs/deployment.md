@@ -37,10 +37,10 @@ livenessProbe:  { httpGet: { path: /healthz, port: 8080 } }
 readinessProbe: { httpGet: { path: /readyz,  port: 8080 } }
 ```
 
-`/readyz` is a liveness alias in v1 (mirrors pdbq): it reports the process is
+`/readyz` is a liveness alias (mirrors pdbq): it reports the process is
 serving, not that the database answers — the pool connects lazily, so a bad
 `database.url` shows up as `503 unavailable` on the first data request. A
-pool-ping readiness check is tracked for v1.x.
+pool-ping readiness check is a possible future addition.
 
 ## Local stack (compose)
 

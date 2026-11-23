@@ -504,7 +504,7 @@ SELECT json_build_object('found', EXISTS (SELECT 1 FROM cur), 'row', (
   table (same caveat as `ETag` on reads).
 - Without `If-Match` the plain single-CTE shape is used.
 
-Mutation responses do not carry an `ETag` header in v1 (resolved in M3: a
+Mutation responses do not carry an `ETag` header (a
 second hash over the post-mutation row is cheap; revisit if clients want
 PATCH → PATCH chains without an intermediate GET).
 
@@ -568,7 +568,7 @@ a known path → `405` with an `Allow` header listing what exists:
 
 | Condition | Effect |
 |---|---|
-| view / materialized view | `Allow: GET, HEAD` (writable views are not detected in v1) |
+| view / materialized view | `Allow: GET, HEAD` (writable views are not detected) |
 | no INSERT privilege | no `POST`, no `PUT` |
 | no UPDATE privilege | no `PATCH`, no `PUT` |
 | no DELETE privilege | no `DELETE` |
@@ -608,7 +608,7 @@ or a self-reference) is not offered at all until `@fieldName` /
 | Direction | Body | Meaning |
 |---|---|---|
 | forward (`posts.author_id → users`) | `"users": {"create": {…}}` **or** `"users": {"connect": {"id": 7}}` | exactly one of the two → else `400 invalid_body`; `connect` keys must be exactly the primary key, one unique constraint or the referenced columns of `users` (`{"email": "…"}` works too); values non-null |
-| backward (`users ← posts.author_id`) | `"posts": {"create": [{…}, {…}]}` | non-empty list of child rows; the FK columns are filled from the parent (`connect` here is v1.x) |
+| backward (`users ← posts.author_id`) | `"posts": {"create": [{…}, {…}]}` | non-empty list of child rows; the FK columns are filled from the parent (`connect` here is not yet supported) |
 
 Rules:
 
@@ -778,7 +778,7 @@ consequences:
 
 See [rls.md](rls.md) for the claim mechanism.
 
-## Deferred to v1.x
+## Not yet supported
 
 - `limit`/`order` on bulk `PATCH`/`DELETE` (PostgREST's limited update/delete).
 - Nested `connect` on backward relations (`"posts": {"connect": [{"id": 1}]}`).

@@ -1,6 +1,6 @@
 # Plugin author guide
 
-pdbr v1 plugins are **compile-time**: a plugin is any Go type implementing
+pdbr plugins are **compile-time**: a plugin is any Go type implementing
 one or more hook interfaces, registered in an ordered registry. Third parties
 embed pdbr as a library:
 
@@ -13,7 +13,7 @@ h, err := app.Handler(ctx)   // introspect → plugins → api.Built → http.Ha
 mux.Handle("/api/", h)
 ```
 
-(Out-of-process plugins — go-plugin/wasm — are a v2 track; these interfaces
+(Out-of-process plugins — go-plugin/wasm — are a possible future direction; these interfaces
 are the contract either way.)
 
 The generic half of the system lives in the shared `pdbcore` module and is

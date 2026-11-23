@@ -120,7 +120,7 @@ Absent `select` means all columns (`*`). Grammar:
 ```
 select    := item ("," item)*
 item      := field | alias ":" field | embed | "*" | [ alias ":" ] aggregate
-field     := name [ "(" k "=" v ("," k "=" v)* ")" ]      -- args only for spatial projection (transform=<srid>, simplify=<tol>) in v1
+field     := name [ "(" k "=" v ("," k "=" v)* ")" ]      -- args only for spatial projection (transform=<srid>, simplify=<tol>)
 embed     := relkey [ "!" hint ]* "(" select ")"           -- hint := fk_name | column | "inner"
 name      := column | computed column | postgis pseudo-column
 aggregate := "count()" | column [ "::" type ] "." fn "()" [ "::" type ]   -- server.aggregates; type: allowlisted built-in or enum
@@ -214,7 +214,7 @@ address a **selected** embed by its response key — the alias when one is
 given (`recent:posts(id)&recent.limit=3`, PostgREST style), the relation
 key otherwise — and nest (`posts.comments.limit=2`). Per-embed
 `after`/`before`/`count`/`select`/`distinct` are rejected (`400
-invalid_filter`): embedded lists are offset-paged in v1.
+invalid_filter`): embedded lists are offset-paged.
 
 ### Temporal keys and PostgreSQL 18 foreign keys
 
@@ -260,7 +260,7 @@ GET /api/places?select=name,web:location(transform=3857),coarse:area(simplify=0.
 
 Computed columns come from stable/immutable functions whose first argument is
 the table's row type; set-returning ones become arrays. Extra scalar arguments
-are deferred to v1.x — the `field(k=v)` grammar is reserved for them; in v1
+are not yet supported — the `field(k=v)` grammar is reserved for them; currently
 parenthesised arguments are accepted only on spatial columns and their
 pseudo-columns (`transform=<srid>` → `ST_Transform`, `simplify=<tolerance>` →
 `ST_SimplifyPreserveTopology`; `postgis` plugin). Spatial values are GeoJSON

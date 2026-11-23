@@ -126,14 +126,14 @@ returns `{Class, SQLState, Message(detail)}`):
 
 `P0001` (`RAISE EXCEPTION` from user PL/pgSQL) is deliberately 500 with a
 generic message in prod: user-raised messages are not classified as
-client-safe in v1.
+client-safe.
 
 Decided (M6): PostgREST maps `P0001` to 400 and lets `RAISE … USING ERRCODE`
-pick the status; pdbr v1 keeps 500 (pdbq parity). A `RAISE … USING ERRCODE`
+pick the status; pdbr keeps 500 (pdbq parity). A `RAISE … USING ERRCODE`
 that names a classified state (`23514`, `22023`, `42501`, …) still gets that
 state's status because the mapping is by SQLSTATE, so functions can already
 signal client errors that way. An `errors.raise_passthrough` knob for
-`P0001` stays a v1.x option.
+`P0001` remains a possible future option.
 
 ## `errors.detail`
 
@@ -264,7 +264,7 @@ the limit short-circuits without reading.
 
 Rule of thumb: the request was *too slow* → 504; the database was *not
 available* → 503 (safe to retry after a delay; a `Retry-After` header is not
-sent in v1). `/readyz` is a liveness alias of `/healthz` in v1 and does not
+sent). `/readyz` is a liveness alias of `/healthz` and does not
 reflect pool health ([deployment.md](deployment.md#docker-image)).
 
 ## Hook and plugin errors
