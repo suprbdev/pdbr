@@ -12,7 +12,7 @@ import (
 
 // ContribFilter is one filter operator a column takes from a pdbcore/contrib
 // vocabulary (full-text search, pg_trgm, unaccent, fuzzystrmatch, hstore,
-// ltree, intarray, ranges, inet, pgvector).
+// ltree, intarray, ranges, inet, pgvector, cube, earthdistance).
 type ContribFilter struct {
 	// Name is the operator's URL spelling (fts, trgm_sim, cs, ...).
 	Name string
@@ -25,7 +25,9 @@ type ContribFilter struct {
 // ContribOrder is one order=<col>.<Name> term a column takes from a
 // pdbcore/contrib vocabulary: full-text relevance (rank, rank_cd), a
 // trigram distance (trgm_dist, trgm_wdist, trgm_swdist), a pgvector
-// distance (vec_l2, vec_ip, vec_cos, vec_l1) or the Levenshtein distance
+// distance (vec_l2, vec_ip, vec_cos, vec_l1), a cube distance (vec_l2,
+// vec_l1, vec_chebyshev), an earthdistance distance (earth_dist on earth
+// columns, earth_miles on point columns) or the Levenshtein distance
 // (levenshtein).
 type ContribOrder struct {
 	// Name is the order modifier as written after the column.
@@ -35,8 +37,8 @@ type ContribOrder struct {
 	// Expr is the distance expression of a trigram or vector term.
 	Expr contrib.Expr
 	// Param is the query parameter holding the reference value a distance
-	// term measures against: "trgm", "vec" or "levenshtein"; "" for a rank
-	// term.
+	// term measures against: "trgm", "vec", "latlon" or "levenshtein"; ""
+	// for a rank term.
 	Param string
 }
 
@@ -101,6 +103,13 @@ var contribSpellings = map[string][]spelling{
 		{"soundex", "soundexEqualTo"}, {"metaphone", "metaphoneEqualTo"}, {"dmetaphone", "doubleMetaphoneEqualTo"},
 	},
 	contrib.VocabIntarray: {{"query_int", "matchesQueryInt"}},
+	contrib.VocabCube: {
+		{"cs", "contains"}, {"cd", "containedBy"}, {"ov", "overlaps"},
+		{"vec_l2_lt", "l2DistanceLessThan"}, {"vec_l1_lt", "l1DistanceLessThan"},
+		{"vec_chebyshev_lt", "chebyshevDistanceLessThan"},
+	},
+	contrib.VocabEarth:      {{"earth_lt", "earthDistanceLessThan"}},
+	contrib.VocabEarthPoint: {{"earth_miles_lt", "earthDistanceMilesLessThan"}},
 }
 
 var trgmOrders = []spelling{{"trgm_dist", "distance"}, {"trgm_wdist", "wordDistance"}, {"trgm_swdist", "strictWordDistance"}}
@@ -113,6 +122,8 @@ var bitOrders = []spelling{{"vec_hamming", "hammingDistance"}, {"vec_jaccard", "
 
 var fuzzyOrders = []spelling{{"levenshtein", "levenshteinDistance"}}
 
+var cubeOrders = []spelling{{"vec_l2", "l2Distance"}, {"vec_l1", "l1Distance"}, {"vec_chebyshev", "chebyshevDistance"}}
+
 // distanceOrders maps each vocabulary with distance order terms to them and
 // to the query parameter holding their reference value.
 var distanceOrders = []struct {
@@ -123,6 +134,9 @@ var distanceOrders = []struct {
 	{contrib.VocabVector, "vec", vecOrders},
 	{contrib.VocabBit, "vec", bitOrders},
 	{contrib.VocabFuzzy, "levenshtein", fuzzyOrders},
+	{contrib.VocabCube, "vec", cubeOrders},
+	{contrib.VocabEarth, "latlon", []spelling{{"earth_dist", "earthDistance"}}},
+	{contrib.VocabEarthPoint, "latlon", []spelling{{"earth_miles", "earthDistanceMiles"}}},
 }
 
 var rankOrders = []struct {
@@ -155,7 +169,8 @@ func IsFullTextOp(name string) bool {
 
 // IsContribOrder reports whether a modifier is a contrib order term
 // (rank, rank_cd, trgm_dist, trgm_wdist, trgm_swdist, vec_l2, vec_ip,
-// vec_cos, vec_l1, vec_hamming, vec_jaccard, levenshtein).
+// vec_cos, vec_l1, vec_chebyshev, vec_hamming, vec_jaccard, levenshtein,
+// earth_dist, earth_miles).
 func IsContribOrder(name string) bool {
 	for _, r := range rankOrders {
 		if r.name == name {
@@ -166,8 +181,9 @@ func IsContribOrder(name string) bool {
 }
 
 // DistanceParam returns the query parameter a distance order modifier
-// measures against ("trgm" for trgm_*, "vec" for vec_*, "levenshtein" for
-// levenshtein); "" for anything else.
+// measures against ("trgm" for trgm_*, "vec" for vec_*, "latlon" for
+// earth_dist and earth_miles, "levenshtein" for levenshtein); "" for
+// anything else.
 func DistanceParam(mod string) string {
 	for _, d := range distanceOrders {
 		for _, sp := range d.terms {
@@ -194,15 +210,16 @@ func VectorVocabulary(cat *introspect.Catalog, c *introspect.Column) (contrib.Vo
 	return contrib.Vocabulary{}, false
 }
 
-// DistanceVocabulary returns the vocabulary holding a column's pgvector
-// distances: the vector vocabulary of a vector, halfvec or sparsevec
-// column, or pgvector's bit vocabulary of a bit or varbit column.
+// DistanceVocabulary returns the vocabulary holding a column's distances
+// from vec=: the vector vocabulary of a vector, halfvec or sparsevec
+// column, pgvector's bit vocabulary of a bit or varbit column, or the cube
+// vocabulary of a cube column.
 func DistanceVocabulary(cat *introspect.Catalog, c *introspect.Column) (contrib.Vocabulary, bool) {
 	if c == nil || c.IsArray || strings.HasPrefix(c.PGType, "_") {
 		return contrib.Vocabulary{}, false
 	}
 	for _, v := range contrib.ForColumn(cat, c) {
-		if v.Name == contrib.VocabVector || v.Name == contrib.VocabBit {
+		if v.Name == contrib.VocabVector || v.Name == contrib.VocabBit || v.Name == contrib.VocabCube {
 			return v, true
 		}
 	}
@@ -210,20 +227,24 @@ func DistanceVocabulary(cat *introspect.Catalog, c *introspect.Column) (contrib.
 }
 
 // IsVectorThreshold reports whether a filter operator spelling is a
-// pgvector distance threshold (vec_l2_lt, vec_cos_lt, vec_hamming_lt, ...),
-// which measures against vec=.
+// pgvector or cube distance threshold (vec_l2_lt, vec_cos_lt,
+// vec_hamming_lt, vec_chebyshev_lt, ...), which measures against vec=.
 func IsVectorThreshold(name string) bool { return ThresholdParam(name) == "vec" }
 
 // ThresholdParam returns the query parameter a distance-threshold filter
-// operator measures against: "vec" for the pgvector thresholds (vec_*_lt),
-// "levenshtein" for levenshtein_lt; "" for every other operator.
+// operator measures against: "vec" for the pgvector and cube thresholds
+// (vec_*_lt), "latlon" for earth_lt and earth_miles_lt, "levenshtein" for
+// levenshtein_lt; "" for every other operator.
 func ThresholdParam(name string) string {
-	if name == "levenshtein_lt" {
+	switch name {
+	case "levenshtein_lt":
 		return "levenshtein"
+	case "earth_lt", "earth_miles_lt":
+		return "latlon"
 	}
-	for _, v := range []string{contrib.VocabVector, contrib.VocabBit} {
+	for _, v := range []string{contrib.VocabVector, contrib.VocabBit, contrib.VocabCube} {
 		for _, sp := range contribSpellings[v] {
-			if sp.url == name {
+			if sp.url == name && strings.HasSuffix(name, "_lt") {
 				return "vec"
 			}
 		}
@@ -252,12 +273,17 @@ func ScoreKey(expr string) string {
 // <key>_strict_word_similarity (pg_trgm, against trgm=) on text columns the
 // filter policy admits trigram operators on, <key>_levenshtein_distance
 // (fuzzystrmatch, against levenshtein=) on text columns it admits the
-// fuzzystrmatch operators on, and <key>_<distance> (pgvector, against
-// vec=) on every vector column and on bit columns an index (or the policy)
-// admits pgvector's distances on. A resource with a column or computed
-// column named like the parameter has no such parameter and gets none of
-// its scores; a real, computed or other pseudo-column owning a key keeps
-// it. It runs in Build, after the API hooks removed hidden columns.
+// fuzzystrmatch operators on, <key>_<distance> (pgvector, against vec=) on
+// every vector column and on bit columns an index (or the policy) admits
+// pgvector's distances on, <key>_l2_distance, <key>_l1_distance and
+// <key>_chebyshev_distance (cube, against vec=) on every cube column,
+// <key>_earth_distance (earthdistance, metres from latlon=) on every earth
+// column and <key>_earth_distance_miles (earthdistance, statute miles from
+// latlon=) on point columns the policy admits unindexed surface on (no
+// index serves <@>). A resource with a column or computed column named
+// like the parameter has no such parameter and gets none of its scores; a
+// real, computed or other pseudo-column owning a key keeps it. It runs in
+// Build, after the API hooks removed hidden columns.
 func (b *Builder) addContribScores() {
 	for _, r := range sortedResources(b.Resources) {
 		for _, f := range r.Columns {
@@ -285,6 +311,15 @@ func (b *Builder) addContribScores() {
 						continue
 					}
 					param, desc = "levenshtein", "Levenshtein edit distance from levenshtein= (lower is closer)"
+				case contrib.VocabCube:
+					param, desc = "vec", "cube distance from vec= (lower is closer)"
+				case contrib.VocabEarth:
+					param, desc = "latlon", "metres from latlon=<lat>,<lon> (lower is closer)"
+				case contrib.VocabEarthPoint:
+					if !indexServes(b.Options, r, f.Column, nil, false) {
+						continue
+					}
+					param, desc = "latlon", "statute miles from latlon=<lat>,<lon> (lower is closer)"
 				default:
 					continue
 				}
@@ -353,14 +388,43 @@ func RangeOperand(v any) bool {
 // column's type (citext, hstore, ltree): comparisons on it must be spelled
 // with Vocabulary.Operator and the operand cast to the column type, or
 // PostgreSQL resolves them to the wrong operator (citext) or none at all
-// (hstore, ltree) when the extension schema is off the search_path. pgvector
-// types are not owned this way: they take no comparisons (VectorVocabulary).
+// (hstore, ltree) when the extension schema is off the search_path.
+// pgvector, cube and earth types are not owned this way: they take no
+// comparisons (DistanceOnly).
 func OwnerVocabulary(cat *introspect.Catalog, c *introspect.Column) (contrib.Vocabulary, bool) {
 	if c == nil || c.IsArray || strings.HasPrefix(c.PGType, "_") {
 		return contrib.Vocabulary{}, false
 	}
 	for _, v := range contrib.ForColumn(cat, c) {
-		if v.Extension != "" && v.Codec != nil && v.Name != contrib.VocabVector {
+		if v.Extension != "" && v.Codec != nil && !distanceOnly(v) {
+			return v, true
+		}
+	}
+	return contrib.Vocabulary{}, false
+}
+
+// distanceOnly reports whether a vocabulary's type takes no comparisons:
+// its values are filtered by their own operators and ordered by distance
+// only (pgvector's vector types, cube, earthdistance's earth).
+func distanceOnly(v contrib.Vocabulary) bool {
+	switch v.Name {
+	case contrib.VocabVector, contrib.VocabCube, contrib.VocabEarth:
+		return true
+	}
+	return false
+}
+
+// DistanceOnly returns the vocabulary of a column whose type takes no
+// comparisons, plain ordering, distinct or min/max: a pgvector vector,
+// halfvec or sparsevec, a cube or an earth column (false for any other
+// column). Such columns are filtered with is.null and their vocabulary's
+// operators and ordered by distance only.
+func DistanceOnly(cat *introspect.Catalog, c *introspect.Column) (contrib.Vocabulary, bool) {
+	if c == nil || c.IsArray || strings.HasPrefix(c.PGType, "_") {
+		return contrib.Vocabulary{}, false
+	}
+	for _, v := range contrib.ForColumn(cat, c) {
+		if distanceOnly(v) {
 			return v, true
 		}
 	}
@@ -369,7 +433,8 @@ func OwnerVocabulary(cat *introspect.Catalog, c *introspect.Column) (contrib.Voc
 
 // CodecFor returns the value codec of a column whose JSON input differs from
 // its text form (hstore objects, structured ranges and multiranges, vectors
-// as lists of numbers).
+// as lists of numbers, cubes as lists of coordinates, earth locations as
+// {lat, lon} objects).
 func CodecFor(cat *introspect.Catalog, c *introspect.Column) (*contrib.Codec, bool) {
 	if c == nil || c.IsArray || strings.HasPrefix(c.PGType, "_") {
 		return nil, false
@@ -379,7 +444,7 @@ func CodecFor(cat *introspect.Catalog, c *introspect.Column) (*contrib.Codec, bo
 			continue
 		}
 		switch v.Codec.Arg {
-		case contrib.ArgHstore, contrib.ArgRange, contrib.ArgMultirange, contrib.ArgVector:
+		case contrib.ArgHstore, contrib.ArgRange, contrib.ArgMultirange, contrib.ArgVector, contrib.ArgCube, contrib.ArgLatLon:
 			return v.Codec, true
 		}
 	}
@@ -476,11 +541,11 @@ func contribOrders(cat *introspect.Catalog, opts Options, r *Resource, c *intros
 	return out
 }
 
-// NameTaken reports whether r has a column or computed column named key; a
-// soft-reserved query parameter (near, trgm, vec, levenshtein) of that name
-// is then a filter.
+// NameTaken reports whether r has a column (raster columns included) or
+// computed column named key; a soft-reserved query parameter (near, trgm,
+// vec, latlon, levenshtein) of that name is then a filter.
 func (r *Resource) NameTaken(key string) bool {
-	return r.Field(key) != nil || r.Computed[key] != nil
+	return r.Field(key) != nil || r.Raster(key) != nil || r.Computed[key] != nil
 }
 
 // indexServes applies filters.indexed_only to a contrib operator or
@@ -643,10 +708,17 @@ func HeadlineOption(name string) string {
 }
 
 // SelectArgSyntax renders the select argument syntax of a pseudo-column:
-// a derived contrib value's or a headline's; "" for the others.
+// a derived contrib value's, a headline's, a raster value's or statistics'
+// optional band, or a raster envelope's optional precision; "" for the
+// others.
 func (pc *PseudoColumn) SelectArgSyntax() string {
-	if pc.Headline != nil {
+	switch {
+	case pc.Headline != nil:
 		return pc.Headline.HeadlineArgSyntax()
+	case pc.Raster.TakesBand():
+		return "[(band=<integer>)]"
+	case pc.Raster != nil && pc.Raster.Accessor != nil && pc.Raster.Accessor.GeoJSON:
+		return "[(precision=<integer>)]"
 	}
 	return pc.Contrib.ContribArgSyntax()
 }

@@ -199,8 +199,11 @@ func (s *stmt) nearExpr(col *introspect.Column) string {
 
 // contribOrderSQL renders a contrib order term: the relevance of the
 // column's full-text filter (Op.RankSQL over fresh placeholders for the same
-// operand), the trigram distance to trgm=, the vector distance to vec= or
-// the Levenshtein distance to levenshtein= (Expr.Render).
+// operand), the trigram distance to trgm=, the vector or cube distance to
+// vec=, the earthdistance distance to latlon= or the Levenshtein distance to
+// levenshtein=. Distances render in their ordering form (Expr.OrderSQL),
+// which keyset anchors share: earth distances sort by cube's index-served
+// chord distance rather than the great-circle metres their score shows.
 func (s *stmt) contribOrderSQL(co *plan.ContribOrder, alias string) string {
 	if co.Column == nil {
 		s.fail(fmt.Errorf("compile: contrib order term without column"))
@@ -231,8 +234,10 @@ func (s *stmt) contribOrderSQL(co *plan.ContribOrder, alias string) string {
 		}
 		param, val := "trgm", s.plan.Trgm
 		switch v.Name {
-		case contrib.VocabVector, contrib.VocabBit:
+		case contrib.VocabVector, contrib.VocabBit, contrib.VocabCube:
 			param, val = "vec", s.plan.Vec
+		case contrib.VocabEarth, contrib.VocabEarthPoint:
+			param, val = "latlon", s.plan.LatLon
 		case contrib.VocabFuzzy:
 			param, val = "levenshtein", s.plan.Levenshtein
 		}
@@ -245,7 +250,7 @@ func (s *stmt) contribOrderSQL(co *plan.ContribOrder, alias string) string {
 			s.fail(errUser(CodeInvalidFilter, "%s: %s", param, err.Error()))
 			return "NULL"
 		}
-		return e.Render(ref, s.params(params)...)
+		return e.OrderSQL(ref, s.params(params)...)
 	}
 	s.fail(errUser(CodeInvalidFilter, "order by %s.%s is not available on this column", co.Column.Name, co.Name))
 	return "NULL"

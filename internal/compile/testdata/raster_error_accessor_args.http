@@ -1,0 +1,1 @@
+GET /api/kb/tiles?select=rast_width(band=1)

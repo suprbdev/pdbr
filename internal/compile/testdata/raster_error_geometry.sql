@@ -1,0 +1,2 @@
+-- request: GET /api/kb/tiles?rast=intersects.nonsense
+-- error: 400 invalid_filter: spatial value "nonsense" is not valid WKT

@@ -21,9 +21,12 @@
 //   - Page.Limit is always resolved (request and every embed).
 //   - Key.Values and Page.After/Before hold PK-typed Go values (int64,
 //     string, bool, float64, ...), positional to the constraint columns.
-//   - Near is the validated near= input when any order term uses .dist:
-//     a decoded GeoJSON object or a WKT/EWKT string, parsed per distance
-//     column by the compiler so each gets its own SRID.
+//   - Near is the validated near= input when any order term uses .dist
+//     (or a distance or raster value pseudo-column is selected): a decoded
+//     GeoJSON object or a WKT/EWKT string, parsed per distance column by
+//     the compiler so each gets its own SRID.
+//   - LatLon is the validated latlon=<lat>,<lon> as {lat, lon} floats when
+//     an earthdistance order term, score or threshold needs it.
 package parse
 
 import (
@@ -256,8 +259,10 @@ type parser struct {
 	scores     []*api.PseudoColumn
 	vecFilters []vecFilter
 	// levFilters are the levenshtein_lt thresholds, checked against
-	// levenshtein=.
-	levFilters []vecFilter
+	// levenshtein=, and latlonFilters the earth_lt and earth_miles_lt
+	// thresholds, against latlon=.
+	levFilters    []vecFilter
+	latlonFilters []vecFilter
 	// headlines are the headline pseudo-columns selected anywhere in the
 	// request, bound to the full-text filter of their scope once the whole
 	// query is parsed.

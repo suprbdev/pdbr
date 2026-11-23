@@ -1,0 +1,4 @@
+POST /api/kb/shapes?select=id,box,pt
+Prefer: return=representation
+
+{"id": 1, "name": "unit", "box": [[0, 0], [1, 1]], "pt": "(1, 2)"}

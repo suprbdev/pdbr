@@ -1,0 +1,2 @@
+-- request: GET /api/kb/sites?loc=eq.(1%2C2%2C3)
+-- error: 400 invalid_filter: operator "eq" is not supported on cube column "loc" (is.null and its own operators only; order by distance)

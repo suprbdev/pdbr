@@ -64,11 +64,18 @@ func FuzzParse(f *testing.F) {
 		{"GET", "/kb/docs", `select=id,body_headline(max_words=10,min_words=2,start_sel="<b>",stop_sel="</b>",fragment_delimiter=" ... ",max_fragments=3,short_word=0,highlight_all=false),search_headline(document=title)&search=wfts(english).cat&body=fts.rat&and=(body.plfts.x)`, "", ""},
 		{"PATCH", "/kb/docs", "body=fts.cat&select=id,body_headline(document=x),search_headline(document=body,max_words=500)", "", `{"title":"t"}`},
 		{"GET", "/kb/docs", "select=id,articles:docs(id)&or=(search.fts.x,body.fts.y)&select=search_headline(document=email)", "", ""},
+		{"GET", "/kb/shapes", "select=id,box,box_chebyshev_distance,pt_l1_distance&box=cs.%5B1%2C2%5D&or=(box.cd.\"(0,0),(1,1)\",box.not.ov.\"[[0,0],[1,1]]\")&pt=vec_l2_lt.3&order=box.vec_chebyshev.desc,box.vec_l1&vec=%5B%5B0%2C0%5D%2C%5B1%2C1%5D%5D&after=WyJrYi5zaGFwZXMiLCAzXQ", "", ""},
+		{"GET", "/kb/sites", "select=id,loc,loc_earth_distance,ll_earth_distance_miles&loc=earth_lt.5000&ll=not.earth_miles_lt.2&order=loc.earth_dist,ll.earth_miles.desc&latlon=51.5,-0.12&limit=2", "", ""},
+		{"POST", "/kb/sites", "select=id,loc", "", `{"id":1,"loc":{"lat":51.5,"lon":-0.12},"ll":"(1,2)"}`},
+		{"POST", "/kb/shapes", "", "", `{"id":1,"box":[[0,0],[1,1]],"pt":"(1, 2)"}`},
+		{"GET", "/kb/tiles", "select=id,rast_width,rast_envelope,v:rast_value(band=2),rast_summary_stats(band=1)&near=POINT(1%202)&rast=intersects.SRID%3D4326%3BPOINT(1%202)&or=(rast.is.null,rast.not.intersects.POINT(0%200))", "", ""},
+		{"GET", "/kb/tiles", "select=rast,history&order=rast&distinct=rast&history=is.null", "", ""},
+		{"POST", "/kb/tiles", "", "", `{"id":1,"rast":"0100"}`},
 	}
 	for _, s := range seeds {
 		f.Add(s.method, s.path, s.query, s.accept, s.body)
 	}
-	built := buildContrib(f, true)
+	built := buildGeo(f, true)
 	aggAll := allOn
 	aggAll.Aggregates, aggAll.SpatialAggregates = true, true
 	optsList := []Options{allOn, {}, {Spatial: true, CSV: true}, {RelationFilters: true, ComputedOrder: true, MaxPageSize: 3, MaxEmbedDepth: 1}, aggAll, {Aggregates: true}}

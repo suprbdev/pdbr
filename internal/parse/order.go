@@ -1,6 +1,7 @@
 package parse
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/suprbdev/pdbcore/contrib"
@@ -8,6 +9,7 @@ import (
 	"github.com/suprbdev/pdbcore/postgis"
 
 	"github.com/suprbdev/pdbr/internal/api"
+	"github.com/suprbdev/pdbr/internal/compile"
 	"github.com/suprbdev/pdbr/internal/plan"
 )
 
@@ -16,7 +18,8 @@ import (
 // path := column | computed | relkey[!hint](column) | spatialcol.dist |
 // column.rank | column.rank_cd | column.trgm_dist | column.trgm_wdist |
 // column.trgm_swdist | column.vec_l2 | column.vec_ip | column.vec_cos |
-// column.vec_l1 | column.vec_hamming | column.vec_jaccard |
+// column.vec_l1 | column.vec_chebyshev | column.vec_hamming |
+// column.vec_jaccard | column.earth_dist | column.earth_miles |
 // column.levenshtein | pseudo (an orderable pseudo-column such as
 // path_nlevel).
 func (p *parser) parseOrder(s string, res *api.Resource) ([]plan.OrderTerm, error) {
@@ -147,8 +150,8 @@ func (p *parser) resolveOrderPath(t *plan.OrderTerm, path string, res *api.Resou
 		if !rel.To.OrderColumns[col] {
 			return errf(CodeColumnNotOrderable, "column %q on %q is not orderable", col, rel.To.Path)
 		}
-		if p.typeOf(f.Column).kind == kindVector {
-			return errf(CodeColumnNotOrderable, "vector column %q on %q is orderable by distance only", col, rel.To.Path)
+		if p.typeOf(f.Column).distanceOnly() {
+			return errf(CodeColumnNotOrderable, "%s column %q on %q is orderable by distance only", f.Column.PGType, col, rel.To.Path)
 		}
 		t.Relation = &plan.RelationOrder{Relation: rel, Column: f.Column}
 		return nil
@@ -160,11 +163,19 @@ func (p *parser) resolveOrderPath(t *plan.OrderTerm, path string, res *api.Resou
 		if postgis.IsSpatial(f.Column.PGType) {
 			return errf(CodeColumnNotOrderable, "spatial column %q is orderable by distance only (%s.dist with near=)", path, path)
 		}
-		if p.typeOf(f.Column).kind == kindVector {
+		switch t := p.typeOf(f.Column); {
+		case t.kind == kindVector:
 			return errf(CodeColumnNotOrderable, "vector column %q is orderable by distance only (%s.vec_l2|vec_ip|vec_cos|vec_l1 with vec=)", path, path)
+		case t.kind == kindCube && t.codec != nil && t.codec.Arg == contrib.ArgLatLon:
+			return errf(CodeColumnNotOrderable, "earth column %q is orderable by distance only (%s.earth_dist with latlon=)", path, path)
+		case t.kind == kindCube:
+			return errf(CodeColumnNotOrderable, "cube column %q is orderable by distance only (%s.vec_l2|vec_l1|vec_chebyshev with vec=)", path, path)
 		}
 		t.Column = f.Column
 		return nil
+	}
+	if res.Raster(path) != nil {
+		return errf(CodeColumnNotOrderable, "raster column %q is not orderable", path)
 	}
 	if c := res.Computed[path]; c != nil {
 		if !p.opts.ComputedOrder || c.Function.ReturnsSet || !c.Orderable {
@@ -234,7 +245,12 @@ func (p *parser) resolveContribOrder(t *plan.OrderTerm, key, mod string, res *ap
 	}
 	switch param {
 	case "vec":
+		if p.typeOf(f.Column).kind == kindCube {
+			return errf(CodeColumnNotOrderable, "%s.%s needs a cube column and, under filters.indexed_only, a GiST index on it, or the column in filters.allow_columns", key, mod)
+		}
 		return errf(CodeColumnNotOrderable, "%s.%s needs an index serving it on the column under filters.indexed_only (HNSW; IVFFlat also serves vec_l2, vec_ip and vec_cos on vector and halfvec), or the column in filters.allow_columns", key, mod)
+	case "latlon":
+		return errf(CodeColumnNotOrderable, "%s.%s needs an earth column (earth_dist; under filters.indexed_only with a GiST index) or a point column (earth_miles; no index serves it, so under filters.indexed_only only in filters.allow_columns) with earthdistance installed", key, mod)
 	case "levenshtein":
 		return errf(CodeColumnNotOrderable, "%s.%s needs a text column with fuzzystrmatch installed and, under filters.indexed_only (no index serves it), the column in filters.allow_columns", key, mod)
 	}
@@ -250,15 +266,30 @@ func (p *parser) rootResource() *api.Resource {
 	return p.root.Resource
 }
 
+// refParams are the request-wide reference parameters of the contrib
+// distances, as given (the has* flags report presence).
+type refParams struct {
+	trgm      string
+	hasTrgm   bool
+	vec       string
+	hasVec    bool
+	lev       string
+	hasLev    bool
+	latlon    string
+	hasLatLon bool
+}
+
 // resolveContribOrders binds the contrib order terms of the root and of
 // every embed: a rank term to the one full-text filter on its column in
-// the same scope, a trigram distance term to trgm=, a vector distance term
-// to vec= and a Levenshtein term to levenshtein= (missing, or the
-// parameter without such a term → 400, like near= for .dist). vec= is
-// checked against every vector term's column type.
-func (p *parser) resolveContribOrders(trgm string, hasTrgm bool, vec string, hasVec bool, lev string, hasLev bool) error {
+// the same scope, a trigram distance term to trgm=, a vector or cube
+// distance term to vec=, an earthdistance term to latlon= and a
+// Levenshtein term to levenshtein= (missing, or the parameter without such
+// a term → 400, like near= for .dist). vec= is checked against every
+// vector and cube term's column type.
+func (p *parser) resolveContribOrders(ref refParams) error {
+	trgm, hasTrgm := ref.trgm, ref.hasTrgm
 	needTrgm := ""
-	var vecTerms, levTerms []*plan.ContribOrder
+	var vecTerms, levTerms, latlonTerms []*plan.ContribOrder
 	bind := func(terms []plan.OrderTerm, filter plan.Expr) error {
 		for i := range terms {
 			co := terms[i].Contrib
@@ -271,6 +302,9 @@ func (p *parser) resolveContribOrders(trgm string, hasTrgm bool, vec string, has
 				continue
 			case "levenshtein":
 				levTerms = append(levTerms, co)
+				continue
+			case "latlon":
+				latlonTerms = append(latlonTerms, co)
 				continue
 			}
 			if co.Rank == "" {
@@ -328,10 +362,67 @@ func (p *parser) resolveContribOrders(trgm string, hasTrgm bool, vec string, has
 	if hasTrgm {
 		p.req.Trgm = trgm
 	}
-	if err := p.bindLevenshtein(levTerms, lev, hasLev); err != nil {
+	if err := p.bindLevenshtein(levTerms, ref.lev, ref.hasLev); err != nil {
 		return err
 	}
-	return p.bindVec(vecTerms, vec, hasVec)
+	if err := p.bindLatLon(latlonTerms, ref.latlon, ref.hasLatLon); err != nil {
+		return err
+	}
+	return p.bindVec(vecTerms, ref.vec, ref.hasVec)
+}
+
+// bindLatLon parses latlon=<lat>,<lon> for its consumers collected over the
+// root and every embed (earthdistance order terms, score pseudo-columns and
+// earth_lt / earth_miles_lt filters): required by any of them, refused
+// without one, and validated as a location (finite degrees, latitude within
+// ±90 and longitude within ±180).
+func (p *parser) bindLatLon(terms []*plan.ContribOrder, raw string, has bool) error {
+	score, err := p.scoreUse("latlon")
+	if err != nil {
+		return err
+	}
+	if len(terms) == 0 && score == nil && len(p.latlonFilters) == 0 {
+		if has {
+			return errf(CodeInvalidFilter, "latlon= applies to order=<col>.earth_dist|earth_miles, the earthdistance score columns and earth_lt / earth_miles_lt filters only, and none is present")
+		}
+		return nil
+	}
+	if !has {
+		switch {
+		case len(terms) > 0:
+			return errf(CodeInvalidFilter, "order by %s.%s requires latlon=<lat>,<lon>", terms[0].Column.Name, terms[0].Name)
+		case score != nil:
+			return errf(CodeInvalidFilter, "%s requires latlon=<lat>,<lon>", score.Key)
+		}
+		return errf(CodeInvalidFilter, "filter %s on %s requires latlon=<lat>,<lon>", p.latlonFilters[0].Name, p.latlonFilters[0].Column.Name)
+	}
+	ll, uerr := parseLatLon(raw)
+	if uerr != nil {
+		return uerr
+	}
+	p.req.LatLon = ll
+	return nil
+}
+
+// parseLatLon parses "<lat>,<lon>" in degrees into the {lat, lon} object
+// the earthdistance expressions take, validated by contrib.LatLonParams.
+func parseLatLon(raw string) (map[string]any, *compile.UserError) {
+	lat, lon, ok := strings.Cut(raw, ",")
+	if !ok || strings.Contains(lon, ",") {
+		return nil, errf(CodeInvalidFilter, "latlon must be <lat>,<lon> in degrees, got %q", raw)
+	}
+	m := map[string]any{}
+	for k, v := range map[string]string{"lat": lat, "lon": lon} {
+		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		if err != nil {
+			return nil, errf(CodeInvalidFilter, "latlon: %s %q is not a number", k, v)
+		}
+		m[k] = f
+	}
+	if _, err := contrib.LatLonParams(m); err != nil {
+		return nil, errf(CodeInvalidFilter, "latlon: %s", err.Error())
+	}
+	return m, nil
 }
 
 // bindLevenshtein checks levenshtein= against its consumers collected over
@@ -365,10 +456,10 @@ func (p *parser) bindLevenshtein(terms []*plan.ContribOrder, lev string, hasLev 
 	return nil
 }
 
-// bindVec parses vec= for the vector and bit distance terms collected over
-// the root and every embed, the score pseudo-columns measured against it
-// and the distance-threshold filters, checking it against each one's
-// column type.
+// bindVec parses vec= for the vector, bit and cube distance terms
+// collected over the root and every embed, the score pseudo-columns
+// measured against it and the distance-threshold filters, checking it
+// against each one's column type.
 func (p *parser) bindVec(terms []*plan.ContribOrder, vec string, hasVec bool) error {
 	score, err := p.scoreUse("vec")
 	if err != nil {
@@ -412,7 +503,11 @@ func (p *parser) bindVec(terms []*plan.ContribOrder, vec string, hasVec bool) er
 		}
 	}
 	for _, f := range p.vecFilters {
-		if _, err := f.Op.Params(map[string]any{"vector": v, "distance": 0}); err != nil {
+		key := "vector"
+		if f.Op.Arg == contrib.ArgCubeDistance {
+			key = "cube"
+		}
+		if _, err := f.Op.Params(map[string]any{key: v, "distance": 0}); err != nil {
 			return errf(CodeInvalidFilter, "vec: %s", err.Error())
 		}
 	}
@@ -522,7 +617,7 @@ func (p *parser) parseDistinct(s string, res *api.Resource) ([]*introspect.Colum
 		if !res.OrderColumns[k] {
 			return nil, errf(CodeColumnNotOrderable, "column %q on %q is not orderable", k, res.Path)
 		}
-		if t := p.typeOf(f.Column); t.kind == kindSpatial || t.kind == kindComposite || t.kind == kindVector {
+		if t := p.typeOf(f.Column); t.kind == kindSpatial || t.kind == kindComposite || t.distanceOnly() {
 			return nil, errf(CodeInvalidFilter, "distinct is not supported on %s column %q", t.name(), k)
 		}
 		out = append(out, f.Column)
@@ -531,8 +626,9 @@ func (p *parser) parseDistinct(s string, res *api.Resource) ([]*introspect.Colum
 }
 
 // resolveNear parses near= for the .dist order terms collected so far
-// (root order and every embed order); missing near with a .dist term, or
-// near without one, → 400.
+// (root order and every embed order) and the distance and raster value
+// pseudo-columns; missing near with a .dist term or such a column, or near
+// without one, → 400.
 func (p *parser) resolveNear(near string, hasNear bool) error {
 	var dist *introspect.Column
 	walk := func(terms []plan.OrderTerm) {
@@ -560,7 +656,7 @@ func (p *parser) resolveNear(near string, hasNear bool) error {
 	}
 	if dist == nil && score == nil {
 		if hasNear {
-			return errf(CodeInvalidFilter, "near= applies to order=<col>.dist and <col>_distance only, and neither is present")
+			return errf(CodeInvalidFilter, "near= applies to order=<col>.dist, <col>_distance and raster <col>_value only, and none is present")
 		}
 		return nil
 	}
@@ -573,7 +669,11 @@ func (p *parser) resolveNear(near string, hasNear bool) error {
 	if dist == nil {
 		dist = score.Column
 	}
-	if _, err := p.coerceSpatial(p.typeOf(dist), near); err != nil {
+	t := p.typeOf(dist)
+	if t.kind == kindRaster {
+		t = colType{kind: kindSpatial, flavour: postgis.Geometry}
+	}
+	if _, err := p.coerceSpatial(t, near); err != nil {
 		return errf(CodeInvalidFilter, "near: %s", err.Detail)
 	}
 	v, _ := spatialInput(near)

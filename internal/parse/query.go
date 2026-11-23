@@ -43,13 +43,13 @@ func splitQuery(raw string) ([]param, error) {
 var reserved = map[string]bool{
 	"select": true, "order": true, "limit": true, "offset": true, "after": true,
 	"before": true, "count": true, "distinct": true, "near": true, "on_conflict": true,
-	"trgm": true, "vec": true, "levenshtein": true, "columns": true, "geometry": true,
+	"trgm": true, "vec": true, "levenshtein": true, "latlon": true, "columns": true, "geometry": true,
 }
 
 // softReserved are the reserved params that yield to a column, computed
 // column or RPC argument of the same name on the route: there the name is a
 // filter (or the argument) and the parameter is unavailable.
-var softReserved = map[string]bool{"near": true, "trgm": true, "vec": true, "levenshtein": true, "geometry": true}
+var softReserved = map[string]bool{"near": true, "trgm": true, "vec": true, "levenshtein": true, "latlon": true, "geometry": true}
 
 // isReserved reports whether key is a reserved parameter on this route.
 func (p *parser) isReserved(key string, res *api.Resource) bool {
@@ -68,7 +68,7 @@ func (p *parser) isReserved(key string, res *api.Resource) bool {
 // nameTaken reports whether a column or computed column of res, or an
 // argument of rpc, is named key.
 func nameTaken(key string, res *api.Resource, rpc *api.RPC) bool {
-	if res != nil && (res.Field(key) != nil || res.Computed[key] != nil) {
+	if res != nil && res.NameTaken(key) {
 		return true
 	}
 	if rpc != nil {
@@ -143,8 +143,8 @@ func (p *parser) parseQueryWith(raw string, res *api.Resource, extra func(key, v
 		}
 	}
 	p.root = root
-	var near, trgm, vec, lev string
-	hasNear, hasTrgm, hasVec, hasLev := false, false, false, false
+	var near, trgm, vec, lev, latlon string
+	hasNear, hasTrgm, hasVec, hasLev, hasLatLon := false, false, false, false, false
 	for _, q := range params {
 		switch {
 		case q.key == "select":
@@ -163,6 +163,9 @@ func (p *parser) parseQueryWith(raw string, res *api.Resource, extra func(key, v
 			continue
 		case q.key == "levenshtein" && p.isReserved(q.key, res):
 			lev, hasLev = q.val, true
+			continue
+		case q.key == "latlon" && p.isReserved(q.key, res):
+			latlon, hasLatLon = q.val, true
 			continue
 		case q.key == "geometry" && p.isReserved(q.key, res):
 			if q.val == "" {
@@ -202,7 +205,7 @@ func (p *parser) parseQueryWith(raw string, res *api.Resource, extra func(key, v
 	if err := p.resolveNear(near, hasNear); err != nil {
 		return err
 	}
-	if err := p.resolveContribOrders(trgm, hasTrgm, vec, hasVec, lev, hasLev); err != nil {
+	if err := p.resolveContribOrders(refParams{trgm, hasTrgm, vec, hasVec, lev, hasLev, latlon, hasLatLon}); err != nil {
 		return err
 	}
 	if err := p.resolveHeadlines(); err != nil {
@@ -407,7 +410,7 @@ func (p *parser) parseDotted(node *plan.Node, key, val string, depth int) error 
 		return p.addFilter(node, expr)
 	}
 	// A real field wins over any dotted interpretation.
-	if res.Field(key) != nil || res.Computed[key] != nil || contribPseudo(res, key) != nil || isPathKey(res, key) {
+	if filterKey(res, key) {
 		expr, err := p.parseColumnFilter(res, key, val)
 		if err != nil {
 			return err

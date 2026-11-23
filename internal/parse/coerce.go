@@ -32,6 +32,13 @@ const (
 	// kindVector is a pgvector vector, halfvec or sparsevec: no comparisons,
 	// distance ordering only.
 	kindVector
+	// kindCube is a cube or an earthdistance earth (a domain over cube):
+	// like kindVector, filtered by the vocabulary's operators and is only,
+	// ordered by distance only.
+	kindCube
+	// kindRaster is a postgis_raster raster: never read, filtered by
+	// intersects and is only, never ordered.
+	kindRaster
 )
 
 // colType is the parser's view of a column (or function argument) type.
@@ -46,9 +53,13 @@ type colType struct {
 	// hstore, ltree); "" otherwise.
 	owner string
 	// codec converts the JSON object / list form of an hstore, range,
-	// multirange (element) or pgvector type; nil otherwise.
+	// multirange (element), pgvector, cube or earth type; nil otherwise.
 	codec *contrib.Codec
 }
+
+// distanceOnly reports whether the type takes no comparisons, plain
+// ordering or distinct (pgvector, cube and earth values).
+func (t colType) distanceOnly() bool { return t.kind == kindVector || t.kind == kindCube }
 
 func (t colType) elem() colType {
 	e := t
@@ -67,6 +78,11 @@ func (p *parser) typeOf(col *introspect.Column) colType {
 	t := p.typeFor(col.PGType, col.TypeSchema, col.IsArray, col.EnumRef)
 	if t.kind == kindSpatial && col.Spatial != nil {
 		t.srid = col.Spatial.SRID
+	}
+	if col.Domain != "" && !t.isArray {
+		if c, ok := api.CodecFor(p.built.Catalog, col); ok {
+			t.codec = c
+		}
 	}
 	return t
 }
@@ -92,14 +108,22 @@ func (p *parser) typeFor(pgType, typeSchema string, isArray bool, enumRef string
 		t.kind, t.flavour = kindSpatial, f
 		return t
 	}
+	if postgis.IsRaster(base) {
+		t.kind = kindRaster
+		return t
+	}
 	t.kind = scalarKind(base)
 	if v, ok := api.OwnerVocabulary(p.built.Catalog, &introspect.Column{PGType: pgType, TypeSchema: typeSchema, IsArray: t.isArray}); ok {
 		t.owner = v.Name
 	}
 	if c, ok := api.CodecFor(p.built.Catalog, &introspect.Column{PGType: base, TypeSchema: typeSchema}); ok {
 		t.codec = c
-		if c.Arg == contrib.ArgVector && !t.isArray {
+		switch {
+		case t.isArray:
+		case c.Arg == contrib.ArgVector:
 			t.kind = kindVector
+		case c.Arg == contrib.ArgCube:
+			t.kind = kindCube
 		}
 	}
 	return t
@@ -314,8 +338,9 @@ func (p *parser) coerceJSON(t colType, v any) (any, *compile.UserError) {
 	return nil, errf(CodeInvalidFilter, "expected a JSON scalar for %s", t.name())
 }
 
-// contribLiteral renders the JSON form of an hstore, range, multirange or
-// vector value (validated by its contrib codec) as the type's text literal,
+// contribLiteral renders the JSON form of an hstore, range, multirange,
+// vector or cube value (validated by its contrib codec) as the type's text
+// literal,
 // for places that bind one text parameter per value: RPC arguments and
 // array elements.
 func contribLiteral(c *contrib.Codec, v any) (string, error) {
@@ -359,7 +384,7 @@ func contribLiteral(c *contrib.Codec, v any) (string, error) {
 			parts[i] = rangeLit(lo[i], hi[i], bounds[i])
 		}
 		return "{" + strings.Join(parts, ",") + "}", nil
-	case contrib.ArgVector:
+	case contrib.ArgVector, contrib.ArgCube:
 		return params[0].(string), nil
 	}
 	return "", fmt.Errorf("no literal form for %s values", c.Arg)

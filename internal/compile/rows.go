@@ -316,12 +316,14 @@ func (s *stmt) columnJSON(alias string, c *introspect.Column, args map[string]an
 // exprJSON renders a scalar value expression for the JSON response: 64-bit
 // and arbitrary-precision numbers as strings (no precision loss), bytea as
 // base64, spatial values as GeoJSON, pgvector vector and halfvec values as
-// arrays of numbers; enum labels pass through verbatim.
+// arrays of numbers, cubes as lists of coordinates and earth locations as
+// {lat, lon} objects (their contrib codecs); enum labels pass through
+// verbatim.
 func (s *stmt) exprJSON(ref string, c *introspect.Column) string {
 	if postgis.IsSpatial(c.PGType) {
 		return postgis.OutputJSONSQL(ref)
 	}
-	if v, ok := api.VectorVocabulary(s.catalog(), c); ok {
+	if v, ok := api.DistanceOnly(s.catalog(), c); ok && v.Codec != nil {
 		return v.Codec.OutputJSONSQL(ref)
 	}
 	switch strings.TrimPrefix(c.PGType, "_") {
@@ -404,12 +406,16 @@ func (s *stmt) precisionArg(args map[string]any) (string, bool, error) {
 	return s.param(int64(f)), true, nil
 }
 
-// pseudoJSON renders a pseudo-column: a score, a contrib accessor or
-// derived value, a full-text headline, or a derived spatial accessor
-// (<col>_area, …), whose projection arguments apply to the owning column
-// before the accessor runs.
+// pseudoJSON renders a pseudo-column: a raster accessor, pixel value or
+// summary statistics, a score, a contrib accessor or derived value, a
+// full-text headline, or a derived spatial accessor (<col>_area, …), whose
+// projection arguments apply to the owning column before the accessor
+// runs.
 func (s *stmt) pseudoJSON(f *plan.FieldSel, alias string) (string, error) {
 	p, args := f.Pseudo, f.Args
+	if p.Raster != nil {
+		return s.rasterPseudoSQL(p, args, alias)
+	}
 	if p.Score != nil {
 		return s.scoreSQL(p, args, alias)
 	}

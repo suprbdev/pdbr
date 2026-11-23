@@ -1,0 +1,2 @@
+-- request: GET /api/kb/sites?loc=earth_lt.far&latlon=51.5,0
+-- error: 400 invalid_filter: earth_lt takes a finite number (the distance threshold; the location is latlon=), got "far"

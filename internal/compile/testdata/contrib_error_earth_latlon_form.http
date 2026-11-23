@@ -1,0 +1,1 @@
+GET /api/kb/sites?select=loc_earth_distance&latlon=51.5

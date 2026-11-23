@@ -1,0 +1,2 @@
+-- request: GET /api/kb/shapes?order=pt.vec_l2&vec=%5B1%5D
+-- error: 400 column_not_orderable: column "pt" on "kb.shapes" is not orderable

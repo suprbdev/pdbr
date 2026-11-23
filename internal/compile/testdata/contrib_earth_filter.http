@@ -1,0 +1,1 @@
+GET /api/kb/sites?select=id,name,loc_earth_distance&loc=earth_lt.5000&latlon=51.5,-0.12

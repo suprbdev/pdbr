@@ -1,0 +1,1 @@
+GET /api/kb/shapes?box=eq.(1%2C2)

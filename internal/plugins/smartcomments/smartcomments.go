@@ -173,6 +173,9 @@ func (p *Plugin) applyColumnTags(b *api.Builder, r *api.Resource) {
 		}
 		f := r.FieldByColumn(c.Name)
 		if f == nil {
+			f = r.RasterByColumn(c.Name)
+		}
+		if f == nil {
 			continue
 		}
 		key := f.Key

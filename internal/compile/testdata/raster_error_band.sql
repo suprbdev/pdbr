@@ -1,0 +1,2 @@
+-- request: GET /api/kb/tiles?select=rast_summary_stats(band=0)
+-- error: 400 invalid_select: band must be a positive integer (1-based), got "0"

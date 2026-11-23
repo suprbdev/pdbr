@@ -1,6 +1,7 @@
 package parse
 
 import (
+	"math"
 	"strconv"
 	"strings"
 
@@ -187,6 +188,10 @@ func (p *parser) resolveSelectItem(node *plan.Node, it selectItem, depth int) er
 		fs.Computed = res.Computed[it.name]
 	case res.Pseudo[it.name] != nil:
 		fs.Pseudo = res.Pseudo[it.name]
+	case res.Raster(it.name) != nil && res.Raster(it.name).Column.IsArray:
+		return errf(CodeInvalidSelect, "raster array column %q of %q is not readable; expose it through a computed column", it.name, res.Path)
+	case res.Raster(it.name) != nil:
+		return errf(CodeInvalidSelect, "raster column %q of %q is not readable: select its derived columns (%s_width, %s_num_bands, %s_envelope, %s_value(band=<n>) with near=, %s_summary_stats(band=<n>), ...) or expose the bytes through a computed column", it.name, res.Path, it.name, it.name, it.name, it.name, it.name)
 	default:
 		if len(res.Relations[it.name]) > 0 {
 			return errf(CodeInvalidSelect, "embed %q needs a selection: %s(...)", it.name, it.name)
@@ -221,6 +226,12 @@ func (p *parser) resolveSelectItem(node *plan.Node, it selectItem, depth int) er
 	}
 	if it.hasInner && (fs.Computed == nil || fs.Computed.SetOf != nil && inner != "") {
 		switch {
+		case fs.Pseudo != nil && fs.Pseudo.Raster != nil:
+			args, err := parseRasterArgs(fs.Pseudo, it.inner)
+			if err != nil {
+				return err
+			}
+			fs.Args = args
 		case fs.Pseudo != nil && fs.Pseudo.Headline != nil:
 		case fs.Pseudo != nil && fs.Pseudo.Score != nil:
 			args, err := parseScoreArgs(fs.Pseudo, it.inner)
@@ -605,6 +616,34 @@ func parseSpatialArgs(s string) (map[string]any, error) {
 		}
 	}
 	return out, nil
+}
+
+// parseRasterArgs parses the arguments of a raster pseudo-column: the
+// pixel value and the summary statistics take band=<n> (a 1-based band
+// number), the envelope precision=<digits> (GeoJSON decimal digits), the
+// other metadata accessors none.
+func parseRasterArgs(pc *api.PseudoColumn, s string) (map[string]any, error) {
+	rv := pc.Raster
+	name, limit := "band", int64(math.MaxInt32)
+	switch {
+	case rv.Accessor != nil && rv.Accessor.GeoJSON:
+		name, limit = "precision", postgis.MaxPrecision
+	case !rv.TakesBand():
+		return nil, errf(CodeInvalidSelect, "%q takes no arguments", pc.Key)
+	}
+	k, v, ok := strings.Cut(s, "=")
+	k, v = strings.TrimSpace(k), strings.TrimSpace(v)
+	if !ok || k != name || strings.Contains(v, ",") {
+		return nil, errf(CodeInvalidSelect, "%q takes one argument, %s=<n>", pc.Key, name)
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	switch {
+	case name == "band" && (err != nil || n < 1 || n > limit):
+		return nil, errf(CodeInvalidSelect, "band must be a positive integer (1-based), got %q", v)
+	case name == "precision" && (err != nil || n < 0 || n > limit):
+		return nil, errf(CodeInvalidSelect, "precision must be an integer between 0 and %d, got %q", postgis.MaxPrecision, v)
+	}
+	return map[string]any{name: n}, nil
 }
 
 // parseScoreArgs parses the arguments of a score pseudo-column: only the

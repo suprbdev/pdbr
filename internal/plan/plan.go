@@ -56,10 +56,15 @@ type Request struct {
 	// Trgm is the reference text (a string) for trigram distance ordering
 	// (trgm=; nil when absent).
 	Trgm any
-	// Vec is the reference vector for pgvector distance ordering (vec=; a
-	// []any of numbers from a JSON array, or the pgvector text form as a
-	// string; nil when absent).
+	// Vec is the reference vector for pgvector and cube distance ordering,
+	// scores and thresholds (vec=; a []any of numbers, or of two lists of
+	// numbers for a cube box, from a JSON array, or the type's text form as
+	// a string; nil when absent).
 	Vec any
+	// LatLon is the reference location for the earthdistance orderings,
+	// scores and thresholds (latlon=<lat>,<lon>; a map[string]any with
+	// float64 "lat" and "lon" in degrees; nil when absent).
+	LatLon any
 	// Levenshtein is the reference text (a string) for Levenshtein
 	// distance ordering, scores and thresholds (levenshtein=; nil when
 	// absent).
@@ -124,9 +129,10 @@ type FieldSel struct {
 	// Args are spatial projection args: "transform" (int SRID),
 	// "simplify" (float64 tolerance), "buffer" (float64 distance) and
 	// "precision" (int64 decimal digits); a geometry distance score's
-	// "spheroid" (bool); or the arguments of a derived contrib
-	// pseudo-column ("path" string; "offset", "length" int64). Nil when
-	// absent.
+	// "spheroid" (bool); the arguments of a derived contrib pseudo-column
+	// ("path" string; "offset", "length" int64); or a raster value's or
+	// statistics' "band" (int64), or a raster envelope's "precision". Nil
+	// when absent.
 	Args map[string]any
 	// CallArgs are the extra-argument values of a computed column
 	// (select=key(k=v)), keyed by argument name; absent arguments keep
@@ -436,9 +442,14 @@ type Not struct{ Term Expr }
 //     hk_any, *_any); map[string]any (decoded JSON object) or a range
 //     literal string for range operands; map[string]any or an hstore
 //     literal string for hstore cs/cd; a float64 distance for the vec_*_lt
-//     thresholds and an int64 one for levenshtein_lt (their references
-//     are vec= and levenshtein=); the text for hk_def, soundex,
-//     metaphone, dmetaphone and query_int.
+//     thresholds (pgvector and cube), earth_lt and earth_miles_lt, and an
+//     int64 one for levenshtein_lt (their references are vec=, latlon= and
+//     levenshtein=); for cube cs/cd/ov a []any decoded from a JSON array
+//     (a point, or a pair of corner lists) or the cube text form as a
+//     string; the text for hk_def, soundex, metaphone, dmetaphone and
+//     query_int.
+//   - intersects (raster columns): a postgis.Value parsed for a geometry
+//     without a typmod SRID.
 type Cond struct {
 	Column *introspect.Column // real column of the current resource
 	// Path is the JSON path applied to Column (data->>a=eq.x): a ->> path
@@ -556,6 +567,10 @@ const (
 	OpStIntersects3D        Op = "st_intersects3d"
 	OpBBoxIntersectsND      Op = "bbox_intersectsnd"
 	OpBBoxIntersects2D      Op = "bbox_intersects2d"
+
+	// OpRasterIntersects is the raster filter (postgis plugin): the raster's
+	// convex hull intersects a geometry (postgis.RasterIntersectsSQL).
+	OpRasterIntersects Op = "intersects"
 )
 
 // SpatialOps maps the URL spelling of every spatial operator to the
@@ -639,8 +654,9 @@ type OrderTerm struct {
 
 // ContribOrder orders by a pdbcore/contrib value expression over Column:
 // full-text relevance against Filter (Rank set), a trigram distance to
-// Request.Trgm, a vector distance to Request.Vec or the Levenshtein
-// distance to Request.Levenshtein (Expr set).
+// Request.Trgm, a vector or cube distance to Request.Vec, an earthdistance
+// distance to Request.LatLon or the Levenshtein distance to
+// Request.Levenshtein (Expr set).
 type ContribOrder struct {
 	Column *introspect.Column
 	// Name is the order modifier (rank, rank_cd, trgm_dist, vec_l2, ...).
@@ -652,8 +668,9 @@ type ContribOrder struct {
 	Filter *Cond
 	// Expr names the distance expression of a distance term: trigram
 	// (distance, wordDistance, strictWordDistance), vector (l2Distance,
-	// negativeInnerProduct, cosineDistance, l1Distance) or
-	// levenshteinDistance.
+	// negativeInnerProduct, cosineDistance, l1Distance), cube (l2Distance,
+	// l1Distance, chebyshevDistance), earthdistance (earthDistance,
+	// earthDistanceMiles) or levenshteinDistance.
 	Expr string
 }
 

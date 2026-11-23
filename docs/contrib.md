@@ -1,4 +1,4 @@
-# Contrib types: full-text search, trigrams, unaccent, fuzzystrmatch, hstore, ltree, intarray, ranges, inet, pgvector
+# Contrib types: full-text search, trigrams, unaccent, fuzzystrmatch, hstore, ltree, intarray, ranges, inet, pgvector, cube, earthdistance
 
 pdbr gives PostgreSQL's non-scalar built-in types and the common contrib
 extensions a filter and ordering surface, built on the operator vocabularies
@@ -12,7 +12,7 @@ vocabulary needs is read from the catalog:
   (and their multiranges), which the catalog records with their subtype.
 - **Extension types and operators** (`pg_trgm`, `unaccent`,
   `fuzzystrmatch`, `hstore`, `ltree`, `citext`, `intarray`, pgvector's
-  `vector`) only appear when the extension is
+  `vector`, `cube`, `earthdistance`) only appear when the extension is
   installed (`pg_extension`). None of them is required: without one, its
   operators, order terms and type handling are simply absent. The extension
   version matters too: `pg_trgm` older than 1.2 has no word-similarity
@@ -324,6 +324,9 @@ hstore these are its B-tree class operators `#<#`/`#>#`, since it has no
 | `<col>.vec_cos` | `col <=> $vec::vector` (cosine distance, 1 − cosine similarity) | `asc` |
 | `<col>.vec_l1` | `col <+> $vec::vector` (taxicab distance; pgvector 0.7+) | `asc` |
 | `<col>.levenshtein` | `levenshtein(col, $levenshtein)` (fuzzystrmatch edit distance) | `asc` (default) |
+| `<col>.vec_l2`, `.vec_l1`, `.vec_chebyshev` (cube) | `col <-> $vec::cube`, `<#>`, `<=>` (Euclidean, taxicab, Chebyshev) | `asc` |
+| `<col>.earth_dist` (earth) | `col <-> ll_to_earth($lat, $lon)`: cube's chord distance, which orders like the great-circle distance | `asc` |
+| `<col>.earth_miles` (point, earthdistance) | `col <@> point($lon, $lat)` (statute miles) | `asc` |
 | `<col>->key` | the hstore value of `key` (text) | either |
 | `<col>_nlevel`, `<col>_icount` | `nlevel(col)`, `icount(col)` (allowlisted columns under the policy) | either |
 
@@ -355,6 +358,10 @@ GET /api/articles?title=trgm_sim.postgres&order=title.trgm_dist,id&trgm=postgres
   without one is `400 invalid_filter`, and `vec` is reserved only where no
   column, computed column or RPC argument is named so. See
   [pgvector](#pgvector-pdbr).
+- The **cube** distances measure from the same `vec=` as the pgvector
+  ones, and **earth_dist** / **earth_miles** from `latlon=<lat>,<lon>`
+  (degrees), reserved and required like `vec=`. See [cube](#cube-pdbr) and
+  [earthdistance](#earthdistance-pdbr).
 - **levenshtein** measures the edit distance to the `levenshtein=` text the
   same way (one `levenshtein=` per request, reserved only where no column,
   computed column or RPC argument is named so; a term without it, or
@@ -485,6 +492,117 @@ $$;
   policy admits, and the `vec` parameter is documented on resources that
   have a vector term, score column or threshold.
 
+## cube (pdbr)
+
+Columns of the `cube` extension's `cube` type (any schema) are
+n-dimensional points and boxes when the extension is installed.
+
+- **Output**: a point is a JSON list of its coordinates (`[1, 2, 3]`), a
+  box the pair of its opposite corners (`[[0, 0], [1, 1]]`), rendered in
+  SQL from the cube's text form (`pdbcore/contrib` `Codec.OutputJSONSQL`).
+  Coordinates are finite numbers; PostgreSQL normalises a box's corners.
+- **Input** (bodies, bulk and nested rows, RPC `POST` arguments): the same
+  JSON shapes or the cube text form (`"(1, 2),(3, 4)"`), bound as one text
+  parameter cast to the column type (`$n::"ext".cube`). An empty list,
+  non-numbers, corners of different lengths or more than 100 dimensions
+  are `400 invalid_body`; a malformed text form is `400 pg:22P02`.
+- **Filters**: `is.null`, and
+
+| op | SQL | Operand |
+|---|---|---|
+| `cs` | `col @> $1::cube` | a cube: `[1,2]`, `[[0,0],[1,1]]` or `(0,0),(1,1)` |
+| `cd` | `col <@ $1::cube` | same |
+| `ov` | `col && $1::cube` | same |
+| `vec_l2_lt.<d>` | `col && cube_enlarge($vec, $d, cube_dim($vec)) AND (col <-> $vec) < $d` | the exclusive bound; the reference is `vec=` |
+| `vec_l1_lt.<d>` | same prefilter, `<#>` | same |
+| `vec_chebyshev_lt.<d>` | same prefilter, `<=>` | same |
+
+  The operand of `cs`/`cd`/`ov` is a JSON list (URL-encoded, and
+  double-quoted inside `or=(…)` lists since it holds commas) or the text
+  form. The thresholds measure from the request-wide `vec=`, like the
+  pgvector thresholds; the box enlarged by the distance in every dimension
+  holds every cube within that distance whatever the metric, so a GiST
+  index serves the prefilter before the exact distance. Comparisons
+  (`eq`, `lt`, `in`, …) are `400 invalid_filter`, as on vector columns;
+  so are a plain `order=box`, `distinct=box` and `box.min()`/`max()`.
+- **Ordering**: `order=<col>.vec_l2|vec_l1|vec_chebyshev` against `vec=`
+  (a JSON point or box, or the cube text form; checked against the cube
+  rules), nearest first under `asc`. A GiST index on the column answers
+  them as KNN scans; keyset cursors re-evaluate the anchor's distance.
+  The primary-key tiebreaker is applied by an incremental sort on top of
+  the KNN scan, which PostgreSQL plans from version 17 on; older servers
+  sort the matching rows instead (the same holds for `earth_dist` and the
+  pgvector terms).
+- **Scores**: `<col>_l2_distance`, `<col>_l1_distance` and
+  `<col>_chebyshev_distance` (see [Scores](#scores)), on every cube column.
+- **Index policy**: every operator, threshold and order term is served by
+  a GiST index on the column, so under `filters.indexed_only` a cube
+  column needs one (or `filters.allow_columns`); `400
+  column_not_filterable` / `column_not_orderable` otherwise.
+- **OpenAPI**: `oneOf [point (array of numbers), box (pair of arrays)]` in
+  responses, plus the text form (`string`) in request bodies; the `vec`
+  parameter is documented wherever a cube term, score or threshold is.
+
+```http
+GET /api/shapes?box=ov.%5B%5B0%2C0%5D%2C%5B5%2C5%5D%5D&select=id,box
+GET /api/shapes?select=id,box_chebyshev_distance&box=vec_chebyshev_lt.2&order=box.vec_chebyshev&vec=%5B1%2C2%5D&limit=10
+```
+
+## earthdistance (pdbr)
+
+With the `earthdistance` extension (which needs `cube`) installed, two
+kinds of column measure distances on the Earth's surface from the
+request-wide reference location `latlon=<lat>,<lon>` (degrees; latitude
+within ±90, longitude within ±180, `400 invalid_filter` otherwise).
+`latlon` is soft-reserved like `near`, `trgm` and `vec`: where a column,
+computed column or RPC argument is named `latlon` it is that filter, and
+the surface below that needs it is not offered.
+
+**`earth` columns** (the extension's `earth` domain over `cube`, or a
+domain over it):
+
+- **Output and input**: `{"lat": 51.5, "lon": -0.12}` in degrees, both
+  ways (`latitude(col)`/`longitude(col)` out, `ll_to_earth($1, $2)` in).
+  A missing member, a non-number or a value out of range is `400
+  invalid_body`.
+- **Filter**: `earth_lt.<metres>` keeps rows within that great-circle
+  distance of `latlon=`: `earth_box(ll_to_earth($lat, $lon), $d) @> col AND
+  earth_distance(col, ll_to_earth($lat, $lon)) < $d`. The box prefilter is
+  served by a GiST index on the column; the box also holds points slightly
+  farther away, which the exact distance drops. `not.`, `or=`/`and=` and
+  embed filters take it like any operator.
+- **Ordering**: `order=<col>.earth_dist` is nearest first under `asc`. It
+  sorts by cube's `<->` distance between the points
+  (`col <-> ll_to_earth($lat, $lon)`), the chord through the Earth, which
+  orders exactly like the great-circle distance and which the GiST index
+  answers as a KNN scan; keyset cursors compare the same chord value
+  (pdbcore `Expr.OrderSQL`), so paging follows `ORDER BY` exactly.
+- **Score**: `<col>_earth_distance` is the great-circle distance in metres
+  (`earth_distance`), which is what the threshold compares.
+- Comparisons, plain ordering, `distinct` and `min()`/`max()` are refused,
+  as on cube columns. OpenAPI documents the value as a `{lat, lon}` object.
+
+**`point` columns** holding (longitude, latitude) in degrees get the
+`<@>` operator, in statute miles: `earth_miles_lt.<miles>`,
+`order=<col>.earth_miles` and `<col>_earth_distance_miles`. No index serves
+`<@>`, so, like the bit-column pgvector surface, a point column gets it
+only where the policy admits unindexed surface: listed in
+`filters.allow_columns`, or with `filters.indexed_only: false`. Installing
+earthdistance therefore leaves unrelated point columns' surface and the
+OpenAPI document unchanged. Store an `earth` column (or index
+`ll_to_earth` of the coordinates) for index-assisted radius search.
+
+```http
+GET /api/sites?select=id,name,loc_earth_distance&loc=earth_lt.5000&order=loc.earth_dist&latlon=51.508,-0.128&limit=20
+GET /api/sites?order=ll.earth_miles&ll=earth_miles_lt.10&latlon=51.508,-0.128
+POST /api/sites
+{"name": "Trafalgar Square", "loc": {"lat": 51.508, "lon": -0.128}}
+```
+
+earthdistance before 1.2 (PostgreSQL 15 and earlier) calls the cube
+functions unqualified, so there its schema and cube's must be on the
+`search_path` of the database role (installing both in `public` does it).
+
 ## Scores
 
 Score pseudo-columns select the similarity or distance a reference
@@ -501,6 +619,9 @@ score fields:
 | `<col>_l2_distance`, `_negative_inner_product`, `_cosine_distance`, `_l1_distance` | `col <-> $vec`, `<#>`, `<=>`, `<+>` | `vec=` |
 | `<col>_hamming_distance`, `<col>_jaccard_distance` (bit columns) | `col <~> $vec::varbit`, `<%>` | `vec=` |
 | `<col>_levenshtein_distance` (integer) | `levenshtein(col, $levenshtein)`; null for values over 255 characters | `levenshtein=` |
+| `<col>_l2_distance`, `_l1_distance`, `_chebyshev_distance` (cube columns) | `col <-> $vec::cube`, `<#>`, `<=>` | `vec=` |
+| `<col>_earth_distance` (earth columns) | `earth_distance(col, ll_to_earth($lat, $lon))`, great-circle metres | `latlon=` |
+| `<col>_earth_distance_miles` (point columns) | `col <@> point($lon, $lat)`, statute miles | `latlon=` |
 
 ```http
 GET /api/articles?select=id,title,title_similarity&title=trgm_sim.postgres&trgm=postgres&order=title.trgm_dist&limit=10
@@ -519,11 +640,14 @@ GET /api/docs?select=id,chunks(id,embedding_cosine_distance)&chunks.order=embedd
 - Trigram scores exist on text columns that take the trigram operators
   (a GIN or GiST trigram index, or `filters.allow_columns`, under
   `filters.indexed_only`), so a GIN-indexed column has scores without
-  distance ordering. Vector scores exist on every vector column. Being
+  distance ordering. Vector, cube and earth scores exist on every column
+  of the type; the point miles score only where the policy admits the
+  `<@>` surface (see [earthdistance](#earthdistance-pdbr)). Being
   projections of the returned rows, neither depends on the ordering index
   or `@omit order`; `@omit read` removes them with the column.
-- A resource with a column or computed column named `trgm` (`vec`) has no
-  such parameter and no trigram (vector) scores; a score selected in an
+- A resource with a column or computed column named `trgm` (`vec`,
+  `latlon`) has no such parameter and no trigram (vector and cube,
+  earthdistance) scores; a score selected in an
   embed under a root where the parameter is a filter is `400
   invalid_select`. A real, computed or derived column owning a score's key
   keeps it (with a warning).
@@ -644,6 +768,8 @@ Values come out the way PostgREST returns them:
 | `ltree`, `tsvector`, `inet`, `cidr`, `citext` | string |
 | `ltree[]` | array of strings |
 | `vector`, `halfvec` (pgvector) | array of numbers (`[0.1,0.2,0.3]`) |
+| `cube` | a point's coordinates (`[1,2,3]`) or a box's corners (`[[0,0],[1,1]]`) |
+| `earth` (earthdistance) | `{"lat": …, "lon": …}` in degrees |
 | `sparsevec` (pgvector) | its text form (`"{1:1.5,3:2}/5"`) |
 
 Structured range output (`{start, end, …}`, as `contrib.Codec.OutputSQL`
@@ -660,6 +786,8 @@ it, so the structured form is accepted on input only.
 | `ltree`, `citext`, `tsvector`, `inet`, `cidr` | string |
 | `ltree[]` | array of strings |
 | `vector`, `halfvec`, `sparsevec` | array of numbers (`[0.1, 0.2, 0.3]`; for `sparsevec` a dense array whose zeros are left out), or the type's text form (`"[0.1,0.2,0.3]"`, `"{1:1.5,3:2}/5"`) → `$n::"ext".vector` |
+| `cube` | a list of numbers (point), a pair of such lists (box) or the text form → `$n::"ext".cube` |
+| `earth` | `{"lat": …, "lon": …}` → `ll_to_earth($n::float8, $m::float8)` |
 
 Other shapes are `400 invalid_body`: a non-string hstore value, a
 fractional bound on an integer range, an object for a multirange, an empty
@@ -697,7 +825,11 @@ column that accepts a full-text filter. A rejected operator is `400
 column_not_filterable` (`column_not_orderable` for order terms).
 
 The vector and bit distance thresholds, which no index serves, need the
-column in `filters.allow_columns` under the policy.
+column in `filters.allow_columns` under the policy. The cube operators,
+thresholds and distance ordering, the earth radius filter and
+`earth_dist` are GiST-served (a GiST index led by the column admits
+them); the point `<@>` surface (`earth_miles_lt`, `earth_miles`, the
+miles score) is never index-served and needs `filters.allow_columns`.
 
 OpenAPI lists exactly the accepted operators per column in
 `x-pdbr-filter-ops` (pinned to the parser by `TestFilterOpsMatchParser`,
@@ -716,8 +848,9 @@ trigram / vector distance term, score column or threshold.
   containment `cs.5` on ranges, JSON-object range and hstore operands, and
   the `rank`/`rank_cd`/`trgm_*`/`vec_*`/`levenshtein` order terms, the
   `vec_*_lt` and `levenshtein_lt` thresholds, the fuzzystrmatch phonetic
-  operators, `hk_def`, `query_int`, the score and derived pseudo-columns
-  with `trgm=`/`vec=`/`levenshtein=` are pdbr extensions. hstore values by
+  operators, `hk_def`, `query_int`, the cube and earthdistance operators,
+  order terms and scores, the score and derived pseudo-columns
+  with `trgm=`/`vec=`/`latlon=`/`levenshtein=` are pdbr extensions. hstore values by
   key (`attrs->color`) work in PostgREST too, which renders the arrow
   literally; pdbr restricts it to one key and treats `->` and `->>` alike.
 - **pgvector output.** `vector` and `halfvec` values are JSON arrays of
@@ -769,7 +902,16 @@ json/jsonb columns. hstore `hasDefinedKey` is `hk_def`; fuzzystrmatch `levenshte
 `levenshteinDistance` ordering and score are `<col>.levenshtein` and
 `<col>_levenshtein_distance` against `levenshtein=` (pdbq's threshold
 carries its own `{text, distance}`); intarray `matchesQueryInt` is
-`query_int`. The hstore `value` expression is the `attrs->key` path, and
+`query_int`; cube `contains`/`containedBy`/`overlaps` are `cs`/`cd`/`ov`,
+its `l2Distance`, `l1Distance`, `chebyshevDistance` orderings and scores
+`vec_l2`, `vec_l1`, `vec_chebyshev` and `<col>_l2_distance`, … against
+`vec=`, their `LessThan` thresholds `vec_*_lt`; earthdistance
+`earthDistanceLessThan` / `earthDistanceMilesLessThan` are `earth_lt` /
+`earth_miles_lt`, the `earthDistance` / `earthDistanceMiles` orderings and
+scores `<col>.earth_dist` / `<col>.earth_miles` and
+`<col>_earth_distance` / `<col>_earth_distance_miles` against `latlon=`
+(pdbq's `nearPoint:` argument; its thresholds carry their own
+`{lat, lon, distance}`). The hstore `value` expression is the `attrs->key` path, and
 the ltree `nlevel`, `parent`, `lca`, `subpath` and intarray `icount` values
 are the derived pseudo-columns `<col>_nlevel`, … (`subpath`/`lca` with
 select arguments). The other derived accessors (inet `family`, range

@@ -122,6 +122,7 @@ type Schema struct {
 	Description          string             `json:"description,omitempty"`
 	Items                *Schema            `json:"items,omitempty"`
 	MinItems             *int               `json:"minItems,omitempty"`
+	MaxItems             *int               `json:"maxItems,omitempty"`
 	Properties           map[string]*Schema `json:"properties,omitempty"`
 	Required             []string           `json:"required,omitempty"`
 	AdditionalProperties *bool              `json:"additionalProperties,omitempty"`
@@ -202,11 +203,17 @@ func (b *Builder) typeSchema(pgType, typeSchema, enumRef string) *Schema {
 	if s := vectorSchema(b.Catalog, pgType, "", false); s != nil {
 		return s
 	}
+	if s := cubeSchema(b.Catalog, pgType, "", false); s != nil {
+		return s
+	}
 	return typeSchemaWith(b.Enums, b.Composites, b.Extra.Types, pgType, typeSchema, enumRef)
 }
 
 func (b *Built) typeSchema(pgType, typeSchema, enumRef string) *Schema {
 	if s := vectorSchema(b.Catalog, pgType, "", false); s != nil {
+		return s
+	}
+	if s := cubeSchema(b.Catalog, pgType, "", false); s != nil {
 		return s
 	}
 	return typeSchemaWith(b.Enums, b.Composites, b.Extra.Types, pgType, typeSchema, enumRef)
@@ -246,6 +253,69 @@ func vectorSchema(cat *introspect.Catalog, pgType, baseSchema string, input bool
 	return nil
 }
 
+// cubeSchema is the schema of a cube value (nil for other types): a point
+// as a list of coordinates, a box as the pair of its corner lists; on
+// input (request bodies) the cube text form is accepted too. baseSchema is
+// the schema of the resolved base type ("" matches by name).
+func cubeSchema(cat *introspect.Catalog, pgType, baseSchema string, input bool) *Schema {
+	if strings.HasPrefix(pgType, "_") {
+		return nil
+	}
+	qualified := pgType
+	if baseSchema != "" {
+		qualified = baseSchema + "." + pgType
+	}
+	for _, v := range contrib.ForType(cat, qualified, false) {
+		if v.Name != contrib.VocabCube {
+			continue
+		}
+		point := &Schema{Type: "array", Items: &Schema{Type: "number"}, MinItems: intPtr(1),
+			Description: "cube point, as its list of coordinates, e.g. [1, 2, 3]."}
+		box := &Schema{Type: "array", Items: &Schema{Type: "array", Items: &Schema{Type: "number"}, MinItems: intPtr(1)}, MinItems: intPtr(2), MaxItems: intPtr(2),
+			Description: "cube box, as the pair of its opposite corners, e.g. [[1, 2], [3, 4]]."}
+		out := []*Schema{point, box}
+		if input {
+			out = append(out, &Schema{Type: "string", Description: "cube text form, e.g. (1, 2, 3) or (1, 2),(3, 4)."})
+		}
+		return &Schema{OneOf: out}
+	}
+	return nil
+}
+
+// latLonSchema is the {lat, lon} object of an earth value, in degrees.
+func latLonSchema() *Schema {
+	lat, lon := -90, -180
+	return &Schema{
+		Type:        "object",
+		Description: "Location on the Earth's surface in degrees (earthdistance earth).",
+		Properties: map[string]*Schema{
+			"lat": {Type: "number", Minimum: &lat, Maximum: intPtr(90), Description: "Latitude in degrees."},
+			"lon": {Type: "number", Minimum: &lon, Maximum: intPtr(180), Description: "Longitude in degrees."},
+		},
+		Required:             []string{"lat", "lon"},
+		AdditionalProperties: boolPtr(false),
+	}
+}
+
+// locationSchema is the schema of a cube or earth column's value (nil for
+// any other column): cubeSchema, or the {lat, lon} object of an earth
+// column (a domain the base-type lookup cannot see).
+func locationSchema(cat *introspect.Catalog, c *introspect.Column, input bool) *Schema {
+	if c == nil || c.IsArray || strings.HasPrefix(c.PGType, "_") {
+		return nil
+	}
+	v, ok := DistanceOnly(cat, c)
+	switch {
+	case !ok:
+		return nil
+	case v.Name == contrib.VocabEarth:
+		return latLonSchema()
+	case v.Name == contrib.VocabCube:
+		return cubeSchema(cat, c.PGType, c.BaseTypeSchema, input)
+	}
+	return nil
+}
+
 // inputTypeSchema is typeSchema for request bodies: Extra.InputTypes wins
 // over Extra.Types (postgis: GeoJSON or WKT text on the way in). baseSchema
 // is the schema of the resolved base type ("" matches range types by name).
@@ -255,6 +325,9 @@ func (b *Builder) inputTypeSchema(pgType, typeSchema, baseSchema, enumRef string
 			return s
 		}
 		if s := vectorSchema(b.Catalog, pgType, baseSchema, true); s != nil {
+			return s
+		}
+		if s := cubeSchema(b.Catalog, pgType, baseSchema, true); s != nil {
 			return s
 		}
 	}
@@ -320,6 +393,8 @@ func typeSchemaWith(enums map[string]*Enum, comps map[string]*Composite, types m
 		return &Schema{}
 	case "hstore":
 		return &Schema{Type: "object", Description: "hstore, as an object of string keys to string or null values."}
+	case "raster":
+		return &Schema{Type: "string", Description: "postgis_raster raster in a text form PostGIS reads (hex-encoded WKB, as ST_AsHexWKB writes it). Write-only: raster values are never returned."}
 	default:
 		return &Schema{Type: "string"}
 	}
@@ -575,7 +650,7 @@ func (b *Builder) resourceSchema(r *Resource) *Schema {
 		p := &Schema{}
 		if pc.Schema != nil {
 			p = pc.Schema
-			if !pc.Column.NotNull || pc.Score != nil || pc.Headline != nil || pc.Contrib != nil && p.Type != "integer" {
+			if !pc.Column.NotNull || pc.Score != nil || pc.Headline != nil || pc.Raster.TakesBand() || pc.Contrib != nil && p.Type != "integer" {
 				p = Nullable(p)
 			}
 		}
@@ -646,7 +721,8 @@ func relationNote(rel *Relation) string {
 	return out
 }
 
-// inputColumns lists the body keys a write method accepts, in catalog order.
+// inputColumns lists the body keys a write method accepts, in catalog
+// order; raster columns are written though never read.
 func (r *Resource) inputColumns(m Method) []*Field {
 	allowed := r.InputColumnsFor(m)
 	out := make([]*Field, 0, len(allowed))
@@ -654,6 +730,15 @@ func (r *Resource) inputColumns(m Method) []*Field {
 		if allowed[f.Key] != nil {
 			out = append(out, f)
 		}
+	}
+	n := len(out)
+	for _, f := range r.Rasters {
+		if allowed[f.Key] != nil {
+			out = append(out, f)
+		}
+	}
+	if len(out) > n {
+		sort.SliceStable(out, func(i, j int) bool { return out[i].Column.Position < out[j].Column.Position })
 	}
 	return out
 }
@@ -748,8 +833,8 @@ func (b *Builder) nestedInputProps(r *Resource, s *Schema, required map[string]b
 // the parser's op/type compatibility (parse.coerceOperand): plugin types
 // come from Extra.FilterOps, spatial columns without the plugin only
 // support is, arrays and json have their containment operators, text its
-// pattern operators, hstore no ordering comparisons, pgvector types only
-// is; the contrib operators
+// pattern operators, hstore no ordering comparisons, pgvector, cube and
+// earth types only is; the contrib operators
 // the filter policy admits (ContribFilters) follow the core ones.
 func (b *Builder) filterOps(r *Resource, c *introspect.Column) []string {
 	base := strings.TrimPrefix(c.PGType, "_")
@@ -767,7 +852,7 @@ func (b *Builder) filterOps(r *Resource, c *introspect.Column) []string {
 }
 
 func coreFilterOps(cat *introspect.Catalog, c *introspect.Column, base string, isArray bool) []string {
-	if postgis.FlavourOf(base).Spatial() {
+	if postgis.FlavourOf(base).Spatial() || postgis.IsRaster(base) {
 		return []string{"is"}
 	}
 	if isArray {
@@ -776,7 +861,7 @@ func coreFilterOps(cat *introspect.Catalog, c *introspect.Column, base string, i
 	if v, ok := OwnerVocabulary(cat, c); ok && v.Name == contrib.VocabHstore {
 		return []string{"eq", "neq", "in", "is", "isdistinct"}
 	}
-	if _, ok := VectorVocabulary(cat, c); ok {
+	if _, ok := DistanceOnly(cat, c); ok {
 		return []string{"is"}
 	}
 	switch base {

@@ -118,6 +118,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Directional/equality bounding-box ops (`bbox_leftof`, `bbox_rightof`, `bbox_below`, `bbox_above`, `bbox_overlapsor{leftof,rightof,below,above}`, `bbox_equals`, `bbox_intersectsnd`, `bbox_intersects2d`) and `st_exactlyequals`, `st_orderingequals`, `st_intersects3d`, geometry operand — `postgis` plugin (parity)
 - [x] Distance ordering `order=location.dist.asc&near=…`; missing `near` → 400 (parity)
 - [x] Selectable distance `select=<col>_distance[(spheroid=true)]` against `near=` (metres on geography and with `spheroid=true`, SRID units otherwise) — see [PostGIS](postgis.md#selecting-the-distance) (new)
+- [x] postgis_raster columns: never returned (out of `*`, `400 invalid_select` when selected, out of the read schema and the ETag hash), writable as hex WKB; `<col>_width`, `_height`, `_num_bands`, `_srid`, `_pixel_width`, `_pixel_height`, `_envelope`, `<col>_value(band=)` at `near=`, `<col>_summary_stats(band=)`, and the `intersects` filter (allowlisted columns under `filters.indexed_only`) — see [PostGIS](postgis.md#rasters) (new)
 - [x] `distinct=col1,col2` → `SELECT DISTINCT ON`; distinct-aware `X-Total-Count`; limit/offset only (parity)
 - [x] Reserved param names (`select`, `order`, …) filterable only inside `and=(...)` — documented limitation (new)
 - [x] Range operators `ov cs cd sl sr nxr nxl adj` (range literal or JSON object operand; `cs.<element>`) on ranges and multiranges (parity)
@@ -136,6 +137,8 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Derived pseudo-columns `<col>_nlevel`, `<col>_parent`, `<col>_lca(path=)`, `<col>_subpath(offset=,length=)` (ltree), `<col>_lca` (ltree[]), `<col>_icount` (intarray); `nlevel`/`icount` filterable and orderable on allowlisted columns — see [Contrib](contrib.md#derived-columns-ltree-and-intarray) (new)
 - [x] fuzzystrmatch on text-like columns: `levenshtein_lt` thresholds, `order=<col>.levenshtein` and `<col>_levenshtein_distance` against `levenshtein=`, phonetic `soundex`, `metaphone`, `dmetaphone` (allowlisted columns under `filters.indexed_only`) — see [Contrib](contrib.md#fuzzystrmatch-pdbr) (new)
 - [x] intarray `query_int` (`@@ query_int`) on `int4[]` columns (GIN/GiST under the policy) — see [Contrib](contrib.md#intarray-pdbr) (new)
+- [x] cube columns: JSON point/box values in and out, `cs cd ov`, `vec_l2_lt vec_l1_lt vec_chebyshev_lt` thresholds, `order=<col>.vec_l2|vec_l1|vec_chebyshev` and `<col>_l2_distance`, `_l1_distance`, `_chebyshev_distance` against `vec=` (GiST under the policy) — see [Contrib](contrib.md#cube-pdbr) (new)
+- [x] earthdistance: `earth` columns as `{lat, lon}`, `earth_lt` radius filter, `order=<col>.earth_dist` (GiST KNN, keyset-capable) and `<col>_earth_distance` against `latlon=<lat>,<lon>`; `<@>` miles on point columns (`earth_miles_lt`, `earth_miles`, `<col>_earth_distance_miles`; allowlisted columns under the policy) — see [Contrib](contrib.md#earthdistance-pdbr) (new)
 
 ## Pagination
 

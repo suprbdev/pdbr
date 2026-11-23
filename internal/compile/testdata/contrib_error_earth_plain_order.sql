@@ -1,0 +1,2 @@
+-- request: GET /api/kb/sites?order=loc
+-- error: 400 column_not_orderable: earth column "loc" is orderable by distance only (loc.earth_dist with latlon=)

@@ -225,6 +225,9 @@ func (s *stmt) condSQL(c *plan.Cond, alias string) (string, error) {
 // opSQL renders `ref <op> $n` for one operator; c.Negate wraps the result.
 // not.in and not.is get their idiomatic forms.
 func (s *stmt) opSQL(col *introspect.Column, ref string, c *plan.Cond) (string, error) {
+	if postgis.IsRaster(col.PGType) && !col.IsArray {
+		return s.rasterCondSQL(ref, c)
+	}
 	spatial := postgis.FlavourOf(col.PGType).Spatial() && !col.IsArray
 	if name, ok := spatialOpName(c.Op); ok {
 		if !spatial {
@@ -419,11 +422,22 @@ func (s *stmt) contribFilterSQL(cf api.ContribFilter, ref string, v any) (string
 		}
 		return "(" + ref + ") " + cf.Vocabulary.Operator(op) + " " + s.ownerParam(cf.Vocabulary, s.param(lit)), nil
 	}
-	if cf.Op.Arg == contrib.ArgVectorDistance {
+	switch cf.Op.Arg {
+	case contrib.ArgVectorDistance, contrib.ArgCubeDistance:
 		if s.plan.Vec == nil {
 			return "", errUser(CodeInvalidFilter, "filter %s requires vec=", cf.Name)
 		}
-		v = map[string]any{"vector": s.plan.Vec, "distance": v}
+		key := "vector"
+		if cf.Op.Arg == contrib.ArgCubeDistance {
+			key = "cube"
+		}
+		v = map[string]any{key: s.plan.Vec, "distance": v}
+	case contrib.ArgLatLonDistance:
+		ll, ok := s.plan.LatLon.(map[string]any)
+		if !ok {
+			return "", errUser(CodeInvalidFilter, "filter %s requires latlon=", cf.Name)
+		}
+		v = map[string]any{"lat": ll["lat"], "lon": ll["lon"], "distance": v}
 	}
 	if cf.Op.Arg == contrib.ArgTextDistance {
 		if s.plan.Levenshtein == nil {

@@ -9,6 +9,7 @@ import (
 
 	coreinflect "github.com/suprbdev/pdbcore/inflect"
 	"github.com/suprbdev/pdbcore/introspect"
+	"github.com/suprbdev/pdbcore/postgis"
 	"github.com/suprbdev/pdbcore/smarttags"
 
 	"github.com/suprbdev/pdbr/internal/inflect"
@@ -252,12 +253,23 @@ func (b *Builder) RemoveRelation(rel *Relation) {
 // RemoveField hides a column from responses and select=, and with it from
 // filters, order=, distinct, aggregates and unique lookups; when everywhere
 // is set it also leaves request bodies. A hidden primary-key column
-// (Resource.HiddenKey) also drops the row path and keyset cursors.
+// (Resource.HiddenKey) also drops the row path and keyset cursors. A raster
+// column (Resource.Rasters) loses its pseudo-columns and filter.
 func (b *Builder) RemoveField(r *Resource, key string, everywhere bool) {
 	f := r.Field(key)
 	if f == nil {
+		f = r.Raster(key)
+	}
+	if f == nil {
 		return
 	}
+	rasters := r.Rasters[:0]
+	for _, x := range r.Rasters {
+		if x != f {
+			rasters = append(rasters, x)
+		}
+	}
+	r.Rasters = rasters
 	cols := r.Columns[:0]
 	for _, x := range r.Columns {
 		if x != f {
@@ -425,7 +437,12 @@ func (b *Builder) addResources() {
 				continue
 			}
 			keys[key] = true
-			r.Columns = append(r.Columns, &Field{Column: c, Key: key, ReadOnly: c.Generated, Description: description(c.Comment)})
+			f := &Field{Column: c, Key: key, ReadOnly: c.Generated, Description: description(c.Comment)}
+			if postgis.IsRaster(strings.TrimPrefix(c.PGType, "_")) {
+				r.Rasters = append(r.Rasters, f)
+			} else {
+				r.Columns = append(r.Columns, f)
+			}
 			if !c.Generated {
 				r.InputColumns[key] = c
 			}
@@ -460,7 +477,11 @@ func (b *Builder) claimOpenAPIName(name, owner string) string {
 
 // applyFilterPolicy resolves FilterColumns/OrderColumns under the
 // indexed-only policy plus allow_columns. Composite-typed columns are never
-// filterable: they have no scalar operator set.
+// filterable: they have no scalar operator set. A scalar raster column is
+// filterable (is.null and the postgis plugin's intersects) but never
+// orderable; the GiST index serving intersects is an expression index on
+// ST_ConvexHull, which has no columns, so under the policy only
+// allow_columns admits it.
 func (b *Builder) applyFilterPolicy(r *Resource) {
 	t := r.Table
 	allowed := map[string]bool{}
@@ -480,6 +501,12 @@ func (b *Builder) applyFilterPolicy(r *Resource) {
 		}
 		r.FilterColumns[f.Key] = true
 		r.OrderColumns[f.Key] = true
+	}
+	for _, f := range r.Rasters {
+		if f.Column.IsArray || b.Options.FilterIndexedOnly && !allowed[f.Column.Name] {
+			continue
+		}
+		r.FilterColumns[f.Key] = true
 	}
 }
 
