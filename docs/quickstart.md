@@ -95,6 +95,93 @@ Every option is also an env var (`PDBR_DATABASE_URL=...`) or flag
 (`--database.url=...`); precedence is flags > env > file > defaults. See
 [configuration.md](configuration.md).
 
+Without a file, the same first run is one command:
+
+```console
+$ pdbr serve --database.url postgres://localhost/mydb --auth.mode none --roles.switch=false
+```
+
+Plain `pdbr serve --database.url ...` fails validation on purpose: the
+defaults verify JWTs and need a secret, see the next section.
+
+## Secure setup
+
+The first run above uses the connection role for every request and ignores
+row-level security. This is the same app with real roles, a JWT and a policy.
+The SQL is identical for pdbq.
+
+1. Create the roles and an example table. The login role inherits the
+   request roles: pdbr introspects with the connection role's own privileges,
+   so a table that role cannot reach would not get a route (do not create it
+   `NOINHERIT` as for PostgREST). Each request then runs `SET LOCAL ROLE` to
+   the role in its token.
+
+   ```sql
+   CREATE ROLE authenticator LOGIN PASSWORD 'change-me';
+   CREATE ROLE anonymous NOLOGIN;
+   CREATE ROLE authenticated NOLOGIN;
+   GRANT anonymous, authenticated TO authenticator;
+
+   CREATE SCHEMA app;
+   CREATE TABLE app.todos (
+       id    serial PRIMARY KEY,
+       owner text NOT NULL DEFAULT current_setting('jwt.claims.sub', true),
+       title text NOT NULL,
+       done  boolean NOT NULL DEFAULT false
+   );
+   CREATE INDEX todos_owner_idx ON app.todos (owner);
+
+   GRANT USAGE ON SCHEMA app TO anonymous, authenticated;
+   GRANT SELECT, INSERT, UPDATE, DELETE ON app.todos TO authenticated;
+   GRANT USAGE ON SEQUENCE app.todos_id_seq TO authenticated;
+
+   ALTER TABLE app.todos ENABLE ROW LEVEL SECURITY;
+   ALTER TABLE app.todos FORCE ROW LEVEL SECURITY;
+   CREATE POLICY own_todos ON app.todos TO authenticated
+       USING (owner = current_setting('jwt.claims.sub', true))
+       WITH CHECK (owner = current_setting('jwt.claims.sub', true));
+   ```
+
+2. Start pdbr with a secret from the environment. `auth.mode: jwt` and
+   `roles.switch: true` are the defaults; `roles.allowed` pins which roles a
+   token may name. Requests without a token get `401` until you set
+   `roles.anonymous: anonymous`.
+
+   ```console
+   $ export PDBR_DATABASE_URL=postgres://authenticator:change-me@localhost/mydb
+   $ export PDBR_AUTH_JWT_SECRET=$(openssl rand -hex 32)
+   $ export PDBR_ROLES_ALLOWED=authenticated
+   $ pdbr serve --schema.schemas app
+   ```
+
+3. Mint a token for `alice`. Tokens need an `exp` claim, and the `role` claim
+   picks the database role. (`auth.mint_type` can have the database mint
+   tokens from a login function instead, see [rpc.md](rpc.md).)
+
+   ```console
+   $ b64() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+   $ h=$(printf '{"alg":"HS256","typ":"JWT"}' | b64)
+   $ p=$(printf '{"role":"authenticated","sub":"alice","exp":%d}' $(( $(date +%s) + 3600 )) | b64)
+   $ s=$(printf '%s.%s' "$h" "$p" | openssl dgst -sha256 -hmac "$PDBR_AUTH_JWT_SECRET" -binary | b64)
+   $ TOKEN=$h.$p.$s
+   ```
+
+4. Call the API. Each user sees only their own rows:
+
+   ```console
+   $ curl -si localhost:8080/todos -H "Authorization: Bearer $TOKEN" \
+       -H 'Content-Type: application/json' -d '{"title":"buy milk"}'
+   HTTP/1.1 201 Created
+   ...
+   $ curl -s localhost:8080/todos -H "Authorization: Bearer $TOKEN"
+   [{"id" : 1, "owner" : "alice", "title" : "buy milk", "done" : false}]
+   $ curl -si localhost:8080/todos | head -1
+   HTTP/1.1 401 Unauthorized
+   ```
+
+For production also terminate TLS in front of pdbr, boot from a schema cache
+and review the checklist in [deployment.md](deployment.md).
+
 ## What gets generated
 
 For each table/view in `schema.schemas` the connection role can `SELECT`
@@ -126,4 +213,5 @@ $ pdbr request GET '/users?mood=eq.happy' --print-sql
 
 Next: [api.md](api.md), [filtering.md](filtering.md),
 [mutations.md](mutations.md), [errors.md](errors.md),
-[configuration.md](configuration.md), [rls.md](rls.md), [cli.md](cli.md).
+[configuration.md](configuration.md), [rls.md](rls.md), [cli.md](cli.md),
+[migrating-from-postgrest.md](migrating-from-postgrest.md).

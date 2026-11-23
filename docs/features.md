@@ -2,6 +2,19 @@
 
 Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the backlog.** Checked = implemented and tested; unchecked = planned or explicitly deferred. Each item is tagged `(parity)` when it mirrors a pdbq feature or `(new)` when it exists only because of REST. Use this as the reference when adding features: tick the box in the same PR that ships it. See [architecture.md](architecture.md) for how the pieces fit.
 
+## Experimental features
+
+These shipped features are outside the 1.0 compatibility promise: they may change in a minor release. Each is also marked in its own documentation. The reasons and the full policy are in [Compatibility and versioning](compatibility.md#experimental-features). Everything else in this checklist is stable. This is a stability label, not a version tier.
+
+- Nested mutations, update/delete/disconnect especially (`nested_mutations`): The response does not reflect referential actions, parent `EXISTS` SELECT policies can fail, and the shapes are pdbr's own.
+- Partial success (`transactions.partial.*`, `Prefer: partial=items`): A savepoint per element; the 207 report shape is new.
+- Schema contracts (`contracts`): Need smart comments; integrity-message rewriting is heuristic.
+- Rasters, cube and earthdistance, bit-vector distances, `ts_headline`: Raster filters are neither reprojected nor costed; cube and earth nearest-neighbour tie-breaking needs PostgreSQL 17.
+- Index-aware contrib ordering: Operator classes are not introspected: any GIN index is assumed to be trigram and an HNSW index is assumed to serve every metric, so an ordering can end up as a sequential scan.
+- `@anyelement` and `@anycompatible` polymorphic function resolution: Recent.
+- Watch mode (`watch.enabled`): A development convenience, not a production feature.
+- The Go embedding and plugin API: see [Plugin author guide](plugins.md).
+
 ## Introspection (pg_catalog — from pdbcore)
 
 - [x] Tables (including partitioned tables) (parity)

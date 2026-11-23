@@ -62,16 +62,20 @@ $ curl 'localhost:8080/users?select=id,email,posts(title)&mood=eq.happy&limit=2'
 - **Pipe-friendly CLI** — `pdbr request GET '/users?select=id' | jq` prints
   the body, exits non-zero on 4xx/5xx, and `--print-sql` shows the exact
   statement without a database.
-- **Library embedding** — `pdbr.New(cfg, pdbr.WithPlugins(...)).Handler(ctx)`
-  mounts the whole API (watch mode included) in your own `net/http` mux.
+- **Library embedding (experimental)** — `pdbr.New(cfg, pdbr.WithPlugins(...)).Handler(ctx)`
+  mounts the whole API (watch mode included) in your own `net/http` mux. The Go
+  API is outside the 1.0 compatibility promise.
 
 ## Installation
 
 Prebuilt binaries for Linux, macOS and Windows (amd64/arm64) are attached to
-each release with a `checksums.txt`:
+each release with a `checksums.txt` (signed with cosign), a CycloneDX SBOM and
+build provenance attestations, see
+[SECURITY.md](SECURITY.md#verifying-releases):
 
 ```console
-$ curl -fsSL https://github.com/suprbdev/pdbr/releases/latest/download/pdbr_0.1.0_linux_amd64.tar.gz | tar xz
+$ VERSION=$(curl -fsSL https://api.github.com/repos/suprbdev/pdbr/releases/latest | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
+$ curl -fsSL https://github.com/suprbdev/pdbr/releases/download/v$VERSION/pdbr_${VERSION}_linux_amd64.tar.gz | tar xz
 $ ./pdbr --version
 ```
 
@@ -106,7 +110,21 @@ connection role; configure `auth` and `roles` before production
 ([docs/rls.md](docs/rls.md)). The defaults verify JWTs and refuse requests
 without credentials.
 
-See [docs/quickstart.md](docs/quickstart.md) for the full tour.
+See [docs/quickstart.md](docs/quickstart.md) for the full tour, including
+[Secure setup](docs/quickstart.md#secure-setup) with roles, a JWT and a
+row-level security policy. Coming from PostgREST? See
+[docs/migrating-from-postgrest.md](docs/migrating-from-postgrest.md).
+
+## Stability
+
+pdbr follows semantic versioning. Configuration keys, the CLI, the HTTP surface
+and REST grammar, error codes and metrics are covered by the 1.0 compatibility
+promise; a few features (contracts, nested and partial mutations, rasters and
+others) and the Go embedding and plugin API are **experimental** and outside
+it. Details, the deprecation policy and the supported PostgreSQL versions
+(14 to 19) are in [docs/compatibility.md](docs/compatibility.md). Report
+vulnerabilities as described in [SECURITY.md](SECURITY.md). See
+[CONTRIBUTING.md](CONTRIBUTING.md) and [CHANGELOG.md](CHANGELOG.md).
 
 ## Documentation
 
@@ -124,6 +142,8 @@ See [docs/quickstart.md](docs/quickstart.md) for the full tour.
 | [docs/openapi.md](docs/openapi.md) | What the generated OpenAPI 3.1 document contains |
 | [docs/configuration.md](docs/configuration.md) | Config layering; full reference in `examples/pdbr.example.yaml` |
 | [docs/upgrading.md](docs/upgrading.md) | Breaking changes and config migration between releases |
+| [docs/compatibility.md](docs/compatibility.md) | Versioning, what 1.0 freezes, experimental features, deprecation, supported versions |
+| [docs/migrating-from-postgrest.md](docs/migrating-from-postgrest.md) | Moving from PostgREST v12 or v13 |
 | [docs/cli.md](docs/cli.md) | All subcommands, scripting patterns |
 | [docs/rls.md](docs/rls.md) | Roles, JWT/header claims, policies |
 | [docs/smart-comments.md](docs/smart-comments.md) | `@omit`/`@name`/`@foreignKey`/… tags with REST semantics |
@@ -162,4 +182,4 @@ Load benchmarks (pdbr and PostgREST lanes next to pdbq) are tracked in
 
 ## License
 
-MIT, (c) 2026 suprb.
+MIT, (c) 2026 suprbdev.
