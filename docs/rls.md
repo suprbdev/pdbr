@@ -191,12 +191,15 @@ consequences for generated mutations:
   keep their old version
   ([mutations.md](mutations.md#embeds-back-to-the-mutated-table)).
 
-- **ETags hash the whole row.** A single-row `GET`, and `PATCH`/`DELETE`
-  with `If-Match`, compute `md5(to_jsonb(row)::text)` over **all** columns in
-  SQL, independent of `select=`. Under column-level grants that expression
-  fails with `42501` → `403` even when the selected columns are readable.
-  Either grant `SELECT` on the full row or set `server.etags: false` for
-  such deployments (`If-Match` is then ignored and no `ETag` header is sent).
+- **ETags hash every exposed column.** A single-row `GET`, and
+  `PATCH`/`DELETE` with `If-Match`, compute
+  `md5(to_jsonb(ROW(<exposed columns>))::text)` in SQL, independent of
+  `select=` (columns hidden with `@omit` / `@omit read` are left out). Under
+  column-level grants that expression fails with `42501` → `403` when the
+  role cannot read an exposed column, even when the selected columns are
+  readable. Grant `SELECT` on the exposed columns, hide the others with
+  `@omit read`, or set `server.etags: false` for such deployments (`If-Match`
+  is then ignored and no `ETag` header is sent).
 
 - **`SELECT` policies apply to rows returned by the mutation itself.** This
   matters for nested creates (the `nested-mutations` plugin): all inserts run

@@ -30,8 +30,8 @@ server:
   max_body_bytes: 1048576
   # Maximum select= embed nesting depth; deeper answers 400 embed_depth_exceeded.
   max_embed_depth: 5
-  # Maximum estimated cost (1 + list multipliers) per request; over answers 400 cost_exceeded. @costMultiplier smart comments tune the estimate.
-  max_cost: 10000
+  # Maximum estimated cost (1 + list multipliers) per request; over answers 400 cost_exceeded. A list counts the rows the SQL can fetch: its limit, else max_page_size (to-many embeds included). @costMultiplier smart comments tune the estimate.
+  max_cost: 100000
   # Largest accepted limit (larger answers 400 page_size_exceeded); also the page size when limit is absent.
   max_page_size: 100
   # Allowed CORS origins (exact match, or '*' for any). Empty disables CORS headers and preflight entirely.
@@ -40,10 +40,12 @@ server:
   compression: false
   # Answer every write with 405 (code read_only) for read replicas, maintenance or demos. Also toggleable at runtime when embedding pdbr as a library (App.SetReadOnly).
   read_only: false
-  # Weak ETag on single-row GETs, If-None-Match answering 304, If-Match on PATCH/DELETE answering 412. Disable when column-level grants deny SELECT on some columns (the ETag hashes the whole row).
+  # Weak ETag on single-row GETs, If-None-Match answering 304, If-Match on PATCH/DELETE answering 412. The hash covers every column the resource exposes (not @omit / @omit read ones); disable when column-level grants deny SELECT on an exposed column.
   etags: true
   # Honour Accept: text/csv on list GETs and set-returning RPCs.
   csv: true
+  # Prefix CSV header and string cells that start with =, +, -, @, a tab or a carriage return with a single quote, so spreadsheets do not evaluate them as formulas (CSV injection). Numbers are never escaped. Disable only when every consumer reads the CSV as data.
+  csv_escape_formulas: true
   # Allow PATCH and DELETE on a collection route without a filter (every visible row). Off by default: such requests answer 400 unfiltered_mutation.
   allow_unfiltered_mutations: false
   # Allow aggregate functions in select= (count(), col.sum(), col.avg(), col.max(), col.min(); col.extent(), col.union(), col.collect(), col.centroid() on spatial columns), grouped by the other selected items. Off by default (PostgREST db-aggregates-enabled): an aggregate reads every row its filters match, which limit does not bound; requests answer 400 aggregates_disabled.

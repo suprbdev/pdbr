@@ -17,7 +17,7 @@ func TestWriteCSV(t *testing.T) {
 	var buf bytes.Buffer
 	data := []byte(`[{"id":1,"email":"a@b.c","tags":["x","y"],"settings":{"a": 1},"ok":true,"note":null,"q":"say \"hi\", now"},` +
 		`{"id":2,"email":"d@e.f","tags":null,"settings":null,"ok":false,"note":"line\nbreak"}]`)
-	if err := writeCSV(&buf, []string{"id", "email", "tags", "settings", "ok", "note", "q", "missing"}, data); err != nil {
+	if err := writeCSV(&buf, []string{"id", "email", "tags", "settings", "ok", "note", "q", "missing"}, data, true); err != nil {
 		t.Fatal(err)
 	}
 	want := "id,email,tags,settings,ok,note,q,missing\r\n" +
@@ -27,18 +27,49 @@ func TestWriteCSV(t *testing.T) {
 		t.Errorf("csv =\n%q\nwant\n%q", buf.String(), want)
 	}
 	buf.Reset()
-	if err := writeCSV(&buf, []string{"value"}, []byte(`["ok","happy",null,3]`)); err != nil {
+	if err := writeCSV(&buf, []string{"value"}, []byte(`["ok","happy",null,3]`), true); err != nil {
 		t.Fatal(err)
 	}
 	if got := buf.String(); got != "value\r\nok\r\nhappy\r\n\r\n3\r\n" {
 		t.Errorf("scalar csv = %q", got)
 	}
 	buf.Reset()
-	if err := writeCSV(&buf, []string{"a"}, []byte(`[]`)); err != nil || buf.String() != "a\r\n" {
+	if err := writeCSV(&buf, []string{"a"}, []byte(`[]`), true); err != nil || buf.String() != "a\r\n" {
 		t.Errorf("empty csv = %q %v", buf.String(), err)
 	}
-	if err := writeCSV(&buf, []string{"a"}, []byte(`{"a":1}`)); err == nil {
+	if err := writeCSV(&buf, []string{"a"}, []byte(`{"a":1}`), true); err == nil {
 		t.Error("object accepted as csv rows")
+	}
+}
+
+func TestWriteCSVFormulas(t *testing.T) {
+	data := []byte(`[{"=h":"=HYPERLINK(\"https://x.invalid\")","n":-5,"s":"-5"},` +
+		`{"=h":"+1","n":1.5,"s":"@SUM(A1)"},{"=h":"\tx","n":0,"s":"\rx"},{"=h":"a=b","n":null,"s":""}]`)
+	var buf bytes.Buffer
+	if err := writeCSV(&buf, []string{"=h", "n", "s"}, data, true); err != nil {
+		t.Fatal(err)
+	}
+	want := "'=h,n,s\r\n" +
+		`"'=HYPERLINK(""https://x.invalid"")",-5,'-5` + "\r\n" +
+		"'+1,1.5,'@SUM(A1)\r\n" +
+		"'\tx,0,\"'x\"\r\n" +
+		"a=b,,\r\n"
+	if buf.String() != want {
+		t.Errorf("escaped csv =\n%q\nwant\n%q", buf.String(), want)
+	}
+	buf.Reset()
+	if err := writeCSV(&buf, []string{"value"}, []byte(`["=1+1",-1,"-1"]`), true); err != nil {
+		t.Fatal(err)
+	}
+	if got := buf.String(); got != "value\r\n'=1+1\r\n-1\r\n'-1\r\n" {
+		t.Errorf("escaped scalar csv = %q", got)
+	}
+	buf.Reset()
+	if err := writeCSV(&buf, []string{"=h", "s"}, []byte(`[{"=h":"=HYPERLINK(\"https://x.invalid\")","s":-5}]`), false); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := buf.String(), "=h,s\r\n"+`"=HYPERLINK(""https://x.invalid"")",-5`+"\r\n"; got != want {
+		t.Errorf("raw csv =\n%q\nwant\n%q", got, want)
 	}
 }
 

@@ -136,8 +136,12 @@ strings in intermediary log formats.
   port only the scraper reaches, so the unauthenticated endpoint stays off
   the public listener ([metrics.md](metrics.md#security)).
 - Consider `server.etags: false` when column-level grants deny `SELECT` on
-  some columns: the ETag hashes the whole row in SQL and those resources
-  would otherwise `403`.
+  an exposed column: the ETag hashes every exposed column in SQL and those
+  resources would otherwise `403` (columns hidden with `@omit read` are not
+  hashed).
+- Keep `server.csv_escape_formulas` on (the default) when CSV exports may be
+  opened in a spreadsheet; it neutralises formula cells planted through
+  writable text columns.
 
 ## Reverse proxies
 

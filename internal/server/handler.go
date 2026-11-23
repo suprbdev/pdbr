@@ -25,6 +25,9 @@ type Handler struct {
 	Parse    parse.Options
 	BasePath string
 	Log      *slog.Logger
+	// CSVRawFormulas writes CSV cells verbatim; by default a cell that a
+	// spreadsheet would evaluate as a formula is escaped (server.csv_escape_formulas).
+	CSVRawFormulas bool
 }
 
 // ParseOptions derives the parser options from the server section and the
@@ -125,7 +128,7 @@ func (h *Handler) ServeRoute(w http.ResponseWriter, r *http.Request, m *api.Matc
 		if r.Method == http.MethodHead {
 			return
 		}
-		if err := writeCSV(w, csvColumns(op), res.Data); err != nil {
+		if err := writeCSV(w, csvColumns(op), res.Data, !h.CSVRawFormulas); err != nil {
 			h.Log.Debug("write csv response", "err", err)
 		}
 		return

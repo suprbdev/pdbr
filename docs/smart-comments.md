@@ -107,8 +107,8 @@ keeps its `components.schemas` entry), and `PUT` needs both `create` and
 
 | Tag | Effect |
 |---|---|
-| `@omit` | Hide the column everywhere (responses, `select=`, request bodies, filters, `order=`, OpenAPI). It may still back PKs/FKs; row paths keep working. |
-| `@omit read` / `create` / `update` / `filter` / `order` | Hide it from just that surface: `read` → not in responses or `select=` (`400 unknown_column`), still writable and filterable; `create`/`update` → key rejected in `POST`/`PUT` or `PATCH`/`PUT` bodies (`400 invalid_body`, `column "c" of "t" cannot be written by POST`); `filter` → `400 column_not_filterable`; `order` → `400 column_not_orderable`. A unique constraint over a `read`-omitted (or fully omitted) column loses its `/{table}/by/{cols}/…` route (the segment names the hidden key); primary keys keep backing row paths, cursors and `Location`. A `NOT NULL` column without a default tagged `@omit create` makes every `POST` fail its required-column check — omit the column from reads instead, or give it a default. |
+| `@omit` | Hide the column everywhere (responses, `select=`, request bodies, filters, `order=`, OpenAPI, the [ETag](api.md#etag--conditional-requests) hash). It may still back PKs/FKs; row paths keep working. |
+| `@omit read` / `create` / `update` / `filter` / `order` | Hide it from just that surface: `read` → not in responses, `select=` (`400 unknown_column`) or the ETag hash, still writable and filterable; `create`/`update` → key rejected in `POST`/`PUT` or `PATCH`/`PUT` bodies (`400 invalid_body`, `column "c" of "t" cannot be written by POST`); `filter` → `400 column_not_filterable`; `order` → `400 column_not_orderable`. A unique constraint over a `read`-omitted (or fully omitted) column loses its `/{table}/by/{cols}/…` route (the segment names the hidden key); primary keys keep backing row paths, cursors and `Location`. A `NOT NULL` column without a default tagged `@omit create` makes every `POST` fail its required-column check — omit the column from reads instead, or give it a default. |
 | `@name <new_name>` | Rename the JSON key everywhere: responses, `select=`, filter param name, `order=` value, body keys, `/by/{cols}` segments, OpenAPI property. |
 | `@deprecated [reason]` | OpenAPI property `deprecated: true`, plus `x-deprecation-reason: <reason>` (`No longer supported` when the tag has no value). |
 | `@notNull` / `@nullable` | Override introspected nullability — views lose `NOT NULL`, `@notNull` restores `type: T` (instead of `[T, "null"]`) in OpenAPI. On a table column, `@notNull` without a default also makes the key `required` in `<name>.insert`; `@nullable` removes it from `required`. |
@@ -237,10 +237,10 @@ plugins:
 ## Cost estimation for recursive relations
 
 The compiler rejects a request whose estimated cost exceeds
-`server.max_cost` (default 10000) with `400 cost_exceeded`. The estimate is
+`server.max_cost` (default 100000) with `400 cost_exceeded`. The estimate is
 `1 + Σ(mult × child)` over the embed tree, where `mult` is the embed's
-explicit `limit` clamped to `server.max_page_size`, or **10** for a backward
-embed without one. That is right for an unrelated fan-out, but badly
+explicit `limit` clamped to `server.max_page_size`, or `server.max_page_size`
+(**100**) for a backward embed without one — the rows its SQL can fetch. That is right for an unrelated fan-out, but badly
 pessimistic for self-referential trees — a Reddit-style comment thread —
 where the fan-out at each level is far below the page.
 
@@ -250,8 +250,9 @@ A four-level thread,
 GET /api/comments?select=*,comments(*,comments(*,comments(*)))
 ```
 
-estimates `1 + 10·(1 + 10·(1 + 10·(1 + 10))) = 11 111`, over the default
-limit, even though the request returns a handful of rows in practice.
+estimates `1 + 100·(1 + 100·(1 + 100·(1 + 100))) = 101 010 101`, far over
+the default limit, even though the request returns a handful of rows in
+practice.
 
 `@costMultiplier <n>` on the recursive foreign key declares the *expected*
 rows per parent, and the estimator uses it in place of the page size:

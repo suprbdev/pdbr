@@ -58,13 +58,14 @@ See [cli.md](cli.md) for details.
 | `server.request_timeout` | duration | `30s` | overall HTTP request timeout; expiry → `504` problem |
 | `server.max_body_bytes` | int | 1048576 | maximum request body size (1 MiB); over → `413` |
 | `server.max_embed_depth` | int | 5 | maximum `select=` embed nesting; over → `400 embed_depth_exceeded` |
-| `server.max_cost` | int | 10000 | per-request cost limit (1 + Σ list multipliers); over → `400 cost_exceeded`; `@costMultiplier` tunes estimates (see [smart-comments.md](smart-comments.md)) |
+| `server.max_cost` | int | 100000 | per-request cost limit (1 + Σ list multipliers, a list counting the rows its SQL can fetch: its `limit`, else `server.max_page_size`, to-many embeds included); over → `400 cost_exceeded`; `@costMultiplier` tunes estimates (see [pagination.md](pagination.md#cost-limit), [smart-comments.md](smart-comments.md)) |
 | `server.max_page_size` | int | 100 | largest accepted `limit` (larger → `400 page_size_exceeded`); also the default when `limit` is absent; see [pagination.md](pagination.md) |
 | `server.cors_origins` | []string | `[]` | allowed CORS origins (exact match, or `*`); empty disables CORS headers and preflight |
 | `server.compression` | bool | `false` | gzip responses when the client sends `Accept-Encoding: gzip` |
 | `server.read_only` | bool | `false` | every write → `405` (`code: read_only`); runtime-toggleable via `App.SetReadOnly` |
-| `server.etags` | bool | `true` | weak `ETag` on single-row GETs, `If-None-Match` → `304`, `If-Match` on `PATCH`/`DELETE` → `412` |
+| `server.etags` | bool | `true` | weak `ETag` on single-row GETs, `If-None-Match` → `304`, `If-Match` on `PATCH`/`DELETE` → `412`; the hash covers the exposed columns only (`@omit` / `@omit read` columns are left out) |
 | `server.csv` | bool | `true` | `Accept: text/csv` on lists and set-returning RPCs |
+| `server.csv_escape_formulas` | bool | `true` | prefix CSV header and string cells starting with `=`, `+`, `-`, `@`, tab or CR with `'` so spreadsheets do not run them as formulas (CSV injection); JSON numbers are never escaped; `false` writes cells verbatim. See [api.md](api.md#content-negotiation) |
 | `server.allow_unfiltered_mutations` | bool | `false` | let `PATCH`/`DELETE {base}/{table}` run without a filter (every row the role can see); off → `400 unfiltered_mutation`. The guard checks that a filter (or `!inner` embed) is present, not its selectivity — a match-all filter passes; bound writes with `Prefer: handling=strict, max-affected=N`. See [mutations.md](mutations.md#bulk-patch--delete-by-filter) |
 | `server.aggregates` | bool | `false` | aggregate functions in `select=` (`count()`, `col.sum()`, `col.avg()`, `col.max()`, `col.min()`; spatial `col.extent()`/`union()`/`collect()`/`centroid()`), grouped by the other selected items — PostgREST `db-aggregates-enabled`; off → `400 aggregates_disabled`. An aggregate reads every row its filters match (`limit` bounds groups, not the scan), so index what you expose and keep `database.statement_timeout`; see [aggregates.md](aggregates.md) |
 | `schema.schemas` | []string | `[public]` | schema allowlist; resources in the first entry also get bare `/{table}` aliases |

@@ -258,8 +258,9 @@ GET /api/places?select=owner_id,location.extent(),location.centroid(),n:location
 
 An aggregate reads every row its filters match, so `server.max_cost`
 ([pagination.md](pagination.md#cost-limit)) costs an aggregated list **as if
-it had no limit**: the root at `server.max_page_size`, a to-many embed at 10
-(or its `@costMultiplier`); `limit` still bounds the response. Each
+it had no limit**: the root and a to-many embed at `server.max_page_size`
+(an embed at its `@costMultiplier` when lower); `limit` still bounds the
+response. Each
 aggregate costs 1 like a column, and so does a computed grouping key per
 scanned row. A total (`count=true`, `Prefer: count=`) on an aggregated root
 scans again and adds `server.max_page_size` × its grouping keys. Examples
@@ -268,8 +269,8 @@ with the defaults:
 | Request | Cost |
 |---|---|
 | `posts?select=author_id,count()&limit=5` | 1 + 100 × 2 = 201 |
-| `users?select=id,posts(count())` | 1 + 100 × (1 + 1 + 10 × 1) = 1201 |
-| `users?select=id,posts(count())&limit=5` | 1 + 5 × 12 = 61 |
+| `users?select=id,posts(count())` | 1 + 100 × (1 + 1 + 100 × 1) = 10201 |
+| `users?select=id,posts(count())&limit=5` | 1 + 5 × 102 = 511 |
 | `posts?select=author_id,count()&count=true` | 1 + 100 × 2 + 100 × 1 = 301 |
 
 Aggregates are only as fast as the scan beneath them; index the filter and

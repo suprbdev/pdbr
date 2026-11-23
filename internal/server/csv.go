@@ -95,10 +95,19 @@ func csvColumns(op *exec.Operation) []string {
 // element, values in column order; NULL and missing keys are empty fields,
 // strings are written verbatim (quoted by the writer when needed), numbers
 // and booleans as their JSON literals, arrays/objects as compact JSON text.
-func writeCSV(w io.Writer, columns []string, data []byte) error {
+// With escapeFormulas, a header or string cell that a spreadsheet would
+// read as a formula gets a leading single quote (escapeFormula).
+func writeCSV(w io.Writer, columns []string, data []byte, escapeFormulas bool) error {
 	cw := csv.NewWriter(w)
 	cw.UseCRLF = true
-	if err := cw.Write(columns); err != nil {
+	header := columns
+	if escapeFormulas {
+		header = make([]string, len(columns))
+		for i, c := range columns {
+			header[i] = escapeFormula(c)
+		}
+	}
+	if err := cw.Write(header); err != nil {
 		return err
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -118,14 +127,14 @@ func writeCSV(w io.Writer, columns []string, data []byte) error {
 			return err
 		}
 		if scalar && (len(raw) == 0 || raw[0] != '{') {
-			record[0] = csvField(raw)
+			record[0] = csvField(raw, escapeFormulas)
 		} else {
 			var obj map[string]json.RawMessage
 			if err := json.Unmarshal(raw, &obj); err != nil {
 				return err
 			}
 			for i, c := range columns {
-				record[i] = csvField(obj[c])
+				record[i] = csvField(obj[c], escapeFormulas)
 			}
 		}
 		if err := cw.Write(record); err != nil {
@@ -136,16 +145,19 @@ func writeCSV(w io.Writer, columns []string, data []byte) error {
 	return cw.Error()
 }
 
-func csvField(raw json.RawMessage) string {
+func csvField(raw json.RawMessage, escapeFormulas bool) string {
 	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
 		return ""
 	}
 	if raw[0] == '"' {
 		var s string
-		if err := json.Unmarshal(raw, &s); err == nil {
-			return s
+		if err := json.Unmarshal(raw, &s); err != nil {
+			return string(raw)
 		}
-		return string(raw)
+		if escapeFormulas {
+			return escapeFormula(s)
+		}
+		return s
 	}
 	if raw[0] == '{' || raw[0] == '[' {
 		var buf bytes.Buffer
@@ -154,4 +166,20 @@ func csvField(raw json.RawMessage) string {
 		}
 	}
 	return string(raw)
+}
+
+// escapeFormula prefixes s with a single quote when it starts with a
+// character that makes Excel, LibreOffice or Google Sheets evaluate the
+// cell as a formula (=, +, -, @, tab, carriage return; OWASP CSV
+// injection). JSON numbers never pass through it, so negative numbers stay
+// numeric.
+func escapeFormula(s string) string {
+	if s == "" {
+		return s
+	}
+	switch s[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "'" + s
+	}
+	return s
 }

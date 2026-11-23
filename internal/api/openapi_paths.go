@@ -234,7 +234,7 @@ func (b *Builder) rowItem(item *PathItem, rt *Route) {
 		if r.Etag {
 			get.Parameters = append(get.Parameters, &Parameter{Name: "If-None-Match", In: "header", Schema: &Schema{Type: "string"},
 				Description: "Weak ETag(s) (or *) from an earlier response; a match answers 304."})
-			ok.Headers = map[string]*Header{"ETag": {Schema: &Schema{Type: "string"}, Description: `Weak row hash W/"<md5>" over all columns, independent of select=.`}}
+			ok.Headers = map[string]*Header{"ETag": {Schema: &Schema{Type: "string"}, Description: `Weak row hash W/"<md5>" over the exposed columns, independent of select=.`}}
 			get.Responses["304"] = &Response{Description: "Not Modified (If-None-Match matched)."}
 		}
 		get.Responses["200"] = ok

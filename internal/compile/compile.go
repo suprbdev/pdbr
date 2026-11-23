@@ -252,8 +252,15 @@ func quoteIdent(s string) string {
 	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
 }
 
+// quoteLiteral renders s as a SQL string literal that reads the same
+// whatever standard_conforming_strings is set to: a backslash switches to
+// an escape string (E'...') with the backslashes doubled.
 func quoteLiteral(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+	q := strings.ReplaceAll(s, "'", "''")
+	if strings.Contains(q, `\`) {
+		return `E'` + strings.ReplaceAll(q, `\`, `\\`) + "'"
+	}
+	return "'" + q + "'"
 }
 
 func tableRef(t *introspect.Table) string {
@@ -320,13 +327,23 @@ func (s *stmt) rowByKey() (*Statement, error) {
 	sel := jsonExpr
 	if s.etagWanted() {
 		shape = ShapeRowEtag
-		// Hash over the whole row regardless of select=, so the ETag is a
-		// property of the row rather than of the projection.
-		sel = fmt.Sprintf("json_build_object('etag', md5(to_jsonb(%s)::text), 'row', %s)", alias, jsonExpr)
+		sel = fmt.Sprintf("json_build_object('etag', %s, 'row', %s)", etagSQL(r, alias), jsonExpr)
 	}
 	sql := fmt.Sprintf("SELECT %s AS data\nFROM %s %s%s\nWHERE %s\nLIMIT 1",
 		sel, s.sourceRef(r.Table, alias), alias, joinLaterals(laterals), strings.Join(conds, " AND "))
 	return &Statement{SQL: sql, Args: s.ps.Args(), Shape: shape}, nil
+}
+
+// etagSQL renders the row hash behind ETag and If-Match over alias: md5 of
+// the resource's exposed columns in catalog order, independent of select=.
+// Columns the resource does not expose (@omit, @omit read) never reach the
+// hash, so the ETag reveals neither their values nor their changes.
+func etagSQL(r *api.Resource, alias string) string {
+	cols := make([]string, len(r.Columns))
+	for i, f := range r.Columns {
+		cols[i] = colRef(alias, f.Column.Name)
+	}
+	return "md5(to_jsonb(ROW(" + strings.Join(cols, ", ") + "))::text)"
 }
 
 func (s *stmt) etagWanted() bool {

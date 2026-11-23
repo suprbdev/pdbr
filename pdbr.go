@@ -316,7 +316,9 @@ func (a *App) routeHandler(built *api.Built) *server.Handler {
 	opts := server.ParseOptions(built, a.Config.Server.MaxEmbedDepth, a.Config.Server.MaxPageSize, a.Config.Server.Etags, a.Config.Server.CSV)
 	opts.AllowUnfilteredMutations = a.Config.Server.AllowUnfilteredMutations
 	opts.Aggregates = a.Config.Server.Aggregates
-	return server.NewHandler(built, ex, opts, a.Config.Server.BasePath, a.Log)
+	h := server.NewHandler(built, ex, opts, a.Config.Server.BasePath, a.Log)
+	h.CSVRawFormulas = !a.Config.Server.CSVEscapeFormulas
+	return h
 }
 
 // authMode is rls.auth.mode when RLS is on (credentials are ignored
