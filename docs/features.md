@@ -5,6 +5,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **As built (v0.1.0): ev
 ## Introspection (pg_catalog — from pdbcore)
 
 - [x] Tables (including partitioned tables) (v1) (parity)
+- [x] Partitions hidden by default (`Table.IsPartition`; per-partition constraint clones no longer duplicate relations), `schema.expose_partitions` to expose them (v1.x) (parity)
 - [x] Views (read-only) (v1) (parity)
 - [x] Materialized views (read-only) (v1) (parity)
 - [x] Columns: type, nullability, defaults, identity/generated detection (v1) (parity)

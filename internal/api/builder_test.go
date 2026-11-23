@@ -615,3 +615,38 @@ func BenchmarkAPIBuild(b *testing.B) {
 		}
 	}
 }
+
+func TestPartitions(t *testing.T) {
+	cat := testutil.FixtureCatalog()
+	priv := introspect.Privileges{Select: true, Insert: true, Update: true, Delete: true}
+	cols := func() []*introspect.Column {
+		return []*introspect.Column{
+			{Name: "id", Position: 1, PGType: "int4", TypeSchema: "pg_catalog", NotNull: true},
+			{Name: "user_id", Position: 2, PGType: "int4", TypeSchema: "pg_catalog", NotNull: true},
+		}
+	}
+	cat.Tables = append(cat.Tables,
+		&introspect.Table{
+			Schema: "public", Name: "orders", Kind: introspect.RelTable, Partitioned: true, Columns: cols(), Privileges: priv,
+			PrimaryKey:  &introspect.Constraint{Name: "orders_pkey", Columns: []string{"id"}},
+			ForeignKeys: []*introspect.ForeignKey{{Name: "orders_user_id_fkey", Columns: []string{"user_id"}, RefSchema: "public", RefTable: "users", RefColumns: []string{"id"}}},
+		},
+		&introspect.Table{Schema: "public", Name: "orders_2026", Kind: introspect.RelTable, PartitionOf: "public.orders", Columns: cols(), Privileges: priv},
+	)
+	for _, expose := range []bool{false, true} {
+		built, err := New(cat, inflect.Default, Options{Functions: true, BasePath: "/api", Schemas: []string{"public"}, MaxPageSize: 100, ExposePartitions: expose, Logger: quiet()}).Build()
+		if err != nil {
+			t.Fatal(err)
+		}
+		orders := built.Resources["public.orders"]
+		if orders == nil || !orders.Methods[MethodPost] || len(orders.Relations["users"]) != 1 || len(built.Resources["public.users"].Relations["orders"]) != 1 {
+			t.Fatalf("expose=%v: partitioned parent = %+v", expose, orders)
+		}
+		if got := built.Resources["public.orders_2026"] != nil; got != expose {
+			t.Errorf("expose=%v: partition resource present = %v", expose, got)
+		}
+		if _, ok := built.Match("/orders_2026"); ok != expose {
+			t.Errorf("expose=%v: partition routed = %v", expose, ok)
+		}
+	}
+}

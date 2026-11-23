@@ -66,6 +66,7 @@ See [cli.md](cli.md) for details.
 | `schema.schemas` | []string | `[public]` | schema allowlist; resources in the first entry also get bare `/{table}` aliases |
 | `schema.cache_path` | string | — | boot from `pdbr schema dump` output; see [caching.md](caching.md) |
 | `schema.functions` | bool | `true` | expose functions as `/rpc/{fn}` routes and computed columns ([rpc.md](rpc.md)) |
+| `schema.expose_partitions` | bool | `false` | also expose each partition of a partitioned table as its own resource; off, only the partitioned parent is a resource (its rows already span every partition) — see [api.md](api.md#what-gets-generated) |
 | `filters.indexed_only` | bool | `true` | only indexed/PK/unique columns filterable and orderable; see [filtering.md](filtering.md) |
 | `filters.allow_columns` | map[string][]string | `{}` | per-table extra filterable columns keyed by `schema.table`, overriding `indexed_only` |
 | `rls.enabled` | bool | `true` | switch role per request via `SET LOCAL ROLE`; see [rls.md](rls.md) |
@@ -155,6 +156,7 @@ subcommand that loads configuration accepts them plus `--config`.
 | `--server.read_only` | bool | |
 | `--schema.schemas` | []string | comma-separated or repeated |
 | `--schema.cache_path` | string | |
+| `--schema.expose_partitions` | bool | |
 | `--rls.enabled` | bool | |
 | `--watch.enabled` | bool | |
 | `--filters.indexed_only` | bool | |

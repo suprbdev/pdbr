@@ -24,7 +24,7 @@ const EnvPrefix = "PDBR_"
 type Config struct {
 	Database confx.Database `koanf:"database"`
 	Server   Server         `koanf:"server"`
-	Schema   confx.Schema   `koanf:"schema"`
+	Schema   Schema         `koanf:"schema"`
 	Filters  confx.Filters  `koanf:"filters"`
 	RLS      confx.RLS      `koanf:"rls"`
 	TX       confx.TX       `koanf:"transactions"`
@@ -51,6 +51,12 @@ type Server struct {
 	CSV            bool          `koanf:"csv" doc:"Honour Accept: text/csv on list GETs and set-returning RPCs."`
 }
 
+// Schema is the shared schema section plus pdbr's own keys.
+type Schema struct {
+	confx.Schema     `koanf:",squash"`
+	ExposePartitions bool `koanf:"expose_partitions" doc:"Expose each partition of a partitioned table as a resource of its own. Off by default: a partition's rows are already reachable (and writable) through its partitioned parent, which stays a resource either way."`
+}
+
 // DefaultConfig returns the documented defaults.
 func DefaultConfig() Config {
 	return Config{
@@ -71,10 +77,10 @@ func DefaultConfig() Config {
 			Etags:          true,
 			CSV:            true,
 		},
-		Schema: confx.Schema{
+		Schema: Schema{Schema: confx.Schema{
 			Schemas:   []string{"public"},
 			Functions: true,
-		},
+		}},
 		Filters: confx.Filters{IndexedOnly: true},
 		RLS: confx.RLS{
 			Enabled:       true,
@@ -113,7 +119,7 @@ func (c *Config) Validate() error {
 	errs = append(errs, confx.ValidateRLS(c.RLS)...)
 	errs = append(errs, confx.ValidateTX(c.TX)...)
 	errs = append(errs, confx.ValidateWatch(c.Watch, c.Schema.CachePath)...)
-	errs = append(errs, confx.ValidateSchema(c.Schema)...)
+	errs = append(errs, confx.ValidateSchema(c.Schema.Schema)...)
 	errs = append(errs, validateServer(c.Server)...)
 	errs = append(errs, confx.ValidateLog(c.Log)...)
 	return confx.InvalidConfig(errs)

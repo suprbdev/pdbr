@@ -27,6 +27,9 @@ type Options struct {
 	AllowColumns map[string][]string
 	// Functions exposes PostgreSQL functions as RPC routes and computed columns.
 	Functions bool
+	// ExposePartitions makes partitions of partitioned tables resources too
+	// (schema.expose_partitions); by default only the partitioned parent is.
+	ExposePartitions bool
 	// BasePath is server.base_path (OpenAPI servers[0].url).
 	BasePath string
 	// Schemas is schema.schemas; Schemas[0] gets bare aliases.
@@ -324,6 +327,10 @@ func (b *Builder) addResources() {
 	for _, t := range b.sortedTables() {
 		if !t.Privileges.Select {
 			b.log.Debug("skipping relation: no SELECT privilege", "table", t.Schema+"."+t.Name)
+			continue
+		}
+		if t.IsPartition() && !b.Options.ExposePartitions {
+			b.log.Debug("skipping relation: partition (schema.expose_partitions is off)", "table", t.Schema+"."+t.Name, "parent", t.PartitionOf)
 			continue
 		}
 		seg := b.Inflect(inflect.KindResourcePath, coreinflect.Input{Schema: t.Schema, Table: t.Name})

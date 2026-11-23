@@ -21,13 +21,14 @@ import (
 )
 
 // Configuration. Shared section types come from pdbcore/confx; Server is
-// pdbr's own. Section types carry a Config suffix to avoid clashing with
+// pdbr's own and Schema embeds the shared section (confx.Schema) with
+// pdbr's own keys. Section types carry a Config suffix to avoid clashing with
 // unrelated root-package names.
 type (
 	Config         = config.Config
 	DatabaseConfig = confx.Database
 	ServerConfig   = config.Server
-	SchemaConfig   = confx.Schema
+	SchemaConfig   = config.Schema
 	FiltersConfig  = confx.Filters
 	RLSConfig      = confx.RLS
 	AuthConfig     = confx.Auth

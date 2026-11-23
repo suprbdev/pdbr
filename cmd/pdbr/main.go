@@ -54,6 +54,7 @@ func configFlags(cmd *cobra.Command) {
 	fs.Bool("server.read_only", false, "answer every write with 405 (read-only mode)")
 	fs.StringSlice("schema.schemas", nil, "PostgreSQL schemas to expose")
 	fs.String("schema.cache_path", "", "boot from schema cache file")
+	fs.Bool("schema.expose_partitions", false, "expose table partitions as resources of their own")
 	fs.Bool("rls.enabled", true, "enable RLS role switching")
 	fs.Bool("watch.enabled", false, "watch for DDL changes (dev)")
 	fs.Bool("filters.indexed_only", true, "only indexed columns filterable")

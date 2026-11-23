@@ -196,6 +196,7 @@ func (a *App) BuildAPI(ctx context.Context, cat *introspect.Catalog) (*api.Built
 		FilterIndexedOnly: a.Config.Filters.IndexedOnly,
 		AllowColumns:      a.Config.Filters.AllowColumns,
 		Functions:         a.Config.Schema.Functions,
+		ExposePartitions:  a.Config.Schema.ExposePartitions,
 		BasePath:          a.Config.Server.BasePath,
 		Schemas:           a.Config.Schema.Schemas,
 		MaxPageSize:       a.Config.Server.MaxPageSize,

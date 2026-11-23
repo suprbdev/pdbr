@@ -51,10 +51,11 @@ For each table/view in `schema.schemas` the connection role can `SELECT`:
 | primary key | `GET /users/{id}`, `PATCH`/`DELETE /users/{id}`, keyset cursors, `ETag` |
 | unique constraints | `GET /users/by/email/{email}` (+ `PATCH`/`DELETE`), `PUT /users?on_conflict=email` |
 | foreign keys | embeds `posts?select=*,users(*)` (forward) and `users?select=*,posts(*)` (backward), relation filters and order |
+| partitioned table `orders` | one resource like any table (reads, writes and embeds span every partition; inserts are routed by PostgreSQL); its partitions are **not** resources unless `schema.expose_partitions: true`, and then only with the keys and FKs declared on the partition itself (inherited ones are recorded on the parent) |
 | `INSERT`/`UPDATE`/`DELETE` privileges | `POST /users`, `PATCH /users/{id}`, `DELETE /users/{id}`, `PUT /users` |
 | enums | verbatim labels in bodies, responses and filters (`mood=eq.happy`) |
 | composite types | nested JSON objects (`"address": {"street": …}`) on read and write; arrays too |
-| stable/immutable functions | `GET`/`POST /rpc/{fn}` |
+| stable/immutable functions | `GET`/`POST /rpc/{fn}` (`RETURNS TABLE` / `OUT` params → objects keyed by the result columns) |
 | volatile functions | `POST /rpc/{fn}` (mutation semantics) |
 | `fn(<table>)` stable functions | computed columns (`users_post_count` → `select=post_count`) |
 | PostGIS columns | GeoJSON in/out, `<col>_area`, `<col>_centroid`, … pseudo-columns, spatial filters, `.dist` ordering |
