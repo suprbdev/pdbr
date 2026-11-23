@@ -514,8 +514,7 @@ func TestMutationPrivilegesAndRLS(t *testing.T) {
 		t.Fatal(err)
 	}
 	srv := testServer(t, func(c *config.Config) {
-		c.RLS.Enabled = true
-		c.RLS.Auth.Mode = "headers"
+		headersAuth(c)
 	})
 	as := func(role, user string) map[string]string {
 		h := map[string]string{"X-Pdbr-Claim-Role": role}

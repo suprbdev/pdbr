@@ -24,6 +24,7 @@ const (
 	CodeNotFound         = "not_found"
 	CodeMethodNotAllowed = "method_not_allowed"
 	CodeInvalidToken     = "invalid_token"
+	CodeAuthRequired     = "auth_required"
 	CodeRoleNotAllowed   = "role_not_allowed"
 	CodeBodyTooLarge     = "body_too_large"
 	CodeTimeout          = "timeout"

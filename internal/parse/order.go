@@ -134,7 +134,7 @@ func (p *parser) resolveOrderPath(t *plan.OrderTerm, path string, res *api.Resou
 			return errf(CodeUnknownRelation, "unknown relation %q on %q", parts[0], res.Path)
 		}
 		if !p.opts.RelationOrder {
-			return errf(CodeInvalidFilter, "related ordering is not enabled (advanced-filters plugin)")
+			return errf(CodeInvalidFilter, "related ordering is not enabled (advanced_filters plugin)")
 		}
 		rel, err := p.resolveRelation(res, parts[0], hint)
 		if err != nil {

@@ -736,7 +736,7 @@ func toJSONParam(v any) string {
 
 // ---- relation filters ----
 
-// relationCond compiles a relation filter (advanced-filters): (NOT) EXISTS
+// relationCond compiles a relation filter (advanced_filters): (NOT) EXISTS
 // over the related table joined to the current row. Quantifiers apply to
 // to-many relations (api.Relation.ToMany): some = EXISTS(match), none =
 // NOT EXISTS(match), every = NOT EXISTS(NOT match). exists.true/false take

@@ -36,7 +36,7 @@ func buildGeo(t testing.TB, indexedOnly bool) *api.Built {
 		Functions: true, BasePath: "/api", Schemas: []string{"public", testcatalog.ContribSchema},
 		MaxPageSize: 100, Etags: true, Version: "test", Logger: quiet(),
 	})
-	if err := postgisplugin.New(nil).TransformAPI(context.Background(), b); err != nil {
+	if err := postgisplugin.New(postgisplugin.DefaultSettings()).TransformAPI(context.Background(), b); err != nil {
 		t.Fatal(err)
 	}
 	built, err := b.Build()

@@ -20,9 +20,28 @@ func ExampleYAML() string {
 	b.WriteString(confx.ExampleYAML(&cfg,
 		confx.WithDoc("schema.cache_path", "Boot from this schema cache file instead of introspecting (see pdbr schema dump)."),
 		confx.WithDoc("schema.functions", "Expose PostgreSQL functions as /rpc/{fn} routes and computed columns."),
-		confx.WithDoc("rls.auth.header_prefix", "Header prefix mapped to claims in headers mode, e.g. X-Pdbr-Claim-. The rest of the name maps to one claim (User-Id is user_id); requests with a claim header containing an underscore or other punctuation, repeated, or folding onto another claim header are rejected. The gateway must strip every client-supplied header with this prefix, in any letter case."),
-		confx.WithDoc("rls.claims_prefix", "set_config namespace for request claims. Defaults to pdbq.claims so RLS policies written for pdbq work unchanged."),
+		confx.WithDoc("auth.headers.prefix", "Header prefix mapped to claims, e.g. X-Pdbr-Claim-. The rest of the name maps to one claim (User-Id is user_id); requests with a claim header containing an underscore or other punctuation, repeated, or folding onto another claim header are rejected. The gateway must strip every client-supplied header with this prefix, in any letter case."),
 		confx.WithDoc("errors.detail", "'dev' exposes full PostgreSQL error detail (plus a pg object) in problem responses; 'prod' sanitizes but passes constraint-violation and bad-input messages through; 'strict' hides every database error message (constraint and column names never leak)."),
 	))
 	return b.String()
 }
+
+// Starter is the pdbr.yaml `pdbr config init` writes: it runs with only
+// database.url filled in, without credentials and as the connection role.
+const Starter = `# pdbr configuration. Run "pdbr config example" for the full annotated reference.
+database:
+  # Fill in real credentials, or delete the url and set PDBR_DATABASE_URL.
+  url: "postgres://USER:PASSWORD@HOST:5432/DB"
+server:
+  addr: ":8080"
+  base_path: "/api"
+schema:
+  schemas: ["public"]
+# No credentials, and every request runs as the connection role, so row-level
+# security policies for request roles do not apply. Configure auth (jwt or
+# headers) and roles (switch: true, anonymous, allowed) before production use.
+auth:
+  mode: none
+roles:
+  switch: false
+`

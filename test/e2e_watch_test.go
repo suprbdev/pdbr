@@ -25,7 +25,7 @@ func watchServer(t *testing.T, dbURL string, logs *syncWriter, mutate func(*conf
 	t.Helper()
 	cfg := config.DefaultConfig()
 	cfg.Database.URL = dbURL
-	cfg.RLS.Enabled = false
+	cfg.UseConnectionIdentity()
 	cfg.Errors.Detail = "dev"
 	cfg.Watch.Enabled = true
 	if mutate != nil {
@@ -247,7 +247,7 @@ func TestCloseStopsWatcher(t *testing.T) {
 	}
 	cfg := config.DefaultConfig()
 	cfg.Database.URL = dbURL
-	cfg.RLS.Enabled = false
+	cfg.UseConnectionIdentity()
 	cfg.Watch.Enabled = true
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)

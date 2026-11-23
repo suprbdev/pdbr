@@ -616,7 +616,7 @@ func TestPostGISDisabledAndSettings(t *testing.T) {
 	})
 	t.Run("filters=false", func(t *testing.T) {
 		srv := testServer(t, func(c *config.Config) {
-			c.Plugins.Settings = map[string]map[string]any{"postgis": {"filters": false}}
+			c.Plugins.Settings.PostGIS.Filters = false
 		})
 		expect(t, srv.URL, spatialFilter, "invalid_filter")
 		expect(t, srv.URL, pseudo, "")
@@ -625,7 +625,7 @@ func TestPostGISDisabledAndSettings(t *testing.T) {
 	})
 	t.Run("derived=false", func(t *testing.T) {
 		srv := testServer(t, func(c *config.Config) {
-			c.Plugins.Settings = map[string]map[string]any{"postgis": {"derived": false}}
+			c.Plugins.Settings.PostGIS.Derived = false
 		})
 		expect(t, srv.URL, spatialFilter, "")
 		expect(t, srv.URL, pseudo, "unknown_column")
@@ -637,7 +637,7 @@ func TestPostGISDisabledAndSettings(t *testing.T) {
 	})
 	t.Run("ordering=false", func(t *testing.T) {
 		srv := testServer(t, func(c *config.Config) {
-			c.Plugins.Settings = map[string]map[string]any{"postgis": {"ordering": false}}
+			c.Plugins.Settings.PostGIS.Ordering = false
 		})
 		expect(t, srv.URL, spatialFilter, "")
 		expect(t, srv.URL, pseudo, "")
@@ -646,7 +646,7 @@ func TestPostGISDisabledAndSettings(t *testing.T) {
 	})
 	t.Run("projection=false", func(t *testing.T) {
 		srv := testServer(t, func(c *config.Config) {
-			c.Plugins.Settings = map[string]map[string]any{"postgis": {"projection": false}}
+			c.Plugins.Settings.PostGIS.Projection = false
 		})
 		expect(t, srv.URL, spatialFilter, "")
 		expect(t, srv.URL, pseudo, "")
@@ -673,8 +673,8 @@ func TestPostGISOmitTags(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// smart-comments off: the postgis plugin reads the tag itself.
-	srv := testServer(t, func(c *config.Config) { c.Plugins.Disabled = []string{"smart-comments"} })
+	// smart_comments off: the postgis plugin reads the tag itself.
+	srv := testServer(t, func(c *config.Config) { c.Plugins.Disabled = []string{"smart_comments"} })
 	res, body := get(t, q(srv.URL, "area=st_intersects.POINT(-0.128 51.508)"))
 	wantProblem(t, res, body, 400, "column_not_filterable")
 	res, body = get(t, q(srv.URL, "area=is.null"))

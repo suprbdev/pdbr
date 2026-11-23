@@ -35,6 +35,23 @@ import (
 // SchemaName is the OpenAPI component schema for GeoJSON geometries.
 const SchemaName = postgis.TypeName
 
+// Name is the plugin name (plugins.disabled entry and plugins.settings key).
+const Name = "postgis"
+
+// Settings is the plugins.settings.postgis section.
+type Settings struct {
+	Filters    bool `koanf:"filters" doc:"Spatial filter operators (st_*, bbox_*) on spatial columns and the intersects filter on raster columns."`
+	Derived    bool `koanf:"derived" doc:"Derived pseudo-columns: <col>_area, <col>_centroid, ... on spatial columns, <col>_width, <col>_value, <col>_summary_stats, ... on raster columns."`
+	Ordering   bool `koanf:"ordering" doc:"Distance ordering (order=<col>.dist.asc|desc) and the <col>_distance score, both with near=."`
+	Projection bool `koanf:"projection" doc:"select= projection arguments: col(transform=...,simplify=...,buffer=...,precision=...)."`
+	Aggregates bool `koanf:"aggregates" doc:"Spatial aggregate functions in select= (col.extent(), col.union(), col.collect(), col.centroid()); also needs server.aggregates."`
+}
+
+// DefaultSettings returns the defaults: every half on.
+func DefaultSettings() Settings {
+	return Settings{Filters: true, Derived: true, Ordering: true, Projection: true, Aggregates: true}
+}
+
 // Plugin implements plugin.APIHook.
 type Plugin struct {
 	filters    bool
@@ -44,36 +61,21 @@ type Plugin struct {
 	aggregates bool
 }
 
-// New builds the plugin from its plugins.settings.postgis map: filters,
-// derived, ordering, projection, aggregates (all default true); unknown
-// keys are ignored.
-func New(settings map[string]any) *Plugin {
-	p := &Plugin{filters: true, derived: true, ordering: true, projection: true, aggregates: true}
-	for key, target := range map[string]*bool{
-		"filters":    &p.filters,
-		"derived":    &p.derived,
-		"ordering":   &p.ordering,
-		"projection": &p.projection,
-		"aggregates": &p.aggregates,
-	} {
-		if v, ok := settings[key].(bool); ok {
-			*target = v
-		}
-	}
-	return p
+// New builds the plugin from its settings.
+func New(s Settings) *Plugin {
+	return &Plugin{filters: s.Filters, derived: s.Derived, ordering: s.Ordering, projection: s.Projection, aggregates: s.Aggregates}
 }
 
 // Name is the plugin name (plugins.disabled / plugins.settings key).
-func (p *Plugin) Name() string { return "postgis" }
+func (p *Plugin) Name() string { return Name }
 
-// Priority 160 runs after smart-comments (50) and advanced-filters (150), so
+// Priority 160 runs after smart_comments (50) and advanced_filters (150), so
 // a column those removed is never given a spatial surface.
 func (p *Plugin) Priority() int { return 160 }
 
-// Settings reports the effective settings (filters, derived, ordering,
-// projection).
-func (p *Plugin) Settings() (filters, derived, ordering, projection bool) {
-	return p.filters, p.derived, p.ordering, p.projection
+// Settings reports the effective settings.
+func (p *Plugin) Settings() Settings {
+	return Settings{Filters: p.filters, Derived: p.derived, Ordering: p.ordering, Projection: p.projection, Aggregates: p.aggregates}
 }
 
 // TransformAPI adds the spatial surface. Without a spatial or raster
@@ -239,7 +241,7 @@ func InputSchema() *api.Schema {
 }
 
 // applyOmits honours @omit filter / @omit order (and a bare @omit) on the
-// column comment without depending on the smart-comments plugin.
+// column comment without depending on the smart_comments plugin.
 func (p *Plugin) applyOmits(b *api.Builder, r *api.Resource, f *api.Field) {
 	skipFilter, skipOrder := Omits(f.Column.Comment)
 	if skipFilter {

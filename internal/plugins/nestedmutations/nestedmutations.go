@@ -27,8 +27,8 @@ import (
 	"github.com/suprbdev/pdbr/internal/plan"
 )
 
-// Name is the plugin name (config key under plugins.settings).
-const Name = "nested-mutations"
+// Name is the plugin name (plugins.disabled entry and plugins.settings key).
+const Name = "nested_mutations"
 
 // DefaultMaxDepth is the default nesting bound (the root row is depth 1).
 const DefaultMaxDepth = 3
@@ -37,42 +37,49 @@ const DefaultMaxDepth = 3
 // request (every list item counts once).
 const DefaultMaxOperations = 50
 
-// Plugin is the nested-mutations plugin.
+// Settings is the plugins.settings.nested_mutations section.
+type Settings struct {
+	ForceTransactions bool `koanf:"force_transactions" doc:"Run every request carrying nested keys in a transaction, even with transactions.mutations off."`
+	MaxDepth          int  `koanf:"max_depth" doc:"Deepest nesting of create/update operations (the root row is depth 1; connect, delete and disconnect add no level); deeper answers 400 embed_depth_exceeded."`
+	MaxOperations     int  `koanf:"max_operations" doc:"Most nested operations per request (every list item and forward operation counts once); more answers 400 invalid_body."`
+}
+
+// DefaultSettings returns the defaults: force_transactions on, max_depth
+// DefaultMaxDepth, max_operations DefaultMaxOperations.
+func DefaultSettings() Settings {
+	return Settings{ForceTransactions: true, MaxDepth: DefaultMaxDepth, MaxOperations: DefaultMaxOperations}
+}
+
+// Validate reports settings out of range, keyed by their config path.
+func (s Settings) Validate() []string {
+	var errs []string
+	if s.MaxDepth < 1 {
+		errs = append(errs, "plugins.settings."+Name+".max_depth must be >= 1")
+	}
+	if s.MaxOperations < 1 {
+		errs = append(errs, "plugins.settings."+Name+".max_operations must be >= 1")
+	}
+	return errs
+}
+
+// Plugin is the nested_mutations plugin.
 type Plugin struct {
 	forceTx  bool
 	maxDepth int
 	maxOps   int
 }
 
-// New builds the plugin from plugins.settings.nested-mutations:
-// force_transactions (true), max_depth (3) and max_operations (50).
-// Unknown keys are ignored.
-func New(settings map[string]any) *Plugin {
-	p := &Plugin{forceTx: true, maxDepth: DefaultMaxDepth, maxOps: DefaultMaxOperations}
-	if v, ok := settings["force_transactions"].(bool); ok {
-		p.forceTx = v
+// New builds the plugin from its settings; a max_depth or max_operations
+// below 1 (which Validate rejects) falls back to the default.
+func New(s Settings) *Plugin {
+	p := &Plugin{forceTx: s.ForceTransactions, maxDepth: s.MaxDepth, maxOps: s.MaxOperations}
+	if p.maxDepth < 1 {
+		p.maxDepth = DefaultMaxDepth
 	}
-	if n, ok := intSetting(settings["max_depth"]); ok && n > 0 {
-		p.maxDepth = n
-	}
-	if n, ok := intSetting(settings["max_operations"]); ok && n > 0 {
-		p.maxOps = n
+	if p.maxOps < 1 {
+		p.maxOps = DefaultMaxOperations
 	}
 	return p
-}
-
-func intSetting(v any) (int, bool) {
-	switch x := v.(type) {
-	case int:
-		return x, true
-	case int64:
-		return int(x), true
-	case uint64:
-		return int(x), true
-	case float64:
-		return int(x), true
-	}
-	return 0, false
 }
 
 // Name implements plugin.Plugin.
@@ -237,10 +244,10 @@ func NestedSchema(r *api.Resource, rel *api.Relation, m api.Method) *api.Schema 
 		}
 		s := &api.Schema{Type: "object", Properties: props, MinProperties: intPtr(1), AdditionalProperties: boolPtr(false)}
 		if update {
-			s.Description = "Nested input (nested-mutations plugin) for the " + to.Path + " row referenced by " + cols + ": at most one of create / connect / disconnect (which set " + cols + "), plus update or delete of the row referenced before the request. Single-row PATCH only."
+			s.Description = "Nested input (nested_mutations plugin) for the " + to.Path + " row referenced by " + cols + ": at most one of create / connect / disconnect (which set " + cols + "), plus update or delete of the row referenced before the request. Single-row PATCH only."
 		} else {
 			s.MaxProperties = intPtr(1)
-			s.Description = "Nested input (nested-mutations plugin): exactly one of " + strings.Join(sortedSchemaKeys(props), " / ") + " for the " + to.Path + " row referenced by " + cols + ", which then need not be sent."
+			s.Description = "Nested input (nested_mutations plugin): exactly one of " + strings.Join(sortedSchemaKeys(props), " / ") + " for the " + to.Path + " row referenced by " + cols + ", which then need not be sent."
 		}
 		return s
 	}
@@ -273,9 +280,9 @@ func NestedSchema(r *api.Resource, rel *api.Relation, m api.Method) *api.Schema 
 		return nil
 	}
 	fk := strings.Join(fieldKeys(to, rel.EqualityColumns()), ",")
-	desc := "Nested input (nested-mutations plugin): " + to.Path + " rows to create referencing this row, or existing ones (by key) to point at it (their " + fk + " is filled in)."
+	desc := "Nested input (nested_mutations plugin): " + to.Path + " rows to create referencing this row, or existing ones (by key) to point at it (their " + fk + " is filled in)."
 	if update {
-		desc = "Nested input (nested-mutations plugin) for the " + to.Path + " rows referencing this row through " + fk + ": create new ones, connect existing ones, and update, delete or disconnect (clear " + fk + " of) rows referencing it before the request. Single-row PATCH only."
+		desc = "Nested input (nested_mutations plugin) for the " + to.Path + " rows referencing this row through " + fk + ": create new ones, connect existing ones, and update, delete or disconnect (clear " + fk + " of) rows referencing it before the request. Single-row PATCH only."
 	}
 	return &api.Schema{Type: "object", Properties: props, MinProperties: intPtr(1), AdditionalProperties: boolPtr(false), Description: desc}
 }
@@ -351,7 +358,7 @@ func connectSchema(b *api.Builder, r *api.Resource) *api.Schema {
 	if len(alts) == 0 {
 		return nil
 	}
-	desc := "Key of an existing " + r.Path + " row for a nested connect, update, delete or disconnect (nested-mutations plugin): the primary key or one unique constraint's columns."
+	desc := "Key of an existing " + r.Path + " row for a nested connect, update, delete or disconnect (nested_mutations plugin): the primary key or one unique constraint's columns."
 	if temporal {
 		desc += " A temporal (WITHOUT OVERLAPS) key is named without its period column, which a forward connect over a PERIOD foreign key accepts."
 	}

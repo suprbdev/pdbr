@@ -49,7 +49,7 @@ the environment.
 paths (`/` or `/segment[/segment...]` of letters, digits, `_ . ~ -`, no
 trailing slash), two contracts on one path, overlapping paths (`/a` and
 `/a/b`, or `/` next to any other contract), a `metrics.path` inside a
-contract's base path, and contracts with the `smart-comments` plugin
+contract's base path, and contracts with the `smart_comments` plugin
 disabled: hidden columns are removed by the plugin's `@omit` handling (see
 [Security](#security)).
 

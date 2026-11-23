@@ -47,7 +47,8 @@ reach PostgreSQL without restarting it.
 
 `compose.yaml` runs `postgis/postgis:16-3.4` initialised with the fixture
 schema (`db/init/01-schema.sql`, regenerated from pdbcore with `make fixture`)
-plus pdbr in watch mode with RLS off and `errors.detail: dev`. It publishes
+plus pdbr in watch mode without authentication, as the connection role
+(`auth.mode: none`, `roles.switch: false`), and `errors.detail: dev`. It publishes
 **no host ports**; put your mappings in a gitignored `compose.override.yaml`
 (compose merges it automatically):
 
@@ -95,18 +96,21 @@ strings in intermediary log formats.
   JWTs, claims and all data cross the wire in cleartext until a
   TLS-terminating reverse proxy, load balancer or ingress controller sits in
   front. Never expose the pdbr port directly to untrusted networks.
-- `rls.enabled: true` with a **non-superuser** connection role that has been
-  granted the request roles (`GRANT anonymous, app_user TO pdbr_conn`). Set
-  `rls.allowed_roles` to the exact list a token may name; a role outside it
-  → `403 role_not_allowed`.
-- `rls.auth.mode: jwt` with a strong `jwt_secret` or a `jwks_url` (or
-  `headers` strictly behind a gateway that strips every inbound
+- `roles.switch: true` (the default) with a **non-superuser** connection
+  role that has been granted the request roles (`GRANT anonymous, app_user
+  TO pdbr_conn`). Set `roles.allowed` to the exact list a token may name; a
+  role outside it → `403 role_not_allowed`. Set `roles.anonymous` only if
+  unauthenticated requests should be served (they are `401 auth_required`
+  otherwise).
+- `auth.mode: jwt` with a strong secret in `auth.jwt.secret_file` (a mounted
+  Docker/Kubernetes secret) or `auth.jwt.secret`, or a `auth.jwt.jwks_url`
+  (or `headers` strictly behind a gateway that strips every inbound
   `X-Pdbr-Claim-*` header in any letter case, with
-  `rls.auth.trusted_proxies` set to that gateway and `rls.auth.header_claims`
-  listing the claims it sends; pdbr answers `401 invalid_token` to a claim
-  header that is misspelt (an underscore, punctuation), repeated, a second
-  spelling of another claim, or outside `header_claims` — see
-  [rls.md](rls.md)).
+  `auth.headers.trusted_proxies` set to that gateway — required in headers
+  mode — and `auth.headers.claims` listing the claims it sends; pdbr answers
+  `401 invalid_token` to a claim header that is misspelt (an underscore,
+  punctuation), repeated, a second spelling of another claim, outside
+  `auth.headers.claims`, or sent by any other peer — see [rls.md](rls.md)).
 - `errors.detail: prod` (default) — constraint violations pass through,
   internals do not. Use `strict` if constraint/column names in error
   messages are themselves sensitive (hides all database error messages;
@@ -121,9 +125,10 @@ strings in intermediary log formats.
 - `server.compression: true` when no proxy compresses for you; leave it off
   behind one that does.
 - Timeouts: `server.request_timeout` (30s) bounds the HTTP request,
-  `database.statement_timeout` (30s) backstops runaway statements (`504`).
-  Set both to fit your workload; keep the statement timeout ≤ the request
-  timeout.
+  `database.statement_timeout` (25s) backstops runaway statements (`504
+  pg:57014`). Set both to fit your workload; keep the statement timeout
+  below the request timeout so a slow statement fails with a database error
+  before the request is cut off.
 - Resource limits: `database.max_conns` bounds the pool; each request uses
   at most one connection. `server.max_page_size`, `server.max_cost`,
   `server.max_embed_depth` and `server.max_body_bytes` bound the cost of a
@@ -155,7 +160,7 @@ strings in intermediary log formats.
   sees it (path + query, relative). Cursor `Link` values reuse the incoming
   path, so a prefix-rewriting proxy should rewrite response `Link`/`Location`
   headers too, or leave the prefix intact.
-- **`X-Forwarded-*`** headers are not interpreted. `rls.auth.trusted_proxies`
+- **`X-Forwarded-*`** headers are not interpreted. `auth.headers.trusted_proxies`
   is matched against the direct TCP peer address, so in `headers` auth mode
   the gateway that injects `X-Pdbr-Claim-*` must be the direct peer (or every
   hop in between must be trusted and pass the headers through unchanged).
@@ -180,10 +185,11 @@ PDBR_SERVER_OPENAPI=false
 PDBR_SERVER_CORS__ORIGINS=https://app.example.com
 PDBR_SERVER_COMPRESSION=true
 PDBR_SCHEMA_CACHE__PATH=/etc/pdbr/schema.cache
-PDBR_RLS_ALLOWED__ROLES=anonymous,app_user
-PDBR_RLS_AUTH_JWKS__URL=https://auth.example.com/.well-known/jwks.json
-PDBR_RLS_AUTH_JWT__ISSUER=https://auth.example.com/
-PDBR_RLS_AUTH_JWT__AUDIENCE=app
+PDBR_ROLES_ANONYMOUS=anonymous
+PDBR_ROLES_ALLOWED=app_user
+PDBR_AUTH_JWT_JWKS__URL=https://auth.example.com/.well-known/jwks.json
+PDBR_AUTH_JWT_ISSUER=https://auth.example.com/
+PDBR_AUTH_JWT_AUDIENCE=app
 PDBR_ERRORS_DETAIL=prod
 PDBR_LOG_FORMAT=json
 ```

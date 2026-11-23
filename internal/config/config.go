@@ -14,8 +14,14 @@ import (
 
 	flag "github.com/spf13/pflag"
 
+	"github.com/suprbdev/pdbcore/auth"
 	"github.com/suprbdev/pdbcore/confx"
 	"github.com/suprbdev/pdbcore/contrib"
+
+	"github.com/suprbdev/pdbr/internal/plugins/advancedfilters"
+	"github.com/suprbdev/pdbr/internal/plugins/nestedmutations"
+	"github.com/suprbdev/pdbr/internal/plugins/postgis"
+	"github.com/suprbdev/pdbr/internal/plugins/smartcomments"
 )
 
 // EnvPrefix is the environment-variable prefix (PDBR_DATABASE_URL, ...).
@@ -23,19 +29,21 @@ const EnvPrefix = "PDBR_"
 
 // Config is the effective configuration.
 type Config struct {
-	Database confx.Database `koanf:"database"`
-	Server   Server         `koanf:"server"`
-	Schema   Schema         `koanf:"schema"`
-	Filters  confx.Filters  `koanf:"filters"`
-	RLS      confx.RLS      `koanf:"rls"`
-	TX       confx.TX       `koanf:"transactions"`
-	Watch    confx.Watch    `koanf:"watch"`
-	Errors   confx.Errors   `koanf:"errors"`
-	Plugins  confx.Plugins  `koanf:"plugins"`
-	Log      confx.Log      `koanf:"log"`
-	Metrics  confx.Metrics  `koanf:"metrics"`
+	Database confx.Database                `koanf:"database"`
+	Server   Server                        `koanf:"server"`
+	Schema   Schema                        `koanf:"schema"`
+	Filters  confx.Filters                 `koanf:"filters"`
+	Auth     confx.Auth                    `koanf:"auth"`
+	Roles    confx.Roles                   `koanf:"roles"`
+	Claims   confx.Claims                  `koanf:"claims"`
+	TX       confx.TX                      `koanf:"transactions"`
+	Watch    confx.Watch                   `koanf:"watch"`
+	Errors   confx.Errors                  `koanf:"errors"`
+	Plugins  confx.Plugins[PluginSettings] `koanf:"plugins"`
+	Log      confx.Log                     `koanf:"log"`
+	Metrics  confx.Metrics                 `koanf:"metrics"`
 
-	Contracts []confx.Contract `koanf:"contracts" doc:"Schema contracts: named APIs for different audiences, each a subset of the full API selected by @contract / @behavior ±contract:<name> smart comments and served with its own OpenAPI document under its own base path. Entries are {name, default: include|exclude, path (default <server.base_path>/<name>)}, or bare names. When set, only the contracts are served (give one contract path: / to serve it at the root). Requires the smart-comments plugin."`
+	Contracts []confx.Contract `koanf:"contracts" doc:"Schema contracts: named APIs for different audiences, each a subset of the full API selected by @contract / @behavior ±contract:<name> smart comments and served with its own OpenAPI document under its own base path. Entries are {name, default: include|exclude, path (default <server.base_path>/<name>)}, or bare names. When set, only the contracts are served (give one contract path: / to serve it at the root). Requires the smart_comments plugin."`
 }
 
 // Server is the pdbr-owned HTTP section.
@@ -64,6 +72,42 @@ type Server struct {
 	TxEnd                    string        `koanf:"tx_end" doc:"How a write's transaction ends (PostgREST db-tx-end): commit, commit-allow-override, rollback or rollback-allow-override. rollback runs every write (POST, PUT, PATCH, DELETE, volatile RPCs) and discards its effects while still answering with the result; the -allow-override forms honour Prefer: tx=commit|rollback, echoed in Preference-Applied. Without an override form Prefer: tx= is ignored, or 400 invalid_preference under handling=strict."`
 }
 
+// PluginSettings is the plugins.settings section: one typed section per
+// configurable built-in plugin, keyed by the plugin's name.
+type PluginSettings struct {
+	AdvancedFilters advancedfilters.Settings `koanf:"advanced_filters" doc:"advanced_filters plugin: relation filters, related-column ordering and computed-column filter/order."`
+	PostGIS         postgis.Settings         `koanf:"postgis" doc:"postgis plugin: the spatial query surface of geometry, geography and raster columns."`
+	NestedMutations nestedmutations.Settings `koanf:"nested_mutations" doc:"nested_mutations plugin: related rows written in the same statement as a POST or PATCH."`
+}
+
+// DefaultPluginSettings returns every built-in plugin's default settings.
+func DefaultPluginSettings() PluginSettings {
+	return PluginSettings{
+		AdvancedFilters: advancedfilters.DefaultSettings(),
+		PostGIS:         postgis.DefaultSettings(),
+		NestedMutations: nestedmutations.DefaultSettings(),
+	}
+}
+
+// Validate reports out-of-range plugin settings, keyed by config path.
+func (p PluginSettings) Validate() []string {
+	return p.NestedMutations.Validate()
+}
+
+// BuiltinPlugins are the names of the built-in plugins, in priority order:
+// the names plugins.disabled accepts.
+var BuiltinPlugins = []string{smartcomments.Name, advancedfilters.Name, postgis.Name, nestedmutations.Name}
+
+// HeaderPrefix is the default auth.headers.prefix.
+const HeaderPrefix = "X-Pdbr-Claim-"
+
+// MovedKeys maps pdbr keys renamed before 1.0 to their replacement (on top
+// of confx.MovedKeys), so loading an old config names the new key.
+var MovedKeys = map[string]string{
+	"plugins.settings.advanced-filters": "plugins.settings.advanced_filters",
+	"plugins.settings.nested-mutations": "plugins.settings.nested_mutations",
+}
+
 // Schema is the shared schema section plus pdbr's own keys.
 type Schema struct {
 	confx.Schema     `koanf:",squash"`
@@ -76,7 +120,7 @@ func DefaultConfig() Config {
 		Database: confx.Database{
 			MaxConns:         10,
 			ConnectTimeout:   10 * time.Second,
-			StatementTimeout: 30 * time.Second,
+			StatementTimeout: 25 * time.Second,
 		},
 		Server: Server{
 			Addr:                ":8080",
@@ -101,17 +145,13 @@ func DefaultConfig() Config {
 			Functions: true,
 		}},
 		Filters: confx.Filters{IndexedOnly: true},
-		RLS: confx.RLS{
-			Enabled:       true,
-			AnonymousRole: "anonymous",
-			RoleClaim:     "role",
-			ClaimsPrefix:  "pdbq.claims",
-			Auth:          confx.Auth{Mode: "jwt", HeaderPrefix: "X-Pdbr-Claim-", JWKSCacheTTL: time.Hour},
-		},
+		Auth:    confx.DefaultAuth(HeaderPrefix),
+		Roles:   confx.DefaultRoles(),
+		Claims:  confx.DefaultClaims(),
 		TX:      confx.TX{Mutations: true, Isolation: "read_committed"},
 		Watch:   confx.Watch{PollInterval: 5 * time.Second, Channel: "pdbr_ddl"},
 		Errors:  confx.Errors{Detail: "prod"},
-		Plugins: confx.Plugins{Settings: map[string]map[string]any{}},
+		Plugins: confx.Plugins[PluginSettings]{Settings: DefaultPluginSettings()},
 		Log:     confx.Log{Level: "info", Format: "text"},
 		Metrics: confx.DefaultMetrics(),
 	}
@@ -119,16 +159,33 @@ func DefaultConfig() Config {
 
 // Load builds the effective config: defaults, then the optional YAML file,
 // then PDBR_* env vars, then flags (highest precedence), and validates it.
-// Pass only the flags the user actually set (confx.ChangedFlags).
+// Pass only the flags the user actually set (confx.ChangedFlags). Loading
+// is strict: unknown keys in the file, and unknown PDBR_* variables inside
+// a config section, are errors naming the key they moved to or the
+// closest valid one.
 func Load(path string, flags *flag.FlagSet) (Config, error) {
+	cfg, err := LoadUnvalidated(path, flags)
+	if err != nil {
+		return cfg, err
+	}
+	return cfg, cfg.Validate()
+}
+
+// LoadUnvalidated is Load without the final Validate, for callers that
+// adjust the config first (UseConnectionIdentity) and then validate it.
+func LoadUnvalidated(path string, flags *flag.FlagSet) (Config, error) {
 	cfg := DefaultConfig()
-	if err := confx.Load(EnvPrefix, path, flags, &cfg); err != nil {
-		return cfg, err
-	}
-	if err := cfg.Validate(); err != nil {
-		return cfg, err
-	}
-	return cfg, nil
+	err := confx.Load(EnvPrefix, path, flags, &cfg, confx.WithMoved(MovedKeys))
+	return cfg, err
+}
+
+// UseConnectionIdentity makes every request run as the connection role
+// without credentials (auth.mode none, roles.switch false): the identity
+// of the CLI commands that serve no HTTP clients (pdbr request, schema
+// dump and check, plugins list).
+func (c *Config) UseConnectionIdentity() {
+	c.Auth.Mode = auth.ModeNone
+	c.Roles.Switch = false
 }
 
 // Validate checks every rule in docs/configuration.md and reports all
@@ -136,19 +193,21 @@ func Load(path string, flags *flag.FlagSet) (Config, error) {
 func (c *Config) Validate() error {
 	var errs []string
 	errs = append(errs, confx.ValidateErrors(c.Errors)...)
-	errs = append(errs, confx.ValidateRLS(c.RLS)...)
+	errs = append(errs, confx.ValidateIdentity(c.Auth, c.Roles, c.Claims)...)
 	errs = append(errs, confx.ValidateTX(c.TX)...)
 	errs = append(errs, confx.ValidateWatch(c.Watch, c.Schema.CachePath)...)
 	errs = append(errs, confx.ValidateSchema(c.Schema.Schema)...)
 	errs = append(errs, validateServer(c.Server)...)
 	errs = append(errs, confx.ValidateLog(c.Log)...)
 	errs = append(errs, confx.ValidateMetrics(c.Metrics, c.Server.Addr)...)
+	errs = append(errs, confx.ValidatePluginNames(c.Plugins.Disabled, BuiltinPlugins)...)
+	errs = append(errs, c.Plugins.Settings.Validate()...)
 	if len(c.Contracts) == 0 {
 		errs = append(errs, validateMetricsPath(c.Metrics, c.Server)...)
 	} else {
 		errs = append(errs, confx.ValidateContracts(c.Contracts, c.Server.BasePath, false)...)
-		if c.DisabledPlugins()["smart-comments"] {
-			errs = append(errs, "contracts require the smart-comments plugin: it removes the columns a contract hides (remove smart-comments from plugins.disabled)")
+		if c.DisabledPlugins()[smartcomments.Name] {
+			errs = append(errs, "contracts require the smart_comments plugin: it removes the columns a contract hides (remove smart_comments from plugins.disabled)")
 		}
 		for _, ct := range c.Contracts {
 			s := c.Server

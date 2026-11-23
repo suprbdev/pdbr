@@ -257,8 +257,7 @@ func TestNestedPatchRLS(t *testing.T) {
 	aid, bid := rowID(t, a), rowID(t, b)
 	aPost, bPost := idOf(nestedList(t, a, "posts")[0]), idOf(nestedList(t, b, "posts")[0])
 	srv := testServer(t, func(c *config.Config) {
-		c.RLS.Enabled = true
-		c.RLS.Auth.Mode = "headers"
+		headersAuth(c)
 	})
 	as := func(uid int) map[string]string {
 		return map[string]string{"X-Pdbr-Claim-Role": "app_user", "X-Pdbr-Claim-User-Id": fmt.Sprint(uid)}

@@ -29,7 +29,7 @@ func build(t *testing.T, edit func(c *introspect.Catalog)) *api.Built {
 	if edit != nil {
 		edit(cat)
 	}
-	p := smartcomments.New(nil)
+	p := smartcomments.New()
 	reg := plugin.NewRegistry(p)
 	ctx := context.Background()
 	if err := reg.TransformCatalog(ctx, nil, cat); err != nil {
@@ -108,8 +108,8 @@ func openapi(t *testing.T, b *api.Built) string {
 }
 
 func TestPluginIdentity(t *testing.T) {
-	p := smartcomments.New(map[string]any{"ignored": true})
-	if p.Name() != "smart-comments" || p.Priority() != 50 {
+	p := smartcomments.New()
+	if p.Name() != "smart_comments" || p.Priority() != 50 {
 		t.Fatalf("name/priority = %s/%d", p.Name(), p.Priority())
 	}
 	if got := strings.Join(plugin.Hooks(p), ","); got != "catalog,inflection,api" {
@@ -627,9 +627,9 @@ func TestDisabledLeavesRawSurface(t *testing.T) {
 	cat := testutil.FixtureCatalog()
 	table(cat, "users").Comment = "@name people\n@omit delete"
 	column(cat, "users", "email").Comment = "@omit"
-	p := smartcomments.New(nil)
+	p := smartcomments.New()
 	reg := plugin.NewRegistry(p)
-	disabled := map[string]bool{"smart-comments": true}
+	disabled := map[string]bool{"smart_comments": true}
 	ctx := context.Background()
 	if err := reg.TransformCatalog(ctx, disabled, cat); err != nil {
 		t.Fatal(err)

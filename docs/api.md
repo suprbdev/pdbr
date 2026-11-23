@@ -412,7 +412,7 @@ POST /api/rpc/search_posts            {"q": "hello"}
   <table>` → array with full `select=` (embeds included), filters, `order=`,
   `limit`/`offset`, `count=true` and CSV — offset paging only, no cursors;
   `SETOF <scalar>` → array of values. A function returning the
-  `rls.auth.jwt_type` composite returns a minted HS256 JWT string.
+  `auth.mint_type` composite returns a minted HS256 JWT string.
 - Not exposed: functions without EXECUTE privilege, extension-owned, unnamed
   args, `OUT`/`INOUT`/`VARIADIC`, trigger/internal returns. Overloads →
   keep-first + warning. `schema.functions: false` removes RPC and computed
@@ -438,16 +438,16 @@ POST /api/rpc/search_posts            {"q": "hello"}
 - `select=` applies to mutation responses (compiled against the `__mut` CTE,
   embeds work; `RETURNING` lists only referenced columns).
 - Nested writes on `POST` and single-row `PATCH` (plugin
-  `nested-mutations`): forward key → `{"create": {…}}` or `{"connect":
+  `nested_mutations`): forward key → `{"create": {…}}` or `{"connect":
   {<key cols>}}` (exactly one on `POST`; the key is the referenced columns,
   the primary key or one unique constraint — `{"email": "…"}` connects a
   user), on `PATCH` also `{"disconnect": true}`, `{"update": {…}}`,
   `{"delete": true}`; backward key → lists under `create` and `connect`,
   on `PATCH` also `update` (`[{"where": {…}, "data": {…}}]`), `delete`,
-  `disconnect`; depth ≤ 3 (`plugins.settings.nested-mutations.max_depth`);
+  `disconnect`; depth ≤ 3 (`plugins.settings.nested_mutations.max_depth`);
   FK columns become optional when nested input is provided; a nested
   lookup that matches nothing is `404` and rolls the request back
-  ([mutations.md](mutations.md#nested-mutations-plugin-nested-mutations)).
+  ([mutations.md](mutations.md#nested-mutations-plugin-nested_mutations)).
 
 ## Content negotiation
 
@@ -567,7 +567,7 @@ Cursor and `Link` details: [pagination.md](pagination.md).
 | request cost | `server.max_cost` (100000) | `400 cost_exceeded` |
 | body size | `server.max_body_bytes` (1 MiB) | `413` |
 | request time | `server.request_timeout` (30s) | `504` |
-| statement time | `database.statement_timeout` (30s) | `504` |
+| statement time | `database.statement_timeout` (25s) | `504` |
 
 Errors are RFC 9457 problem documents (`application/problem+json`) with a
 stable `code` extension:

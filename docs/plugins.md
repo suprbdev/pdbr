@@ -32,7 +32,7 @@ Implement only what you need; every hook is optional:
 
 ```go
 type Plugin interface {            // required base (pdbcore/plugin)
-    Name() string                  // config key under plugins.settings
+    Name() string                  // plugins.disabled entry (snake_case)
     Priority() int                 // lower runs earlier / outermost
 }
 
@@ -118,10 +118,24 @@ priority ascending, then registration order (built-ins first, then
 - `RequestHook.BeforeRequest` runs in order (the returned context threads
   through); `AfterRequest` runs in the same order.
 
-Users can disable any plugin by name (`plugins.disabled: [name]`) and
-configure it under `plugins.settings.<name>` — a free-form map handed to the
-plugin's constructor (`cfg.Plugins.Settings["my-plugin"]`); pdbr does not
-validate its contents.
+Users can disable a built-in plugin by name (`plugins.disabled: [name]`;
+an unknown name is a configuration error with a did-you-mean hint) and
+configure the configurable built-ins under `plugins.settings.<name>`
+(below). Settings are typed: each built-in package declares a `Settings`
+struct with `koanf` and `doc` tags and `DefaultSettings()`, its `New` takes
+that struct, and `config.PluginSettings` (`pdbr.PluginSettings`) composes
+them, so unknown keys are rejected and environment values are decoded like
+core keys:
+
+```console
+PDBR_PLUGINS_SETTINGS_ADVANCED__FILTERS_RELATIONS=false
+PDBR_PLUGINS_SETTINGS_NESTED__MUTATIONS_MAX__DEPTH=5
+PDBR_PLUGINS_DISABLED=postgis,nested_mutations
+```
+
+A third-party plugin is configured by the Go code that constructs it (it
+is passed to `pdbr.WithPlugins` already built); `plugins.settings` and
+`plugins.disabled` only know the built-ins.
 
 ## Worked example: `path-prefix` + request logging
 
@@ -187,10 +201,10 @@ renamed paths automatically since it is generated from `api.Built`.
 
 ```console
 $ pdbr plugins list
-smart-comments       priority=50   enabled  hooks: catalog, inflection, api
-advanced-filters     priority=150  enabled  hooks: api
+smart_comments       priority=50   enabled  hooks: catalog, inflection, api
+advanced_filters     priority=150  enabled  hooks: api
 postgis              priority=160  enabled  hooks: api
-nested-mutations     priority=200  enabled  hooks: api, compile, request
+nested_mutations     priority=200  enabled  hooks: api, compile, request
 path-prefix          priority=300  enabled  hooks: inflection, request
 ```
 
@@ -215,7 +229,7 @@ referencing table name. The kinds a hook can intercept:
 | `computed_field` | `Schema`, `Table`, `Function` | `Function` minus `<Table>_` |
 | `enum_value` | `Enum`, `Value` | `Value` |
 
-There is no `simple-names` plugin in pdbr: its whole purpose in pdbq is to
+There is no `simple_names` plugin in pdbr: its whole purpose in pdbq is to
 undo the verbose PostGraphile-style defaults (`allUsers` → `users`), and
 pdbr's defaults are already the raw names.
 
@@ -223,17 +237,38 @@ pdbr's defaults are already the raw names.
 
 | Name | Priority | Hooks | Settings (`plugins.settings.<name>`) |
 |---|---|---|---|
-| `smart-comments` | 50 | catalog, inflection, api | — |
-| `advanced-filters` | 150 | api | `relations` (true), `computed` (true), `relation_order` (true), `relations_opt_in` (false), `computed_opt_in` (false) |
-| `postgis` | 160 | api | `filters`, `derived`, `ordering`, `projection` (all true) |
-| `nested-mutations` | 200 | api, compile, request | `force_transactions` (true), `max_depth` (3), `max_operations` (50) |
+| `smart_comments` | 50 | catalog, inflection, api | — |
+| `advanced_filters` | 150 | api | `relations` (true), `computed` (true), `relation_order` (true), `relations_opt_in` (false), `computed_opt_in` (false) |
+| `postgis` | 160 | api | `filters`, `derived`, `ordering`, `projection`, `aggregates` (all true) |
+| `nested_mutations` | 200 | api, compile, request | `force_transactions` (true), `max_depth` (3, `>= 1`), `max_operations` (50, `>= 1`) |
 
-`advanced-filters` and `postgis` are `APIHook` only (pdbq parity: the core
+Names are snake_case; the pre-1.0 kebab-case names (`smart-comments`,
+`advanced-filters`, `nested-mutations`) are rejected with a hint, and so
+are `plugins.settings.advanced-filters` / `nested-mutations` (see
+[upgrading.md](upgrading.md)).
+
+| Setting | Default | Effect |
+|---|---|---|
+| `advanced_filters.relations` | `true` | relation filters (`rel.col=op.v`, `rel!none.`, `rel!every.`, `rel=exists.`) |
+| `advanced_filters.computed` | `true` | filtering and ordering on computed columns (follows `schema.functions`) |
+| `advanced_filters.relation_order` | `true` | ordering by a related column (`order=rel(col).asc`); off when `relations` is |
+| `advanced_filters.relations_opt_in` | `false` | only FKs tagged `@filterable` / `@sortable` get relation filters and ordering |
+| `advanced_filters.computed_opt_in` | `false` | only computed functions tagged `@filterable` / `@sortable` get filters and ordering |
+| `postgis.filters` | `true` | spatial filter operators (`st_*`, `bbox_*`), raster `intersects` |
+| `postgis.derived` | `true` | `<col>_area`, `<col>_centroid`, …, raster `<col>_width`, `<col>_value`, … pseudo-columns |
+| `postgis.ordering` | `true` | `order=<col>.dist` and `<col>_distance` with `near=` |
+| `postgis.projection` | `true` | `select=col(transform=…,simplify=…,buffer=…,precision=…)` |
+| `postgis.aggregates` | `true` | spatial aggregates `col.extent()`, `union()`, `collect()`, `centroid()` (also need `server.aggregates`) |
+| `nested_mutations.force_transactions` | `true` | requests carrying nested keys run in a transaction even with `transactions.mutations: false` |
+| `nested_mutations.max_depth` | `3` | deepest create/update nesting (root = 1) |
+| `nested_mutations.max_operations` | `50` | most nested operations per request |
+
+`advanced_filters` and `postgis` are `APIHook` only (pdbq parity: the core
 compiler reads the bindings they register, and `internal/compile/spatial.go`
 is core per the brief); [cli.md](cli.md) and
 [architecture.md](architecture.md) list them the same way.
 
-### smart-comments
+### smart_comments
 
 Turns PostgreSQL `COMMENT` tags (`@omit`, `@name`, `@primaryKey`, …) into
 API customization (full tag reference: [smart-comments.md](smart-comments.md)).
@@ -252,10 +287,12 @@ order params, backward embed keys for `@omit many`, hidden columns and
 per-method body keys), marks operations and properties `deprecated`, and
 renames enum schemas (tag lines are stripped from OpenAPI descriptions by the
 core builder, plugin or not). It runs first (50) so a dropped parameter is
-never referenced by `advanced-filters` or `postgis`. Constructor
-`smartcomments.New(settings)`; no settings.
+never referenced by `advanced_filters` or `postgis`. Constructor
+`smartcomments.New()`; no settings. The shared catalog hook is named
+`smart-comments` in pdbcore; pdbr's plugin overrides `Name` with
+`smart_comments`.
 
-### advanced-filters
+### advanced_filters
 
 Shows the "API surface + metadata" pattern: the plugin implements only
 `APIHook`, yet changes compiled SQL. Its bindings *are* model flags: the
@@ -279,7 +316,7 @@ leaves `Surface` all-false and the syntax is `400` at parse time. No
 `relations_opt_in`/`computed_opt_in` flip the surface to
 `@filterable`/`@sortable`-only; `@omit filter` / `@omit order` on FK
 constraint and function comments are read with `pdbcore/smarttags` straight
-from the catalog (independent of `smart-comments`); a flag an earlier plugin
+from the catalog (independent of `smart_comments`); a flag an earlier plugin
 already cleared (`@omit many` → backward `Embeddable=false`) is never turned
 back on; set-returning computed columns are never exposed; the computed half
 follows `schema.functions`. Computed filters are not index-backed, so they
@@ -300,7 +337,7 @@ grammar itself lives in the core parser/compiler behind `api.Surface` gates;
 the plugin flips `SpatialFilters`/`SpatialOrder`/`SpatialProjection`/`SpatialAggregates` from its
 settings, registers `Resource.Pseudo` entries (`derived`; a real or computed
 column owning the name wins, with a warning), applies `@omit filter|order`
-from the column comments itself (no smart-comments dependency), and adds
+from the column comments itself (no smart_comments dependency), and adds
 the `GeoJSON` component schema, the `geometry`/`geography` type override and
 the spatial `x-pdbr-filter-ops` vocabulary to `Builder.Extra` (the `near`
 parameter and per-column filter params render with M6's parameter work).
@@ -308,7 +345,7 @@ Nothing happens when the model has no spatial column. Reading and writing
 GeoJSON is core (`pdbcore/postgis`), so disabling the plugin only removes the
 query surface. See [postgis.md](postgis.md).
 
-### nested-mutations
+### nested_mutations
 
 Exercises every REST-specific hook surface
 (`internal/plugins/nestedmutations`). **APIHook** — publishes
@@ -349,7 +386,7 @@ when the plan has nested keys (`force_transactions: false` opts out). Depth
 beyond `max_depth` (default 3, root = 1) → `400 embed_depth_exceeded`; an
 operation the relation does not offer → `400 unknown_relation`. Full rules
 and the exact SQL shape:
-[mutations.md](mutations.md#nested-mutations-plugin-nested-mutations).
+[mutations.md](mutations.md#nested-mutations-plugin-nested_mutations).
 
 ## Extending the API: `api.Builder`
 
@@ -368,20 +405,20 @@ that introduced it.
 |---|---|---|
 | `Resource(schema, table)`, `Resources`, `RPCs`, `Enums`, `Composites`, `Catalog`, `Inflect`, `Options`, `Warn(msg, attrs…)` | model access | all |
 | `RemoveResource(schema, table)` | drop a resource and every relation / RPC pointing at it | core |
-| `RemoveMethod(r, methods…)` | turn methods off; `Build` drops them from every route (`405` + `Allow`, or no route when none is left) | smart-comments (`@omit read/create/update/delete`) |
-| `Resource.OmitList` | suppress `GET`/`HEAD` on the collection route only | smart-comments (`@omit all`) |
-| `RemoveRelation(rel)` | drop one relation candidate; the key vanishes with its last candidate | smart-comments (`@omit many`) |
-| `RemoveField(r, key, everywhere)` | hide a column from responses, `select=`, filters, `order=`, `distinct=` and aggregates (and, with `everywhere`, bodies); unique lookups over it lose their `/by/` route, and a hidden primary-key column drops the row path and keyset cursors | smart-comments (column `@omit` / `@omit read`) |
-| `Resource.NoCreate` / `NoUpdate` + `Resource.InputColumnsFor(method)` | reject body keys per write method (`PUT` honours both) | smart-comments (column `@omit create/update`) |
-| `RemoveFilterColumn(r, key)` / `RemoveOrderColumn(r, key)` | withdraw a key from the filter / `order=` vocabulary | smart-comments (`@omit filter/order`) |
-| `RemoveComputed(r, key)`, `RemoveRPC(schema, fn)`, `RemoveUnique(r, constraint)` | drop a computed column, an RPC route, a `/by/` route | smart-comments (available; bare `@omit` is resolved at the catalog level) |
-| `RenameEnum(e, name)` | set an enum's `components.schemas` name | smart-comments (`@name` on a type) |
-| `Resource/Field/Computed/RPC.Deprecated` + `DeprecationReason` | `deprecated: true` + `x-deprecation-reason` on schemas, properties and operations | smart-comments (`@deprecated`) |
-| `Builder.Surface` (`RelationFilters`, `RelationOrder`, `ComputedFilters`, `ComputedOrder`, `Spatial` + `SpatialFilters`/`SpatialOrder`/`SpatialProjection`, `SpatialAggregates`) | grammar gates copied to `Built.Surface` and read by `server.ParseOptions` (`Spatial` implies the three spatial halves; postgis sets the halves from its `filters`/`ordering`/`projection` settings and `SpatialAggregates` from `aggregates`) | advanced-filters, postgis |
-| `Relation.Filterable`/`Orderable`/`Embeddable`, `Computed.Filterable`/`Orderable` | per-object gates (default true — `Computed`'s to `!ReturnsSet`); plugins only ever narrow them | smart-comments, advanced-filters |
-| `Builder.Surface.NestedKeys func(*Resource) map[string]*Relation` | the nested-input body keys a resource accepts (relation key → relation); copied to `Built.Surface`, read by `server.ParseOptions` → `parse.Options.NestedKeys`; nil = nested keys are unknown body keys | nested-mutations |
-| `Builder.Surface.NestedSchema func(*Resource, *Relation, Method) *Schema` | the OpenAPI property of a nested key in the `.insert` (`MethodPost`) or `.update` (`MethodPatch`) body, or nil when the key takes no input there; a forward key's `.insert` property releases its FK columns from `required` | nested-mutations |
-| `Builder.Extra.Schemas[name]` + `Builder.ColumnSchema(col)` | add a `components.schemas` entry (rendered verbatim at `Build`), with the core's per-column schema mapping for its properties | postgis (`GeoJSON`), nested-mutations (`<name>.connect`) |
+| `RemoveMethod(r, methods…)` | turn methods off; `Build` drops them from every route (`405` + `Allow`, or no route when none is left) | smart_comments (`@omit read/create/update/delete`) |
+| `Resource.OmitList` | suppress `GET`/`HEAD` on the collection route only | smart_comments (`@omit all`) |
+| `RemoveRelation(rel)` | drop one relation candidate; the key vanishes with its last candidate | smart_comments (`@omit many`) |
+| `RemoveField(r, key, everywhere)` | hide a column from responses, `select=`, filters, `order=`, `distinct=` and aggregates (and, with `everywhere`, bodies); unique lookups over it lose their `/by/` route, and a hidden primary-key column drops the row path and keyset cursors | smart_comments (column `@omit` / `@omit read`) |
+| `Resource.NoCreate` / `NoUpdate` + `Resource.InputColumnsFor(method)` | reject body keys per write method (`PUT` honours both) | smart_comments (column `@omit create/update`) |
+| `RemoveFilterColumn(r, key)` / `RemoveOrderColumn(r, key)` | withdraw a key from the filter / `order=` vocabulary | smart_comments (`@omit filter/order`) |
+| `RemoveComputed(r, key)`, `RemoveRPC(schema, fn)`, `RemoveUnique(r, constraint)` | drop a computed column, an RPC route, a `/by/` route | smart_comments (available; bare `@omit` is resolved at the catalog level) |
+| `RenameEnum(e, name)` | set an enum's `components.schemas` name | smart_comments (`@name` on a type) |
+| `Resource/Field/Computed/RPC.Deprecated` + `DeprecationReason` | `deprecated: true` + `x-deprecation-reason` on schemas, properties and operations | smart_comments (`@deprecated`) |
+| `Builder.Surface` (`RelationFilters`, `RelationOrder`, `ComputedFilters`, `ComputedOrder`, `Spatial` + `SpatialFilters`/`SpatialOrder`/`SpatialProjection`, `SpatialAggregates`) | grammar gates copied to `Built.Surface` and read by `server.ParseOptions` (`Spatial` implies the three spatial halves; postgis sets the halves from its `filters`/`ordering`/`projection` settings and `SpatialAggregates` from `aggregates`) | advanced_filters, postgis |
+| `Relation.Filterable`/`Orderable`/`Embeddable`, `Computed.Filterable`/`Orderable` | per-object gates (default true — `Computed`'s to `!ReturnsSet`); plugins only ever narrow them | smart_comments, advanced_filters |
+| `Builder.Surface.NestedKeys func(*Resource) map[string]*Relation` | the nested-input body keys a resource accepts (relation key → relation); copied to `Built.Surface`, read by `server.ParseOptions` → `parse.Options.NestedKeys`; nil = nested keys are unknown body keys | nested_mutations |
+| `Builder.Surface.NestedSchema func(*Resource, *Relation, Method) *Schema` | the OpenAPI property of a nested key in the `.insert` (`MethodPost`) or `.update` (`MethodPatch`) body, or nil when the key takes no input there; a forward key's `.insert` property releases its FK columns from `required` | nested_mutations |
+| `Builder.Extra.Schemas[name]` + `Builder.ColumnSchema(col)` | add a `components.schemas` entry (rendered verbatim at `Build`), with the core's per-column schema mapping for its properties | postgis (`GeoJSON`), nested_mutations (`<name>.connect`) |
 | `Builder.Extra.Types[pgType]` | override the OpenAPI schema of a PostgreSQL type name (`Built.TypeSchema` consults it first; arrays nest) | postgis (`geometry`/`geography` → `$ref GeoJSON`) |
 | `Builder.Extra.FilterOps[pgType]` | the operator vocabulary a column of that type documents in `x-pdbr-filter-ops` (and the parameter description) instead of the scalar ops | postgis (`st_*`, `bbox_*`, `is`) |
 | `Builder.Extra.InputTypes[pgType]` | override the schema of a PostgreSQL type name in request bodies only (`.insert`/`.update`/`.upsert` properties, RPC `POST` bodies); falls back to `Extra.Types` | postgis (`oneOf [GeoJSON, string]` for WKT input) |
@@ -402,7 +439,7 @@ parameter numbering and identifier quoting compose with the core compiler:
 | `(*Compiler).MutationChain(req *Request, ch Chain) (*Statement, error)` | the general form: `Chain{CTEs, Params, RootKeep, Writes, Guards}`. `RootKeep` is set when `__mut` updates or locks existing rows (a condition over the bare table keeping the rows it left alone); `Writes["schema.table"]` = `TableWrites{Rows, Keep}` — CTEs returning every column of rows in the table after the statement, and conditions keeping the pre-statement rows the chain left alone; `Guards` are `GuardSQL` conditions evaluated before the response (even an empty one) |
 | `compile.GuardSQL(cte, label string) string` / `compile.GuardFailure(msg)` | a guard requiring `cte` to yield a row; a failure raises `22P02` carrying `pdbr guard <token>: <label> matched 0 rows` (`<token>` a per-process secret, masked by `RenderGolden`), which the executor answers as `404 not_found` with `<label> matched 0 rows` as the detail; `GuardFailure` accepts only messages carrying the token (`label` must not depend on request values) |
 | `compile.CoerceInput(built *api.Built, col *introspect.Column, v any) any` | convert a JSON body value into a driver-friendly parameter (enum labels, json/jsonb re-encoded as text, arrays element-wise, `int8`/`numeric` strings); route every column value through it before `ParamSet.Add` |
-| `(*Compiler).InputValue(col *introspect.Column, v any, ps *ParamSet) (string, error)` | render a (parser-coerced) body value as the parameter expression the core DML uses — composites `jsonb_populate_record(NULL::t, $n::jsonb)`, arrays `$n::type[]`, json `$n::jsonb`, PostGIS constructors, bare `$n` otherwise — appending to `ps`; the one-stop rendering for plugin-built INSERT tuples (nested-mutations) |
+| `(*Compiler).InputValue(col *introspect.Column, v any, ps *ParamSet) (string, error)` | render a (parser-coerced) body value as the parameter expression the core DML uses — composites `jsonb_populate_record(NULL::t, $n::jsonb)`, arrays `$n::type[]`, json `$n::jsonb`, PostGIS constructors, bare `$n` otherwise — appending to `ps`; the one-stop rendering for plugin-built INSERT tuples (nested_mutations) |
 | `parse.CoerceObject(built, res, obj)` / `parse.CoerceObjectFor(built, res, obj, method)` / `parse.CoerceValue(built, col, v)` | apply the body-validation rules and coercion table to a nested row (`POST` rules) or patch (`plan.PATCH`: `@omit update` columns rejected) — unknown key / readonly / uncoercible → `UserError` — or to one value regardless of writability (key lookups) |
 | `compile.QuoteIdent(s string) string` | identifier quoting — the **only** way identifiers may enter SQL text |
 | `compile.TableRefSQL(schema, table string) string` | quoted, schema-qualified relation reference |

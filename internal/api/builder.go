@@ -46,12 +46,16 @@ type Options struct {
 	MaxPageSize int
 	// Etags is server.etags.
 	Etags bool
-	// JWTType is rls.auth.jwt_type ("schema.type"): functions returning that
+	// JWTType is auth.mint_type ("schema.type"): functions returning that
 	// composite are minted into JWT strings by the exec layer.
 	JWTType string
-	// AuthMode is rls.auth.mode while RLS is enabled ("" otherwise): jwt
-	// documents securitySchemes.bearerAuth; jwt and headers document 401.
+	// AuthMode is auth.mode: jwt documents securitySchemes.bearerAuth; jwt
+	// and headers document 401.
 	AuthMode string
+	// AuthRequired reports that requests without credentials are refused
+	// (roles.anonymous empty): jwt mode then documents bearerAuth as
+	// required instead of optional.
+	AuthRequired bool
 	// CSV is server.csv (text/csv on list responses).
 	CSV bool
 	// Domains is server.openapi_domains: domains over built-in types get a
@@ -99,7 +103,7 @@ type Builder struct {
 	// Domains maps "schema.name" -> domain with a named schema.
 	Domains map[string]*Domain
 	Extra   OpenAPIExtras
-	// Surface is the query-grammar surface plugins switch on (advanced-filters,
+	// Surface is the query-grammar surface plugins switch on (advanced_filters,
 	// postgis); parse rejects the corresponding syntax while a flag is off so
 	// disabling a plugin removes its feature end to end.
 	Surface Surface
@@ -131,7 +135,7 @@ type Surface struct {
 	// also need server.aggregates.
 	SpatialAggregates bool
 	// NestedKeys names the nested-mutation body keys a resource accepts
-	// (relation key -> relation); nil while the nested-mutations plugin is
+	// (relation key -> relation); nil while the nested_mutations plugin is
 	// off, so bodies carrying relation keys stay invalid_body. The parser
 	// reads it through parse.Options.NestedKeys; OpenAPI's .insert and
 	// .update schemas render one property per key from NestedSchema.
@@ -512,7 +516,7 @@ func (b *Builder) applyFilterPolicy(r *Resource) {
 }
 
 // costMultiplier reads @costMultiplier off an FK comment straight from the
-// catalog so it works with the smart-comments plugin disabled; values below
+// catalog so it works with the smart_comments plugin disabled; values below
 // 1 are ignored so a subtree can never escape the cost limit.
 func costMultiplier(comment string) int {
 	tags, _ := smarttags.Parse(comment)

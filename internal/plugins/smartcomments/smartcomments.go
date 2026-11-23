@@ -1,4 +1,4 @@
-// Package smartcomments is the built-in smart-comments plugin: PostGraphile-
+// Package smartcomments is the built-in smart_comments plugin: PostGraphile-
 // style tags in database COMMENTs (@omit, @name, @deprecated, @fieldName,
 // ...) customize the REST surface with plain DDL. The catalog half is
 // pdbcore/smartcomments/catalog (shared with pdbq); this package adds the
@@ -26,8 +26,15 @@ type Plugin struct {
 	*catalog.Hook
 }
 
-// New returns the plugin; it takes no settings (unknown keys are ignored).
-func New(_ map[string]any) *Plugin { return &Plugin{Hook: catalog.New()} }
+// Name is the plugin name (plugins.disabled entry). It replaces the
+// embedded catalog hook's name.
+const Name = "smart_comments"
+
+// New returns the plugin; it takes no settings.
+func New() *Plugin { return &Plugin{Hook: catalog.New()} }
+
+// Name implements plugin.Plugin.
+func (p *Plugin) Name() string { return Name }
 
 // ---- InflectionHook ----
 
@@ -237,7 +244,7 @@ func (p *Plugin) applyConstraintTags(b *api.Builder, r *api.Resource) {
 }
 
 // applyComputedTags handles @deprecated and @omit filter / order on computed
-// columns (advanced-filters reads the same tags from the catalog; both only
+// columns (advanced_filters reads the same tags from the catalog; both only
 // ever narrow the flags).
 func (p *Plugin) applyComputedTags(r *api.Resource) {
 	for _, key := range sortedKeys(r.Computed) {

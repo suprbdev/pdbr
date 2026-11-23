@@ -45,7 +45,7 @@ func contractCatalog(t *testing.T) *introspect.Catalog {
 
 func contractConfig() config.Config {
 	cfg := config.DefaultConfig()
-	cfg.RLS.Enabled = false
+	cfg.UseConnectionIdentity()
 	cfg.Contracts = []confx.Contract{{Name: "internal"}, {Name: "public"}, {Name: "partner", Default: "exclude", Path: "/partners"}}
 	return cfg
 }
@@ -138,7 +138,7 @@ func TestContractFullAPIUnchanged(t *testing.T) {
 	ctx := context.Background()
 	quiet := WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	plain := config.DefaultConfig()
-	plain.RLS.Enabled = false
+	plain.UseConnectionIdentity()
 	want, err := New(plain, quiet).BuildAPI(ctx, contractCatalog(t))
 	if err != nil {
 		t.Fatal(err)

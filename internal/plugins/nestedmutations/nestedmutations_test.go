@@ -77,24 +77,23 @@ func wantCode(t *testing.T, err error, code, detail string) {
 }
 
 func TestSettings(t *testing.T) {
-	p := New(nil)
-	if p.Name() != "nested-mutations" || p.Priority() != 200 || !p.ForceTransactions() || p.MaxDepth() != 3 {
+	p := New(DefaultSettings())
+	if p.Name() != "nested_mutations" || p.Priority() != 200 || !p.ForceTransactions() || p.MaxDepth() != 3 || p.MaxOperations() != DefaultMaxOperations {
 		t.Fatalf("defaults: %+v", p)
 	}
-	p = New(map[string]any{"force_transactions": false, "max_depth": 5, "bogus": 1})
-	if p.ForceTransactions() || p.MaxDepth() != 5 {
+	p = New(Settings{MaxDepth: 5, MaxOperations: 7})
+	if p.ForceTransactions() || p.MaxDepth() != 5 || p.MaxOperations() != 7 {
 		t.Fatalf("settings: %+v", p)
 	}
-	p = New(map[string]any{"max_depth": float64(2)})
-	if p.MaxDepth() != 2 {
-		t.Fatalf("float max_depth: %+v", p)
-	}
-	p = New(map[string]any{"max_depth": 0})
+	p = New(Settings{})
 	if p.MaxDepth() != 3 || p.MaxOperations() != DefaultMaxOperations {
-		t.Fatalf("zero max_depth keeps default: %+v", p)
+		t.Fatalf("zero bounds keep the defaults: %+v", p)
 	}
-	if p = New(map[string]any{"max_operations": 7}); p.MaxOperations() != 7 {
-		t.Fatalf("max_operations: %+v", p)
+	if errs := (Settings{}).Validate(); len(errs) != 2 || !strings.Contains(errs[0], "plugins.settings.nested_mutations.max_depth") {
+		t.Fatalf("Validate() = %v", errs)
+	}
+	if errs := DefaultSettings().Validate(); errs != nil {
+		t.Fatalf("defaults invalid: %v", errs)
 	}
 	if got := strings.Join(plugin.Hooks(p), ", "); got != "api, compile, request" {
 		t.Fatalf("hooks = %s", got)
@@ -102,7 +101,7 @@ func TestSettings(t *testing.T) {
 }
 
 func TestNestedKeysAndSchemas(t *testing.T) {
-	built := buildWith(t, New(nil))
+	built := buildWith(t, New(DefaultSettings()))
 	if built.Surface.NestedKeys == nil {
 		t.Fatal("Surface.NestedKeys not set")
 	}
@@ -165,7 +164,7 @@ func keysOf(m map[string]json.RawMessage) []string {
 }
 
 func TestValidation(t *testing.T) {
-	p := New(map[string]any{"max_depth": 3})
+	p := New(with(func(s *Settings) { s.MaxDepth = 3 }))
 	built := buildWith(t, p)
 	cases := []struct {
 		name, target, body, code, detail string
@@ -218,25 +217,25 @@ func TestValidation(t *testing.T) {
 }
 
 func TestDepthBound(t *testing.T) {
-	built := buildWith(t, New(nil))
+	built := buildWith(t, New(DefaultSettings()))
 	deep := `{"email":"a","posts":{"create":[{"title":"t","comments":{"create":[{"body":"c"}]}}]}}`
-	if _, err := run(t, New(map[string]any{"max_depth": 3}), built, "/api/users", deep, nil); err != nil {
+	if _, err := run(t, New(with(func(s *Settings) { s.MaxDepth = 3 })), built, "/api/users", deep, nil); err != nil {
 		t.Fatalf("depth 3 within max_depth 3: %v", err)
 	}
-	_, err := run(t, New(map[string]any{"max_depth": 2}), built, "/api/users", deep, nil)
+	_, err := run(t, New(with(func(s *Settings) { s.MaxDepth = 2 })), built, "/api/users", deep, nil)
 	wantCode(t, err, CodeEmbedDepthExceeded, `nested "posts[0].comments": nesting depth 3 exceeds max_depth 2`)
 	// A forward create counts too; connect does not add a level.
 	fwd := `{"body":"c","posts":{"create":{"title":"t","users":{"create":{"email":"a"}}}}}`
-	_, err = run(t, New(map[string]any{"max_depth": 2}), built, "/api/comments", fwd, nil)
+	_, err = run(t, New(with(func(s *Settings) { s.MaxDepth = 2 })), built, "/api/comments", fwd, nil)
 	wantCode(t, err, CodeEmbedDepthExceeded, `nested "posts.users"`)
 	conn := `{"body":"c","posts":{"create":{"title":"t","users":{"connect":{"id":1}}}}}`
-	if _, err := run(t, New(map[string]any{"max_depth": 2}), built, "/api/comments", conn, nil); err != nil {
+	if _, err := run(t, New(with(func(s *Settings) { s.MaxDepth = 2 })), built, "/api/comments", conn, nil); err != nil {
 		t.Fatalf("connect at the bound: %v", err)
 	}
 }
 
 func TestUnknownRelationPrivileges(t *testing.T) {
-	p := New(nil)
+	p := New(DefaultSettings())
 	built := buildWith(t, p)
 	// Drop INSERT on posts after build: create must fail with
 	// unknown_relation while connect stays possible.
@@ -252,12 +251,12 @@ func TestUnknownRelationPrivileges(t *testing.T) {
 
 func TestPluginDisabledKeyIsInvalidBody(t *testing.T) {
 	built := buildWith(t, nil)
-	_, err := run(t, New(nil), built, "/api/users", `{"email":"a","posts":{"create":[{"title":"t"}]}}`, nil)
+	_, err := run(t, New(DefaultSettings()), built, "/api/users", `{"email":"a","posts":{"create":[{"title":"t"}]}}`, nil)
 	wantCode(t, err, CodeInvalidBody, `unknown key "posts"`)
 }
 
 func TestChainSQL(t *testing.T) {
-	p := New(nil)
+	p := New(DefaultSettings())
 	built := buildWith(t, p)
 	t.Run("children with visibility", func(t *testing.T) {
 		st, err := run(t, p, built, "/api/users?select=id,email,posts(id,title)", `{"email":"a@b.c","posts":{"create":[{"title":"One"},{"title":"Two"}]}}`, nil)
@@ -345,7 +344,7 @@ func TestChainSQL(t *testing.T) {
 		}
 	})
 	t.Run("nested in nested", func(t *testing.T) {
-		st, err := run(t, New(map[string]any{"max_depth": 4}), built, "/api/comments?select=id,posts(id,users(id))",
+		st, err := run(t, New(with(func(s *Settings) { s.MaxDepth = 4 })), built, "/api/comments?select=id,posts(id,users(id))",
 			`{"body":"c","posts":{"create":{"title":"t","users":{"create":{"email":"a","places":{"create":[{"name":"p","location":{"type":"Point","coordinates":[1,2]}}]}}}}}}`, nil)
 		if err != nil {
 			t.Fatal(err)
@@ -384,7 +383,7 @@ func TestChainSQL(t *testing.T) {
 // TestSQLIsShapePure asserts the SQL text does not depend on values: only
 // on which keys are present and their column types.
 func TestSQLIsShapePure(t *testing.T) {
-	p := New(nil)
+	p := New(DefaultSettings())
 	built := buildWith(t, p)
 	shape := func(body string) (string, int) {
 		st, err := run(t, p, built, "/api/users?select=id,posts(id)", body, nil)
@@ -406,8 +405,8 @@ func TestSQLIsShapePure(t *testing.T) {
 func TestBeforeRequest(t *testing.T) {
 	nested := &plan.Request{Body: &plan.Body{Nested: map[string]*plan.Nested{"posts": {}}}}
 	plain := &plan.Request{Body: &plan.Body{Object: map[string]any{}}}
-	on := New(nil)
-	off := New(map[string]any{"force_transactions": false})
+	on := New(DefaultSettings())
+	off := New(with(func(s *Settings) { s.ForceTransactions = false }))
 	for _, tc := range []struct {
 		p    *Plugin
 		plan *plan.Request
@@ -425,7 +424,7 @@ func TestBeforeRequest(t *testing.T) {
 }
 
 func TestPatchValidation(t *testing.T) {
-	p := New(nil)
+	p := New(DefaultSettings())
 	built := buildWith(t, p)
 	cases := []struct {
 		name, target, body, code, detail string
@@ -464,12 +463,12 @@ func TestPatchValidation(t *testing.T) {
 }
 
 func TestMaxOperations(t *testing.T) {
-	built := buildWith(t, New(nil))
+	built := buildWith(t, New(DefaultSettings()))
 	body := `{"email":"a","posts":{"create":[{"title":"1"},{"title":"2"}],"connect":[{"id":1}]}}`
-	if _, err := run(t, New(map[string]any{"max_operations": 3}), built, "/api/users", body, nil); err != nil {
+	if _, err := run(t, New(with(func(s *Settings) { s.MaxOperations = 3 })), built, "/api/users", body, nil); err != nil {
 		t.Fatalf("3 operations within max_operations 3: %v", err)
 	}
-	_, err := run(t, New(map[string]any{"max_operations": 2}), built, "/api/users", body, nil)
+	_, err := run(t, New(with(func(s *Settings) { s.MaxOperations = 2 })), built, "/api/users", body, nil)
 	wantCode(t, err, CodeInvalidBody, `nested "posts[1]": more than 2 nested operations`)
 }
 
@@ -477,7 +476,7 @@ func TestMaxOperations(t *testing.T) {
 // @omit on the related table, @omit create/update on the FK column, and
 // @omit read on the referenced column.
 func TestOperationAvailability(t *testing.T) {
-	p := New(nil)
+	p := New(DefaultSettings())
 	fresh := func() *api.Built { return buildWith(t, p) }
 
 	built := fresh()
@@ -535,7 +534,7 @@ func TestOperationAvailability(t *testing.T) {
 }
 
 func TestNestedSchemas(t *testing.T) {
-	built := buildWith(t, New(nil))
+	built := buildWith(t, New(DefaultSettings()))
 	schemas := built.OpenAPI.Components.Schemas
 	props := func(name, key string) []string {
 		t.Helper()
@@ -572,4 +571,10 @@ func TestNestedSchemas(t *testing.T) {
 	if p := schemas["posts.insert"].Properties["users"]; p.MaxProperties == nil || *p.MaxProperties != 1 {
 		t.Errorf("forward insert schema allows several operations: %+v", p)
 	}
+}
+
+func with(f func(*Settings)) Settings {
+	s := DefaultSettings()
+	f(&s)
+	return s
 }

@@ -99,7 +99,7 @@ func TestRPCPolymorphicArguments(t *testing.T) {
 	res, body, _ := rpcCall(t, "GET", base+"array_first?arr=%7B1%7D", "", nil)
 	wantProblem(t, res, body, 404, "not_found")
 
-	off := testServer(t, func(c *config.Config) { c.Plugins.Disabled = []string{"smart-comments"} })
+	off := testServer(t, func(c *config.Config) { c.Plugins.Disabled = []string{"smart_comments"} })
 	res, body, _ = rpcCall(t, "GET", off.URL+"/api/rpc/pick_first?a=x&b=y", "", nil)
 	wantProblem(t, res, body, 404, "not_found")
 }

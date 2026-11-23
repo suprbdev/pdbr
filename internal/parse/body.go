@@ -28,7 +28,7 @@ const CodeColumnReadOnly = "column_readonly"
 // gaps). DELETE ignores any body.
 //
 // Body keys that are not columns are rejected (invalid_body) unless
-// Options.NestedKeys claims them for the nested-mutations plugin: those
+// Options.NestedKeys claims them for the nested_mutations plugin: those
 // travel as Body.Nested[key] = {Relation, Raw: <decoded JSON>} for the
 // plugin's CompileHook to resolve, and the FK columns of a forward relation
 // stop being required. Nested keys are accepted on single-object POST bodies
@@ -542,7 +542,7 @@ func (p *parser) checkComposite(comp *api.Composite, v any, isArray bool) *compi
 
 // CoerceValue coerces one decoded JSON value (UseNumber) for col with the
 // body coercion rules, regardless of whether the column is writable — the
-// nested-mutations plugin uses it for connect keys, which are usually
+// nested_mutations plugin uses it for connect keys, which are usually
 // identity columns.
 func CoerceValue(built *api.Built, col *introspect.Column, v any) (any, error) {
 	if built == nil || col == nil {
@@ -560,7 +560,7 @@ func CoerceValue(built *api.Built, col *introspect.Column, v any) (any, error) {
 // against res's input columns exactly as a request body object: unknown keys
 // are invalid_body, generated columns column_readonly, values coerced per
 // the body coercion table. The result is keyed by column name. Plugins that
-// build their own DML from nested body rows (nested-mutations) use this so
+// build their own DML from nested body rows (nested_mutations) use this so
 // their coercion matches the core's.
 func CoerceObject(built *api.Built, res *api.Resource, obj map[string]any) (map[string]any, error) {
 	return CoerceObjectFor(built, res, obj, plan.POST)

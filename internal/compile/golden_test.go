@@ -46,10 +46,10 @@ var goldenParseOptions = parse.Options{
 }
 
 // goldenCompile is the compile chain the goldens run through: the core
-// compiler wrapped by the nested-mutations CompileHook (the only built-in
+// compiler wrapped by the nested_mutations CompileHook (the only built-in
 // that emits SQL of its own; nested_* goldens exercise it).
 func goldenCompile(c *compile.Compiler) compile.Func {
-	return nestedmutations.New(nil).WrapCompile(c.Compile)
+	return nestedmutations.New(nestedmutations.DefaultSettings()).WrapCompile(c.Compile)
 }
 
 // goldenCatalog is the shared fixture plus golden-only objects the fixture
@@ -222,11 +222,11 @@ func goldenBuilt(t testing.TB) *api.Built {
 	// The postgis plugin registers the <col>_<accessor> pseudo-columns the
 	// spatial_* goldens select; the parse gates themselves come from
 	// goldenParseOptions.
-	if err := postgisplugin.New(nil).TransformAPI(context.Background(), b); err != nil {
+	if err := postgisplugin.New(postgisplugin.DefaultSettings()).TransformAPI(context.Background(), b); err != nil {
 		t.Fatalf("postgis plugin: %v", err)
 	}
-	if err := nestedmutations.New(nil).TransformAPI(context.Background(), b); err != nil {
-		t.Fatalf("nested-mutations plugin: %v", err)
+	if err := nestedmutations.New(nestedmutations.DefaultSettings()).TransformAPI(context.Background(), b); err != nil {
+		t.Fatalf("nested_mutations plugin: %v", err)
 	}
 	built, err := b.Build()
 	if err != nil {

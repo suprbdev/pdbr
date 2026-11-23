@@ -529,9 +529,10 @@ func (b *Builder) openAPI(built *Built) *Document {
 	}
 	if b.Options.AuthMode == "jwt" {
 		doc.Components.SecuritySchemes["bearerAuth"] = &SecurityScheme{Type: "http", Scheme: "bearer", BearerFormat: "JWT"}
-		// Anonymous requests are valid (they run as rls.anonymous_role), so
-		// authentication is optional: the empty requirement comes first.
 		doc.Security = []map[string][]string{{}, {"bearerAuth": {}}}
+		if b.Options.AuthRequired {
+			doc.Security = []map[string][]string{{"bearerAuth": {}}}
+		}
 	}
 	if len(doc.Components.SecuritySchemes) == 0 {
 		doc.Components.SecuritySchemes = nil
@@ -816,7 +817,7 @@ func (b *Builder) inputSchema(r *Resource, m Method) *Schema {
 	return s
 }
 
-// nestedInputProps adds the nested-mutations properties to a .insert or
+// nestedInputProps adds the nested_mutations properties to a .insert or
 // .update schema: one per key of Surface.NestedKeys(r) for which
 // Surface.NestedSchema renders a schema. A forward key of a create body
 // supplies the FK columns, which leave the required set.

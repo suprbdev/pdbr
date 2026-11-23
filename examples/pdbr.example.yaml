@@ -10,8 +10,8 @@ database:
   max_conns: 10
   # Timeout for establishing a connection.
   connect_timeout: "10s"
-  # Per-statement timeout applied to every request (0 disables).
-  statement_timeout: "30s"
+  # Per-statement timeout applied to every request (0 disables). Keep it below the HTTP request timeout so a slow statement fails with SQLSTATE 57014 (a timeout error the client can act on) before the request is cut off.
+  statement_timeout: "25s"
 
 server:
   # Listen address for the HTTP server.
@@ -75,40 +75,55 @@ filters:
   # Per-table extra filterable columns, keyed by schema.table, overriding indexed_only.
   allow_columns: {}
 
-rls:
-  # Run each request as a switched role with claims exposed via set_config (SET LOCAL). Disabling uses the privileged connection directly and logs a loud warning.
-  enabled: true
-  # Role assumed for authenticated requests without a role claim.
-  default_role: ""
-  # Role assumed for unauthenticated requests.
-  anonymous_role: "anonymous"
-  # JWT claim (or claim header in headers mode: app_role is <header_prefix>App-Role) carrying the database role.
-  role_claim: "role"
-  # Roles a request may assume via the role claim. Empty allows any role (subject to database grants); default_role and anonymous_role are always allowed.
-  allowed_roles: []
-  # set_config namespace for request claims. Defaults to pdbq.claims so RLS policies written for pdbq work unchanged.
-  claims_prefix: "pdbq.claims"
-  auth:
-    # Claim source: 'jwt', 'headers' (behind a trusted gateway), or 'none'.
-    mode: "jwt"
-    # HMAC secret for HS256/384/512 verification (jwt mode; ignored when jwks_url is set).
-    jwt_secret: ""
-    # JWKS endpoint for asymmetric JWT verification (RS256/384/512, ES256/384/512). Takes precedence over jwt_secret.
+auth:
+  # Credential source: 'jwt' (verify a bearer JWT), 'headers' (claims set by a trusted gateway) or 'none' (no credentials: every request is anonymous).
+  mode: "jwt"
+  # JWT verification (jwt mode) and the key minting signs with.
+  jwt:
+    # HMAC secret verifying HS256/384/512 tokens (ignored for verification when jwks_url is set) and signing minted tokens.
+    secret: ""
+    # File holding the HMAC secret (trailing newlines are stripped), instead of secret.
+    secret_file: ""
+    # JWKS endpoint for asymmetric JWT verification (RS256/384/512, ES256/384/512). Takes precedence over secret.
     jwks_url: ""
     # How long fetched JWKS keys are cached; an unknown kid triggers an early refresh (key rotation) at most once a minute. After the TTL, keys refresh in the background and stay in use for up to one more TTL while the endpoint fails; failed fetches back off from 1s to 1m.
     jwks_cache_ttl: "1h0m0s"
     # Expected iss claim; empty skips the check.
-    jwt_issuer: ""
+    issuer: ""
     # Expected aud claim; empty skips the check.
-    jwt_audience: ""
-    # Header prefix mapped to claims in headers mode, e.g. X-Pdbr-Claim-. The rest of the name maps to one claim (User-Id is user_id); requests with a claim header containing an underscore or other punctuation, repeated, or folding onto another claim header are rejected. The gateway must strip every client-supplied header with this prefix, in any letter case.
-    header_prefix: "X-Pdbr-Claim-"
-    # Claim names (e.g. user_id) accepted from claim headers in headers mode; role_claim is always accepted. Requests carrying any other claim header are rejected. Empty accepts any claim.
-    header_claims: []
-    # CIDR blocks (or single IPs) allowed to supply claim headers in headers mode. Requests from other peers that carry claim headers are rejected. Empty trusts every peer and logs a startup warning.
+    audience: ""
+    # Clock skew tolerated when checking exp, nbf and iat.
+    leeway: "0s"
+    # Path of the claim carrying the database role: dot-separated keys with optional array indexes and double-quoted keys, e.g. role, app_metadata.role, realm_access.roles[0] or "https://example.com/role". A missing claim falls back to roles.default; a claim that is not a non-empty string is rejected.
+    role_claim_path: "role"
+  # Gateway claim headers (headers mode).
+  headers:
+    # Header prefix mapped to claims, e.g. X-Pdbr-Claim-. The rest of the name maps to one claim (User-Id is user_id); requests with a claim header containing an underscore or other punctuation, repeated, or folding onto another claim header are rejected. The gateway must strip every client-supplied header with this prefix, in any letter case.
+    prefix: "X-Pdbr-Claim-"
+    # Claim names (e.g. user_id) accepted from claim headers; role_claim is always accepted. Requests carrying any other claim header are rejected. Empty accepts any claim.
+    claims: []
+    # Claim carrying the database role (role is sent as <prefix>Role). A missing claim falls back to roles.default.
+    role_claim: "role"
+    # CIDR blocks (or single IPs) allowed to send claim headers; required in headers mode. Requests from other peers that carry claim headers are rejected.
     trusted_proxies: []
-    # Schema-qualified composite type (e.g. public.jwt) minted into a signed JWT: any function returning it yields an HS256 token string built from the composite's fields (an exp field becomes the token expiry). Requires jwt_secret; jwt_issuer/jwt_audience are embedded when set. Empty disables minting.
-    jwt_type: ""
+  # Schema-qualified composite type (e.g. public.jwt) minted into a signed JWT: any function returning it yields an HS256 token string built from the composite's fields (an exp field becomes the token expiry). Requires jwt.secret or jwt.secret_file; jwt.issuer/jwt.audience are embedded when set. Empty disables minting.
+  mint_type: ""
+
+roles:
+  # Run each request as its resolved role (SET LOCAL ROLE). Disabling runs every request as the connection role, with credentials still verified and claims still set; it logs a loud warning.
+  switch: true
+  # Role of requests without credentials (every request in auth mode none). Empty refuses requests without credentials with 401 (auth modes jwt and headers).
+  anonymous: ""
+  # Role of authenticated requests without a role claim; empty falls back to anonymous, and a request that resolves to no role is refused.
+  default: ""
+  # Roles a request may assume via its role claim. Empty allows any role (subject to database grants); default and anonymous are always allowed.
+  allowed: []
+
+claims:
+  # Namespace of the per-claim settings: claim user_id is current_setting('jwt.claims.user_id', true) with the default (PostGraphile's). Empty sets no per-claim settings.
+  prefix: "jwt.claims"
+  # Setting that receives every claim as one JSON object ('{}' without credentials), e.g. request.jwt.claims (PostgREST's: current_setting('request.jwt.claims', true)::json->>'sub'). Empty sets none.
+  json_setting: ""
 
 transactions:
   # Wrap every mutation in a transaction.
@@ -133,8 +148,40 @@ errors:
 plugins:
   # Plugin names to disable.
   disabled: []
-  # Per-plugin configuration, keyed by plugin name.
-  settings: {}
+  # Per-plugin settings, one section per plugin.
+  settings:
+    # advanced_filters plugin: relation filters, related-column ordering and computed-column filter/order.
+    advanced_filters:
+      # Relation filters (rel.col=op.v, rel!none., rel!every., rel=exists.true|false).
+      relations: true
+      # Filtering and ordering on computed columns (follows schema.functions).
+      computed: true
+      # Ordering by a related column (order=rel(col).asc); off when relations is off.
+      relation_order: true
+      # Only foreign keys tagged @filterable (or @sortable) get relation filters and ordering.
+      relations_opt_in: false
+      # Only computed-column functions tagged @filterable (or @sortable) get filters and ordering.
+      computed_opt_in: false
+    # postgis plugin: the spatial query surface of geometry, geography and raster columns.
+    postgis:
+      # Spatial filter operators (st_*, bbox_*) on spatial columns and the intersects filter on raster columns.
+      filters: true
+      # Derived pseudo-columns: <col>_area, <col>_centroid, ... on spatial columns, <col>_width, <col>_value, <col>_summary_stats, ... on raster columns.
+      derived: true
+      # Distance ordering (order=<col>.dist.asc|desc) and the <col>_distance score, both with near=.
+      ordering: true
+      # select= projection arguments: col(transform=...,simplify=...,buffer=...,precision=...).
+      projection: true
+      # Spatial aggregate functions in select= (col.extent(), col.union(), col.collect(), col.centroid()); also needs server.aggregates.
+      aggregates: true
+    # nested_mutations plugin: related rows written in the same statement as a POST or PATCH.
+    nested_mutations:
+      # Run every request carrying nested keys in a transaction, even with transactions.mutations off.
+      force_transactions: true
+      # Deepest nesting of create/update operations (the root row is depth 1; connect, delete and disconnect add no level); deeper answers 400 embed_depth_exceeded.
+      max_depth: 3
+      # Most nested operations per request (every list item and forward operation counts once); more answers 400 invalid_body.
+      max_operations: 50
 
 log:
   # Log level: debug, info, warn, error.
@@ -150,5 +197,5 @@ metrics:
   # Separate listen address for the metrics endpoint, e.g. :9090, keeping it off the public listener; empty serves it on the main server address.
   addr: ""
 
-# Schema contracts: named APIs for different audiences, each a subset of the full API selected by @contract / @behavior ±contract:<name> smart comments and served with its own OpenAPI document under its own base path. Entries are {name, default: include|exclude, path (default <server.base_path>/<name>)}, or bare names. When set, only the contracts are served (give one contract path: / to serve it at the root). Requires the smart-comments plugin.
+# Schema contracts: named APIs for different audiences, each a subset of the full API selected by @contract / @behavior ±contract:<name> smart comments and served with its own OpenAPI document under its own base path. Entries are {name, default: include|exclude, path (default <server.base_path>/<name>)}, or bare names. When set, only the contracts are served (give one contract path: / to serve it at the root). Requires the smart_comments plugin.
 contracts: []

@@ -94,7 +94,7 @@ func (c *Compiler) RowJSON(req *Request, node *plan.Node, alias string, ps *Para
 //     must be a plain INSERT: none of the table's existing rows is
 //     replaced.
 //
-// This is the extension point the nested-mutations CompileHook uses to
+// This is the extension point the nested_mutations CompileHook uses to
 // replace the DML while reusing response compilation.
 func (c *Compiler) MutationWithCTEs(req *Request, ctes string, ps *ParamSet, inserted map[string][]string) (*Statement, error) {
 	writes := make(map[string]TableWrites, len(inserted))

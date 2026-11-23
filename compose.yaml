@@ -32,6 +32,7 @@ services:
     environment:
       PDBR_DATABASE_URL: postgres://pdbr:pdbr@db:5432/pdbr
       PDBR_WATCH_ENABLED: "true"
-      PDBR_RLS_ENABLED: "false" # dev stack; see docs/rls.md for production
+      PDBR_AUTH_MODE: none # dev stack; see docs/rls.md for production
+      PDBR_ROLES_SWITCH: "false"
       PDBR_ERRORS_DETAIL: dev
       PDBR_LOG_LEVEL: debug

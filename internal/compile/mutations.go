@@ -79,7 +79,7 @@ type visSource struct {
 	// pre-statement versions of the rows the DML replaced.
 	root bool
 	// rows lists further CTEs of the chain holding rows that are in table
-	// once the statement completes (nested-mutations), each projecting
+	// once the statement completes (nested_mutations), each projecting
 	// every column; keep restricts the table half to the rows the chain
 	// left alone.
 	rows []string

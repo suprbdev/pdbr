@@ -58,8 +58,8 @@ func computed(t *testing.T, built *api.Built, path, key string) *api.Computed {
 }
 
 func TestMeta(t *testing.T) {
-	p := New(nil)
-	if p.Name() != "advanced-filters" || p.Priority() != 150 {
+	p := New(DefaultSettings())
+	if p.Name() != "advanced_filters" || p.Priority() != 150 {
 		t.Fatalf("name/priority = %s/%d", p.Name(), p.Priority())
 	}
 	if got := plugin.Hooks(p); len(got) != 1 || got[0] != "api" {
@@ -68,17 +68,21 @@ func TestMeta(t *testing.T) {
 }
 
 func TestSettingsMatrix(t *testing.T) {
+	with := func(f func(*Settings)) Settings {
+		s := DefaultSettings()
+		f(&s)
+		return s
+	}
 	cases := []struct {
 		name     string
-		settings map[string]any
+		settings Settings
 		want     flags
 	}{
-		{"defaults", nil, flags{RelationFilters: true, RelationOrder: true, ComputedFilters: true, ComputedOrder: true}},
-		{"relations off", map[string]any{"relations": false}, flags{ComputedFilters: true, ComputedOrder: true}},
-		{"relation_order off", map[string]any{"relation_order": false}, flags{RelationFilters: true, ComputedFilters: true, ComputedOrder: true}},
-		{"computed off", map[string]any{"computed": false}, flags{RelationFilters: true, RelationOrder: true}},
-		{"all off", map[string]any{"relations": false, "computed": false}, flags{}},
-		{"mistyped ignored", map[string]any{"relations": "no", "bogus": 1}, flags{RelationFilters: true, RelationOrder: true, ComputedFilters: true, ComputedOrder: true}},
+		{"defaults", DefaultSettings(), flags{RelationFilters: true, RelationOrder: true, ComputedFilters: true, ComputedOrder: true}},
+		{"relations off", with(func(s *Settings) { s.Relations = false }), flags{ComputedFilters: true, ComputedOrder: true}},
+		{"relation_order off", with(func(s *Settings) { s.RelationOrder = false }), flags{RelationFilters: true, ComputedFilters: true, ComputedOrder: true}},
+		{"computed off", with(func(s *Settings) { s.Computed = false }), flags{RelationFilters: true, RelationOrder: true}},
+		{"all off", with(func(s *Settings) { s.Relations, s.Computed = false, false }), flags{}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -112,7 +116,7 @@ func TestWithoutPluginSurfaceIsClosed(t *testing.T) {
 }
 
 func TestSchemaFunctionsOffClosesComputed(t *testing.T) {
-	built := build(t, New(nil), testutil.FixtureCatalog(), false)
+	built := build(t, New(DefaultSettings()), testutil.FixtureCatalog(), false)
 	if built.Surface.ComputedFilters || built.Surface.ComputedOrder {
 		t.Fatalf("computed surface must follow schema.functions: %+v", built.Surface)
 	}
@@ -122,7 +126,7 @@ func TestSchemaFunctionsOffClosesComputed(t *testing.T) {
 }
 
 func TestSetReturningComputedNeverFilterable(t *testing.T) {
-	built := build(t, New(nil), testutil.FixtureCatalog(), true)
+	built := build(t, New(DefaultSettings()), testutil.FixtureCatalog(), true)
 	c := computed(t, built, "users", "tag_words")
 	if c.Filterable || c.Orderable {
 		t.Fatalf("SETOF computed column must not be filterable/orderable: %+v", c)
@@ -162,7 +166,7 @@ func TestOmitFilterOrderOnForeignKey(t *testing.T) {
 		t.Run(tc.comment, func(t *testing.T) {
 			cat := testutil.FixtureCatalog()
 			fkComment(cat, "posts", "posts_author_id_fkey", tc.comment)
-			built := build(t, New(nil), cat, true)
+			built := build(t, New(DefaultSettings()), cat, true)
 			for _, r := range []*api.Relation{rel(t, built, "users", "posts"), rel(t, built, "posts", "users")} {
 				if r.Filterable != tc.filterable || r.Orderable != tc.orderable {
 					t.Errorf("%s.%s filterable=%v orderable=%v, want %v/%v", r.From.Path, r.Key, r.Filterable, r.Orderable, tc.filterable, tc.orderable)
@@ -196,7 +200,7 @@ func TestOmitFilterOrderOnComputed(t *testing.T) {
 		t.Run(tc.comment, func(t *testing.T) {
 			cat := testutil.FixtureCatalog()
 			fnComment(cat, "users_post_count", tc.comment)
-			built := build(t, New(nil), cat, true)
+			built := build(t, New(DefaultSettings()), cat, true)
 			c := computed(t, built, "users", "post_count")
 			if c.Filterable != tc.filterable || c.Orderable != tc.orderable {
 				t.Errorf("post_count filterable=%v orderable=%v, want %v/%v", c.Filterable, c.Orderable, tc.filterable, tc.orderable)
@@ -210,7 +214,7 @@ func TestOptInModes(t *testing.T) {
 	fkComment(cat, "posts", "posts_author_id_fkey", "@filterable")
 	fkComment(cat, "comments", "comments_post_id_fkey", "@sortable\n@omit filter")
 	fnComment(cat, "users_post_count", "@filterable")
-	built := build(t, New(map[string]any{"relations_opt_in": true, "computed_opt_in": true}), cat, true)
+	built := build(t, New(Settings{Relations: true, Computed: true, RelationOrder: true, RelationsOptIn: true, ComputedOptIn: true}), cat, true)
 	if got := ours(built.Surface); got != (flags{RelationFilters: true, RelationOrder: true, ComputedFilters: true, ComputedOrder: true}) {
 		t.Fatalf("surface = %+v", got)
 	}
@@ -230,7 +234,7 @@ func TestOptInModes(t *testing.T) {
 		t.Errorf("tagged computed must be exposed: %+v", c)
 	}
 
-	untagged := build(t, New(map[string]any{"computed_opt_in": true}), testutil.FixtureCatalog(), true)
+	untagged := build(t, New(Settings{Relations: true, Computed: true, RelationOrder: true, ComputedOptIn: true}), testutil.FixtureCatalog(), true)
 	if c := computed(t, untagged, "users", "post_count"); c.Filterable || c.Orderable {
 		t.Errorf("untagged computed must be closed under computed_opt_in: %+v", c)
 	}
@@ -239,7 +243,7 @@ func TestOptInModes(t *testing.T) {
 	}
 }
 
-// omitMany models the smart-comments plugin (priority 50) having removed
+// omitMany models the smart_comments plugin (priority 50) having removed
 // the backward embed for @omit many: the backward filter/order go with it,
 // the forward side stays.
 type omitMany struct{}
@@ -256,7 +260,7 @@ func (omitMany) TransformAPI(_ context.Context, b *api.Builder) error {
 func TestBackwardOmittedDropsFilters(t *testing.T) {
 	cat := testutil.FixtureCatalog()
 	b := api.New(cat, inflect.Default, api.Options{Schemas: []string{"public"}, BasePath: "/api", Functions: true, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
-	reg := plugin.NewRegistry(omitMany{}, New(nil))
+	reg := plugin.NewRegistry(omitMany{}, New(DefaultSettings()))
 	if err := reg.TransformAPI(context.Background(), nil, b); err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +281,7 @@ func TestEarlierClearedFlagsStayCleared(t *testing.T) {
 	b := api.New(cat, inflect.Default, api.Options{Schemas: []string{"public"}, BasePath: "/api", Functions: true, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	b.Resource("public", "posts").Relations["users"][0].Filterable = false
 	b.Resource("public", "users").Computed["post_count"].Orderable = false
-	if err := New(nil).TransformAPI(context.Background(), b); err != nil {
+	if err := New(DefaultSettings()).TransformAPI(context.Background(), b); err != nil {
 		t.Fatal(err)
 	}
 	if b.Resource("public", "posts").Relations["users"][0].Filterable {

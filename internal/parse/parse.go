@@ -109,7 +109,7 @@ type Options struct {
 	// transaction is rolled back and whether Prefer: tx= is honoured.
 	TxEnd string
 	// RelationFilters enables rel.col=, rel!none., rel!every. and
-	// rel=exists. (advanced-filters plugin).
+	// rel=exists. (advanced_filters plugin).
 	RelationFilters bool
 	// ComputedFilters enables filtering on computed columns.
 	ComputedFilters bool
@@ -128,7 +128,7 @@ type Options struct {
 	SpatialOrder      bool
 	SpatialProjection bool
 	// NestedKeys, when set, names the body keys of a resource that the
-	// nested-mutations plugin accepts (relation key -> relation). Such keys
+	// nested_mutations plugin accepts (relation key -> relation). Such keys
 	// in a single-object POST body land in plan.Body.Nested with their raw
 	// decoded JSON value instead of being rejected as unknown columns; the
 	// FK columns of a forward relation stop being required when the key is

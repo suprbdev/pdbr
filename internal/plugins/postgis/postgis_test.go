@@ -50,7 +50,7 @@ func build(t *testing.T, cat *introspect.Catalog, p *Plugin) (*api.Builder, *api
 }
 
 func TestPluginIdentity(t *testing.T) {
-	p := New(nil)
+	p := New(DefaultSettings())
 	if p.Name() != "postgis" || p.Priority() != 160 {
 		t.Fatalf("name/priority = %s/%d", p.Name(), p.Priority())
 	}
@@ -60,21 +60,12 @@ func TestPluginIdentity(t *testing.T) {
 }
 
 func TestSettings(t *testing.T) {
-	cases := []struct {
-		in   map[string]any
-		want [4]bool
-	}{
-		{nil, [4]bool{true, true, true, true}},
-		{map[string]any{"filters": false}, [4]bool{false, true, true, true}},
-		{map[string]any{"derived": false, "ordering": false}, [4]bool{true, false, false, true}},
-		{map[string]any{"projection": false, "unknown": 1, "filters": "no"}, [4]bool{true, true, true, false}},
+	if got := New(DefaultSettings()).Settings(); got != DefaultSettings() {
+		t.Fatalf("Settings() = %+v, want the defaults", got)
 	}
-	for _, tc := range cases {
-		p := New(tc.in)
-		f, d, o, pr := p.Settings()
-		if got := [4]bool{f, d, o, pr}; got != tc.want {
-			t.Errorf("New(%v) = %v, want %v", tc.in, got, tc.want)
-		}
+	off := Settings{Derived: true}
+	if got := New(off).Settings(); got != off {
+		t.Fatalf("Settings() = %+v, want %+v", got, off)
 	}
 }
 
@@ -85,16 +76,21 @@ func surfaceOf(s api.Surface) spatialSurface {
 }
 
 func TestSurfaceMatrix(t *testing.T) {
+	with := func(f func(*Settings)) Settings {
+		s := DefaultSettings()
+		f(&s)
+		return s
+	}
 	cases := []struct {
-		settings map[string]any
+		settings Settings
 		want     spatialSurface
 	}{
-		{nil, spatialSurface{true, true, true, true, true}},
-		{map[string]any{"filters": false}, spatialSurface{false, false, true, true, true}},
-		{map[string]any{"ordering": false}, spatialSurface{false, true, false, true, true}},
-		{map[string]any{"projection": false}, spatialSurface{false, true, true, false, true}},
-		{map[string]any{"derived": false}, spatialSurface{true, true, true, true, true}},
-		{map[string]any{"aggregates": false}, spatialSurface{true, true, true, true, false}},
+		{DefaultSettings(), spatialSurface{true, true, true, true, true}},
+		{with(func(s *Settings) { s.Filters = false }), spatialSurface{false, false, true, true, true}},
+		{with(func(s *Settings) { s.Ordering = false }), spatialSurface{false, true, false, true, true}},
+		{with(func(s *Settings) { s.Projection = false }), spatialSurface{false, true, true, false, true}},
+		{with(func(s *Settings) { s.Derived = false }), spatialSurface{true, true, true, true, true}},
+		{with(func(s *Settings) { s.Aggregates = false }), spatialSurface{true, true, true, true, false}},
 	}
 	for _, tc := range cases {
 		_, built := build(t, testutil.FixtureCatalog(), New(tc.settings))
@@ -105,7 +101,7 @@ func TestSurfaceMatrix(t *testing.T) {
 }
 
 func TestPseudoColumns(t *testing.T) {
-	_, built := build(t, testutil.FixtureCatalog(), New(nil))
+	_, built := build(t, testutil.FixtureCatalog(), New(DefaultSettings()))
 	places := built.ByPath["places"]
 	want := []string{
 		"area", "length", "perimeter", "centroid", "envelope", "srid", "geometry_type", "is_valid",
@@ -157,7 +153,7 @@ func TestPseudoColumns(t *testing.T) {
 	}
 	// derived: false registers only the distance scores, which belong to
 	// ordering.
-	_, off := build(t, testutil.FixtureCatalog(), New(map[string]any{"derived": false}))
+	_, off := build(t, testutil.FixtureCatalog(), New(Settings{Filters: true, Ordering: true, Projection: true, Aggregates: true}))
 	if got := sortedKeys(off.ByPath["places"].Pseudo); !reflect.DeepEqual(got, []string{"area_distance", "location_distance"}) {
 		t.Errorf("derived=false registered %v", got)
 	}
@@ -167,7 +163,7 @@ func TestRealColumnWins(t *testing.T) {
 	cat := testutil.FixtureCatalog()
 	pt := placesTable(cat)
 	pt.Columns = append(pt.Columns, &introspect.Column{Name: "location_srid", Position: 6, PGType: "int4", TypeSchema: "pg_catalog"})
-	b, built := build(t, cat, New(nil))
+	b, built := build(t, cat, New(DefaultSettings()))
 	places := built.ByPath["places"]
 	if places.Pseudo["location_srid"] != nil {
 		t.Fatal("pseudo-column shadowed a real column")
@@ -206,7 +202,7 @@ func TestPseudoColumnsByTypmod(t *testing.T) {
 		cat := testutil.FixtureCatalog()
 		pt := placesTable(cat)
 		pt.Columns[3].Spatial = tc.spatial
-		_, built := build(t, cat, New(nil))
+		_, built := build(t, cat, New(DefaultSettings()))
 		places := built.ByPath["places"]
 		for _, acc := range tc.has {
 			if places.Pseudo["location_"+acc] == nil {
@@ -226,7 +222,7 @@ func TestOmitTags(t *testing.T) {
 	pt := placesTable(cat)
 	pt.Columns[3].Comment = "@omit filter,order\nWhere it is."
 	pt.Columns[4].Comment = "@omit filter"
-	_, built := build(t, cat, New(nil))
+	_, built := build(t, cat, New(DefaultSettings()))
 	places := built.ByPath["places"]
 	if places.FilterColumns["location"] || places.OrderColumns["location"] {
 		t.Errorf("@omit filter,order not applied: %v %v", places.FilterColumns, places.OrderColumns)
@@ -255,7 +251,7 @@ func TestIndexedOnlyPolicy(t *testing.T) {
 		}
 	}
 	pt.Indexes = idx
-	_, built := build(t, cat, New(nil))
+	_, built := build(t, cat, New(DefaultSettings()))
 	places := built.ByPath["places"]
 	if places.FilterColumns["location"] || places.OrderColumns["location"] {
 		t.Errorf("unindexed spatial column admitted: %v", places.FilterColumns)
@@ -266,7 +262,7 @@ func TestIndexedOnlyPolicy(t *testing.T) {
 }
 
 func TestOpenAPI(t *testing.T) {
-	_, built := build(t, testutil.FixtureCatalog(), New(nil))
+	_, built := build(t, testutil.FixtureCatalog(), New(DefaultSettings()))
 	doc := built.OpenAPI
 	geo := doc.Components.Schemas["GeoJSON"]
 	if geo == nil || geo.Type != "object" || len(geo.Properties["type"].Enum) != 7 {
@@ -307,7 +303,7 @@ func TestOpenAPI(t *testing.T) {
 	if users := doc.Paths["/users"].Get; users.Responses["200"].Content["application/geo+json"] != nil || hasParam(users.Parameters, "geometry", "query") {
 		t.Errorf("users must not advertise geo+json")
 	}
-	_, off := build(t, testutil.FixtureCatalog(), New(map[string]any{"filters": false}))
+	_, off := build(t, testutil.FixtureCatalog(), New(Settings{Derived: true, Ordering: true, Projection: true, Aggregates: true}))
 	if ops := off.Extra.FilterOps["geography"]; !reflect.DeepEqual(ops, []string{"is"}) {
 		t.Errorf("filters=false FilterOps = %v", ops)
 	}
@@ -329,7 +325,7 @@ func TestDisabledAndNoSpatial(t *testing.T) {
 	}
 	cat.Tables = tables
 	_, a := build(t, cat, nil)
-	_, b := build(t, cat, New(nil))
+	_, b := build(t, cat, New(DefaultSettings()))
 	ja, _ := a.OpenAPI.JSON()
 	jb, _ := b.OpenAPI.JSON()
 	if string(ja) != string(jb) {
@@ -361,7 +357,7 @@ func TestFilterOpsMatchParser(t *testing.T) {
 // TestParseGates drives the parser with the Surface flags the plugin sets so
 // each setting removes exactly its half of the grammar.
 func TestParseGates(t *testing.T) {
-	_, built := build(t, testutil.FixtureCatalog(), New(nil))
+	_, built := build(t, testutil.FixtureCatalog(), New(DefaultSettings()))
 	requests := map[string]string{
 		"filters":    "/places?location=st_intersects.SRID%3D4326%3BPOINT(1%202)",
 		"ordering":   "/places?order=location.dist.asc&near=POINT(1%202)",

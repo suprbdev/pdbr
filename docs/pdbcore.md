@@ -151,7 +151,7 @@ type Querier interface {
 type PoolConfig struct { URL string; MaxConns int32; ConnectTimeout, StatementTimeout time.Duration }
 func Connect(ctx context.Context, cfg PoolConfig) (*pgxpool.Pool, error)
 
-type Identity struct { Role string; Claims map[string]any; ClaimsPrefix string } // ClaimsPrefix "" → "pdbq.claims"
+type Identity struct { Role string; Claims map[string]any; ClaimsPrefix, ClaimsJSONSetting string } // ClaimsPrefix "" sets no per-claim settings
 type TxOptions struct { Isolation pgx.TxIsoLevel; MaxRetries int; RLS bool; ScanBeforeCommit bool; Log *slog.Logger }
 
 // RunTx begins a tx, applies SET LOCAL ROLE + set_config claims (RLS true), calls fn,
@@ -167,7 +167,7 @@ func QueryTx(ctx context.Context, db ConnAcquirer, opts TxOptions, id Identity, 
 
 func QuoteIdent(s string) string
 func ValidRole(s string) bool      // [A-Za-z0-9_]+, not none/public/pg_* in any case (v0.4.0: "none" is RESET ROLE)
-func ValidateClaimsPrefix(prefix string) error // v0.4.0; confx.ValidateRLS checks both at config load
+func ValidateClaimsPrefix(prefix string) error // v0.4.0; confx.ValidateIdentity checks both at config load
 func ValidClaimKey(s string) bool
 
 type Class int // OK, UserInput (22*, 23502, 23514, 42* other), Permission (42501), Conflict (23505, 23503, 23P01, 40001/40P01 exhausted), Resource (53*, 08*), Timeout (57014), Internal
@@ -203,7 +203,7 @@ func ListenAndServe(ctx context.Context, h http.Handler, o ServeOptions) error /
 ### `confx`
 
 ```go
-func Load(envPrefix string, path string, flags *pflag.FlagSet, dst any) error // defaults already in dst; YAML < env < changed flags
+func Load(envPrefix string, path string, flags *pflag.FlagSet, dst any, opts ...LoadOption) error // defaults already in dst; YAML < env < changed flags; strict (unknown keys rejected, WithMoved hints)
 func EnvKeyMapper(prefix string) func(string) string             // strip prefix, lower, "__"→"_", "_"→"."
 func ExampleYAML(v any) string                                   // reflect over koanf+doc tags
 func ParseTrustedProxy(s string) (netip.Prefix, error)
@@ -211,12 +211,15 @@ func Discover(names ...string) string                             // first exist
 
 // shared section structs (koanf + doc tags), embedded by each product's Config:
 type Database struct { URL string; MaxConns int32; ConnectTimeout, StatementTimeout time.Duration }
-type RLS struct { Enabled bool; DefaultRole, AnonymousRole, RoleClaim string; AllowedRoles []string; ClaimsPrefix string; Auth Auth }
-type Auth struct { Mode, JWTSecret, JWKSURL string; JWKSCacheTTL time.Duration; JWTIssuer, JWTAudience, HeaderPrefix string; TrustedProxies []string; JWTType string }
+type Auth struct { Mode auth.Mode; JWT JWT; Headers Headers; MintType string }
+type JWT struct { Secret, SecretFile, JWKSURL string; JWKSCacheTTL time.Duration; Issuer, Audience string; Leeway time.Duration; RoleClaimPath string }
+type Headers struct { Prefix string; Claims []string; RoleClaim string; TrustedProxies []string }
+type Roles struct { Switch bool; Anonymous, Default string; Allowed []string }
+type Claims struct { Prefix, JSONSetting string }
 type TX struct { Mutations bool; Isolation string; MaxRetries int }   // NO PerRequest — pdbq adds it in its own TX wrapper
 type Watch struct { Enabled bool; PollInterval time.Duration; Channel string }
 type Errors struct { Detail string }
-type Plugins struct { Disabled []string; Settings map[string]map[string]any }
+type Plugins[S any] struct { Disabled []string; Settings S }    // S: the product's typed per-plugin settings
 type Log struct { Level, Format string }
 type Schema struct { Schemas []string; CachePath string; Functions bool }
 type Filters struct { IndexedOnly bool; AllowColumns map[string][]string }
@@ -224,9 +227,9 @@ type Filters struct { IndexedOnly bool; AllowColumns map[string][]string }
 
 Config split: each product owns `Config{Database confx.Database; Server
 <product>Server; Schema confx.Schema; …}`, its `DefaultConfig()` (product
-defaults such as `watch.channel` `pdbq_ddl` vs `pdbr_ddl`, `header_prefix`),
+defaults such as `watch.channel` `pdbq_ddl` vs `pdbr_ddl`, `auth.headers.prefix`),
 and its `Validate()`. Shared validation helpers (`ValidateDatabase`,
-`ValidateRLS`, `ValidateWatch`, …) live in confx so the 16 pdbq checks are
+`ValidateIdentity`, `ValidateWatch`, …) live in confx so the 16 pdbq checks are
 not duplicated.
 
 Decided (M0): koanf's `squash` embedding works for loading but cannot
@@ -258,7 +261,7 @@ stay product-typed. `Inflector` gains an explicit `base` argument because
 ### `smartcomments/catalog`
 
 ```go
-func New() *Hook // implements plugin.CatalogHook + plugin.Plugin (name "smart-comments", priority 50)
+func New() *Hook // implements plugin.CatalogHook + plugin.Plugin (name "smart-comments", priority 50; pdbr's plugin overrides Name with smart_comments)
 func Index(cat *introspect.Catalog) *Index // parsed tags per object, reused by product halves
 ```
 

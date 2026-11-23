@@ -166,8 +166,7 @@ func TestBulkRLSAndUnfilteredKnob(t *testing.T) {
 	admin := testServer(t, nil)
 	sendJSON(t, "POST", admin.URL+"/api/posts", `[{"author_id":1,"title":"M3 bulk rls 1"},{"author_id":2,"title":"M3 bulk rls 2"}]`, 201, nil)
 	rls := testServer(t, func(c *config.Config) {
-		c.RLS.Enabled = true
-		c.RLS.Auth.Mode = "headers"
+		headersAuth(c)
 	})
 	var rows []row
 	res, body := send(t, "PATCH", rls.URL+"/api/posts?title=like.M3%20bulk%20rls*&select=author_id", `{"body":"rls"}`,

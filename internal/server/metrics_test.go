@@ -71,7 +71,7 @@ func wantSeries(t *testing.T, body string, series ...string) {
 func TestMetricsRouteClasses(t *testing.T) {
 	cfg := serverCfg()
 	cfg.Compression = true
-	authn := auth.New(auth.Config{Enabled: true, Mode: "jwt", JWTSecret: "s", RoleClaim: "role", AnonymousRole: "anonymous"})
+	authn := newAuth(t, auth.Config{Mode: auth.ModeJWT, JWTSecret: "s", AnonymousRole: "anonymous"})
 	srv, m := metricsServer(t, cfg, authn, enabledMetrics())
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)

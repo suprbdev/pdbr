@@ -152,7 +152,7 @@ func (b *Builder) returnsRaster(f *introspect.Function) bool {
 
 // foreignType reports whether schema.elem lives in a schema that is
 // neither built in nor introspected and resolves to nothing the catalog
-// describes. The rls.auth.jwt_type composite (Options.JWTType) is never
+// describes. The auth.mint_type composite (Options.JWTType) is never
 // foreign: its values are minted into tokens, not rendered.
 func (b *Builder) foreignType(schema, elem string) bool {
 	cat := b.Catalog

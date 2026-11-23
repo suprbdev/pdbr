@@ -125,7 +125,7 @@ catalog references only. Benefits:
 
 As designed; `internal/plan/plan.go` is authoritative and matches this sketch
 modulo the postgis value types (`DWithin`, `BBox`), `FieldSel.Node` and the
-`Nested` subtree used by the nested-mutations plugin.
+`Nested` subtree used by the nested_mutations plugin.
 
 ```go
 package plan
@@ -171,7 +171,7 @@ type Body struct {
 	Object  map[string]any   // single row / RPC args
 	Objects []map[string]any // bulk insert / bulk upsert
 	// Nested holds nested-mutation subtrees keyed by relation key, populated
-	// only when the nested-mutations plugin is enabled.
+	// only when the nested_mutations plugin is enabled.
 	Nested map[string]*Nested
 	// Columns is the union of body keys in catalog column order (bulk).
 	Columns []*introspect.Column
@@ -218,8 +218,8 @@ type Or struct{ Terms []Expr }
 type Not struct{ Term Expr }
 type Cond struct {
 	Column   *introspect.Column // real column of the current resource
-	Computed *api.Computed      // computed-column filter (advanced-filters)
-	Relation *RelationPath      // relation filter (advanced-filters)
+	Computed *api.Computed      // computed-column filter (advanced_filters)
+	Relation *RelationPath      // relation filter (advanced_filters)
 	Op       Op                 // eq, neq, …, st_intersects, exists
 	Value    any                // coerced; nil for structural ops (is.null …)
 	Negate   bool               // leading not.
@@ -268,7 +268,7 @@ serializable and does not need to be — `pdbr request --print-sql` re-parses.
   distinct near on_conflict`) → dedicated fields; every other param is a
   filter. Dotted params (`posts.title`, `posts.order`, `posts.limit`) attach to
   the embed with that key; a dotted filter whose key is not a selected embed
-  is a relation filter (advanced-filters plugin, `EXISTS`); a key that matches
+  is a relation filter (advanced_filters plugin, `EXISTS`); a key that matches
   no FK of the resource → 400 `unknown_relation`.
 - `select=` grammar (brief §5) → `Node` tree; depth > `server.max_embed_depth`
   → 400 `embed_depth_exceeded`; ambiguous relation key without hint → 400
@@ -347,12 +347,12 @@ Body shape)`:
 | `POST` + `Prefer: resolution=` / `PUT {pk}` | the `POST` / `PUT` shapes with `ON CONFLICT (<on_conflict or PK>) DO UPDATE SET …` (merge) or `DO NOTHING` (ignore) appended to the `INSERT`; a single-row `PUT` takes its conflict target and key values from the path |
 | `If-Match` | `WITH cur AS (SELECT md5(to_jsonb(ROW(__cur."id", …))::text) AS h FROM "public"."users" __cur WHERE __cur."id" = $2), __mut AS (UPDATE … WHERE "public"."users"."id" = $2 AND (SELECT h FROM cur) = $3 RETURNING …) SELECT json_build_object('found', EXISTS (SELECT 1 FROM cur), 'row', (SELECT json_build_object(…) FROM __mut t0)) AS data` → exec: `!found` → 404, `found && row IS NULL` → 412 (`= ANY($3)` for several tags; `*` drops the hash predicate) |
 | single-row `GET` ETag | `SELECT json_build_object('etag', md5(to_jsonb(ROW(t0."id", t0."email", …))::text), 'row', json_build_object(…)) AS data FROM …` — hash over the resource's **exposed** columns (`Resource.Columns`, so `@omit`/`@omit read` columns never reach it) regardless of `select=` |
-| RPC scalar / composite | `SELECT to_json(__fn.v) AS data FROM (SELECT "public"."add_numbers"("a" => $1::"int4", "b" => $2::"int4") AS v) AS __fn` (named notation via `introspect.Function.CallSQL`: omitted args take their `DEFAULT`, `null` → `NULL::type`, variadic functions positional with `VARIADIC`; composites expanded per attribute like composite columns; `jwt_type` composites raw → shapes `jwt`/`jwt_set`) — shape `scalar` |
+| RPC scalar / composite | `SELECT to_json(__fn.v) AS data FROM (SELECT "public"."add_numbers"("a" => $1::"int4", "b" => $2::"int4") AS v) AS __fn` (named notation via `introspect.Function.CallSQL`: omitted args take their `DEFAULT`, `null` → `NULL::type`, variadic functions positional with `VARIADIC`; composites expanded per attribute like composite columns; `auth.mint_type` composites raw → shapes `jwt`/`jwt_set`) — shape `scalar` |
 | RPC void | `SELECT 'null'::jsonb AS data FROM (SELECT "public"."f"($1)) AS __v` — shape `void`, exec emits `204` because of the shape, never because of the value. Two statements (`SELECT f(); SELECT …`) are not allowed |
 | RPC single row | `SELECT CASE WHEN t0 IS NULL THEN NULL ELSE json_build_object(…) END AS data FROM "public"."publish_post"($1::"int4") AS t0 <laterals>` — shape `scalar` (NULL row → body `null`, 200) |
 | RPC `SETOF <table>` | the list statement (`page` shape) with the root scan replaced by `FROM "public"."search_posts"("term" => $1::"text") t0` (`stmt.rootSource`), the resource's filters/order/limit/offset/count, cursors off (offset `Link`s only) |
 | RPC `SETOF <scalar>` / `SETOF <composite>` | `SELECT coalesce(json_agg(<value>), '[]') AS data FROM (SELECT __v.v FROM "public"."f"($1) AS __v(v) LIMIT $2 [OFFSET $3]) AS __s` — shape `scalar` |
-| nested mutations | `WITH __p_1 AS (INSERT INTO users … RETURNING *), __mut AS (INSERT INTO posts (author_id, …) SELECT __p_1.id, $n FROM __p_1 RETURNING …), __c_2 AS (INSERT INTO comments … FROM __mut RETURNING *), __vis_1 AS NOT MATERIALIZED (SELECT <cols> FROM comments UNION ALL SELECT <cols> FROM __c_2) SELECT … FROM __mut t0 <laterals reading __vis_*>` — built by the nested-mutations CompileHook via `MutationChain`; written rows are `UNION ALL`ed with the table (minus the rows the chain replaced or deleted) into a visibility CTE so embeds in the response see them, and `__guard AS MATERIALIZED (…)` makes a nested lookup that matched nothing abort the statement |
+| nested mutations | `WITH __p_1 AS (INSERT INTO users … RETURNING *), __mut AS (INSERT INTO posts (author_id, …) SELECT __p_1.id, $n FROM __p_1 RETURNING …), __c_2 AS (INSERT INTO comments … FROM __mut RETURNING *), __vis_1 AS NOT MATERIALIZED (SELECT <cols> FROM comments UNION ALL SELECT <cols> FROM __c_2) SELECT … FROM __mut t0 <laterals reading __vis_*>` — built by the nested_mutations CompileHook via `MutationChain`; written rows are `UNION ALL`ed with the table (minus the rows the chain replaced or deleted) into a visibility CTE so embeds in the response see them, and `__guard AS MATERIALIZED (…)` makes a nested lookup that matched nothing abort the statement |
 | mutation embed back to the mutated table | `__vis AS NOT MATERIALIZED (SELECT <cols> FROM t WHERE <rows the DML left alone> UNION ALL SELECT __mut.<cols> FROM __mut)` (no `UNION ALL` for `DELETE`), emitted only when an embed reads `t` ([mutations.md](mutations.md#embeds-back-to-the-mutated-table)) |
 
 Notes:
@@ -407,7 +407,7 @@ observe but cannot rewrite `Data`.)
 
 Transaction decision table (evaluated after RequestHooks ran, once per request):
 
-| Mutation | RLS role/claims present | `transactions.mutations` | `ForceTx` | Runs as |
+| Mutation | role or claim settings to apply | `transactions.mutations` | `ForceTx` | Runs as |
 |---|---|---|---|---|
 | no | no | — | no | pool query, no tx |
 | no | yes | — | — | tx (needed for `SET LOCAL`) |
@@ -596,7 +596,7 @@ lives in `CLAUDE.md` § Gotchas.
    switches to `E'…'` when the name holds a backslash so the literal reads
    the same whatever `standard_conforming_strings` is.
 7. **`SET LOCAL` only, never `SET`.** Pooled connections must not leak
-   identity. `pdbr serve` warns loudly when RLS is off.
+   identity. `pdbr serve` warns loudly when `roles.switch` is off.
 8. **Reserved query params** (`select order limit offset after before count
    distinct near on_conflict`) can never be bare filters. A column named
    `select` is filterable only inside `and=(select.eq.x)`.
@@ -613,8 +613,9 @@ lives in `CLAUDE.md` § Gotchas.
     keys.** Correlations are rendered via a callback after alias allocation;
     `%%RETURNING%%` is substituted only in the CTE chain, never in the
     response body; `returningList` scans SQL with string literals stripped.
-12. **`pdbr request` runs with `rls.auth.mode = "none"`.** One-off CLI
-    requests do no auth / role switch by design.
+12. **`pdbr request` runs with `auth.mode: none` and `roles.switch:
+    false`.** One-off CLI requests do no auth / role switch by design (so do
+    `schema dump|check` and `plugins list`).
 13. **Wrapper objects in SQL** (`rows/total`, `etag/row`, and the mutation
     wrapper `row/key/inserted/found/n`) must be unwrapped in exec exactly when the plan asked
     for them; a plan flag and the SQL shape must agree or a client sees the

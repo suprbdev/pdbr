@@ -56,7 +56,7 @@ const (
 	// exec answers 204 without a body.
 	ShapeVoid Shape = "void"
 	// ShapeJWT / ShapeJWTSet: data is the raw claims object (or array of
-	// claims objects) of an rls.auth.jwt_type-returning function; exec signs
+	// claims objects) of an auth.mint_type-returning function; exec signs
 	// each into a JWT string via pdbcore/jwtmint (null stays null).
 	ShapeJWT    Shape = "jwt"
 	ShapeJWTSet Shape = "jwt_set"

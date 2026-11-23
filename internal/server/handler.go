@@ -25,7 +25,7 @@ type Handler struct {
 	Built *api.Built
 	Exec  *exec.Executor
 	// Parse carries the server limits and the plugin gates (Built.Surface,
-	// set by the advanced-filters / postgis APIHooks).
+	// set by the advanced_filters / postgis APIHooks).
 	Parse    parse.Options
 	BasePath string
 	Log      *slog.Logger
@@ -36,7 +36,7 @@ type Handler struct {
 
 // ParseOptions derives the parser options from the server section and the
 // plugin gates (relation/computed filters and order, spatial) from
-// Built.Surface, which the advanced-filters / postgis APIHooks set.
+// Built.Surface, which the advanced_filters / postgis APIHooks set.
 func ParseOptions(built *api.Built, maxEmbedDepth, maxPageSize int, etags, csv bool) parse.Options {
 	return parse.Options{
 		MaxEmbedDepth:     maxEmbedDepth,

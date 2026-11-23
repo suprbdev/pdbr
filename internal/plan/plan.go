@@ -90,13 +90,13 @@ type Body struct {
 	Object  map[string]any   // single row / RPC args
 	Objects []map[string]any // bulk insert / bulk upsert
 	// Nested holds nested-mutation subtrees keyed by relation key, populated
-	// only when the nested-mutations plugin is enabled.
+	// only when the nested_mutations plugin is enabled.
 	Nested map[string]*Nested
 	// Columns is the union of body keys in catalog column order (bulk).
 	Columns []*introspect.Column
 }
 
-// Nested is a nested-mutation subtree (nested-mutations plugin).
+// Nested is a nested-mutation subtree (nested_mutations plugin).
 type Nested struct {
 	Relation *api.Relation
 	// Create holds rows to insert (one for forward relations, many for
@@ -106,7 +106,7 @@ type Nested struct {
 	// Children are deeper subtrees keyed by relation key.
 	Children map[string]*Nested
 	// Raw is the decoded JSON value of the body key as the parser saw it
-	// (parse.Options.NestedKeys); the nested-mutations plugin resolves it
+	// (parse.Options.NestedKeys); the nested_mutations plugin resolves it
 	// into Create/Connect/Children.
 	Raw any
 }
@@ -461,11 +461,11 @@ type Cond struct {
 	// Path is the JSON path applied to Column (data->>a=eq.x): a ->> path
 	// compares text, a -> path jsonb.
 	Path     JSONPath
-	Computed *api.Computed // computed-column filter (advanced-filters)
+	Computed *api.Computed // computed-column filter (advanced_filters)
 	// Pseudo is a filterable (integer) contrib pseudo-column of the current
 	// resource (<col>_nlevel, <col>_icount).
 	Pseudo   *api.PseudoColumn
-	Relation *RelationPath // relation filter (advanced-filters)
+	Relation *RelationPath // relation filter (advanced_filters)
 	Op       Op            // eq, neq, ..., st_intersects, exists
 	Value    any           // coerced; nil for structural ops (is.null ...)
 	Negate   bool          // leading not.
@@ -628,7 +628,7 @@ const (
 	Exists Quantifier = "exists"
 )
 
-// RelationPath is a relation filter (advanced-filters plugin). The parser
+// RelationPath is a relation filter (advanced_filters plugin). The parser
 // sets the owning Cond's Op to Leaf.Op (or OpExists) and never sets its
 // Negate: a leading not. on the column condition lives on Leaf.Negate, and
 // not.exists.true is folded into *Exists. Several Conds sharing Steps[0]

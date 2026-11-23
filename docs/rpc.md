@@ -9,7 +9,7 @@ both. One request → one statement → one json `data` row, as everywhere else.
 
 | Route | Volatility | Args | Semantics |
 |---|---|---|---|
-| `GET {base}/rpc/{fn}?arg=value…` | `stable` / `immutable` | query string | read; runs outside a tx unless RLS claims/role are present |
+| `GET {base}/rpc/{fn}?arg=value…` | `stable` / `immutable` | query string | read; runs outside a tx unless a role or claim settings are applied |
 | `POST {base}/rpc/{fn}` (JSON body `{"arg": value}`) | any | body | volatile → [mutation semantics](#volatile-functions-are-mutations); stable/immutable via POST behave like GET |
 | `GET` on a volatile function | — | — | `405`, `Allow: POST` |
 | `{base}/{schema}/rpc/{fn}` | | | schema-qualified form; bare `/rpc/{fn}` alias only for `schema.schemas[0]` |
@@ -90,7 +90,7 @@ fixture, so `POST` only —, `search_posts(term text) SETOF posts`,
 | single row: table type or composite | object; `null` when the function returns NULL | `200` | `select=` (embeds for table types) |
 | `SETOF <table>` | array of objects | `200` | `select=`, filters, `order=`, `limit`/`offset`, `count=true` → `X-Total-Count`, `Accept: text/csv`; **offset paging only** (no `after`/`before`, no cursors, `Link` with `offset=`) |
 | `SETOF <scalar>` / `SETOF <composite>` | array of values / objects | `200` | `limit`/`offset` (`limit` defaults to and is capped by `server.max_page_size`; no `count`) |
-| `rls.auth.jwt_type` composite (`SETOF` too) | signed HS256 JWT string (array of strings) | `200` | minted by `pdbcore/jwtmint` from the row's fields as claims |
+| `auth.mint_type` composite (`SETOF` too) | signed HS256 JWT string (array of strings) | `200` | minted by `pdbcore/jwtmint` from the row's fields as claims |
 | `RETURNS TABLE(...)` / `SETOF record` with `OUT` params (two or more result columns) | array of objects, one key per result column | `200` | as `SETOF <table>`: `select=` (columns and aliases; no embeds), filters and `order=` on every result column that holds no composite, table row or raster (no index policy: the output is scanned), `limit`/`offset`, `count=true`, `Accept: text/csv`; offset paging only; a `raster` result column is left out of the rows |
 | `OUT` / `INOUT` params, not `SETOF` (two or more) | one object, one key per output parameter (all-null columns stay an object) | `200` | `select=` |
 | one output parameter / `RETURNS TABLE(x …)` with one column | PostgreSQL returns that column's type, so the function is a scalar / `SETOF <scalar>` | `200` | |
@@ -231,7 +231,7 @@ FROM (SELECT fn(...) AS v) AS __fn` — attributes are expanded with the same
 composite columns use, so nested `int8`/`numeric` attributes are strings
 (settled, pinned by `TestRPCTypedArguments`). `SETOF <composite>` wraps
 `SELECT __v AS v FROM fn(...) AS __v LIMIT/OFFSET` the same way. The one
-exception is the `rls.auth.jwt_type` composite: it is emitted raw
+exception is the `auth.mint_type` composite: it is emitted raw
 (`to_jsonb(__fn.v)`, shapes `jwt` / `jwt_set`) so the claims keep their JSON
 numbers (`exp` must be numeric for verification), and exec signs them.
 
@@ -253,7 +253,7 @@ differs.
 
 - `RequestHook`s see `Operation{RPC: fn, Mutation: true}`.
 - Stable/immutable functions called via `POST` are **not** treated as
-  mutations (no tx unless RLS claims).
+  mutations (no tx unless a role or claim settings are applied).
 
 ## Table-valued (row) arguments
 
@@ -308,7 +308,7 @@ COMMENT ON FUNCTION larger_of(anycompatible, anycompatible) IS '@anycompatible n
 COMMENT ON FUNCTION range_lower(anyrange) IS '@anyelement integer';   -- r: int4range, returns int4
 ```
 
-The `smart-comments` plugin (pdbcore's catalog hook) rewrites the signature:
+The `smart_comments` plugin (pdbcore's catalog hook) rewrites the signature:
 `anyelement`/`anynonarray`/`anyenum` become the named type, `anyarray` its
 array, `anyrange`/`anymultirange` the range over it (the built-in range, or
 the single range type with that subtype) and its multirange; the
@@ -319,7 +319,7 @@ The type is any SQL spelling (`integer`, `timestamp with time zone`,
 `numeric(10,2)`, `text[]`, `public.mood`, or an unqualified enum,
 composite, table, domain or range of the introspected schemas). A function
 that stays polymorphic — no tag, an unusable one (logged as a warning), or
-`smart-comments` disabled — is skipped with one `info` log line naming the
+`smart_comments` disabled — is skipped with one `info` log line naming the
 tags.
 
 ## Exclusion rules
@@ -337,7 +337,7 @@ where noted):
 | returns or takes `trigger`, `event_trigger`, `internal`, `language_handler`, `record` (anonymous), `cstring` | not callable / not typeable |
 | polymorphic (`anyelement`, `anyarray`, `anycompatible…`, …) without a resolving `@anyelement` / `@anycompatible` tag | no concrete type to cast to (`info` log line); see [polymorphic functions](#polymorphic-functions) |
 | aggregate / window / procedure (`prokind` ≠ `f`) | not a plain function (pdbcore) |
-| `@omit` smart comment on the function | user opt-out (`smart-comments` plugin, M5) |
+| `@omit` smart comment on the function | user opt-out (`smart_comments` plugin, M5) |
 | overloads (same schema + name, different signature) | keep-first, warn — later overloads are unreachable; the first is the one with the fewest input parameters, ties broken by parameter types (type schema, then name), the same on every run and database |
 | function returns a table that is not an exposed resource (`SETOF`/row) | no resource to compile the row against → excluded with warning |
 | row-type argument (or array of rows) of a table that is not an exposed resource | no row shape to accept (`info` log line) |
@@ -366,7 +366,7 @@ CREATE FUNCTION users_post_count(u users) RETURNS bigint LANGUAGE sql STABLE AS 
 | volatile | RPC (POST) with a [row argument](#table-valued-row-arguments), not a computed column |
 | `void` | skipped |
 | extra arguments after the row | passed as `select=field(k=v,…)` (see below); omitted ones take their `DEFAULT`, an omitted one without a default → `400 missing_argument`; `VARIADIC`, `INOUT` and row-typed extras → the function is skipped |
-| filter / order (`post_count=gt.3`, `order=post_count.desc`) | `advanced-filters` plugin, only for columns whose extra arguments all have defaults (called with the defaults) (bypasses the index policy by nature; `@omit filter|order` respected) |
+| filter / order (`post_count=gt.3`, `order=post_count.desc`) | `advanced_filters` plugin, only for columns whose extra arguments all have defaults (called with the defaults) (bypasses the index policy by nature; `@omit filter|order` respected) |
 | RPC route | none — a stable/immutable function whose first arg is a row type is a computed column, not an RPC (pdbq parity); a row-type arg in any other position makes an RPC with a [row argument](#table-valued-row-arguments) |
 | RETURNING (mutations) | selecting a computed column forces every column of the table into `RETURNING` ([mutations.md](mutations.md#rls-caveats-for-returning)) |
 | OpenAPI | listed as a `readOnly` property of the resource schema, absent from `.insert`/`.update` |
@@ -403,7 +403,7 @@ computed column lists its arguments with type, required/optional and default.
 ## `schema.functions: false`
 
 Removes every `/rpc/*` route and every computed column; the OpenAPI document
-has no `rpc` paths and no computed properties; `advanced-filters` computed
+has no `rpc` paths and no computed properties; `advanced_filters` computed
 filters/order disappear with them. `pdbr plugins list` is unaffected.
 
 ## OpenAPI
@@ -421,7 +421,7 @@ argument references the `<resource>.row` component. Responses reference
 the returned resource schema (`users`, array of `users`), the
 `rpc.<fn path>` schema of a record result (one property per output
 parameter; non-nullable for a single record), an inline scalar
-schema, `204`, or — for `rls.auth.jwt_type` functions — `string` with
+schema, `204`, or — for `auth.mint_type` functions — `string` with
 `format: jwt` (array thereof for `SETOF`). Tags per schema. Argument
 parameters / request bodies land with the M6 OpenAPI pass. See
 [openapi.md](openapi.md).

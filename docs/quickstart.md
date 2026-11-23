@@ -10,8 +10,9 @@ This builds the image and starts PostgreSQL (`postgis/postgis:16-3.4`) with
 the demo schema (users, posts, comments, places, events, a `metrics` view and
 a handful of functions — the same fixture pdbcore ships for both pdbq and
 pdbr, mounted from `db/init/01-schema.sql`, which `make fixture` regenerates
-from `pdbcore/testutil`) and pdbr in watch mode with RLS off and
-`errors.detail: dev`. See [deployment.md](deployment.md#local-stack-compose) for the
+from `pdbcore/testutil`) and pdbr in watch mode without authentication,
+running every request as the connection role (`auth.mode: none`,
+`roles.switch: false`), and `errors.detail: dev`. See [deployment.md](deployment.md#local-stack-compose) for the
 Makefile targets.
 
 The stack publishes no ports by itself — networking setups differ, so port
@@ -80,6 +81,14 @@ $ pdbr config init                        # starter pdbr.yaml
 $ $EDITOR pdbr.yaml                       # set database.url
 $ pdbr serve
 ```
+
+The starter runs without credentials, as the connection role (`auth: {mode:
+none}`, `roles: {switch: false}`), so it works with only `database.url`
+set; pdbr logs a warning about it. Before production, configure `auth`
+(a JWT secret, secret file or JWKS URL, or a trusted gateway) and `roles`
+(see [rls.md](rls.md)): the built-in defaults verify JWTs and refuse
+requests without credentials, and pdbr does not start in `jwt` mode
+without a key.
 
 Every option is also an env var (`PDBR_DATABASE_URL=...`) or flag
 (`--database.url=...`); precedence is flags > env > file > defaults. See

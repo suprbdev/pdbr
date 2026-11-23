@@ -186,7 +186,7 @@ func TestNestedAtomicRollback(t *testing.T) {
 		{"default (forced transaction)", nil},
 		{"transactions.mutations off, force_transactions off", func(c *config.Config) {
 			c.TX.Mutations = false
-			c.Plugins.Settings["nested-mutations"] = map[string]any{"force_transactions": false}
+			c.Plugins.Settings.NestedMutations.ForceTransactions = false
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -250,7 +250,7 @@ func TestNestedPostGISColumn(t *testing.T) {
 func TestNestedPluginDisabled(t *testing.T) {
 	sweepNested(t)
 	on := testServer(t, nil)
-	off := testServer(t, func(c *config.Config) { c.Plugins.Disabled = []string{"nested-mutations"} })
+	off := testServer(t, func(c *config.Config) { c.Plugins.Disabled = []string{"nested_mutations"} })
 	body := `{"email":"` + nestedEmail(t) + `","posts":{"create":[{"title":"M5N off"}]}}`
 	res, out := send(t, "POST", off.URL+"/api/users", body, nil)
 	p := wantProblem(t, res, out, 400, "invalid_body")

@@ -291,7 +291,7 @@ func TestSmartCommentsOpenAPI(t *testing.T) {
 	if item := paths["/sc_tags"].(map[string]any); item["get"] != nil || item["head"] != nil {
 		t.Errorf("/sc_tags still documents reads: %v", item)
 	}
-	// The table comment leads the operation description (the advanced-filters
+	// The table comment leads the operation description (the advanced_filters
 	// prose follows after a blank line).
 	if op := paths["/notes"].(map[string]any)["get"].(map[string]any); !strings.HasPrefix(op["description"].(string), "A note.") {
 		t.Fatalf("list operation description = %v", op["description"])
@@ -301,7 +301,7 @@ func TestSmartCommentsOpenAPI(t *testing.T) {
 func TestSmartCommentsDisabled(t *testing.T) {
 	smartFixture(t)
 	srv := testServer(t, func(c *config.Config) {
-		c.Plugins.Disabled = []string{"smart-comments"}
+		c.Plugins.Disabled = []string{"smart_comments"}
 	}).URL
 
 	var rows []row

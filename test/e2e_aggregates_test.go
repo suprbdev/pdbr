@@ -155,7 +155,7 @@ func TestAggregatesSpatial(t *testing.T) {
 		t.Errorf("extent::text = %v", rows)
 	}
 	off := aggServer(t, func(c *config.Config) {
-		c.Plugins.Settings["postgis"] = map[string]any{"aggregates": false}
+		c.Plugins.Settings.PostGIS.Aggregates = false
 	})
 	res, body := get(t, off+"/places?select=location.extent()")
 	wantProblem(t, res, body, 400, "invalid_select")
@@ -164,8 +164,7 @@ func TestAggregatesSpatial(t *testing.T) {
 
 func TestAggregatesRLS(t *testing.T) {
 	url := aggServer(t, func(c *config.Config) {
-		c.RLS.Enabled = true
-		c.RLS.Auth.Mode = "headers"
+		headersAuth(c)
 	})
 	if rows := aggRows(t, url+"/posts?select=count()", nil); rows[0]["count"] != float64(3) {
 		t.Errorf("anonymous count = %v", rows)

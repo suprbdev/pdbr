@@ -161,7 +161,7 @@ stale `If-Match`.
 
 `PATCH` and `DELETE` on the collection path write every row the query
 string's filters select. The filters are the read filters — same grammar,
-operators, logic trees, relation and computed filters (advanced-filters) and
+operators, logic trees, relation and computed filters (advanced_filters) and
 the same filter policy (`filters.indexed_only` → `400 column_not_filterable`)
 — compiled by the same filter compiler against the DML target:
 
@@ -371,7 +371,7 @@ Rules:
 | non-key columns | every provided one becomes `SET c = EXCLUDED.c`; unprovided columns keep their existing values on conflict |
 | only-key body | `SET k = EXCLUDED.k` for the key itself so the statement returns the existing row instead of zero rows |
 | single object status | `201` when `xmax = 0` (fresh insert), `200` when the conflict branch ran |
-| array body | one `INSERT … VALUES (…),(…) ON CONFLICT …`, always `200` + array; two elements with the same key in one request is a PG error (`21000`, → `500` sanitized) — same as PostgREST |
+| array body | one `INSERT … VALUES (…),(…) ON CONFLICT …`, always `200` + array; two elements with the same key in one request is a PG error (`21000` → `400 pg:21000` with PostgreSQL's message, `cannot affect row a second time`) |
 | `Location` | on `201` for single-column PK, as for POST |
 | privileges | requires INSERT and UPDATE; either missing → `PUT` absent |
 | `Prefer: return=minimal` | `201` + `Location` when inserted, `204` when updated; no body (`RETURNING (xmax = 0)`) |
@@ -738,7 +738,7 @@ a known path → `405` with an `Allow` header listing what exists:
 | no PK and no unique constraint | no `/{pk}`, no `/by/…` → `PATCH`/`DELETE` only by filter on the collection |
 | key with an identity `ALWAYS` / generated column | no `PUT` on that single-row path |
 | only temporal keys (`WITHOUT OVERLAPS`) | same as no key: no `/{pk}`, no `/by/…`, no `PUT` ([api.md](api.md#temporal-keys-and-postgresql-18-foreign-keys)) |
-| `@omit create|update|delete` (smart-comments) | method removed |
+| `@omit create|update|delete` (smart_comments) | method removed |
 | `server.read_only: true` (or `App.SetReadOnly(true)` at runtime) | every write on every resource → `405 read_only`, `Allow: GET, HEAD` (`OPTIONS` when CORS is on); answered before the body is read |
 | `PATCH`/`DELETE {base}/{table}` without a filter | not a `405`: `400 unfiltered_mutation` ([bulk writes](#bulk-patch--delete-by-filter)) |
 
@@ -746,7 +746,7 @@ Read-only mode also refuses volatile RPCs ([rpc.md](rpc.md#volatile-functions-ar
 Privileges are those of the connecting role at introspection time; RLS/`SET
 ROLE` at request time may still yield `42501` → `403`.
 
-## Nested mutations (plugin `nested-mutations`)
+## Nested mutations (plugin `nested_mutations`)
 
 Built in M5 (`internal/plugins/nestedmutations`, priority 200, enabled by
 default) on the core seams: `parse.Options.NestedKeys` (set from
@@ -867,11 +867,11 @@ contract's bodies and schemas.
   detail `nested "posts.update[0]": matched 0 rows` (or `row of "users":
   matched 0 rows` for the addressed row). A `disconnect` of a row that is
   not linked does nothing.
-- Depth ≤ `plugins.settings.nested-mutations.max_depth` (default 3; the root
+- Depth ≤ `plugins.settings.nested_mutations.max_depth` (default 3; the root
   row is depth 1, every `create` or `update` — of a parent or a child —
   adds one, `connect` / `delete` / `disconnect` add none) → else `400
   embed_depth_exceeded` (the code is shared with `select=` nesting).
-- At most `plugins.settings.nested-mutations.max_operations` operations
+- At most `plugins.settings.nested_mutations.max_operations` operations
   (default 50; every list item and every forward operation counts once)
   per request → else `400 invalid_body`.
 - Nested rows and patches follow the body-validation table of their method
@@ -899,7 +899,7 @@ contract's bodies and schemas.
   the statement's last query, so rows they change still show as they were.
   The database is right; read again to see it.
 - The request is forced into a transaction
-  (`plugins.settings.nested-mutations.force_transactions`, default `true`,
+  (`plugins.settings.nested_mutations.force_transactions`, default `true`,
   sets `exec.Operation.ForceTx` in `BeforeRequest`), even with
   `transactions.mutations: false`. The chain is one statement either way, so
   a failure never leaves partial rows; the transaction matters for the role
