@@ -1,2 +1,2 @@
 -- request: GET /api/kb/shapes?distinct=box
--- error: 400 invalid_filter: distinct is not supported on cube column "box"
+-- error: 400 invalid_parameter: distinct is not supported on cube column "box"

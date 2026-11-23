@@ -186,7 +186,7 @@ func (s *stmt) orderExprSQL(term orderTerm, alias string) string {
 // nearExpr renders the near= geometry for distance ordering over col.
 func (s *stmt) nearExpr(col *introspect.Column) string {
 	if s.plan.Near == nil {
-		s.fail(errUser(CodeInvalidFilter, "order by distance requires near="))
+		s.fail(errUser(CodeInvalidParameter, "order by distance requires near="))
 		return "NULL"
 	}
 	expr, err := s.spatialOperand(postgis.FlavourOf(col.PGType), spatialSRID(col), s.plan.Near)
@@ -242,17 +242,17 @@ func (s *stmt) contribOrderSQL(co *plan.ContribOrder, alias string) string {
 			param, val = "levenshtein", s.plan.Levenshtein
 		}
 		if val == nil {
-			s.fail(errUser(CodeInvalidFilter, "order by %s.%s requires %s=", co.Column.Name, co.Name, param))
+			s.fail(errUser(CodeInvalidParameter, "order by %s.%s requires %s=", co.Column.Name, co.Name, param))
 			return "NULL"
 		}
 		params, err := e.Params(val)
 		if err != nil {
-			s.fail(errUser(CodeInvalidFilter, "%s: %s", param, err.Error()))
+			s.fail(errUser(CodeInvalidParameter, "%s: %s", param, err.Error()))
 			return "NULL"
 		}
 		return e.OrderSQL(ref, s.params(params)...)
 	}
-	s.fail(errUser(CodeInvalidFilter, "order by %s.%s is not available on this column", co.Column.Name, co.Name))
+	s.fail(errUser(CodeInvalidParameter, "order by %s.%s is not available on this column", co.Column.Name, co.Name))
 	return "NULL"
 }
 

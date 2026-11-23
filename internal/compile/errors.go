@@ -1,18 +1,15 @@
 package compile
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 )
 
-// ErrNotImplemented marks a compile path that has not landed yet (plugin
-// seams); exec renders it as 501 not_implemented.
-var ErrNotImplemented = errors.New("compile: not implemented")
-
 // Error codes emitted by the compiler (docs/errors.md).
 const (
 	CodeInvalidFilter      = "invalid_filter"
+	CodeInvalidParameter   = "invalid_parameter"
+	CodeInvalidArgument    = "invalid_argument"
 	CodeInvalidSelect      = "invalid_select"
 	CodePageSizeExceeded   = "page_size_exceeded"
 	CodeKeysetUnsupported  = "keyset_unsupported"
@@ -21,7 +18,6 @@ const (
 	CodeInvalidCursor      = "invalid_cursor"
 	CodeInvalidBody        = "invalid_body"
 	CodeMissingArgument    = "missing_argument"
-	CodeNotImplemented     = "not_implemented"
 	CodeNotAcceptable      = "not_acceptable"
 	CodeColumnNotOrderable = "column_not_orderable"
 	// CodeTemporalConflict rejects a temporal (WITHOUT OVERLAPS) key as an

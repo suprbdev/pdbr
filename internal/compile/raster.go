@@ -31,7 +31,7 @@ func (s *stmt) rasterPseudoSQL(p *api.PseudoColumn, args map[string]any, alias s
 		return postgis.OutputJSONPrecisionSQL("ST_Envelope("+ref+")", digits), nil
 	case rv.Value:
 		if s.plan.Near == nil {
-			return "", errUser(CodeInvalidFilter, "%s requires near=", p.Key)
+			return "", errUser(CodeInvalidParameter, "%s requires near=", p.Key)
 		}
 		geom, err := s.spatialOperand(postgis.Geometry, 0, s.plan.Near)
 		if err != nil {

@@ -312,7 +312,7 @@ func (p *parser) negotiateAccept(r *http.Request) error {
 // geometryHintCheck rejects geometry= on a response that is not GeoJSON.
 func (p *parser) geometryHintCheck() error {
 	if p.req.Geometry != "" {
-		return errf(CodeInvalidFilter, "geometry= only applies to Accept: application/geo+json")
+		return errf(CodeInvalidParameter, "geometry= only applies to Accept: application/geo+json")
 	}
 	return nil
 }

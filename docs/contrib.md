@@ -195,9 +195,10 @@ GET /people?or=(name.soundex.Robert,name.dmetaphone.Smith)
 
 `levenshtein_lt` measures from the request-wide `levenshtein=` text, like
 the vector thresholds measure from `vec=` (see [Ordering](#ordering) and
-[Scores](#scores)); without it the request is `400 invalid_filter`.
+[Scores](#scores)); without it the request is `400 invalid_parameter`.
 fuzzystrmatch refuses texts over 255 characters (`metaphone`: bytes):
-a longer `levenshtein=` or `metaphone` operand is `400 invalid_filter`, and
+a longer `levenshtein=` is `400 invalid_parameter` and a longer `metaphone`
+operand `400 invalid_filter`, and
 a longer column value has no distance or code, so neither an operator nor
 its `not.` form matches it (and its distance sorts last) instead of the
 request failing. Levenshtein compares case-sensitively (on citext too); the
@@ -346,7 +347,7 @@ GET /articles?title=trgm_sim.postgres&order=title.trgm_dist,id&trgm=postgres
   is `400 invalid_filter`, and so is a scope with two of them.
 - **trgm_dist** and the word forms measure the distance to the `trgm=` query
   parameter, the way `near=` works for `.dist`. One `trgm=` serves the root
-  and every embed. A distance term without `trgm=` is `400 invalid_filter`,
+  and every embed. A distance term without `trgm=` is `400 invalid_parameter`,
   and so is `trgm=` without one.
 - `trgm` (like `near`) is reserved only on routes where no column, computed
   column or RPC argument is named so. Where one is, `trgm=` is that filter or
@@ -357,7 +358,7 @@ GET /articles?title=trgm_sim.postgres&order=title.trgm_dist,id&trgm=postgres
 - **vec_l2**, **vec_ip**, **vec_cos** and **vec_l1** measure the distance of
   a pgvector column to the `vec=` query parameter, the same way: one `vec=`
   serves the root and every embed, a vector term without `vec=` or `vec=`
-  without one is `400 invalid_filter`, and `vec` is reserved only where no
+  without one is `400 invalid_parameter`, and `vec` is reserved only where no
   column, computed column or RPC argument is named so. See
   [pgvector](#pgvector-pdbr).
 - The **cube** distances measure from the same `vec=` as the pgvector
@@ -368,7 +369,7 @@ GET /articles?title=trgm_sim.postgres&order=title.trgm_dist,id&trgm=postgres
   same way (one `levenshtein=` per request, reserved only where no column,
   computed column or RPC argument is named so; a term without it, or
   `levenshtein=` without a term, score or `levenshtein_lt` filter, is `400
-  invalid_filter`). No index serves it, so under `filters.indexed_only` it
+  invalid_parameter`). No index serves it, so under `filters.indexed_only` it
   needs the column in `filters.allow_columns` (`400 column_not_orderable`
   otherwise). Values over 255 characters have no distance and sort last.
 - The direction keyword is the usual one: the default is `asc` and nulls sort
@@ -409,7 +410,7 @@ GET /docs?select=id,chunks(id,text)&chunks.order=embedding.vec_ip&chunks.limit=3
 
   `vec=` is a JSON array of numbers (URL-encoded, or raw where the client
   allows `[`/`]`) or the column type's text form, and is checked against
-  every vector term's column (`400 invalid_filter` when it is not a vector
+  every vector term's column (`400 invalid_parameter` when it is not a vector
   value). Its dimensions must match the column's; PostgreSQL rejects a
   mismatch (`400 pg:22000`). A plain `order=embedding`, `distinct=` on a
   vector column, related ordering by one (`rel(embedding)`) and `min()`/`max()`
@@ -446,7 +447,7 @@ GET /items?select=id,embedding_cosine_distance&embedding=vec_cos_lt.0.2&order=em
 
   The operand is the exclusive bound, a finite number (`400 invalid_filter`
   otherwise); `not.`, `or=(…)`, `and=(…)` and embed filters take them like
-  any operator, and a threshold without `vec=` is `400 invalid_filter`.
+  any operator, and a threshold without `vec=` is `400 invalid_parameter`.
   pgvector indexes serve ordering, not these predicates, so under
   `filters.indexed_only` they are accepted only on columns listed in
   `filters.allow_columns` (`400 column_not_filterable` otherwise); combined
@@ -555,7 +556,7 @@ GET /shapes?select=id,box_chebyshev_distance&box=vec_chebyshev_lt.2&order=box.ve
 With the `earthdistance` extension (which needs `cube`) installed, two
 kinds of column measure distances on the Earth's surface from the
 request-wide reference location `latlon=<lat>,<lon>` (degrees; latitude
-within ±90, longitude within ±180, `400 invalid_filter` otherwise).
+within ±90, longitude within ±180, `400 invalid_parameter` otherwise).
 `latlon` is soft-reserved like `near`, `trgm` and `vec`: where a column,
 computed column or RPC argument is named `latlon` it is that filter, and
 the surface below that needs it is not offered.
@@ -634,7 +635,7 @@ GET /docs?select=id,chunks(id,embedding_cosine_distance)&chunks.order=embedding.
 - They are selected explicitly (never part of `*`), aliasable
   (`score:title_similarity`), and work in embeds, spreads, row paths and
   mutation responses. The reference parameter is required whenever one is
-  selected (`400 invalid_filter`), serves every score, order term and
+  selected (`400 invalid_parameter`), serves every score, order term and
   threshold of the request, and is bound again for each score, so the SQL
   text depends only on which scores are selected. They take no arguments,
   casts, filters or ordering (order by the matching `.trgm_*`/`.vec_*`

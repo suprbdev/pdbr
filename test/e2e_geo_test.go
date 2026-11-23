@@ -262,11 +262,11 @@ func TestCube(t *testing.T) {
 
 	wantCode(t, srv, "shapes?box=eq.(0,0)", 400, "invalid_filter")
 	wantCode(t, srv, "shapes?order=box", 400, "column_not_orderable")
-	wantCode(t, srv, "shapes?distinct=box", 400, "invalid_filter")
-	wantCode(t, srv, "shapes?order=box.vec_l2", 400, "invalid_filter")
+	wantCode(t, srv, "shapes?distinct=box", 400, "invalid_parameter")
+	wantCode(t, srv, "shapes?order=box.vec_l2", 400, "invalid_parameter")
 	wantCode(t, srv, "shapes?order=pt.vec_l2&vec="+v, 400, "column_not_orderable")
 	wantCode(t, srv, "shapes?pt=vec_l2_lt.1&vec="+v, 400, "column_not_filterable")
-	wantCode(t, srv, "shapes?order=box.vec_l2&vec="+url.QueryEscape("[[0],[1,2]]"), 400, "invalid_filter")
+	wantCode(t, srv, "shapes?order=box.vec_l2&vec="+url.QueryEscape("[[0],[1,2]]"), 400, "invalid_parameter")
 
 	open := geoServer(t, dbURL, func(c *config.Config) { c.Filters.IndexedOnly = false })
 	wantIDs(t, open, "shapes?select=id&pt=vec_l2_lt.2&order=pt.vec_l2&vec="+v, []int{1, 3})
@@ -330,9 +330,9 @@ func TestEarth(t *testing.T) {
 		}
 	}
 
-	wantCode(t, srv, "sites?order=loc.earth_dist", 400, "invalid_filter")
-	wantCode(t, srv, "sites?order=loc.earth_dist&latlon=95,0", 400, "invalid_filter")
-	wantCode(t, srv, "sites?"+london, 400, "invalid_filter")
+	wantCode(t, srv, "sites?order=loc.earth_dist", 400, "invalid_parameter")
+	wantCode(t, srv, "sites?order=loc.earth_dist&latlon=95,0", 400, "invalid_parameter")
+	wantCode(t, srv, "sites?"+london, 400, "invalid_parameter")
 	wantCode(t, srv, "sites?order=loc", 400, "column_not_orderable")
 	wantCode(t, srv, "sites?loc=eq.x", 400, "invalid_filter")
 	wantCode(t, srv, "sites?order=ll.earth_miles&"+london, 400, "column_not_orderable")
@@ -458,7 +458,7 @@ func TestRaster(t *testing.T) {
 	wantCode(t, srv, "tiles?select=history", 400, "invalid_select")
 	wantCode(t, srv, "tiles?order=rast", 400, "column_not_orderable")
 	wantCode(t, srv, "tiles?rast=eq.x", 400, "invalid_filter")
-	wantCode(t, srv, "tiles?select=rast_value", 400, "invalid_filter")
+	wantCode(t, srv, "tiles?select=rast_value", 400, "invalid_parameter")
 	wantCode(t, srv, "tiles?select=rast_value(band=0)&near=POINT(1%201)", 400, "invalid_select")
 
 	strict := geoServer(t, dbURL, func(c *config.Config) { c.Limits.MaxCost = 5000 })

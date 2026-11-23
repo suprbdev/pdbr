@@ -1,2 +1,2 @@
 -- request: GET /api/kb/sites?select=loc_earth_distance&latlon=51.5
--- error: 400 invalid_filter: latlon must be <lat>,<lon> in degrees, got "51.5"
+-- error: 400 invalid_parameter: latlon must be <lat>,<lon> in degrees, got "51.5"

@@ -228,7 +228,7 @@ func TestBodyValidation(t *testing.T) {
 		{"put bad target", "PUT", "/api/users?on_conflict=mood", `{"email":"x@y.z","mood":"ok"}`, "", 400, "invalid_body"},
 		{"put unknown target", "PUT", "/api/users?on_conflict=zzz", `{"email":"x@y.z"}`, "", 400, "unknown_column"},
 		{"filters on mutation", "POST", "/api/users?mood=eq.happy", `{"email":"x@y.z"}`, "", 400, "invalid_filter"},
-		{"limit on mutation", "POST", "/api/users?limit=1", `{"email":"x@y.z"}`, "", 400, "invalid_filter"},
+		{"limit on mutation", "POST", "/api/users?limit=1", `{"email":"x@y.z"}`, "", 400, "invalid_parameter"},
 		{"wrong content type", "POST", "/api/users", `{"email":"x@y.z"}`, "text/plain", 415, "unsupported_media_type"},
 		{"too large", "POST", "/api/users", `{"email":"x@y.z","full_name":"` + strings.Repeat("a", 300) + `"}`, "", 413, "body_too_large"},
 	}

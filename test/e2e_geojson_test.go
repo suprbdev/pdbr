@@ -218,7 +218,7 @@ func TestGeoJSONRejections(t *testing.T) {
 	geoProblem(t, agg+"/api/places?select=count()", acc, 406, "not_acceptable")
 	geoProblem(t, srv+"/api/places?select=id,location&geometry=name", acc, 400, "invalid_select")
 	geoProblem(t, srv+"/api/places?select=id,location&geometry=nope", acc, 400, "invalid_select")
-	geoProblem(t, srv+"/api/places?geometry=location", nil, 400, "invalid_filter")
+	geoProblem(t, srv+"/api/places?geometry=location", nil, 400, "invalid_parameter")
 
 	res, body := send(t, "POST", srv+"/api/places", `{"name":"geo-reject"}`, map[string]string{"Accept": geoJSON, "Content-Type": "application/json"})
 	if res.StatusCode != 406 {

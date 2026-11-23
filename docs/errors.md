@@ -1,6 +1,6 @@
 # Errors
 
-As built (M6). Every non-2xx/3xx response is an
+Every non-2xx/3xx response is an
 [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) Problem Details document,
 `Content-Type: application/problem+json`, regardless of `Accept`. Every row
 of the tables below that the fixture database can reach has one assertion in
@@ -38,63 +38,87 @@ applies uniformly).
 
 ## `code` vocabulary
 
-pdbr codes (from the brief; the parenthesised codes are additions where the
-brief needed one but named none — kept as separate codes so every response
-has a `code`, see the note below the table):
+The vocabulary is closed: every problem pdbr renders carries exactly one of
+the codes below, or `pg:<SQLSTATE>` for a database error, and no other.
+`code` and `status` do not depend on [`errors.detail`](#errorsdetail), so
+clients can branch on `code` in every environment. A code keeps its name and
+meaning across 1.x releases; a release that adds one (for a feature no
+existing code describes) lists it in [upgrading.md](upgrading.md). Treat a
+code you do not know as the generic error of its status.
+
+The codes for concepts pdbq shares are spelled the same in both products:
+`invalid_token`, `auth_required`, `role_not_allowed`, `read_only`,
+`cost_exceeded`, `page_size_exceeded`, `not_found`, `timeout`,
+`unavailable` and `pg:<SQLSTATE>`.
+
+### Request grammar (400)
+
+Each code names the part of the request at fault: a filter, `select=`, a
+reserved query parameter, a function or computed-column argument, or the
+body.
+
+| `code` | Meaning |
+|---|---|
+| `invalid_filter` | a filter (`col=op.value`, `and=`/`or=`/`not.` logic, relation and embed filters): unknown or inapplicable operator (`eq` on a spatial, vector, cube or earth column, a spatial operator on a non-spatial column, anything but `intersects`/`is` on a raster column), malformed operand, list, quoting, `any`/`all` modifier or text search configuration, a value that does not coerce to the column's type (`id=eq.abc`), a non-numeric distance threshold, bad relation-filter grammar (quantifier on a to-one relation, `exists` misuse, a path deeper than one level), relation filters while the advanced-filters plugin disables them, filters on a write that takes none (`POST`, `PUT`, `PATCH`/`DELETE` on a single-row path), and a rank order term or a headline without exactly one usable full-text filter on its column |
+| `invalid_parameter` | a reserved query parameter or a path key: malformed query-string escape, a duplicate parameter, `limit`/`offset`/`count` values, `order=` grammar (direction and nulls tokens, related-order paths, JSON paths, `.dist` on a non-spatial column, related ordering while it is disabled), `distinct=` grammar and column types, `on_conflict=` misuse, a list parameter on a single-row path or a write (`limit`, `order`, …), a per-embed parameter embeds do not take (`posts.after=`), `geometry=` misuse; the reference parameters `near=`, `trgm=`, `vec=`, `latlon=` and `levenshtein=`: missing where an order term, score column or threshold needs one, malformed, or present with nothing that uses it; a path key value that does not coerce to its column's type (`/users/abc`) or has the wrong number of parts. Also the code of a hook's `UserError` that names none |
+| `invalid_select` | `select=` grammar: unbalanced parentheses, empty item, bad alias, a cast or JSON path where none applies, hints on a non-embed, arguments on a column that takes none, an explicit select of a raster column (never readable), bad spatial (`transform=`, `precision=`, …), raster (`band=`), headline or derived-column arguments, a score column embedded under a root where its parameter is a filter; aggregates ([aggregates.md](aggregates.md#errors)): a cast outside an aggregate or to a type outside the allowlist (`::regclass`), an aggregate without the input type (`text.sum()`), an embed or ungroupable column as a grouping key, duplicate response keys, aggregates on single-row paths, mutations or in to-one embeds, `distinct=` with aggregates |
+| `invalid_argument` | a function or computed-column argument value: an RPC argument (query parameter on `GET`, JSON member on `POST`) or a `select=key(k=v)` argument that does not coerce to the argument's type, and a row-typed argument that is not a JSON object (array of objects) of the resource's readable columns |
+| `invalid_body` | request body: not an object/array as required, unreadable or trailing data, unknown key, empty patch, missing required columns, missing conflict-target columns, both `create` and `connect`, malformed nested operation, more than `max_operations` nested operations, uncoercible value, empty `[]` bulk, single-row `PUT` body key ≠ path key (PostgREST `PGRST115`), an RPC body that is not a JSON object |
+| `invalid_cursor` | `after`/`before` cursor undecodable or minted for a different resource |
+| `invalid_range` | `Range` header with the last item before the first, or no overlap with `offset`/`limit` ([pagination.md](pagination.md#range-request-header)) |
+| `invalid_preference` | `Prefer: handling=strict` with an unknown token or a malformed value (PostgREST `PGRST122`); `resolution=merge-duplicates` on a resource without `PUT`; `tx=` while `transactions.end` has no override; `partial=` while `transactions.partial.enabled` is off or with a value other than `items`; an unknown `timezone=` |
+| `unknown_column` | column, computed or pseudo-column name not on the resource, in `select=`, filters, `order=`, `distinct=`, `on_conflict=` |
+| `unknown_relation` | relation key in `select=`, a filter/order path, a per-embed param, or a nested-mutation body that matches no FK of the resource; a `!hint` that selects none of the key's FKs (`posts!nope(id)`; the detail lists the hints that would); a nested-mutation operation the relation does not offer (privilege, `@omit`, FK column not writable, referenced column hidden, `NOT NULL` FK for `disconnect`) |
+| `ambiguous_relation` | relation key matches ≥ 2 FKs and carries no `!hint`; the detail lists the candidates |
+| `unknown_argument` | RPC argument, computed-column argument or headline option name not declared |
+| `missing_argument` | RPC or computed-column call omits an argument that has no `DEFAULT` (or, on a variadic function, one before a passed argument); the detail lists them |
+| `column_not_filterable` | column exists but is outside the filter policy (`filters.indexed_only`, `@omit filter`) |
+| `column_not_orderable` | column exists but is outside the order policy; with aggregates, an `order=` term that is not a grouping column; an order term whose reference parameter is a column or argument filter on the route |
+| `column_readonly` | generated or identity-`ALWAYS` column in a write body |
+| `keyset_unsupported` | `after`/`before` on a resource without a PK, `before` combined with `offset`, any cursor combined with a `Range` header, `distinct=` or aggregate functions with keyset |
+| `aggregates_disabled` | an aggregate function in `select=` while `aggregates.enabled` is off (PostgREST `PGRST123`) |
+| `temporal_conflict_target` | `PUT` or `POST` with `Prefer: resolution=merge-duplicates` whose conflict target is a temporal (`WITHOUT OVERLAPS`, PostgreSQL 18) key — `?on_conflict=` naming one, or the default target on a table whose primary key is temporal (`ignore-duplicates` accepts them); `ON CONFLICT` cannot infer the exclusion constraint behind it (PostgreSQL would fail with `42P10`) |
+| `unfiltered_mutation` | bulk `PATCH`/`DELETE` on a collection path without a root filter or `!inner` embed while `mutations.allow_unfiltered` is off |
+| `if_match_unsupported` | `If-Match` on a write that cannot honour it (bulk `PATCH`/`DELETE` on a collection path, `PUT` on a single-row path, a `PATCH` carrying nested-mutation keys) while `server.etags` is on |
+| `max_affected_exceeded` | `Prefer: handling=strict, max-affected=N` and the write touched more than `N` rows; rolled back (PostgREST `PGRST124`) |
+
+### Limits
+
+| `code` | Status | Meaning |
+|---|---|---|
+| `page_size_exceeded` | 400 | `limit` > `limits.max_page_size` (also on embeds and RPC lists) |
+| `cost_exceeded` | 400 | estimated cost > `limits.max_cost` |
+| `embed_depth_exceeded` | 400 | `select=` nesting deeper than `limits.max_depth`; nested-mutation depth > `max_depth` |
+| `body_too_large` | 413 | body > `limits.max_body_bytes` |
+
+### Identity
+
+| `code` | Status | Meaning |
+|---|---|---|
+| `invalid_token` | 401 | JWT/headers present but invalid (signature, exp, iss/aud, JWKS miss or unavailable, malformed, a role claim that is not a string; a claim header misspelt, repeated, folding onto another claim, outside `auth.headers.claims` or sent by a peer outside `auth.headers.trusted_proxies`); `WWW-Authenticate: Bearer error="invalid_token"` |
+| `auth_required` | 401 | no credentials and `roles.anonymous` empty (the default in `jwt` and `headers` mode); `WWW-Authenticate: Bearer` |
+| `role_not_allowed` | 403 | credential valid, but the resolved role is not in `roles.allowed`, or is `none`, `public`, a `pg_*` role or not `[A-Za-z0-9_]+`, or the request resolves to no role at all; `WWW-Authenticate: Bearer error="insufficient_scope"` |
+
+### Routing, methods and representations
 
 | `code` | Status | Meaning |
 |---|---|---|
 | `not_found` | 404 | no such route/resource/function, or single-row path matched zero rows (incl. rows hidden by RLS), or a nested `connect` / `update` / `delete` matched no row (detail `nested "<path>": matched 0 rows`; the whole statement is rolled back) |
-| `invalid_filter` | 400 | filter grammar: bad `op`, unparsable value, bad `and=`/`or=` nesting, missing `near=` / `trgm=` / `vec=` / `latlon=` with a distance order term, score column (raster `<col>_value` included) or `vec_*_lt` / `earth_lt` threshold (or one of them without any), a non-numeric threshold, a `vec=` that is not a vector or cube, a `latlon=` that is not `<lat>,<lon>` in range, a comparison on a pgvector, cube or earth column, an operator other than `intersects`/`is` on a raster column, bad `in.(…)` list, uncoercible RPC GET arg |
-| `invalid_select` | 400 | `select=` grammar: unbalanced parens, empty item, bad alias, unknown hint, `col(k=v)` args on a non-spatial column, an explicit select of a raster column (never readable), a bad `band=` on a raster pseudo-column; aggregates ([aggregates.md](aggregates.md#errors)): a cast outside an aggregate or to a type outside the allowlist (`::regclass`), an aggregate without the input type (`text.sum()`), an embed or ungroupable column as a grouping key, duplicate response keys, aggregates on single-row paths, mutations or in to-one embeds, `distinct=` with aggregates |
-| `aggregates_disabled` | 400 | an aggregate function in `select=` while `aggregates.enabled` is off (PostgREST `PGRST123`) |
-| `unknown_column` | 400 | column / computed name not on the resource — in `select=`, filters, `order=`, `distinct=`, `on_conflict=` |
-| `column_not_filterable` | 400 | column exists but is outside the filter policy (`filters.indexed_only`, `@omit filter`) |
-| `column_not_orderable` | 400 | column exists but is outside the order policy; with aggregates, an `order=` term that is not a grouping column |
-| `page_size_exceeded` | 400 | `limit` > `limits.max_page_size` (also on embeds and RPC lists) |
-| `keyset_unsupported` | 400 | `after`/`before` on a resource without a PK, `before` combined with `offset`, any cursor combined with a `Range` header, `distinct=` or aggregate functions with keyset |
-| `invalid_range` | 400 | `Range` header with the last item before the first, or no overlap with `offset`/`limit` ([pagination.md](pagination.md#range-request-header)) |
-| `range_not_satisfiable` | 416 | counted list whose `offset` / `Range` start is past the total; carries `Content-Range: */<total>` (PostgREST `PGRST103`) |
-| `cost_exceeded` | 400 | estimated cost > `limits.max_cost` |
-| `embed_depth_exceeded` | 400 | `select=` nesting deeper than `limits.max_depth`; nested-mutation depth > `max_depth` |
-| `ambiguous_relation` | 400 | relation key matches ≥ 2 FKs and no `!hint`; detail lists the candidates |
-| `invalid_body` | 400 | body not an object/array as required, unknown key, empty patch, missing required columns, missing conflict-target columns, both `create` and `connect`, malformed nested operation, more than `max_operations` nested operations, uncoercible value, empty `[]` bulk, single-row `PUT` body key ≠ path key (PostgREST `PGRST115`) |
-| `temporal_conflict_target` | 400 | `PUT` or `POST` with `Prefer: resolution=merge-duplicates` whose conflict target is a temporal (`WITHOUT OVERLAPS`, PostgreSQL 18) key — `?on_conflict=` naming one, or the default target on a table whose primary key is temporal (`ignore-duplicates` accepts them); `ON CONFLICT` cannot infer the exclusion constraint behind it (PostgreSQL would fail with `42P10`) |
-| `column_readonly` | 400 | generated / identity-`ALWAYS` column in a write body |
-| `read_only` | 405 | write attempted while `server.read_only` (config or `App.SetReadOnly`) |
-| `etag_mismatch` | 412 | `If-Match` did not match the current row hash |
-| (`unfiltered_mutation`) | 400 | bulk `PATCH`/`DELETE` on a collection path without a root filter or `!inner` embed while `mutations.allow_unfiltered` is off |
-| (`if_match_unsupported`) | 400 | `If-Match` on a write that cannot honour it (bulk `PATCH`/`DELETE` on a collection path, `PUT` on a single-row path, a `PATCH` carrying nested-mutation keys) while `server.etags` is on |
-| (`invalid_preference`) | 400 | `Prefer: handling=strict` with an unknown token or a malformed value (PostgREST `PGRST122`); `resolution=merge-duplicates` on a resource without `PUT`; `tx=` while `transactions.end` has no override; `partial=` while `transactions.partial.enabled` is off or with a value other than `items`; an unknown `timezone=` |
-| (`max_affected_exceeded`) | 400 | `Prefer: handling=strict, max-affected=N` and the write touched more than `N` rows; rolled back (PostgREST `PGRST124`) |
+| `method_not_allowed` | 405 | method not registered on the path (view, missing privilege, `@omit`, volatile GET); carries `Allow` |
+| `read_only` | 405 | write attempted while `server.read_only` (config or `App.SetReadOnly`); carries `Allow` |
 | `not_acceptable` | 406 | `Accept` unsatisfiable (incl. `text/csv` with embeds or on non-list responses, `application/geo+json` without a spatial column in the selection) |
+| `etag_mismatch` | 412 | `If-Match` did not match the current row hash |
 | `unsupported_media_type` | 415 | request body `Content-Type` is not `application/json` |
-| `role_not_allowed` | 403 | credential valid, but the resolved role is not in `roles.allowed`, or is `none`, `public`, a `pg_*` role or not `[A-Za-z0-9_]+`, or the request resolves to no role at all; `WWW-Authenticate: Bearer error="insufficient_scope"` |
-| `invalid_token` | 401 | JWT/headers present but invalid (signature, exp, iss/aud, JWKS miss or unavailable, malformed, a role claim that is not a string; a claim header misspelt, repeated, folding onto another claim, outside `auth.headers.claims` or sent by a peer outside `auth.headers.trusted_proxies`); `WWW-Authenticate: Bearer error="invalid_token"` |
-| `auth_required` | 401 | no credentials and `roles.anonymous` empty (the default in `jwt` and `headers` mode); `WWW-Authenticate: Bearer` |
-| (`unknown_relation`) | 400 | relation key in `select=`, a filter/order path, a per-embed param, or a nested-mutation body that matches no FK of the resource; a nested-mutation operation the relation does not offer (privilege, `@omit`, FK column not writable, referenced column hidden, `NOT NULL` FK for `disconnect`) |
-| (`invalid_cursor`) | 400 | `after`/`before` cursor undecodable or minted for a different resource |
-| (`method_not_allowed`) | 405 | method not registered on the path (view, missing privilege, `@omit`, volatile GET) |
-| (`unknown_argument`) | 400 | RPC argument name not declared by the function |
-| (`missing_argument`) | 400 | RPC call omits an argument that has no `DEFAULT` (or, on a variadic function, one before a passed argument); detail lists them |
-| (`body_too_large`) | 413 | body > `limits.max_body_bytes` |
-| (`timeout`) | 504 | `server.request_timeout` elapsed (context deadline) |
-| (`unavailable`) | 503 | no database connection (pool acquire failed, connection refused/reset/dropped, `net.Error`, unexpected EOF) with no SQLSTATE; `detail` "database unavailable" (full error in `dev`) |
-| (`internal`) | 500 | anything else pdbr-side (hook error, unexpected compile failure, panic) |
-| `pg:<SQLSTATE>` | per table below | database error; the five-character SQLSTATE verbatim (`pg:23505`, `pg:42501`, `pg:40001`) |
+| `range_not_satisfiable` | 416 | counted list whose `offset` / `Range` start is past the total; carries `Content-Range: */<total>` (PostgREST `PGRST103`) |
 
-Decided (M6): the parenthesised codes stay as distinct codes — the
-minimum needed so every response has a `code` (`unknown_relation` and
-`invalid_cursor` are also used by [mutations.md](mutations.md) /
-[pagination.md](pagination.md)); folding them into neighbours
-(`unknown_column`, `keyset_unsupported`, `invalid_body`) or emitting no
-`code` on 405/413/500/503/504 was rejected because clients branch on `code`.
-The PostgREST-parity codes (`unfiltered_mutation`, `invalid_preference`,
-`max_affected_exceeded`, `if_match_unsupported`) were added later under the
-same rule.
+### Server and database
 
-Codes are stable across releases; new codes may be added in minor versions,
-existing ones are never renamed.
+| `code` | Status | Meaning |
+|---|---|---|
+| `internal` | 500 | anything else pdbr-side (hook error, unexpected compile failure, panic) |
+| `unavailable` | 503 | no database connection (pool acquire failed, connection refused/reset/dropped, `net.Error`, unexpected EOF) with no SQLSTATE; `detail` "database unavailable" (full error in `dev`); carries `Retry-After` |
+| `timeout` | 504 | `server.request_timeout` elapsed (context deadline) |
+| `pg:<SQLSTATE>` | per [Status mapping](#status-mapping) | database error; the five-character SQLSTATE verbatim (`pg:23505`, `pg:42501`, `pg:40001`) |
 
 ## Status mapping
 
@@ -302,8 +326,9 @@ compiler itself are rendered by one rule (mirror of pdbq's
 
 - Errors typed as `UserError` (pdbr's `compile.UserError`, every `parse`
   error, and any hook error wrapped as one) are client-facing:
-  `400` with the message as `detail` and the code the error carries
-  (default `invalid_body` for body-related, `invalid_filter` otherwise).
+  the status (default `400`) and code the error carries, with the message
+  as `detail`; a `UserError` without a code is `invalid_parameter`. Use a
+  code from the vocabulary above, which is closed.
 - Any other error → `500 internal`, `detail: "internal error"` in `prod`
   and `strict`, the full `err.Error()` in `dev`. Always logged at `error`.
 - `AfterRequest` errors are logged only; the response is already committed.

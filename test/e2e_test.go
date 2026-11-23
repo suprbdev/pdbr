@@ -366,7 +366,7 @@ func TestFilters(t *testing.T) {
 		"users?nope=eq.1":             "unknown_column",
 		"users?full_name=eq.x":        "column_not_filterable",
 		"users?nope.title=eq.x":       "unknown_relation",
-		"users?posts!bad.title=eq.x":  "ambiguous_relation",
+		"users?posts!bad.title=eq.x":  "unknown_relation",
 		"posts?users!none.email=eq.x": "invalid_filter",
 		"users?and=(":                 "invalid_filter",
 	} {
@@ -413,7 +413,7 @@ func TestOrderAndNulls(t *testing.T) {
 	res, body := get(t, srv.URL+"/api/users?order=full_name")
 	wantProblem(t, res, body, 400, "column_not_orderable")
 	res, body = get(t, srv.URL+"/api/users?order=id.sideways")
-	wantProblem(t, res, body, 400, "invalid_filter")
+	wantProblem(t, res, body, 400, "invalid_parameter")
 	res, body = get(t, srv.URL+"/api/users?order=nope")
 	wantProblem(t, res, body, 400, "unknown_column")
 }
@@ -492,8 +492,8 @@ func TestPagination(t *testing.T) {
 	// errors
 	for q, code := range map[string]string{
 		"posts?limit=101":                                    "page_size_exceeded",
-		"posts?limit=0":                                      "invalid_filter",
-		"posts?offset=-1":                                    "invalid_filter",
+		"posts?limit=0":                                      "invalid_parameter",
+		"posts?offset=-1":                                    "invalid_parameter",
 		"metrics?after=WyJwdWJsaWMucG9zdHMiLDJd":             "keyset_unsupported",
 		"posts?after=nope":                                   "invalid_cursor",
 		"posts?after=WyJwdWJsaWMudXNlcnMiLDJd":               "invalid_cursor",
@@ -553,9 +553,9 @@ func TestRowsAndEtags(t *testing.T) {
 	res, body = get(t, srv.URL+"/api/users/by/full_name/x")
 	wantProblem(t, res, body, 404, "not_found")
 	res, body = get(t, srv.URL+"/api/users/abc")
-	wantProblem(t, res, body, 400, "invalid_filter")
+	wantProblem(t, res, body, 400, "invalid_parameter")
 	res, body = get(t, srv.URL+"/api/users/1?limit=2")
-	wantProblem(t, res, body, 400, "invalid_filter")
+	wantProblem(t, res, body, 400, "invalid_parameter")
 	// HEAD parity on rows
 	res, body = do(t, "HEAD", srv.URL+"/api/users/1", nil)
 	if res.StatusCode != 200 || len(body) != 0 || res.Header.Get("ETag") != etag {

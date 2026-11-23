@@ -360,7 +360,7 @@ func (p *parser) computedArgs(c *api.Computed, inner string) (map[string]any, st
 		}
 		v, uerr := p.coerceText(p.typeOf(api.ArgColumn(p.built.Catalog, a)), val)
 		if uerr != nil {
-			return nil, "", errf(CodeInvalidFilter, "argument %q: %s", name, uerr.Detail)
+			return nil, "", errf(CodeInvalidArgument, "argument %q: %s", name, uerr.Detail)
 		}
 		if args == nil {
 			args = map[string]any{}
@@ -497,7 +497,7 @@ func (p *parser) resolveRelation(res *api.Resource, key, hint string) (*api.Rela
 		}
 	}
 	if hint != "" {
-		return nil, errf(CodeAmbiguousRelation, "hint %q selects no relation %q on %q; candidates: %s", hint, key, res.Path, strings.Join(hs, ", "))
+		return nil, errf(CodeUnknownRelation, "hint %q selects no relation %q on %q; candidates: %s", hint, key, res.Path, strings.Join(hs, ", "))
 	}
 	return nil, errf(CodeAmbiguousRelation, "relation %q on %q is ambiguous; use a hint: %s", key, res.Path, strings.Join(hs, ", "))
 }

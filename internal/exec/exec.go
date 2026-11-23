@@ -257,9 +257,6 @@ func (e *Executor) compileError(err error) error {
 	if errors.As(err, &ue) {
 		return fromUserError(ue)
 	}
-	if errors.Is(err, compile.ErrNotImplemented) {
-		return &Error{Status: http.StatusNotImplemented, Code: compile.CodeNotImplemented, Detail: err.Error()}
-	}
 	e.Opts.Logger.Error("compile failed", "err", err)
 	return e.internal(err, "compile: invalid request")
 }
@@ -279,7 +276,7 @@ func fromUserError(ue *compile.UserError) *Error {
 	}
 	code := ue.Code
 	if code == "" {
-		code = compile.CodeInvalidFilter
+		code = compile.CodeInvalidParameter
 	}
 	return &Error{Status: status, Code: code, Detail: ue.Detail}
 }

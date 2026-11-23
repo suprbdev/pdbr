@@ -86,7 +86,7 @@ func TestAdvancedFiltersRelationFilters(t *testing.T) {
 		"users?posts.published=is.true":  "column_not_filterable",
 		"users?posts.nope=eq.1":          "unknown_column",
 		"users?nope.title=eq.x":          "unknown_relation",
-		"users?posts!bad.title=eq.x":     "ambiguous_relation",
+		"users?posts!bad.title=eq.x":     "unknown_relation",
 		"comments?comments.body=eq.x":    "ambiguous_relation",
 	} {
 		wantCode(t, srv.URL, q, 400, code)
@@ -126,7 +126,7 @@ func TestAdvancedFiltersRelatedOrder(t *testing.T) {
 		"posts?order=users(published).asc": "unknown_column",
 		"users?order=posts(published).asc": "column_not_orderable",
 		"users?order=nope(id).asc":         "unknown_relation",
-		"users?order=posts().asc":          "invalid_filter",
+		"users?order=posts().asc":          "invalid_parameter",
 	} {
 		wantCode(t, srv.URL, q, 400, code)
 	}
@@ -165,7 +165,7 @@ func TestAdvancedFiltersSettings(t *testing.T) {
 		})
 		wantCode(t, srv.URL, "users?posts.title=eq.x", 400, "invalid_filter")
 		wantCode(t, srv.URL, "users?posts=exists.true", 400, "invalid_filter")
-		wantCode(t, srv.URL, "posts?order=users(email).asc", 400, "invalid_filter")
+		wantCode(t, srv.URL, "posts?order=users(email).asc", 400, "invalid_parameter")
 		wantIDs(t, srv.URL, "users?post_count=gte.2", []int{1})
 		wantIDs(t, srv.URL, "users?order=post_count.desc,id", []int{1, 2, 3})
 		// embeds and embed filters are core, untouched
@@ -175,7 +175,7 @@ func TestAdvancedFiltersSettings(t *testing.T) {
 		srv := testServer(t, func(c *config.Config) {
 			c.Plugins.Settings.AdvancedFilters.RelationOrder = false
 		})
-		wantCode(t, srv.URL, "posts?order=users(email).asc", 400, "invalid_filter")
+		wantCode(t, srv.URL, "posts?order=users(email).asc", 400, "invalid_parameter")
 		wantIDs(t, srv.URL, "users?posts.title=eq.Compilers%20101", []int{2})
 	})
 	t.Run("computed off", func(t *testing.T) {
@@ -269,7 +269,7 @@ func TestAdvancedFiltersPluginDisabled(t *testing.T) {
 		"users?posts!none.title=eq.x":  "invalid_filter",
 		"users?posts=exists.true":      "invalid_filter",
 		"posts?users.email=eq.x":       "invalid_filter",
-		"posts?order=users(email).asc": "invalid_filter",
+		"posts?order=users(email).asc": "invalid_parameter",
 		"users?post_count=gte.2":       "column_not_filterable",
 		"users?order=post_count.desc":  "column_not_orderable",
 		"users?nope.title=eq.x":        "unknown_relation",

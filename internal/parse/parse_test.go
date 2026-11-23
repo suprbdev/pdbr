@@ -176,7 +176,7 @@ func TestSelect(t *testing.T) {
 		}
 		for u, code := range map[string]string{
 			"/api/posts?select=excerpt(nope=1)":                  CodeUnknownArgument,
-			"/api/posts?select=excerpt(max_chars=x)":             CodeInvalidFilter,
+			"/api/posts?select=excerpt(max_chars=x)":             CodeInvalidArgument,
 			"/api/posts?select=excerpt(max_chars=1,max_chars=2)": CodeInvalidSelect,
 			"/api/posts?select=excerpt(id)":                      CodeInvalidSelect,
 			"/api/users?select=post_count(len=1)":                CodeUnknownArgument,
@@ -231,7 +231,7 @@ func TestSelect(t *testing.T) {
 			t.Fatalf("detail should list candidates: %v", err)
 		}
 		_, err = doParse(t, b, req{url: "/api/comments?select=comments!nope(id)"}, allOn)
-		wantCode(t, err, CodeAmbiguousRelation)
+		wantCode(t, err, CodeUnknownRelation)
 	})
 	t.Run("depth", func(t *testing.T) {
 		opts := allOn
@@ -472,7 +472,7 @@ func TestFilters(t *testing.T) {
 			"/api/users?emial=eq.1":                 CodeUnknownColumn,
 			"/api/users?full_name=eq.x":             CodeColumnNotFilterable,
 			"/api/users?address=is.null":            CodeColumnNotFilterable,
-			"/api/users?id=eq.1&id=eq.%zz":          CodeInvalidFilter,
+			"/api/users?id=eq.1&id=eq.%zz":          CodeInvalidParameter,
 			"/api/places?location=eq.POINT(1%202)":  CodeInvalidFilter,
 			"/api/places?location=st_intersects.x":  CodeInvalidFilter,
 			"/api/users?email=st_intersects.POINT":  CodeInvalidFilter,
@@ -518,7 +518,7 @@ func TestFilters(t *testing.T) {
 	})
 	t.Run("reserved name only in logic", func(t *testing.T) {
 		_, err := doParse(t, b, req{url: "/api/users?select=id&limit=eq.5"}, allOn)
-		wantCode(t, err, CodeInvalidFilter)
+		wantCode(t, err, CodeInvalidParameter)
 	})
 	t.Run("column with same name as relation wins", func(t *testing.T) {
 		c := cond(t, "/api/comments?post_id=eq.1")
@@ -662,10 +662,10 @@ func TestEmbedParams(t *testing.T) {
 		t.Fatalf("expected relation filter, got %#v", p.Filter)
 	}
 	for u, code := range map[string]string{
-		"/api/users?select=id,posts(id)&posts.limit=0":         CodeInvalidFilter,
+		"/api/users?select=id,posts(id)&posts.limit=0":         CodeInvalidParameter,
 		"/api/users?select=id,posts(id)&posts.limit=101":       CodePageSizeExceeded,
-		"/api/users?select=id,posts(id)&posts.offset=-1":       CodeInvalidFilter,
-		"/api/users?select=id,posts(id)&posts.after=x":         CodeInvalidFilter,
+		"/api/users?select=id,posts(id)&posts.offset=-1":       CodeInvalidParameter,
+		"/api/users?select=id,posts(id)&posts.after=x":         CodeInvalidParameter,
 		"/api/users?select=id,posts(id)&posts.body=eq.x":       CodeColumnNotFilterable,
 		"/api/users?select=id,posts(id)&posts.nope=eq.x":       CodeUnknownColumn,
 		"/api/users?select=id,posts(id)&posts.order=body.desc": CodeColumnNotOrderable,
@@ -763,7 +763,7 @@ func TestRelationFilters(t *testing.T) {
 		"/api/users?posts.body=eq.x":             CodeColumnNotFilterable,
 		"/api/users?posts!.title=eq.x":           CodeInvalidFilter,
 		"/api/users?posts!a!b.title=eq.x":        CodeInvalidFilter,
-		"/api/users?posts!a.title=eq.x":          CodeAmbiguousRelation,
+		"/api/users?posts!a.title=eq.x":          CodeUnknownRelation,
 	} {
 		_, err := doParse(t, b, req{url: u}, allOn)
 		if err == nil {
@@ -810,27 +810,27 @@ func TestOrder(t *testing.T) {
 		t.Fatalf("near = %+v", p.Near)
 	}
 	_, err := doParse(t, b, req{url: "/api/places?order=location.dist"}, allOn)
-	wantCode(t, err, CodeInvalidFilter)
+	wantCode(t, err, CodeInvalidParameter)
 	p = mustParse(t, b, "/api/users?select=id,places(id)&places.order=location.dist&near=POINT(1%202)")
 	if p.Select.Embeds[0].Order[0].Distance == nil || p.Near == nil {
 		t.Fatalf("embed dist order = %+v near=%v", p.Select.Embeds[0].Order, p.Near)
 	}
 	for u, code := range map[string]string{
-		"/api/posts?order=":                                CodeInvalidFilter,
-		"/api/posts?order=title.sideways":                  CodeInvalidFilter,
-		"/api/posts?order=title.asc.desc":                  CodeInvalidFilter,
-		"/api/posts?order=title.nullsfirst.asc":            CodeInvalidFilter,
+		"/api/posts?order=":                                CodeInvalidParameter,
+		"/api/posts?order=title.sideways":                  CodeInvalidParameter,
+		"/api/posts?order=title.asc.desc":                  CodeInvalidParameter,
+		"/api/posts?order=title.nullsfirst.asc":            CodeInvalidParameter,
 		"/api/posts?order=nope":                            CodeUnknownColumn,
 		"/api/posts?order=body":                            CodeColumnNotOrderable,
 		"/api/posts?order=nope(email)":                     CodeUnknownRelation,
 		"/api/posts?order=users(nope)":                     CodeUnknownColumn,
 		"/api/posts?order=users(full_name)":                CodeColumnNotOrderable,
-		"/api/posts?order=users(email":                     CodeInvalidFilter,
+		"/api/posts?order=users(email":                     CodeInvalidParameter,
 		"/api/comments?order=comments(post_id)":            CodeAmbiguousRelation,
 		"/api/users?order=tag_words":                       CodeColumnNotOrderable,
 		"/api/places?order=location":                       CodeColumnNotOrderable,
-		"/api/places?order=name.dist&near=POINT(1%202)":    CodeInvalidFilter,
-		"/api/places?order=location.dist.asc&near=garbage": CodeInvalidFilter,
+		"/api/places?order=name.dist&near=POINT(1%202)":    CodeInvalidParameter,
+		"/api/places?order=location.dist.asc&near=garbage": CodeInvalidParameter,
 	} {
 		_, err := doParse(t, b, req{url: u}, allOn)
 		if err == nil {
@@ -845,11 +845,11 @@ func TestOrder(t *testing.T) {
 	off := allOn
 	off.RelationOrder, off.ComputedOrder, off.Spatial = false, false, false
 	_, err = doParse(t, b, req{url: "/api/posts?order=users(email)"}, off)
-	wantCode(t, err, CodeInvalidFilter)
+	wantCode(t, err, CodeInvalidParameter)
 	_, err = doParse(t, b, req{url: "/api/users?order=post_count"}, off)
 	wantCode(t, err, CodeColumnNotOrderable)
 	_, err = doParse(t, b, req{url: "/api/places?order=location.dist&near=POINT(1%202)"}, off)
-	wantCode(t, err, CodeInvalidFilter)
+	wantCode(t, err, CodeInvalidParameter)
 }
 
 func TestPaging(t *testing.T) {
@@ -882,14 +882,14 @@ func TestPaging(t *testing.T) {
 	}
 	other := base64.RawURLEncoding.EncodeToString([]byte(`["public.users", 7]`))
 	for u, code := range map[string]string{
-		"/api/posts?limit=0":         CodeInvalidFilter,
-		"/api/posts?limit=-1":        CodeInvalidFilter,
-		"/api/posts?limit=abc":       CodeInvalidFilter,
+		"/api/posts?limit=0":         CodeInvalidParameter,
+		"/api/posts?limit=-1":        CodeInvalidParameter,
+		"/api/posts?limit=abc":       CodeInvalidParameter,
 		"/api/posts?limit=101":       CodePageSizeExceeded,
-		"/api/posts?offset=-1":       CodeInvalidFilter,
-		"/api/posts?offset=x":        CodeInvalidFilter,
-		"/api/posts?count=yes":       CodeInvalidFilter,
-		"/api/posts?limit=1&limit=2": CodeInvalidFilter,
+		"/api/posts?offset=-1":       CodeInvalidParameter,
+		"/api/posts?offset=x":        CodeInvalidParameter,
+		"/api/posts?count=yes":       CodeInvalidParameter,
+		"/api/posts?limit=1&limit=2": CodeInvalidParameter,
 		"/api/posts?after=!!!":       CodeInvalidCursor,
 		"/api/posts?after=" + base64.RawURLEncoding.EncodeToString([]byte(`{"a":1}`)):                CodeInvalidCursor,
 		"/api/posts?after=" + base64.RawURLEncoding.EncodeToString([]byte(`["public.posts"]`)):       CodeInvalidCursor,
@@ -903,10 +903,10 @@ func TestPaging(t *testing.T) {
 		"/api/metrics?after=" + after:                   CodeKeysetUnsupported,
 		"/api/users?distinct=nope":                      CodeUnknownColumn,
 		"/api/users?distinct=full_name":                 CodeColumnNotOrderable,
-		"/api/users?distinct=":                          CodeInvalidFilter,
-		"/api/places?distinct=location":                 CodeInvalidFilter,
-		"/api/posts/1?limit=1":                          CodeInvalidFilter,
-		"/api/posts/1?count=true":                       CodeInvalidFilter,
+		"/api/users?distinct=":                          CodeInvalidParameter,
+		"/api/places?distinct=location":                 CodeInvalidParameter,
+		"/api/posts/1?limit=1":                          CodeInvalidParameter,
+		"/api/posts/1?count=true":                       CodeInvalidParameter,
 	} {
 		_, err := doParse(t, b, req{url: u}, allOn)
 		if err == nil {
@@ -945,9 +945,9 @@ func TestKeys(t *testing.T) {
 		t.Fatalf("plan = %+v", p)
 	}
 	_, err := doParse(t, b, req{url: "/api/users/abc"}, allOn)
-	wantCode(t, err, CodeInvalidFilter)
+	wantCode(t, err, CodeInvalidParameter)
 	_, err = doParse(t, b, req{url: "/api/users/1,2"}, allOn)
-	wantCode(t, err, CodeInvalidFilter)
+	wantCode(t, err, CodeInvalidParameter)
 	// composite key path splitting
 	got, err := splitKeySegment("3,x%2Cy", 2)
 	if err != nil || !reflect.DeepEqual(got, []string{"3", "x,y"}) {
@@ -1027,9 +1027,9 @@ func TestHeaders(t *testing.T) {
 		t.Fatal(err)
 	}
 	// mutation routes reject read params
-	for _, u := range []string{"/api/users?limit=1", "/api/users?mood=eq.happy", "/api/users?order=id", "/api/users?on_conflict=email"} {
+	for u, code := range map[string]string{"/api/users?limit=1": CodeInvalidParameter, "/api/users?mood=eq.happy": CodeInvalidFilter, "/api/users?order=id": CodeInvalidParameter, "/api/users?on_conflict=email": CodeInvalidParameter} {
 		_, err := doParse(t, b, req{method: "POST", url: u, body: "{}", header: map[string]string{"Content-Type": "application/json"}}, allOn)
-		wantCode(t, err, CodeInvalidFilter)
+		wantCode(t, err, code)
 	}
 	jsonHdr := map[string]string{"Content-Type": "application/json"}
 	p, err = doParse(t, b, req{method: "PUT", url: "/api/users?on_conflict=email", body: `{"email":"x"}`, header: jsonHdr}, allOn)
@@ -1066,9 +1066,9 @@ func TestRPC(t *testing.T) {
 	}
 	for u, code := range map[string]string{
 		"/api/rpc/add_numbers?c=1":                 CodeUnknownArgument,
-		"/api/rpc/add_numbers?a=x":                 CodeInvalidFilter,
+		"/api/rpc/add_numbers?a=x":                 CodeInvalidArgument,
 		"/api/rpc/add_numbers?select=id":           CodeInvalidSelect,
-		"/api/rpc/add_numbers?order=id":            CodeInvalidFilter,
+		"/api/rpc/add_numbers?order=id":            CodeInvalidParameter,
 		"/api/rpc/search_posts?nope=eq.1":          CodeUnknownColumn,
 		"/api/rpc/search_posts?after=" + cursor(1): CodeKeysetUnsupported,
 	} {
@@ -1107,9 +1107,9 @@ func TestRPC(t *testing.T) {
 	for body, code := range map[string]string{
 		`[1]`:              CodeInvalidBody,
 		`{"nope": 1}`:      CodeUnknownArgument,
-		`{"a": "x"}`:       CodeInvalidBody,
+		`{"a": "x"}`:       CodeInvalidArgument,
 		`{"a": 1} {"b":2}`: CodeInvalidBody,
-		`{"a": [1]}`:       CodeInvalidBody,
+		`{"a": [1]}`:       CodeInvalidArgument,
 		`nope`:             CodeInvalidBody,
 	} {
 		_, err := doParse(t, b, req{method: "POST", url: "/api/rpc/add_numbers", body: body, header: hdr}, allOn)
@@ -1148,7 +1148,7 @@ func TestRPCVariadic(t *testing.T) {
 		t.Fatalf("args = %#v", p.Body.Object)
 	}
 	_, err = doParse(t, b, req{url: "/api/rpc/sum_all?nums=1&nums=x"}, allOn)
-	wantCode(t, err, CodeInvalidFilter)
+	wantCode(t, err, CodeInvalidArgument)
 	hdr := map[string]string{"Content-Type": "application/json"}
 	p, err = doParse(t, b, req{method: "POST", url: "/api/rpc/sum_all", body: `{"nums": [1, 2]}`, header: hdr}, allOn)
 	if err != nil || !reflect.DeepEqual(p.Body.Object, map[string]any{"nums": []any{int64(1), int64(2)}}) {
@@ -1260,9 +1260,9 @@ func TestGeoJSONNegotiation(t *testing.T) {
 		t.Errorf("geometry hint: %+v %v", p, err)
 	}
 	_, err = doParse(t, b, req{url: "/api/places?geometry=area"}, allOn)
-	wantCode(t, err, CodeInvalidFilter)
+	wantCode(t, err, CodeInvalidParameter)
 	_, err = doParse(t, b, req{url: "/api/places?geometry=area&geometry=location", header: map[string]string{"Accept": geo}}, allOn)
-	wantCode(t, err, CodeInvalidFilter)
+	wantCode(t, err, CodeInvalidParameter)
 	_, err = doParse(t, b, req{url: "/api/users?geometry=area", header: map[string]string{"Accept": geo}}, allOn)
 	wantCode(t, err, CodeInvalidFilter)
 }

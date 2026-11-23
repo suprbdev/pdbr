@@ -65,7 +65,7 @@ func TestBulkPatchDelete(t *testing.T) {
 	res, body = send(t, "PATCH", srv.URL+"/api/users?full_name=eq.Bulk", `{"mood":"ok"}`, nil)
 	wantProblem(t, res, body, 400, "column_not_filterable")
 	res, body = send(t, "DELETE", srv.URL+"/api/users?"+sel+"&limit=1", "", nil)
-	wantProblem(t, res, body, 400, "invalid_filter")
+	wantProblem(t, res, body, 400, "invalid_parameter")
 	res, body = send(t, "PATCH", srv.URL+"/api/users?"+sel, `{"mood":"ok"}`, map[string]string{"If-Match": `W/"x"`})
 	wantProblem(t, res, body, 400, "if_match_unsupported")
 

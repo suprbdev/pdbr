@@ -218,7 +218,7 @@ These shipped features are outside the 1.0 compatibility promise: they may chang
 ## Errors
 
 - [x] RFC 9457 `application/problem+json` (`type`, `title`, `status`, `detail`, `instance`) (new)
-- [x] Stable `code` extension: `pg:<SQLSTATE>` or pdbr code (`not_found`, `invalid_filter`, `unknown_column`, `column_not_filterable`, `column_not_orderable`, `page_size_exceeded`, `keyset_unsupported`, `cost_exceeded`, `embed_depth_exceeded`, `ambiguous_relation`, `invalid_body`, `column_readonly`, `read_only`, `etag_mismatch`, `not_acceptable`, `unsupported_media_type`, `role_not_allowed`, `invalid_token`, `auth_required`) (new)
+- [x] Stable `code` extension from a closed vocabulary: `pg:<SQLSTATE>` or a pdbr code ([errors.md](errors.md#code-vocabulary)); each grammar code names the request part at fault (`invalid_filter`, `invalid_parameter`, `invalid_select`, `invalid_argument`, `invalid_body`, …) (new)
 - [x] `errors.detail: dev` adds `pg` object `{sqlstate, message, detail, hint, table, constraint}` (parity)
 - [x] `errors.detail: dev|prod|strict` message policy (22*/23* pass through in prod; everything generic in strict) (parity)
 - [x] Status mapping: 400 grammar/body/21000/22*/23502/23514/42*, 401 credentials, 403 `42501`/role not allowed, 404 route/row, 405 + `Allow`, 406, 409 `23505`/`23503`/`23P01`/serialization exhausted, 412, 413, 415, 500 other, 503 `53*`/`08*`, 504 `57014`/request timeout (new)
@@ -389,7 +389,7 @@ these are the deliberate departures (each documented in its topic page):
 - **`POST` with `resolution=`**: always `201` (as PostgREST), but a
   single-object body skipped by `ignore-duplicates` answers `204` (pdbr
   returns objects, not arrays, for single-object bodies); `on_conflict=`
-  without `resolution=` is `400 invalid_filter`.
+  without `resolution=` is `400 invalid_parameter`.
 - **`missing=default` is a no-op**: pdbr always inserts `DEFAULT` for keys a
   bulk element omits; PostgREST inserts `NULL` unless asked.
 - **`Prefer: tx=` is honoured on writes only** (resource `POST`/`PUT`/

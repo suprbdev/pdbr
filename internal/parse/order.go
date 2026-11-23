@@ -24,11 +24,11 @@ import (
 // path_nlevel).
 func (p *parser) parseOrder(s string, res *api.Resource) ([]plan.OrderTerm, error) {
 	if strings.TrimSpace(s) == "" {
-		return nil, errf(CodeInvalidFilter, "order must not be empty")
+		return nil, errf(CodeInvalidParameter, "order must not be empty")
 	}
 	raws, ok := splitTop(s)
 	if !ok {
-		return nil, errf(CodeInvalidFilter, "unbalanced parentheses in order %q", s)
+		return nil, errf(CodeInvalidParameter, "unbalanced parentheses in order %q", s)
 	}
 	out := make([]plan.OrderTerm, 0, len(raws))
 	for _, raw := range raws {
@@ -44,7 +44,7 @@ func (p *parser) parseOrder(s string, res *api.Resource) ([]plan.OrderTerm, erro
 func (p *parser) parseOrderTerm(raw string, res *api.Resource) (plan.OrderTerm, error) {
 	var t plan.OrderTerm
 	if raw == "" {
-		return t, errf(CodeInvalidFilter, "empty order term")
+		return t, errf(CodeInvalidParameter, "empty order term")
 	}
 	// Modifiers hang off the end; the relation form has its own dots inside
 	// parentheses so we split the tail only after the closing paren.
@@ -66,7 +66,7 @@ func (p *parser) parseOrderTerm(raw string, res *api.Resource) (plan.OrderTerm, 
 	mods := []string{}
 	if tail != "" {
 		if !strings.HasPrefix(tail, ".") {
-			return t, errf(CodeInvalidFilter, "malformed order term %q", raw)
+			return t, errf(CodeInvalidParameter, "malformed order term %q", raw)
 		}
 		mods = strings.Split(tail[1:], ".")
 	}
@@ -81,18 +81,18 @@ func (p *parser) parseOrderTerm(raw string, res *api.Resource) (plan.OrderTerm, 
 		switch m {
 		case "asc", "desc":
 			if dirSet || nullsSet {
-				return t, errf(CodeInvalidFilter, "malformed order term %q", raw)
+				return t, errf(CodeInvalidParameter, "malformed order term %q", raw)
 			}
 			dirSet = true
 			t.Desc = m == "desc"
 		case "nullsfirst", "nullslast":
 			if nullsSet {
-				return t, errf(CodeInvalidFilter, "malformed order term %q", raw)
+				return t, errf(CodeInvalidParameter, "malformed order term %q", raw)
 			}
 			nullsSet = true
 			t.NullsFirst = m == "nullsfirst"
 		default:
-			return t, errf(CodeInvalidFilter, "unknown order modifier %q in %q (want asc|desc, nullsfirst|nullslast)", m, raw)
+			return t, errf(CodeInvalidParameter, "unknown order modifier %q in %q (want asc|desc, nullsfirst|nullslast)", m, raw)
 		}
 	}
 	if err := p.resolveOrderPath(&t, path, res); err != nil {
@@ -105,9 +105,9 @@ func (p *parser) resolveOrderPath(t *plan.OrderTerm, path string, res *api.Resou
 	if hasJSONPath(path) && indexOutsideQuotes(path, "(") < 0 {
 		name, jp, _, uerr := splitJSONPath(path)
 		if uerr != nil {
-			return uerr
+			return withCode(uerr, CodeInvalidParameter)
 		}
-		f, err := p.resolvePathField(res, name, jp, CodeInvalidFilter)
+		f, err := p.resolvePathField(res, name, jp, CodeInvalidParameter)
 		if err != nil {
 			return err
 		}
@@ -119,12 +119,12 @@ func (p *parser) resolveOrderPath(t *plan.OrderTerm, path string, res *api.Resou
 	}
 	if i := strings.IndexByte(path, '('); i >= 0 {
 		if !strings.HasSuffix(path, ")") {
-			return errf(CodeInvalidFilter, "malformed order path %q", path)
+			return errf(CodeInvalidParameter, "malformed order path %q", path)
 		}
 		head, col := path[:i], path[i+1:len(path)-1]
 		parts := strings.Split(head, "!")
 		if len(parts) > 2 || parts[0] == "" || col == "" {
-			return errf(CodeInvalidFilter, "malformed order path %q (want rel[!hint](column))", path)
+			return errf(CodeInvalidParameter, "malformed order path %q (want rel[!hint](column))", path)
 		}
 		hint := ""
 		if len(parts) == 2 {
@@ -134,7 +134,7 @@ func (p *parser) resolveOrderPath(t *plan.OrderTerm, path string, res *api.Resou
 			return errf(CodeUnknownRelation, "unknown relation %q on %q", parts[0], res.Path)
 		}
 		if !p.opts.RelationOrder {
-			return errf(CodeInvalidFilter, "related ordering is not enabled (advanced_filters plugin)")
+			return errf(CodeInvalidParameter, "related ordering is not enabled (advanced_filters plugin)")
 		}
 		rel, err := p.resolveRelation(res, parts[0], hint)
 		if err != nil {
@@ -200,7 +200,7 @@ func (p *parser) resolveOrderPath(t *plan.OrderTerm, path string, res *api.Resou
 			return errf(CodeUnknownColumn, "unknown column %q on %q", col, res.Path)
 		}
 		if !p.opts.spatialOrder() || !postgis.IsSpatial(f.Column.PGType) {
-			return errf(CodeInvalidFilter, ".dist ordering requires a spatial column (postgis plugin); %q is %s", col, f.Column.PGType)
+			return errf(CodeInvalidParameter, ".dist ordering requires a spatial column (postgis plugin); %q is %s", col, f.Column.PGType)
 		}
 		if !res.OrderColumns[col] {
 			return errf(CodeColumnNotOrderable, "column %q on %q is not orderable", col, res.Path)
@@ -354,10 +354,10 @@ func (p *parser) resolveContribOrders(ref refParams) error {
 		}
 	}
 	if needTrgm != "" && !hasTrgm {
-		return errf(CodeInvalidFilter, "%s requires trgm=<text>", needTrgm)
+		return errf(CodeInvalidParameter, "%s requires trgm=<text>", needTrgm)
 	}
 	if hasTrgm && needTrgm == "" {
-		return errf(CodeInvalidFilter, "trgm= applies to order=<col>.trgm_dist|trgm_wdist|trgm_swdist and the trigram score columns only, and none is present")
+		return errf(CodeInvalidParameter, "trgm= applies to order=<col>.trgm_dist|trgm_wdist|trgm_swdist and the trigram score columns only, and none is present")
 	}
 	if hasTrgm {
 		p.req.Trgm = trgm
@@ -383,18 +383,18 @@ func (p *parser) bindLatLon(terms []*plan.ContribOrder, raw string, has bool) er
 	}
 	if len(terms) == 0 && score == nil && len(p.latlonFilters) == 0 {
 		if has {
-			return errf(CodeInvalidFilter, "latlon= applies to order=<col>.earth_dist|earth_miles, the earthdistance score columns and earth_lt / earth_miles_lt filters only, and none is present")
+			return errf(CodeInvalidParameter, "latlon= applies to order=<col>.earth_dist|earth_miles, the earthdistance score columns and earth_lt / earth_miles_lt filters only, and none is present")
 		}
 		return nil
 	}
 	if !has {
 		switch {
 		case len(terms) > 0:
-			return errf(CodeInvalidFilter, "order by %s.%s requires latlon=<lat>,<lon>", terms[0].Column.Name, terms[0].Name)
+			return errf(CodeInvalidParameter, "order by %s.%s requires latlon=<lat>,<lon>", terms[0].Column.Name, terms[0].Name)
 		case score != nil:
-			return errf(CodeInvalidFilter, "%s requires latlon=<lat>,<lon>", score.Key)
+			return errf(CodeInvalidParameter, "%s requires latlon=<lat>,<lon>", score.Key)
 		}
-		return errf(CodeInvalidFilter, "filter %s on %s requires latlon=<lat>,<lon>", p.latlonFilters[0].Name, p.latlonFilters[0].Column.Name)
+		return errf(CodeInvalidParameter, "filter %s on %s requires latlon=<lat>,<lon>", p.latlonFilters[0].Name, p.latlonFilters[0].Column.Name)
 	}
 	ll, uerr := parseLatLon(raw)
 	if uerr != nil {
@@ -409,18 +409,18 @@ func (p *parser) bindLatLon(terms []*plan.ContribOrder, raw string, has bool) er
 func parseLatLon(raw string) (map[string]any, *compile.UserError) {
 	lat, lon, ok := strings.Cut(raw, ",")
 	if !ok || strings.Contains(lon, ",") {
-		return nil, errf(CodeInvalidFilter, "latlon must be <lat>,<lon> in degrees, got %q", raw)
+		return nil, errf(CodeInvalidParameter, "latlon must be <lat>,<lon> in degrees, got %q", raw)
 	}
 	m := map[string]any{}
 	for k, v := range map[string]string{"lat": lat, "lon": lon} {
 		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
 		if err != nil {
-			return nil, errf(CodeInvalidFilter, "latlon: %s %q is not a number", k, v)
+			return nil, errf(CodeInvalidParameter, "latlon: %s %q is not a number", k, v)
 		}
 		m[k] = f
 	}
 	if _, err := contrib.LatLonParams(m); err != nil {
-		return nil, errf(CodeInvalidFilter, "latlon: %s", err.Error())
+		return nil, errf(CodeInvalidParameter, "latlon: %s", err.Error())
 	}
 	return m, nil
 }
@@ -436,21 +436,21 @@ func (p *parser) bindLevenshtein(terms []*plan.ContribOrder, lev string, hasLev 
 	}
 	if len(terms) == 0 && score == nil && len(p.levFilters) == 0 {
 		if hasLev {
-			return errf(CodeInvalidFilter, "levenshtein= applies to order=<col>.levenshtein, the <col>_levenshtein_distance columns and levenshtein_lt filters only, and none is present")
+			return errf(CodeInvalidParameter, "levenshtein= applies to order=<col>.levenshtein, the <col>_levenshtein_distance columns and levenshtein_lt filters only, and none is present")
 		}
 		return nil
 	}
 	if !hasLev {
 		switch {
 		case len(terms) > 0:
-			return errf(CodeInvalidFilter, "order by %s.%s requires levenshtein=<text>", terms[0].Column.Name, terms[0].Name)
+			return errf(CodeInvalidParameter, "order by %s.%s requires levenshtein=<text>", terms[0].Column.Name, terms[0].Name)
 		case score != nil:
-			return errf(CodeInvalidFilter, "%s requires levenshtein=<text>", score.Key)
+			return errf(CodeInvalidParameter, "%s requires levenshtein=<text>", score.Key)
 		}
-		return errf(CodeInvalidFilter, "filter %s on %s requires levenshtein=<text>", p.levFilters[0].Name, p.levFilters[0].Column.Name)
+		return errf(CodeInvalidParameter, "filter %s on %s requires levenshtein=<text>", p.levFilters[0].Name, p.levFilters[0].Column.Name)
 	}
 	if _, err := levenshteinExpr().Params(lev); err != nil {
-		return errf(CodeInvalidFilter, "levenshtein: %s", err.Error())
+		return errf(CodeInvalidParameter, "levenshtein: %s", err.Error())
 	}
 	p.req.Levenshtein = lev
 	return nil
@@ -467,22 +467,22 @@ func (p *parser) bindVec(terms []*plan.ContribOrder, vec string, hasVec bool) er
 	}
 	if len(terms) == 0 && score == nil && len(p.vecFilters) == 0 {
 		if hasVec {
-			return errf(CodeInvalidFilter, "vec= applies to order=<col>.vec_*, the vector score columns and vec_*_lt filters only, and none is present")
+			return errf(CodeInvalidParameter, "vec= applies to order=<col>.vec_*, the vector score columns and vec_*_lt filters only, and none is present")
 		}
 		return nil
 	}
 	if !hasVec {
 		switch {
 		case len(terms) > 0:
-			return errf(CodeInvalidFilter, "order by %s.%s requires vec=<vector>", terms[0].Column.Name, terms[0].Name)
+			return errf(CodeInvalidParameter, "order by %s.%s requires vec=<vector>", terms[0].Column.Name, terms[0].Name)
 		case score != nil:
-			return errf(CodeInvalidFilter, "%s requires vec=<vector>", score.Key)
+			return errf(CodeInvalidParameter, "%s requires vec=<vector>", score.Key)
 		}
-		return errf(CodeInvalidFilter, "filter %s on %s requires vec=<vector>", p.vecFilters[0].Name, p.vecFilters[0].Column.Name)
+		return errf(CodeInvalidParameter, "filter %s on %s requires vec=<vector>", p.vecFilters[0].Name, p.vecFilters[0].Column.Name)
 	}
 	v, err := api.VectorOperand(vec)
 	if err != nil {
-		return errf(CodeInvalidFilter, "vec: %s", err.Error())
+		return errf(CodeInvalidParameter, "vec: %s", err.Error())
 	}
 	for _, co := range terms {
 		voc, _ := api.DistanceVocabulary(p.built.Catalog, co.Column)
@@ -491,7 +491,7 @@ func (p *parser) bindVec(terms []*plan.ContribOrder, vec string, hasVec bool) er
 			return errf(CodeColumnNotOrderable, "%s.%s is not available on this column", co.Column.Name, co.Name)
 		}
 		if _, err := e.Params(v); err != nil {
-			return errf(CodeInvalidFilter, "vec: %s", err.Error())
+			return errf(CodeInvalidParameter, "vec: %s", err.Error())
 		}
 	}
 	for _, pc := range p.scores {
@@ -499,7 +499,7 @@ func (p *parser) bindVec(terms []*plan.ContribOrder, vec string, hasVec bool) er
 			continue
 		}
 		if _, err := pc.Score.Expr.Params(v); err != nil {
-			return errf(CodeInvalidFilter, "vec: %s", err.Error())
+			return errf(CodeInvalidParameter, "vec: %s", err.Error())
 		}
 	}
 	for _, f := range p.vecFilters {
@@ -508,7 +508,7 @@ func (p *parser) bindVec(terms []*plan.ContribOrder, vec string, hasVec bool) er
 			key = "cube"
 		}
 		if _, err := f.Op.Params(map[string]any{key: v, "distance": 0}); err != nil {
-			return errf(CodeInvalidFilter, "vec: %s", err.Error())
+			return errf(CodeInvalidParameter, "vec: %s", err.Error())
 		}
 	}
 	p.req.Vec = v
@@ -605,7 +605,7 @@ func (p *parser) resolveHeadlines() error {
 // parseDistinct parses distinct=col1,col2.
 func (p *parser) parseDistinct(s string, res *api.Resource) ([]*introspect.Column, error) {
 	if strings.TrimSpace(s) == "" {
-		return nil, errf(CodeInvalidFilter, "distinct must not be empty")
+		return nil, errf(CodeInvalidParameter, "distinct must not be empty")
 	}
 	var out []*introspect.Column
 	for _, k := range strings.Split(s, ",") {
@@ -618,7 +618,7 @@ func (p *parser) parseDistinct(s string, res *api.Resource) ([]*introspect.Colum
 			return nil, errf(CodeColumnNotOrderable, "column %q on %q is not orderable", k, res.Path)
 		}
 		if t := p.typeOf(f.Column); t.kind == kindSpatial || t.kind == kindComposite || t.distanceOnly() {
-			return nil, errf(CodeInvalidFilter, "distinct is not supported on %s column %q", t.name(), k)
+			return nil, errf(CodeInvalidParameter, "distinct is not supported on %s column %q", t.name(), k)
 		}
 		out = append(out, f.Column)
 	}
@@ -656,15 +656,15 @@ func (p *parser) resolveNear(near string, hasNear bool) error {
 	}
 	if dist == nil && score == nil {
 		if hasNear {
-			return errf(CodeInvalidFilter, "near= applies to order=<col>.dist, <col>_distance and raster <col>_value only, and none is present")
+			return errf(CodeInvalidParameter, "near= applies to order=<col>.dist, <col>_distance and raster <col>_value only, and none is present")
 		}
 		return nil
 	}
 	if !hasNear {
 		if dist == nil {
-			return errf(CodeInvalidFilter, "%s requires near=<GeoJSON or WKT>", score.Key)
+			return errf(CodeInvalidParameter, "%s requires near=<GeoJSON or WKT>", score.Key)
 		}
-		return errf(CodeInvalidFilter, "order by %s.dist requires near=<GeoJSON or WKT>", dist.Name)
+		return errf(CodeInvalidParameter, "order by %s.dist requires near=<GeoJSON or WKT>", dist.Name)
 	}
 	if dist == nil {
 		dist = score.Column
@@ -674,7 +674,7 @@ func (p *parser) resolveNear(near string, hasNear bool) error {
 		t = colType{kind: kindSpatial, flavour: postgis.Geometry}
 	}
 	if _, err := p.coerceSpatial(t, near); err != nil {
-		return errf(CodeInvalidFilter, "near: %s", err.Detail)
+		return errf(CodeInvalidParameter, "near: %s", err.Detail)
 	}
 	v, _ := spatialInput(near)
 	p.req.Near = v

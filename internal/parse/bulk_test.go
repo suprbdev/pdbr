@@ -66,9 +66,9 @@ func TestBulkWrites(t *testing.T) {
 		{req{method: "PATCH", url: "/api/users?full_name=eq.x", header: jsonCT, body: `{"mood":"ok"}`}, CodeColumnNotFilterable},
 		{req{method: "PATCH", url: "/api/users?id=eq.1", header: jsonCT, body: `[{"mood":"ok"}]`}, CodeInvalidBody},
 		{req{method: "PATCH", url: "/api/users?id=eq.1", header: jsonCT, body: `{}`}, CodeInvalidBody},
-		{req{method: "DELETE", url: "/api/users?id=eq.1&limit=1"}, CodeInvalidFilter},
-		{req{method: "DELETE", url: "/api/users?id=eq.1&order=id"}, CodeInvalidFilter},
-		{req{method: "DELETE", url: "/api/users?id=eq.1&on_conflict=email"}, CodeInvalidFilter},
+		{req{method: "DELETE", url: "/api/users?id=eq.1&limit=1"}, CodeInvalidParameter},
+		{req{method: "DELETE", url: "/api/users?id=eq.1&order=id"}, CodeInvalidParameter},
+		{req{method: "DELETE", url: "/api/users?id=eq.1&on_conflict=email"}, CodeInvalidParameter},
 		{req{method: "DELETE", url: "/api/users/1?id=eq.1"}, CodeInvalidFilter},
 		{req{method: "PATCH", url: "/api/users/1?id=eq.1", header: jsonCT, body: `{"mood":"ok"}`}, CodeInvalidFilter},
 	}
@@ -191,8 +191,8 @@ func TestPreferResolution(t *testing.T) {
 	for _, tc := range []struct {
 		url, prefer, body, code string
 	}{
-		{"/api/users?on_conflict=email", "", `{"email":"a@b.c"}`, CodeInvalidFilter},
-		{"/api/users?on_conflict=email", "resolution=nope", `{"email":"a@b.c"}`, CodeInvalidFilter},
+		{"/api/users?on_conflict=email", "", `{"email":"a@b.c"}`, CodeInvalidParameter},
+		{"/api/users?on_conflict=email", "resolution=nope", `{"email":"a@b.c"}`, CodeInvalidParameter},
 		{"/api/users?on_conflict=full_name", "resolution=merge-duplicates", `{"email":"a@b.c"}`, CodeInvalidBody},
 		{"/api/users", "handling=strict, resolution=nope", `{"email":"a@b.c"}`, CodeInvalidPreference},
 		{"/api/users", "handling=strict, missing=null", `{"email":"a@b.c"}`, CodeInvalidPreference},
@@ -247,7 +247,7 @@ func TestKeyedPut(t *testing.T) {
 	}{
 		{"/api/users/by/email/a%40b.c", `{"email":"x@y.z"}`, CodeInvalidBody},
 		{"/api/users/by/email/a%40b.c", `[{"full_name":"x"}]`, CodeInvalidBody},
-		{"/api/users/by/email/a%40b.c?on_conflict=email", `{"full_name":"x"}`, CodeInvalidFilter},
+		{"/api/users/by/email/a%40b.c?on_conflict=email", `{"full_name":"x"}`, CodeInvalidParameter},
 		{"/api/users/by/email/a%40b.c?id=eq.1", `{"full_name":"x"}`, CodeInvalidFilter},
 	} {
 		_, err := doParse(t, b, req{method: "PUT", url: tc.url, header: jsonCT, body: tc.body}, allOn)

@@ -1,2 +1,2 @@
 -- request: GET /api/kb/sites?latlon=51.5,0
--- error: 400 invalid_filter: latlon= applies to order=<col>.earth_dist|earth_miles, the earthdistance score columns and earth_lt / earth_miles_lt filters only, and none is present
+-- error: 400 invalid_parameter: latlon= applies to order=<col>.earth_dist|earth_miles, the earthdistance score columns and earth_lt / earth_miles_lt filters only, and none is present

@@ -313,7 +313,7 @@ func (s *stmt) rowByKey() (*Statement, error) {
 		return nil, fmt.Errorf("compile: row request without key")
 	}
 	if len(key.Values) != len(key.Constraint.Columns) {
-		return nil, errUser(CodeInvalidFilter, "key has %d values, want %d", len(key.Values), len(key.Constraint.Columns))
+		return nil, errUser(CodeInvalidParameter, "key has %d values, want %d", len(key.Values), len(key.Constraint.Columns))
 	}
 	alias := s.alias("t")
 	jsonExpr, laterals, err := s.rootJSON(s.rootNode(), alias)

@@ -59,7 +59,7 @@ func TestPostResolution(t *testing.T) {
 	}
 
 	res, body = send(t, "POST", srv.URL+"/api/users?on_conflict=email", `{"email":"`+email+`"}`, nil)
-	wantProblem(t, res, body, 400, "invalid_filter")
+	wantProblem(t, res, body, 400, "invalid_parameter")
 	res, body = send(t, "POST", srv.URL+"/api/users", `{"email":"`+email+`"}`, ignore)
 	wantProblem(t, res, body, 409, "pg:23505")
 }

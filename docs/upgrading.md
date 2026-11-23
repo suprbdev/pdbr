@@ -282,3 +282,39 @@ transactions:
   end: commit
   partial: {enabled: false, max_items: 1000}
 ```
+
+### Error codes
+
+pdbr 1.0 closes the problem `code` vocabulary
+([errors.md](errors.md#code-vocabulary)): every code is listed there, and
+each grammar code names the part of the request at fault. Clients that
+branch on `code` need these changes; statuses are unchanged.
+
+- **`invalid_filter` is split.** It now means a filter only. Reserved query
+  parameters and path keys answer `invalid_parameter`, and function and
+  computed-column argument values answer `invalid_argument`.
+- **An RPC argument value is `invalid_argument` in a `POST` body too**
+  (it was `invalid_body`). A body that is not a JSON object stays
+  `invalid_body`.
+- **A hint that selects no relation is `unknown_relation`** (it was
+  `ambiguous_relation`). `ambiguous_relation` is only for a key with
+  several FKs and no hint.
+- **`not_implemented` (501) is gone.** It was never emitted.
+- **A hook's `UserError` without a code is `invalid_parameter`** (it was
+  `invalid_filter`).
+- **Embedding API**: `compile.ErrNotImplemented` and the
+  `not_implemented` code constants are removed.
+
+| 0.x | 1.0 | Examples |
+|---|---|---|
+| `400 invalid_filter` | `400 invalid_parameter` | `limit=abc`, `offset=-1`, `count=yes`, `order=id.sideways`, `distinct=` errors, a duplicate parameter, `on_conflict=` without `resolution=`, `limit` on a write or a single-row path, `posts.after=`, a missing, malformed or unused `near=` / `trgm=` / `vec=` / `latlon=` / `levenshtein=`, `geometry=` without `Accept: application/geo+json`, `/users/abc`, related ordering while it is disabled |
+| `400 invalid_filter` | `400 invalid_argument` | `GET /rpc/f?n=abc`, `select=excerpt(max_chars=x)`, a row argument that is not JSON |
+| `400 invalid_body` | `400 invalid_argument` | `POST /rpc/f {"n": "abc"}`, a row argument with an unknown key |
+| `400 ambiguous_relation` | `400 unknown_relation` | `select=comments!nope(id)`, `posts!left(*)`, `users?posts!bad.title=eq.x` |
+| `501 not_implemented` | — | removed |
+| `400 invalid_filter` (hook `UserError` with an empty `Code`) | `400 invalid_parameter` | |
+
+These keep `invalid_filter`: an unknown operator or one the column's type
+does not take, a malformed operand or list, a value that does not coerce
+(`id=eq.abc`), relation-filter grammar, filters on a write that takes none,
+and a rank order term or headline without its full-text filter.

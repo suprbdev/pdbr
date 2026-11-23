@@ -309,7 +309,9 @@ GET /posts?select=title,users!inner(email)&users.email=eq.a@b.c        -- inner
 ```
 
 - `!fk_constraint_name` / `!column` disambiguate. `!column` names a column of
-  the FK on the referencing side.
+  the FK on the referencing side. A hint that selects none of the key's FKs
+  (`comments!nope(id)`, or PostgREST's `!left`) is `400 unknown_relation`,
+  with the valid hints in the detail.
 - `!inner` turns the lateral join into an inner one: a filter on the embed
   restricts the parent rows (compiled as `EXISTS`), and parents with no match
   are dropped instead of carrying `null` / `[]`.
@@ -337,7 +339,7 @@ address a **selected** embed by its response key — the alias when one is
 given (`recent:posts(id)&recent.limit=3`, PostgREST style), the relation
 key otherwise — and nest (`posts.comments.limit=2`). Per-embed
 `after`/`before`/`count`/`select`/`distinct` are rejected (`400
-invalid_filter`): embedded lists are offset-paged.
+invalid_parameter`): embedded lists are offset-paged.
 
 ### Temporal keys and PostgreSQL 18 foreign keys
 
@@ -388,7 +390,7 @@ passed as `field(k=v,…)`: `select=id,excerpt(max_chars=80)`, aliased
 (`name="a,b"`), coerced by the argument's type and bound as parameters; an
 omitted argument takes its `DEFAULT`, an omitted argument without one → `400
 missing_argument`, an unknown name → `400 unknown_argument`, a bad value →
-`400 invalid_filter`. A `SETOF <table>` column takes its nested select after
+`400 invalid_argument`. A `SETOF <table>` column takes its nested select after
 the arguments: `recent_posts(n=2,id,title)`. Parenthesised arguments on
 spatial columns and their pseudo-columns are `buffer=<distance>` →
 `ST_Buffer`, `simplify=<tolerance>` → `ST_SimplifyPreserveTopology`,

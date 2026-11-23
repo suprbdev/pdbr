@@ -60,10 +60,10 @@ func TestSoftReservedParams(t *testing.T) {
 
 	plain := buildContrib(t, false)
 	for url, code := range map[string]string{
-		"/api/kb/docs?trgm=x":                       CodeInvalidFilter,
+		"/api/kb/docs?trgm=x":                       CodeInvalidParameter,
 		"/api/kb/docs?order=search.rank&trgm=x":     CodeInvalidFilter,
-		"/api/places?near=POINT(1%202)":             CodeInvalidFilter,
-		"/api/places?order=id&near=POINT(1%202)":    CodeInvalidFilter,
+		"/api/places?near=POINT(1%202)":             CodeInvalidParameter,
+		"/api/places?order=id&near=POINT(1%202)":    CodeInvalidParameter,
 		"/api/kb/docs?order=title.trgm_dist&trgm=x": "",
 	} {
 		_, err := doParse(t, plain, req{url: url}, allOn)
@@ -128,7 +128,7 @@ func TestContribJSONArgs(t *testing.T) {
 	}
 	for _, bad := range []string{`{"h": {"a": 1}}`, `{"r": {"start": 1.5}}`, `{"m": {"start": 1}}`} {
 		_, err := doParse(t, b, req{method: "POST", url: "/api/rpc/contrib_probe", header: map[string]string{"Content-Type": "application/json"}, body: bad}, allOn)
-		wantCode(t, err, CodeInvalidBody)
+		wantCode(t, err, CodeInvalidArgument)
 	}
 }
 

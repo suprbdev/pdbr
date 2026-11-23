@@ -43,7 +43,9 @@ import (
 
 // Error codes emitted by the parser (docs/errors.md).
 const (
-	CodeInvalidFilter        = "invalid_filter"
+	CodeInvalidFilter        = compile.CodeInvalidFilter
+	CodeInvalidParameter     = compile.CodeInvalidParameter
+	CodeInvalidArgument      = compile.CodeInvalidArgument
 	CodeInvalidRange         = "invalid_range"
 	CodeInvalidSelect        = "invalid_select"
 	CodeUnknownColumn        = "unknown_column"
