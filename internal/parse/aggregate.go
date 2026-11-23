@@ -68,7 +68,7 @@ func aggregateItem(it selectItem, res *api.Resource) (plan.AggFunc, string, bool
 	if it.name == "count" && len(res.Relations["count"]) == 0 {
 		return plan.AggCount, "", true
 	}
-	i := strings.LastIndexByte(it.name, '.')
+	i := lastIndexOutsideQuotes(it.name, ".")
 	if i <= 0 {
 		return "", "", false
 	}
@@ -82,7 +82,7 @@ func aggregateItem(it selectItem, res *api.Resource) (plan.AggFunc, string, bool
 // takesArgs reports col.fn(...) with a non-empty argument list for an
 // aggregate function name.
 func takesArgs(it selectItem) bool {
-	i := strings.LastIndexByte(it.name, '.')
+	i := lastIndexOutsideQuotes(it.name, ".")
 	if !it.hasInner || i <= 0 {
 		return false
 	}

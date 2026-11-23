@@ -82,7 +82,7 @@ func scanSelectItem(raw string) (selectItem, bool) {
 			}
 		}
 	}
-	if j := strings.LastIndexByte(s, ')'); j >= 0 && strings.HasPrefix(s[j+1:], "::") {
+	if j := lastIndexOutsideQuotes(s, ")"); j >= 0 && strings.HasPrefix(s[j+1:], "::") {
 		it.outCast = s[j+3:]
 		s = s[:j+1]
 		if it.outCast == "" {

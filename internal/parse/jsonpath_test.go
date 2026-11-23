@@ -69,6 +69,10 @@ func TestJSONPathSelect(t *testing.T) {
 	if !f[1].PathKeyed() || f[2].PathKeyed() || f[3].PathKeyed() || f[1].Column.Name != "settings" || !f[1].Path.Text() {
 		t.Fatalf("path fields = %+v", f[1:4])
 	}
+	q := mustParse(t, b, `/api/users?select=settings->>"a)::b",n:settings->"x.sum()"::int`)
+	if g := q.Select.Fields; len(g) != 2 || g[0].Path.LastKey() != "a)::b" || g[0].Cast != nil || g[1].Path.LastKey() != "x.sum()" || typeName(g[1].Cast) != "pg_catalog.int4" {
+		t.Fatalf("quoted keys = %+v", q.Select.Fields)
+	}
 	if typeName(f[4].Cast) != "pg_catalog.text" || typeName(f[5].Cast) != "pg_catalog.int4" || len(f[5].Path) != 1 {
 		t.Fatalf("casts = %+v %+v", f[4], f[5])
 	}
