@@ -12,7 +12,9 @@ import (
 
 // parseOrder parses "term,term" where
 // term := path [.asc|.desc] [.nullsfirst|.nullslast] and
-// path := column | computed | relkey[!hint](column) | spatialcol.dist.
+// path := column | computed | relkey[!hint](column) | spatialcol.dist |
+// column.rank | column.rank_cd | column.trgm_dist | column.trgm_wdist |
+// column.trgm_swdist.
 func (p *parser) parseOrder(s string, res *api.Resource) ([]plan.OrderTerm, error) {
 	if strings.TrimSpace(s) == "" {
 		return nil, errf(CodeInvalidFilter, "order must not be empty")
@@ -53,9 +55,10 @@ func (p *parser) parseOrderTerm(raw string, res *api.Resource) (plan.OrderTerm, 
 		}
 		mods = strings.Split(tail[1:], ".")
 	}
-	// A leading ".dist" belongs to the path.
-	if len(mods) > 0 && mods[0] == "dist" && !strings.Contains(path, "(") {
-		path += ".dist"
+	// A leading ".dist" (or a contrib modifier such as ".rank") belongs to
+	// the path.
+	if len(mods) > 0 && (mods[0] == "dist" || api.IsContribOrder(mods[0])) && !strings.Contains(path, "(") {
+		path += "." + mods[0]
 		mods = mods[1:]
 	}
 	dirSet, nullsSet := false, false
@@ -137,6 +140,9 @@ func (p *parser) resolveOrderPath(t *plan.OrderTerm, path string, res *api.Resou
 		t.Computed = c
 		return nil
 	}
+	if i := strings.LastIndexByte(path, '.'); i > 0 && api.IsContribOrder(path[i+1:]) {
+		return p.resolveContribOrder(t, path[:i], path[i+1:], res)
+	}
 	if col, ok := strings.CutSuffix(path, ".dist"); ok {
 		f := res.Field(col)
 		if f == nil {
@@ -148,10 +154,152 @@ func (p *parser) resolveOrderPath(t *plan.OrderTerm, path string, res *api.Resou
 		if !res.OrderColumns[col] {
 			return errf(CodeColumnNotOrderable, "column %q on %q is not orderable", col, res.Path)
 		}
+		if !p.isReserved("near", p.rootResource()) {
+			return errf(CodeColumnNotOrderable, "%s.dist needs near=, which is a column or argument filter on this route", col)
+		}
 		t.Distance = f.Column
 		return nil
 	}
 	return errf(CodeUnknownColumn, "unknown column %q on %q", path, res.Path)
+}
+
+// resolveContribOrder resolves order=<key>.<mod> for a contrib modifier;
+// the full-text filter a rank term needs and the trgm= text a distance term
+// needs are bound once the whole query is parsed (resolveContribOrders).
+func (p *parser) resolveContribOrder(t *plan.OrderTerm, key, mod string, res *api.Resource) error {
+	f := res.Field(key)
+	if f == nil {
+		return errf(CodeUnknownColumn, "unknown column %q on %q", key, res.Path)
+	}
+	if !res.OrderColumns[key] {
+		return errf(CodeColumnNotOrderable, "column %q on %q is not orderable", key, res.Path)
+	}
+	for _, o := range p.built.ContribOrders(res, f.Column) {
+		if o.Rank == "" && !p.isReserved("trgm", p.rootResource()) {
+			continue
+		}
+		if o.Name != mod || (o.Rank != "" && !res.FilterColumns[key]) {
+			continue
+		}
+		t.Contrib = &plan.ContribOrder{Column: f.Column, Name: mod, Rank: string(o.Rank), Expr: o.Expr.Name}
+		return nil
+	}
+	if strings.HasPrefix(mod, "rank") {
+		return errf(CodeColumnNotOrderable, "%s.%s needs a column that takes full-text filters", key, mod)
+	}
+	if res.NameTaken("trgm") || !p.isReserved("trgm", p.rootResource()) {
+		return errf(CodeColumnNotOrderable, "%s.%s needs trgm=, which is a column or argument filter on this route", key, mod)
+	}
+	return errf(CodeColumnNotOrderable, "%s.%s needs a pg_trgm text column with an ordering (GiST) index under filters.indexed_only, or the column in filters.allow_columns", key, mod)
+}
+
+// rootResource is the resource the query string addresses (nil before the
+// select pass).
+func (p *parser) rootResource() *api.Resource {
+	if p.root == nil {
+		return nil
+	}
+	return p.root.Resource
+}
+
+// resolveContribOrders binds the contrib order terms of the root and of
+// every embed: a rank term to the one full-text filter on its column in
+// the same scope, a trigram distance term to trgm= (missing, or trgm=
+// without such a term → 400, like near= for .dist).
+func (p *parser) resolveContribOrders(trgm string, hasTrgm bool) error {
+	needTrgm := ""
+	bind := func(terms []plan.OrderTerm, filter plan.Expr) error {
+		for i := range terms {
+			co := terms[i].Contrib
+			if co == nil {
+				continue
+			}
+			if co.Rank == "" {
+				if needTrgm == "" {
+					needTrgm = co.Column.Name + "." + co.Name
+				}
+				continue
+			}
+			fc, err := fullTextFilter(filter, co.Column)
+			if err != nil {
+				return err
+			}
+			co.Filter = fc
+		}
+		return nil
+	}
+	if err := bind(p.req.Order, p.req.Filter); err != nil {
+		return err
+	}
+	var walk func(n *plan.Node) error
+	walk = func(n *plan.Node) error {
+		if n == nil {
+			return nil
+		}
+		for i := range n.Embeds {
+			if err := bind(n.Embeds[i].Order, n.Embeds[i].Filter); err != nil {
+				return err
+			}
+			if err := walk(n.Embeds[i].Node); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if err := walk(p.req.Select); err != nil {
+		return err
+	}
+	if needTrgm != "" && !hasTrgm {
+		return errf(CodeInvalidFilter, "order by %s requires trgm=<text>", needTrgm)
+	}
+	if hasTrgm && needTrgm == "" {
+		return errf(CodeInvalidFilter, "trgm= applies to order=<col>.trgm_dist|trgm_wdist|trgm_swdist only, and no such term is present")
+	}
+	if hasTrgm {
+		p.req.Trgm = trgm
+	}
+	return nil
+}
+
+// fullTextFilter finds the single non-negated full-text condition on col
+// among the conjuncts of filter: a Cond, or the terms of And nodes at any
+// depth (and=(...) nests one inside the top-level And); Or and Not
+// subtrees do not count.
+func fullTextFilter(filter plan.Expr, col *introspect.Column) (*plan.Cond, error) {
+	var found *plan.Cond
+	ambiguous := false
+	var walk func(e plan.Expr)
+	walk = func(e plan.Expr) {
+		switch f := e.(type) {
+		case plan.And:
+			for _, t := range f.Terms {
+				walk(t)
+			}
+		case *plan.And:
+			if f != nil {
+				for _, t := range f.Terms {
+					walk(t)
+				}
+			}
+		case plan.Cond:
+			if f.Column != col || f.Negate || f.Relation != nil || !api.IsFullTextOp(string(f.Op)) {
+				return
+			}
+			if found != nil {
+				ambiguous = true
+				return
+			}
+			found = &f
+		}
+	}
+	walk(filter)
+	if ambiguous {
+		return nil, errf(CodeInvalidFilter, "order by %s.rank is ambiguous: more than one full-text filter on %s", col.Name, col.Name)
+	}
+	if found == nil {
+		return nil, errf(CodeInvalidFilter, "order by %s.rank needs a non-negated fts, plfts, phfts or wfts filter on %s outside or=/not.", col.Name, col.Name)
+	}
+	return found, nil
 }
 
 // parseDistinct parses distinct=col1,col2.
@@ -178,7 +326,8 @@ func (p *parser) parseDistinct(s string, res *api.Resource) ([]*introspect.Colum
 }
 
 // resolveNear parses near= for the .dist order terms collected so far
-// (root order and every embed order); missing near with a .dist term → 400.
+// (root order and every embed order); missing near with a .dist term, or
+// near without one, → 400.
 func (p *parser) resolveNear(near string, hasNear bool) error {
 	var dist *introspect.Column
 	walk := func(terms []plan.OrderTerm) {
@@ -201,6 +350,9 @@ func (p *parser) resolveNear(near string, hasNear bool) error {
 	}
 	walkNode(p.req.Select)
 	if dist == nil {
+		if hasNear {
+			return errf(CodeInvalidFilter, "near= applies to order=<col>.dist only, and no such term is present")
+		}
 		return nil
 	}
 	if !hasNear {

@@ -45,11 +45,11 @@ func TestOpenAPIListParams(t *testing.T) {
 		t.Error("full_name is not indexed and must not be a filter param under indexed_only")
 	}
 	cases := map[string][]string{
-		"id":       {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is"},
-		"email":    {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "like", "ilike", "sw", "ew"},
-		"settings": {"eq", "neq", "gt", "gte", "lt", "lte", "is", "cs", "cd", "hk", "jpe", "jpm"},
-		"tags":     {"eq", "neq", "gt", "gte", "lt", "lte", "is", "cs", "cd", "ov"},
-		"mood":     {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is"},
+		"id":       {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct"},
+		"email":    {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew"},
+		"settings": {"eq", "neq", "gt", "gte", "lt", "lte", "is", "isdistinct", "cs", "cd", "hk", "jpe", "jpm"},
+		"tags":     {"eq", "neq", "gt", "gte", "lt", "lte", "is", "isdistinct", "cs", "cd", "ov"},
+		"mood":     {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct"},
 	}
 	for name, ops := range cases {
 		p := paramByName(get.Parameters, name)

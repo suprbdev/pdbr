@@ -46,10 +46,11 @@ Checklist of PostgreSQL and REST features pdbr supports. **As built (v0.1.0): ev
 - [x] `int8`/`numeric` accepted as JSON number **or** string on input (v1) (new)
 - [x] `inet`/`cidr`/`macaddr`, `interval`, ranges, `ltree`, `tsvector` → `string` fallback (v1) (parity)
 - [ ] `interval` as structured schema (v1.x) (parity)
-- [ ] Range types with structured bounds (v1.x; range filter operators tracked under Filtering & ordering) (parity)
-- [ ] `hstore` (v1.x) (parity)
-- [ ] `ltree` operators (v1.x) (parity)
-- [ ] Full-text search: `tsvector`/`tsquery` filter ops (v1.x) (parity)
+- [x] Range and multirange types: literal text out (PostgREST parity), literal or structured `{start, end, startInclusive, endInclusive, isEmpty}` in, `oneOf` input schema — see [contrib](contrib.md#input-post--put--patch-bodies) (v1.x) (parity)
+- [x] `hstore` → JSON object of string → string|null in and out (`type: object`), filter ops `hk hk_all hk_any cs cd` — see [contrib](contrib.md#hstore-pdbr) (v1.x) (parity)
+- [x] `ltree` / `ltree[]` operators (`cs cd ancestor descendant ancestor_any descendant_any lquery lquery_any ltxtquery`) (v1.x) (parity)
+- [x] Full-text search: `fts plfts phfts wfts` with optional `(config)` on `tsvector` and text-like columns (v1.x) (parity)
+- [x] Extension types and operators gated on `pg_extension` (and `pg_trgm` version), schema-qualified when the extension schema is off the `search_path`; citext comparisons stay case-insensitive there (v1.x) (new)
 - [x] PostGIS `geometry`/`geography` → `GeoJSON` schema (GeoJSON out; GeoJSON or WKT/EWKT in), with spatial filters, derived accessors, projection arguments and distance ordering — see [PostGIS](postgis.md) (v1) (parity)
 
 ## Reads
@@ -104,7 +105,12 @@ Checklist of PostgreSQL and REST features pdbr supports. **As built (v0.1.0): ev
 - [x] Distance ordering `order=location.dist.asc&near=…`; missing `near` → 400 (v1) (parity)
 - [x] `distinct=col1,col2` → `SELECT DISTINCT ON`; distinct-aware `X-Total-Count`; limit/offset only (v1) (parity)
 - [x] Reserved param names (`select`, `order`, …) filterable only inside `and=(...)` — documented limitation (v1) (new)
-- [ ] Range operators (`&&`, `@>` element, `<<`, `>>`) (v1.x, alongside structured range types) (parity)
+- [x] Range operators `ov cs cd sl sr nxr nxl adj` (range literal or JSON object operand; `cs.<element>`) on ranges and multiranges (v1.x) (parity)
+- [x] `isdistinct` (`IS DISTINCT FROM`) on every comparable column (v1.x) (parity)
+- [x] Trigram similarity `trgm_sim trgm_wsim trgm_swsim` (pg_trgm) (v1.x) (new)
+- [x] inet/cidr containment `cs cd cs_strict cd_strict ov` (v1.x) (new)
+- [x] Full-text relevance ordering `order=<col>.rank|rank_cd` against the column's fts filter; trigram distance ordering `order=<col>.trgm_dist|trgm_wdist|trgm_swdist&trgm=<text>` (v1.x) (new)
+- [x] Indexed-only policy per contrib operator from pdbcore index hints (v1.x) (new)
 
 ## Pagination
 

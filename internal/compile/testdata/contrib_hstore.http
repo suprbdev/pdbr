@@ -1,0 +1,1 @@
+GET /api/kb/docs?select=id,attrs&attrs=hk.color&and=(attrs.hk_all.{color,size},attrs.hk_any.{"a,b",c})&attrs=cs.%7B%22color%22%3A%22red%22%2C%22size%22%3Anull%7D&attrs=not.cd.color%3D%3Ered&attrs=neq.a%3D%3E1

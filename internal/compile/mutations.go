@@ -7,6 +7,7 @@ import (
 	"github.com/suprbdev/pdbcore/introspect"
 	"github.com/suprbdev/pdbcore/postgis"
 
+	"github.com/suprbdev/pdbr/internal/api"
 	"github.com/suprbdev/pdbr/internal/plan"
 )
 
@@ -320,7 +321,7 @@ func (s *stmt) keyedDML() (cur, dml string, err error) {
 	keyConds := func(alias string) string {
 		conds := make([]string, len(placeholders))
 		for i, name := range key.Constraint.Columns {
-			conds[i] = colRef(alias, name) + " = " + placeholders[i]
+			conds[i] = s.keyEqSQL(t.Column(name), colRef(alias, name), placeholders[i])
 		}
 		return strings.Join(conds, " AND ")
 	}
@@ -414,10 +415,11 @@ func (s *stmt) tupleSQL(cols []*introspect.Column, obj map[string]any) string {
 
 // inputValue renders a body value as a parameter expression for col:
 // composites are populated from a jsonb parameter, spatial values go
-// through their PostGIS constructor, arrays and json/jsonb carry an explicit
-// cast, everything else is a bare parameter typed by the target column. The
-// expression depends only on the column type (and, for spatial values, the
-// input encoding), never on the value.
+// through their PostGIS constructor, hstore objects and structured ranges
+// through their pdbcore/contrib codec, arrays and json/jsonb carry an
+// explicit cast, everything else is a bare parameter typed by the target
+// column. The expression depends only on the column type (and, for spatial,
+// hstore and range values, the input encoding), never on the value.
 func (s *stmt) inputValue(col *introspect.Column, v any) string {
 	if comp := s.compositeFor(col); comp != nil {
 		return s.compositeInput(comp, col, v)
@@ -432,6 +434,17 @@ func (s *stmt) inputValue(col *introspect.Column, v any) string {
 	}
 	if col.IsArray {
 		return s.param(coerceInput(col, v)) + arrayCast(s.c.Built, col)
+	}
+	if codec, ok := api.CodecFor(s.catalog(), col); ok {
+		switch v.(type) {
+		case map[string]any, []any:
+			params, err := codec.Params(v)
+			if err != nil {
+				s.fail(errUser(CodeInvalidBody, "%s: %s", col.Name, err.Error()))
+				return "NULL"
+			}
+			return codec.SQL(s.params(params)...)
+		}
 	}
 	switch base := strings.TrimPrefix(col.PGType, "_"); base {
 	case "json", "jsonb":

@@ -211,7 +211,7 @@ func TestOpenAPISurface(t *testing.T) {
 	if params["header:Accept"] == nil {
 		t.Error("Accept header param missing (server.csv on)")
 	}
-	if ops, _ := params["query:email"]["x-pdbr-filter-ops"].([]any); len(ops) != 12 || ops[8] != "like" {
+	if ops, _ := params["query:email"]["x-pdbr-filter-ops"].([]any); len(ops) != 13 || ops[8] != "isdistinct" || ops[9] != "like" {
 		t.Errorf("email ops = %v", ops)
 	}
 	desc, _ := list["description"].(string)

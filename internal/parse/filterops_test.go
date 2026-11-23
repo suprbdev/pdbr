@@ -2,45 +2,85 @@ package parse
 
 import (
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/suprbdev/pdbcore/introspect"
 
-	"github.com/suprbdev/pdbr/internal/plan"
+	"github.com/suprbdev/pdbr/internal/api"
 )
 
 // TestFilterOpsMatchParser pins the OpenAPI operator vocabulary
 // (api.Built.FilterOps) to what the parser actually accepts: for every
-// filterable column of the fixture and every operator, the request parses
-// iff the operator is documented for the column.
+// filterable column of the fixture plus the contrib-typed kb.docs, under
+// both filter policies, and every operator (core and contrib), the request
+// parses iff the operator is documented for the column.
 func TestFilterOpsMatchParser(t *testing.T) {
-	built := buildFixture(t, false)
-	all := []plan.Op{plan.OpEq, plan.OpNeq, plan.OpGt, plan.OpGte, plan.OpLt, plan.OpLte, plan.OpIn, plan.OpIs,
-		plan.OpLike, plan.OpILike, plan.OpSw, plan.OpEw, plan.OpCs, plan.OpCd, plan.OpOv, plan.OpHk, plan.OpJpe, plan.OpJpm}
-	for _, path := range []string{"users", "posts", "places", "events"} {
-		res := built.ByPath[path]
-		for _, f := range res.Columns {
-			if !res.FilterColumns[f.Key] {
-				continue
-			}
-			documented := map[string]bool{}
-			for _, op := range built.FilterOps(f.Column) {
-				documented[op] = true
-			}
-			for _, op := range all {
-				val := sampleValue(op, f.Column)
-				u := "/api/" + path + "?" + f.Key + "=" + string(op) + "." + url.QueryEscape(val)
-				_, err := doParse(t, built, req{url: u}, allOn)
-				if (err == nil) != documented[string(op)] {
-					t.Errorf("%s.%s %s: parse err=%v, documented=%v (url %s)", path, f.Key, op, err, documented[string(op)], u)
+	all := []string{"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct",
+		"like", "ilike", "sw", "ew", "cs", "cd", "ov", "hk", "jpe", "jpm"}
+	for _, name := range api.ContribFilterNames() {
+		if !slices.Contains(all, name) {
+			all = append(all, name)
+		}
+	}
+	for _, indexedOnly := range []bool{false, true} {
+		built := buildContrib(t, indexedOnly)
+		for _, path := range []string{"users", "posts", "places", "events", "kb.docs"} {
+			res := built.ByPath[path]
+			for _, f := range res.Columns {
+				if !res.FilterColumns[f.Key] {
+					continue
+				}
+				documented := map[string]bool{}
+				for _, op := range built.FilterOps(res, f.Column) {
+					documented[op] = true
+				}
+				for _, op := range all {
+					val := sampleValue(op, f.Column)
+					u := "/api/" + strings.ReplaceAll(path, ".", "/") + "?" + f.Key + "=" + op + "." + url.QueryEscape(val)
+					_, err := doParse(t, built, req{url: u}, allOn)
+					if (err == nil) != documented[op] {
+						t.Errorf("indexed_only=%v %s.%s %s: parse err=%v, documented=%v (url %s)", indexedOnly, path, f.Key, op, err, documented[op], u)
+					}
 				}
 			}
 		}
 	}
 }
 
-func sampleValue(op plan.Op, c *introspect.Column) string {
+// TestContribOrdersMatchParser pins the documented contrib order terms
+// (api.Built.ContribOrders, rendered into the order parameter) to the
+// parser.
+func TestContribOrdersMatchParser(t *testing.T) {
+	for _, indexedOnly := range []bool{false, true} {
+		built := buildContrib(t, indexedOnly)
+		res := built.ByPath["kb.docs"]
+		for _, f := range res.Columns {
+			documented := map[string]bool{}
+			if res.OrderColumns[f.Key] {
+				for _, o := range built.ContribOrders(res, f.Column) {
+					documented[o.Name] = o.Rank == "" || res.FilterColumns[f.Key]
+				}
+			}
+			for _, mod := range []string{"rank", "rank_cd", "trgm_dist", "trgm_wdist", "trgm_swdist"} {
+				q := "order=" + f.Key + "." + mod + ".desc"
+				switch {
+				case !strings.HasPrefix(mod, "rank"):
+					q += "&trgm=x"
+				case res.FilterColumns[f.Key]:
+					q += "&" + f.Key + "=fts.x"
+				}
+				_, err := doParse(t, built, req{url: "/api/kb/docs?" + q}, allOn)
+				if (err == nil) != documented[mod] {
+					t.Errorf("indexed_only=%v %s.%s: parse err=%v, documented=%v", indexedOnly, f.Key, mod, err, documented[mod])
+				}
+			}
+		}
+	}
+}
+
+func sampleValue(op string, c *introspect.Column) string {
 	base := strings.TrimPrefix(c.PGType, "_")
 	isArray := c.IsArray || strings.HasPrefix(c.PGType, "_")
 	scalar := func() string {
@@ -63,20 +103,43 @@ func sampleValue(op plan.Op, c *introspect.Column) string {
 			return "2020-01-01T00:00:00Z"
 		case "jsonb", "json":
 			return `{"a":1}`
+		case "int4range":
+			return "[1,5)"
+		case "daterange":
+			return "[2020-01-01,2020-02-01)"
+		case "int4multirange":
+			return "{[1,5)}"
+		case "hstore":
+			return "a=>1"
+		case "inet":
+			return "10.0.0.0/8"
+		case "ltree":
+			return "a.b"
 		}
 		return "x"
 	}
 	switch op {
-	case plan.OpIs:
+	case "is":
 		return "null"
-	case plan.OpIn:
-		return "(" + scalar() + ")"
-	case plan.OpLike, plan.OpILike, plan.OpSw, plan.OpEw:
+	case "in":
+		return `("` + scalar() + `")`
+	case "like", "ilike", "sw", "ew":
 		return "x"
-	case plan.OpHk:
+	case "hk":
 		return "a"
-	case plan.OpJpe, plan.OpJpm:
+	case "jpe", "jpm":
 		return "$.a"
+	case "hk_all", "hk_any", "ancestor_any", "descendant_any", "lquery_any":
+		return "{a,b}"
+	case "fts", "plfts", "phfts", "wfts", "trgm_sim", "trgm_wsim", "trgm_swsim", "ancestor", "descendant", "lquery", "ltxtquery":
+		return "a"
+	case "sl", "sr", "nxr", "nxl", "adj", "ov", "cs", "cd":
+		switch base {
+		case "int4multirange":
+			return "[1,5)"
+		case "hstore":
+			return `{"a":"1"}`
+		}
 	}
 	if isArray {
 		return "{" + scalar() + "}"

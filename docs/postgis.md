@@ -319,7 +319,10 @@ request, including per-embed `places.order=location.dist.desc` terms, and is
 parsed for each term's column (its SRID, and `(…)::geography` for a
 geography column, so the KNN distance is metres there); the PK tiebreaker is appended after the
 distance term as for any order, and keyset cursors (`after=`/`before=`) walk
-the distance order. A `near=` with no `.dist` term is ignored. Plain
+the distance order. A `near=` with no `.dist` term is `400 invalid_filter`. `near`
+is reserved only where no column, computed column or RPC argument is named
+so; there `near=` is that filter or argument and `.dist` ordering is
+`400 column_not_orderable`. Plain
 `order=location.asc` on a spatial column is `400 column_not_orderable`;
 `.dist` on a non-spatial column is `400 invalid_filter`.
 

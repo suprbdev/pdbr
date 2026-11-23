@@ -393,7 +393,7 @@ func (s *stmt) oneEmbed(e *plan.Embed, parentAlias string, depth int) (string, s
 	if err != nil {
 		return "", "", err
 	}
-	conds := []string{joinConds(rel, alias, parentAlias)}
+	conds := []string{s.joinConds(rel, alias, parentAlias)}
 	more, err := s.parentConds(node, e.Filter, alias)
 	if err != nil {
 		return "", "", err
@@ -414,7 +414,7 @@ func (s *stmt) oneEmbed(e *plan.Embed, parentAlias string, depth int) (string, s
 // could collide with user JSON keys).
 func (s *stmt) manyEmbed(e *plan.Embed, parentAlias string, depth int) (string, string, error) {
 	rel := e.Relation
-	corr := func(childAlias string) string { return joinConds(rel, childAlias, parentAlias) }
+	corr := func(childAlias string) string { return s.joinConds(rel, childAlias, parentAlias) }
 	inner, err := s.listInner(embedNode(e), e.Filter, e.Order, e.Page, corr, depth)
 	if err != nil {
 		return "", "", err

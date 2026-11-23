@@ -1,13 +1,14 @@
 # Filtering
 
 Any query parameter that is not reserved (`select`, `order`, `limit`,
-`offset`, `after`, `before`, `count`, `distinct`, `near`, `on_conflict`) is a
+`offset`, `after`, `before`, `count`, `distinct`, `on_conflict`, and `near`
+/ `trgm` unless the resource has a column or argument of that name) is a
 filter. Filters AND together, become `WHERE` predicates in the single compiled
 statement, and every operand travels as a bind parameter — the SQL text never
 varies with input values (an invariant enforced by fuzz tests).
 
 ```
-filter := column "=" [ "not." ] op "." value
+filter := column "=" [ "not." ] op [ "(" config ")" ] "." value
        |  relkey [ "!" quantifier ] "." column "=" [ "not." ] op "." value
        |  relkey "=" "exists." ( "true" | "false" )
        |  ( "and" | "or" | "not.and" | "not.or" ) "=" "(" item ("," item)* ")"
@@ -34,10 +35,14 @@ compile time (`400 invalid_filter` when it does not parse) and passed as
 | `not.in.(…)` | `<> ALL($n)` | scalars, enums |
 | `is.null`, `is.true`, `is.false` | `IS NULL`, `IS TRUE`, `IS FALSE` (structural, no parameter) | any / bool |
 | `not.is.null` … | `IS NOT NULL` … | any / bool |
+| `isdistinct` | `IS DISTINCT FROM $n` (`not.isdistinct` → `NOT (… IS DISTINCT FROM $n)`) | wherever `eq` applies |
 | `like`, `ilike` | `LIKE $n`, `ILIKE $n`; `*` in the value → `%` | text |
 | `sw`, `ew` | `LIKE $n \|\| '%'`, `LIKE '%' \|\| $n` — operand fully escaped | text |
-| `cs`, `cd`, `ov` | `@>`, `<@`, `&&` | arrays (`{a,b}` literal); `cs`/`cd` also jsonb (JSON literal) |
-| `hk` | `?` (has key) | jsonb |
+| `cs`, `cd`, `ov` | `@>`, `<@`, `&&` | arrays (`{a,b}` literal); `cs`/`cd` also jsonb (JSON literal); ranges, hstore, ltree, inet — see [contrib.md](contrib.md) |
+| `fts`, `plfts`, `phfts`, `wfts` (optional `(config)`) | `@@ to_tsquery` / `plainto_tsquery` / `phraseto_tsquery` / `websearch_to_tsquery` | `tsvector`; text-like through `to_tsvector` — [contrib.md](contrib.md#full-text-search-postgrest) |
+| `sl`, `sr`, `nxr`, `nxl`, `adj` | `<<`, `>>`, `&<`, `&>`, `-\|-` (range literal or JSON object operand) | ranges, multiranges — [contrib.md](contrib.md#ranges-and-multiranges-postgrest) |
+| contrib (pdbr) | `trgm_sim`, `trgm_wsim`, `trgm_swsim` (pg_trgm); `hk_all`, `hk_any` (hstore); `ancestor`, `descendant`, `ancestor_any`, `descendant_any`, `lquery`, `lquery_any`, `ltxtquery` (ltree); `cs_strict`, `cd_strict` (inet) — see [contrib.md](contrib.md) | extension types, gated on the installed extension |
+| `hk` | `?` (has key) | jsonb, hstore |
 | `jpe`, `jpm` | `@?`, `@@` — value is a SQL/JSON path | jsonb |
 | spatial (`postgis` plugin) | `st_intersects`, `st_disjoint`, `st_contains`, `st_containsproperly`, `st_within`, `st_covers`, `st_coveredby`, `st_crosses`, `st_overlaps`, `st_touches`, `st_equals`, `st_exactlyequals`, `st_orderingequals`, `st_intersects3d`, `bbox_leftof`, `bbox_rightof`, `bbox_below`, `bbox_above`, `bbox_overlapsorleftof`, `bbox_overlapsorrightof`, `bbox_overlapsorbelow`, `bbox_overlapsorabove`, `bbox_equals`, `bbox_intersectsnd` (value = GeoJSON or WKT/EWKT); `st_dwithin.(geom,dist[,spheroid])`, `st_beyond.(…)`; `bbox_intersects.(minx,miny,maxx,maxy[,srid])`, `bbox_contains`, `bbox_containedby` — plus `is.null`; scalar ops on a spatial column are `400 invalid_filter`, spatial ops on a scalar column too; off (`invalid_filter`) with `plugins.settings.postgis.filters: false` or the plugin disabled — see [postgis.md](postgis.md) | geometry / geography |
 | relation (`advanced-filters` plugin) | `EXISTS` subqueries — see [Relation filters](#relation-filters) | FKs |
@@ -240,6 +245,10 @@ filters:
 - Filters on embedded resources and relation/order paths follow the
   *embedded* table's policy.
 - Spatial columns need a GiST index under the policy, like any other column.
+- Contrib operators (full-text, trigram, hstore, ltree, range, inet) also
+  need an index whose access method serves the operator, or the column in
+  `allow_columns`; full-text search on a plain text column always needs
+  `allow_columns` (see [contrib.md](contrib.md#the-indexed-only-policy)).
 
 ## Errors
 
@@ -255,11 +264,15 @@ Errors are RFC 9457 problem documents; see [api.md](api.md#limits-and-errors).
 
 ## Differences from PostgREST
 
-- Short op names match PostgREST (`eq`, `neq`, `gt`, `like`, `cs`, `ov`, …)
-  but pdbr adds `sw`/`ew` (escaped prefix/suffix), `hk`, `jpe`/`jpm`, and the
-  spatial and relation vocabularies; PostgREST's `fts`/`plfts`/`phfts`/`wfts`,
-  `match`/`imatch`, `isdistinct`, range ops and `any`/`all` modifiers are not
-  in v1.
+- Short op names match PostgREST (`eq`, `neq`, `gt`, `like`, `cs`, `ov`,
+  `isdistinct`, `fts`/`plfts`/`phfts`/`wfts` with `(config)`, the range ops
+  `sl`/`sr`/`nxr`/`nxl`/`adj`, …) but pdbr adds `sw`/`ew` (escaped
+  prefix/suffix), `hk`, `jpe`/`jpm`, the trigram/hstore/ltree/inet words of
+  [contrib.md](contrib.md), and the spatial and relation vocabularies;
+  PostgREST's `match`/`imatch` and `any`/`all` modifiers are not
+  implemented, and full-text search applies to `tsvector` and text columns
+  only (not json/jsonb). inet `cs`/`cd` mean `>>=`/`<<=` (containment, as on
+  other types) rather than PostgREST's literal `@>`/`<@`.
 - Relation filters have quantifiers (`rel!none.`, `rel!every.`) and an
   existence op (`rel=exists.true|false`); PostgREST only filters through
   `!inner` embeds.

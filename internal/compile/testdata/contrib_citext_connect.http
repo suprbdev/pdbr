@@ -1,0 +1,3 @@
+POST /api/kb/notes
+
+{"id": 1, "body": "x", "authors": {"connect": {"email": "ADA@example.com"}}}

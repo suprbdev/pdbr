@@ -1,0 +1,2 @@
+-- request: GET /api/kb/docs?id=fts.x
+-- error: 400 invalid_filter: operator "fts" is not supported on int4 column "id"

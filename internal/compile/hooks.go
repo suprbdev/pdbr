@@ -134,6 +134,16 @@ func (c *Compiler) InputValue(col *introspect.Column, v any, ps *ParamSet) (stri
 	return expr, nil
 }
 
+// KeyEqualSQL renders ref = value for a key column, as the core key
+// predicates do: through the owning extension's = operator with value cast
+// to the column type for citext, hstore and ltree (so citext stays
+// case-insensitive when its schema is off the search_path), a plain = for
+// everything else.
+func (c *Compiler) KeyEqualSQL(col *introspect.Column, ref, value string) string {
+	s := &stmt{c: c, ps: &ParamSet{}, aliasN: 1000}
+	return s.keyEqSQL(col, ref, value)
+}
+
 // QuoteIdent double-quotes an SQL identifier.
 func QuoteIdent(s string) string { return quoteIdent(s) }
 

@@ -95,7 +95,9 @@ Per-property details:
 | `interval` | `string` |
 | `bytea` | `string`, `contentEncoding: base64` |
 | `json`, `jsonb` | `{}` (any value) |
-| `inet`, `cidr`, `macaddr` | `string` |
+| `hstore` | `object` (string → string\|null) |
+| ranges, multiranges | `string` (the literal); input: `oneOf [string, {start, end, startInclusive, endInclusive, isEmpty}]` (multiranges: `oneOf [string, array]`) |
+| `inet`, `cidr`, `macaddr`, `ltree`, `tsvector` | `string` |
 | arrays (`T[]`) | `array`, `items` = element mapping (nested arrays nest) |
 | enum | `$ref` to the enum schema |
 | composite | `$ref` to the composite schema |
@@ -150,15 +152,16 @@ stay at their defaults):
 | Param | Where | Schema / description |
 |---|---|---|
 | `select` | every operation with a body response | `string`; grammar summarised in the description, columns, computed and derived fields and embeddable relation keys listed (with the per-embed `rel.order=`/`rel.limit=`/`rel.offset=`/`rel.<col>=` forms and `!inner`); projection args `col(transform=,simplify=)` mentioned when the postgis plugin enables them |
-| `order` | list, `SETOF` rpc | `string`; orderable columns listed; computed / related (`rel(col)`) / distance (`<col>.dist`, needs `near=`) forms mentioned only when the corresponding plugin surface is on |
+| `order` | list, `SETOF` rpc | `string`; orderable columns listed; computed / related (`rel(col)`) / distance (`<col>.dist`, needs `near=`) forms mentioned only when the corresponding plugin surface is on; full-text relevance (`<col>.rank`, `<col>.rank_cd`) and trigram distance (`<col>.trgm_dist`, … needs `trgm=`) terms listed where the column admits them ([contrib.md](contrib.md#ordering)) |
 | `limit`, `offset` | list, `SETOF` rpc | `integer`, `limit` `minimum: 1`, `maximum: server.max_page_size`, `offset` `minimum: 0` |
 | `after`, `before` | list (resources with a PK) | `string` (opaque cursor) |
 | `count` | list, `SETOF <table>` rpc | `boolean` |
 | `distinct` | list | `string` (comma list) |
 | `on_conflict` | `PUT` | `string` (comma list of a unique constraint's columns; the description lists the resource's unique column sets) |
 | `and`, `or`, `not.and`, `not.or` | list, `SETOF <table>` rpc | `string`; nested logic grammar |
-| `{column}` | list, `SETOF <table>` rpc — one per **filterable** column under the active policy (`filters.indexed_only`, `allow_columns`, `@omit filter`), catalog order | `string`; description lists the operator vocabulary for that column's type (scalar `eq neq gt gte lt lte in is`; text adds `like ilike sw ew`; arrays `eq…lte is cs cd ov`; `jsonb` `eq…lte is cs cd hk jpe jpm`; `json` `is cs cd hk jpe jpm`; spatial types take `Built.Extra.FilterOps[type]` — the postgis `st_*`/`bbox_*`/`is` set, or just `is` without the plugin) and mentions the `not.` prefix once; vendor extension `x-pdbr-filter-ops: ["eq","neq",...]` carries the same list machine-readably (`internal/parse` has a test pinning it to what the parser accepts). `deprecated`/`x-deprecation-reason` from the column |
+| `{column}` | list, `SETOF <table>` rpc — one per **filterable** column under the active policy (`filters.indexed_only`, `allow_columns`, `@omit filter`), catalog order | `string`; description lists the operator vocabulary for that column's type (scalar `eq neq gt gte lt lte in is isdistinct`; text adds `like ilike sw ew`; arrays `eq…lte is isdistinct cs cd ov`; `jsonb` `eq…lte is isdistinct cs cd hk jpe jpm`; `json` `is cs cd hk jpe jpm`; hstore `eq neq in is isdistinct`; then the contrib operators the filter policy admits for the column — full-text, trigram, hstore, ltree, range, inet, see [contrib.md](contrib.md); spatial types take `Built.Extra.FilterOps[type]` — the postgis `st_*`/`bbox_*`/`is` set, or just `is` without the plugin) and mentions the `not.` prefix once; vendor extension `x-pdbr-filter-ops: ["eq","neq",...]` carries the same list machine-readably (`internal/parse` has a test pinning it to what the parser accepts). `deprecated`/`x-deprecation-reason` from the column |
 | `near` | list of resources with a `.dist`-orderable spatial column (postgis plugin, `Surface.SpatialOrder`) | `string` (GeoJSON or WKT) |
+| `trgm` | list of resources with a column orderable by trigram distance | `string` (reference text for `<col>.trgm_dist` and the word forms) |
 | `{arg}` | rpc `GET` | mapped type of the argument; `required` unless it has a `DEFAULT` (shown in the description) |
 
 Per-embed params (`posts.order=`, `posts.limit=`, `posts.title=eq.x`) are
@@ -239,10 +242,10 @@ For the demo `users` table (JSON, abbreviated; the real thing is the golden
           {"name": "distinct", "in": "query", "schema": {"type": "string"}},
           {"name": "and", "in": "query", "schema": {"type": "string"}}, {"name": "or", "...": "..."},
           {"name": "id", "in": "query", "schema": {"type": "string"},
-           "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
-           "x-pdbr-filter-ops": ["eq", "neq", "gt", "gte", "lt", "lte", "in", "is"]},
+           "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>).",
+           "x-pdbr-filter-ops": ["eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct"]},
           {"name": "email", "in": "query", "schema": {"type": "string"},
-           "x-pdbr-filter-ops": ["eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "like", "ilike", "sw", "ew"]},
+           "x-pdbr-filter-ops": ["eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew"]},
           {"name": "Accept", "in": "header", "schema": {"type": "string", "enum": ["application/json", "text/csv"]}}
         ],
         "responses": {

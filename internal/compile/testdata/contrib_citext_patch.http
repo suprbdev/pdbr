@@ -1,0 +1,4 @@
+PATCH /api/kb/authors/Ada@Example.com?select=email
+If-Match: W/"abc"
+
+{"name": "Ada"}

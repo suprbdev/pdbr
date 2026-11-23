@@ -318,8 +318,8 @@ func (b *Builder) rpcItem(item *PathItem, rt *Route) {
 }
 
 // listParams are the read parameters of a collection: select, order, paging,
-// count, distinct, the logic params, near (postgis) and one filter param per
-// filterable column.
+// count, distinct, the logic params, near (postgis), trgm (pg_trgm) and one
+// filter param per filterable column.
 func (b *Builder) listParams(r *Resource, rpc bool) []*Parameter {
 	out := []*Parameter{
 		b.selectParam(r, "Columns and embeds to return."),
@@ -342,6 +342,9 @@ func (b *Builder) listParams(r *Resource, rpc bool) []*Parameter {
 	out = append(out, b.logicParams()...)
 	if near := b.nearParam(r); near != nil {
 		out = append(out, near)
+	}
+	if trgm := b.trgmParam(r); trgm != nil {
+		out = append(out, trgm)
 	}
 	return append(out, b.filterParams(r, nil)...)
 }
@@ -426,6 +429,13 @@ func (b *Builder) orderParam(r *Resource) *Parameter {
 			sb.WriteString(". Distance ordering (needs near=<point>): " + strings.Join(keys, ", "))
 		}
 	}
+	ranks, dists := b.contribOrderKeys(r)
+	if len(ranks) > 0 {
+		sb.WriteString(". Full-text relevance against the column's fts/plfts/phfts/wfts filter (higher is better, use .desc): " + strings.Join(ranks, ", "))
+	}
+	if len(dists) > 0 {
+		sb.WriteString(". Trigram distance to trgm=<text> (lower is better): " + strings.Join(dists, ", "))
+	}
 	sb.WriteString(".")
 	return &Parameter{Name: "order", In: "query", Schema: &Schema{Type: "string"}, Description: sb.String()}
 }
@@ -450,6 +460,36 @@ func (b *Builder) nearParam(r *Resource) *Parameter {
 		Description: "Reference point (GeoJSON or WKT/EWKT) for order=<col>.dist; required whenever a .dist term is present."}
 }
 
+// trgmParam documents trgm= when the resource has a column orderable by
+// trigram distance.
+func (b *Builder) trgmParam(r *Resource) *Parameter {
+	if _, dists := b.contribOrderKeys(r); len(dists) == 0 {
+		return nil
+	}
+	return &Parameter{Name: "trgm", In: "query", Schema: &Schema{Type: "string"},
+		Description: "Reference text for order=<col>.trgm_dist|trgm_wdist|trgm_swdist (pg_trgm); required whenever such a term is present."}
+}
+
+// contribOrderKeys lists the contrib order terms of r's orderable columns:
+// rank terms (columns that also take a full-text filter) and trigram
+// distance terms.
+func (b *Builder) contribOrderKeys(r *Resource) (ranks, dists []string) {
+	for _, f := range r.Columns {
+		if !r.OrderColumns[f.Key] {
+			continue
+		}
+		for _, o := range contribOrders(b.Catalog, b.Options, r, f.Column) {
+			switch {
+			case o.Rank != "" && r.FilterColumns[f.Key]:
+				ranks = append(ranks, f.Key+"."+o.Name)
+			case o.Rank == "":
+				dists = append(dists, f.Key+"."+o.Name)
+			}
+		}
+	}
+	return ranks, dists
+}
+
 // filterParams renders one parameter per filterable column (catalog order)
 // with the operator vocabulary in the description and x-pdbr-filter-ops.
 func (b *Builder) filterParams(r *Resource, shadow map[string]bool) []*Parameter {
@@ -458,7 +498,7 @@ func (b *Builder) filterParams(r *Resource, shadow map[string]bool) []*Parameter
 		if !r.FilterColumns[f.Key] || shadow[f.Key] {
 			continue
 		}
-		ops := b.filterOps(f.Column)
+		ops := b.filterOps(r, f.Column)
 		p := &Parameter{
 			Name: f.Key, In: "query", Schema: &Schema{Type: "string"}, XFilterOps: ops,
 			Description: "Filter: " + f.Key + "=<op>.<value> (" + typeLabel(f.Column) + "). Ops: " + strings.Join(ops, ", ") + ". Prefix not. to negate (" + f.Key + "=not." + ops[0] + ".<value>).",
@@ -609,7 +649,7 @@ func (b *Builder) pathParams(r *Resource, cols []string) []*Parameter {
 
 // argParam documents one function argument as a GET query parameter:
 // scalars keep their type, structured values (composites, arrays, json,
-// GeoJSON) travel as text.
+// GeoJSON) travel as JSON text, hstore as its literal text.
 func (b *Builder) argParam(a introspect.FuncArg) *Parameter {
 	pgType := a.PGType
 	if a.Variadic() {
@@ -617,7 +657,11 @@ func (b *Builder) argParam(a introspect.FuncArg) *Parameter {
 	}
 	s := b.typeSchema(pgType, a.TypeSchema, "")
 	desc := "Argument (" + a.PGType + ")" + argDefaultProse(a)
-	if s.Ref != "" && b.enumByRef(s.Ref) == nil || s.Type == "array" || (s.Type == nil && s.Ref == "") {
+	switch {
+	case s.Type == "object":
+		s = &Schema{Type: "string"}
+		desc += " As literal text (hstore: a=>1, b=>2)."
+	case s.Ref != "" && b.enumByRef(s.Ref) == nil || s.Type == "array" || (s.Type == nil && s.Ref == ""):
 		s = &Schema{Type: "string"}
 		desc += " Structured value as JSON text (spatial: GeoJSON or WKT)."
 	}
@@ -787,6 +831,9 @@ func hasSpatial(r *Resource) bool {
 }
 
 func spatialOrderKeys(r *Resource) []string {
+	if r.NameTaken("near") {
+		return nil
+	}
 	var out []string
 	for _, f := range r.Columns {
 		if r.OrderColumns[f.Key] && !f.Column.IsArray && postgis.FlavourOf(f.Column.PGType).Spatial() {

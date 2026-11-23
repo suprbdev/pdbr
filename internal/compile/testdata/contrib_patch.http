@@ -1,0 +1,3 @@
+PATCH /api/kb/docs/9
+
+{"attrs": "a=>1", "pages": "[2,4)", "slots": null, "valid": {"isEmpty": true}}

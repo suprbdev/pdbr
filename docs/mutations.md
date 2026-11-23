@@ -449,6 +449,8 @@ Coercion (values are always `$n` parameters, cast on the PG side):
 | array | JSON array of the element mapping (`["a","b"]`, `[1,2]`); passed as a typed array parameter |
 | composite | JSON object keyed by attribute name (`{"street":"…","city":"…"}`; unknown attributes → `invalid_body`) → `jsonb_populate_record(NULL::"public"."address", $n::jsonb)`; arrays of composites → one jsonb parameter expanded element-wise (`array_agg(jsonb_populate_record(NULL::t, NULLIF(e.v, 'null'::jsonb)) ORDER BY e.o) FROM jsonb_array_elements($n::jsonb) WITH ORDINALITY e(v, o)`, `[]` → empty array, `null` → NULL) |
 | geometry/geography (postgis plugin) | GeoJSON object or WKT/EWKT string → `ST_GeomFromGeoJSON($n)` / `ST_GeomFromEWKT($n)` (`::geography` cast for geography columns; arrays → `ARRAY[…]::geometry[]`; `null` → `$n::geometry`) |
+| `hstore` | object of string → string\|null → `"ext".hstore($n::text[])`, or an hstore literal string — [contrib.md](contrib.md#input-post--put--patch-bodies) |
+| ranges / multiranges | literal string (`"[1,5)"`), or `{"start","end","startInclusive","endInclusive","isEmpty"}` (multiranges: an array of those or literals) → the type's constructor over bind parameters |
 | `null` | SQL `NULL` (POST: only valid for nullable columns, else `23502` → `400`); the SQL text is the same as for a non-null value |
 
 Unknown or unmapped PG types accept a JSON string (or number/bool, rendered

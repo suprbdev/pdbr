@@ -1,0 +1,1 @@
+GET /api/kb/docs?select=id,pages,valid,slots&pages=ov.[1,5)&pages=cs.3&pages=cd.%7B%22start%22%3A0%2C%22end%22%3Anull%7D&valid=sl.[2020-01-01,2020-02-01)&pages=sr.(,0]&pages=nxr.(,100]&pages=nxl.[0,)&valid=not.adj.empty&slots=ov.[1,3)&slots=cs.2

@@ -80,7 +80,7 @@ func (s *stmt) anchorVals(t *introspect.Table, terms []orderTerm, keys []any) ([
 	vals := make([]string, len(terms))
 	subWhere := "" // shared across subqueries: the params are allocated once
 	for i, term := range terms {
-		if term.fn == nil && term.rel == nil && term.dist == nil {
+		if term.plain() {
 			if j := slices.Index(pk, term.col); j >= 0 {
 				vals[i] = s.param(coerceInput(t.Column(term.col), keys[j]))
 				continue
@@ -108,7 +108,7 @@ func (s *stmt) anchorVals(t *introspect.Table, terms []orderTerm, keys []any) ([
 func (s *stmt) keysetPredicate(alias string, vals []string, terms []orderTerm, flip bool) string {
 	uniform := len(terms) > 0
 	for _, term := range terms {
-		if term.nullable || term.desc != terms[0].desc {
+		if term.nullable || term.desc != terms[0].desc || term.owner != nil {
 			uniform = false
 			break
 		}
@@ -133,9 +133,9 @@ func (s *stmt) keysetPredicate(alias string, vals []string, terms []orderTerm, f
 		desc := term.desc != flip
 		col := s.orderExprSQL(term, alias)
 		k := vals[i]
-		op := ">"
+		op := term.cmp(">")
 		if desc {
-			op = "<"
+			op = term.cmp("<")
 		}
 		var strict string
 		switch {
@@ -154,8 +154,11 @@ func (s *stmt) keysetPredicate(alias string, vals []string, terms []orderTerm, f
 			continue
 		}
 		eq := fmt.Sprintf("%s IS NOT DISTINCT FROM %s", col, k)
-		if !term.nullable {
-			eq = fmt.Sprintf("%s = %s", col, k)
+		switch {
+		case !term.nullable:
+			eq = fmt.Sprintf("%s %s %s", col, term.cmp("="), k)
+		case term.owner != nil:
+			eq = fmt.Sprintf("(%s %s %s OR (%s IS NULL AND %s IS NULL))", col, term.cmp("="), k, col, k)
 		}
 		pred = fmt.Sprintf("(%s OR (%s AND %s))", strict, eq, pred)
 	}

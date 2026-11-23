@@ -1,0 +1,289 @@
+package api
+
+import (
+	"slices"
+	"strings"
+
+	"github.com/suprbdev/pdbcore/contrib"
+	"github.com/suprbdev/pdbcore/introspect"
+)
+
+// ContribFilter is one filter operator a column takes from a pdbcore/contrib
+// vocabulary (full-text search, pg_trgm, hstore, ltree, ranges, inet).
+type ContribFilter struct {
+	// Name is the operator's URL spelling (fts, trgm_sim, cs, ...).
+	Name string
+	// Op is the vocabulary operator, bound to its extension's schema.
+	Op contrib.Op
+	// Vocabulary is the vocabulary Op belongs to.
+	Vocabulary contrib.Vocabulary
+}
+
+// ContribOrder is one order=<col>.<Name> term a column takes from a
+// pdbcore/contrib vocabulary: full-text relevance (rank, rank_cd) or a
+// trigram distance (trgm_dist, trgm_wdist, trgm_swdist).
+type ContribOrder struct {
+	// Name is the order modifier as written after the column.
+	Name string
+	// Rank is the relevance function of a rank term; "" for a distance.
+	Rank contrib.Rank
+	// Expr is the distance expression of a trigram term.
+	Expr contrib.Expr
+}
+
+type spelling struct{ url, op string }
+
+var ftsSpellings = []spelling{
+	{"fts", "matches"}, {"plfts", "matchesPlain"}, {"phfts", "matchesPhrase"}, {"wfts", "matchesWebsearch"},
+}
+
+var rangeSpellings = []spelling{
+	{"ov", "overlaps"}, {"cs", "contains"}, {"cd", "containedBy"},
+	{"sl", "strictlyLeftOf"}, {"sr", "strictlyRightOf"},
+	{"nxr", "notExtendsRightOf"}, {"nxl", "notExtendsLeftOf"}, {"adj", "adjacentTo"},
+}
+
+var ltreeSpellings = []spelling{
+	{"cs", "ancestorOf"}, {"cd", "descendantOf"},
+	{"ancestor", "ancestorOf"}, {"descendant", "descendantOf"},
+	{"ancestor_any", "ancestorOfAny"}, {"descendant_any", "descendantOfAny"},
+	{"lquery", "matchesLquery"}, {"lquery_any", "matchesAnyLquery"}, {"ltxtquery", "matchesLtxtquery"},
+}
+
+// contribSpellings maps each vocabulary to its operators' URL spellings in
+// documentation order. PostgREST spells operators after the SQL operator
+// they render (cs is @> on every type), so cs/cd on ltree are aliases of
+// ancestor/descendant and ov on inet is &&.
+var contribSpellings = map[string][]spelling{
+	contrib.VocabFullText:   ftsSpellings,
+	contrib.VocabTextSearch: ftsSpellings,
+	contrib.VocabTrgm: {
+		{"trgm_sim", "similarTo"}, {"trgm_wsim", "wordSimilarTo"}, {"trgm_swsim", "strictWordSimilarTo"},
+	},
+	contrib.VocabHstore: {
+		{"hk", "hasKey"}, {"hk_all", "hasAllKeys"}, {"hk_any", "hasAnyKeys"}, {"cs", "contains"}, {"cd", "containedBy"},
+	},
+	contrib.VocabLtree: ltreeSpellings,
+	contrib.VocabLtreeArray: {
+		{"ancestor", "ancestorOf"}, {"descendant", "descendantOf"},
+		{"lquery", "matchesLquery"}, {"lquery_any", "matchesAnyLquery"}, {"ltxtquery", "matchesLtxtquery"},
+	},
+	contrib.VocabRange:      rangeSpellings,
+	contrib.VocabMultirange: rangeSpellings,
+	contrib.VocabInet: {
+		{"cs", "containsOrEquals"}, {"cd", "containedByOrEquals"}, {"ov", "containsOrContainedBy"},
+		{"cs_strict", "contains"}, {"cd_strict", "containedBy"},
+	},
+}
+
+var trgmOrders = []spelling{{"trgm_dist", "distance"}, {"trgm_wdist", "wordDistance"}, {"trgm_swdist", "strictWordDistance"}}
+
+var rankOrders = []struct {
+	name string
+	rank contrib.Rank
+}{{"rank", contrib.RankFrequency}, {"rank_cd", contrib.RankCoverDensity}}
+
+// ContribFilterNames is every URL operator spelling a contrib vocabulary can
+// contribute, sorted.
+func ContribFilterNames() []string {
+	seen := map[string]bool{}
+	for _, sps := range contribSpellings {
+		for _, sp := range sps {
+			seen[sp.url] = true
+		}
+	}
+	return sortedKeys(seen)
+}
+
+// IsFullTextOp reports whether name is one of the full-text operators
+// (fts, plfts, phfts, wfts), the only ones taking a (config) argument.
+func IsFullTextOp(name string) bool {
+	for _, sp := range ftsSpellings {
+		if sp.url == name {
+			return true
+		}
+	}
+	return false
+}
+
+// IsContribOrder reports whether a modifier is a contrib order term
+// (rank, rank_cd, trgm_dist, trgm_wdist, trgm_swdist).
+func IsContribOrder(name string) bool {
+	for _, r := range rankOrders {
+		if r.name == name {
+			return true
+		}
+	}
+	for _, sp := range trgmOrders {
+		if sp.url == name {
+			return true
+		}
+	}
+	return false
+}
+
+// RangeOperand reports whether a cs operand on a range column is a range
+// (a literal such as [1,5) or empty, or a structured object) rather than an
+// element value, which compiles to element containment.
+func RangeOperand(v any) bool {
+	switch x := v.(type) {
+	case contrib.RangeValue, map[string]any:
+		return true
+	case string:
+		t := strings.TrimSpace(x)
+		return strings.EqualFold(t, "empty") || strings.HasPrefix(t, "[") || strings.HasPrefix(t, "(") || strings.HasPrefix(t, "{")
+	}
+	return false
+}
+
+// OwnerVocabulary returns the extension vocabulary that owns a scalar
+// column's type (citext, hstore, ltree): comparisons on it must be spelled
+// with Vocabulary.Operator and the operand cast to the column type, or
+// PostgreSQL resolves them to the wrong operator (citext) or none at all
+// (hstore, ltree) when the extension schema is off the search_path.
+func OwnerVocabulary(cat *introspect.Catalog, c *introspect.Column) (contrib.Vocabulary, bool) {
+	if c == nil || c.IsArray || strings.HasPrefix(c.PGType, "_") {
+		return contrib.Vocabulary{}, false
+	}
+	for _, v := range contrib.ForColumn(cat, c) {
+		if v.Extension != "" && v.Codec != nil {
+			return v, true
+		}
+	}
+	return contrib.Vocabulary{}, false
+}
+
+// CodecFor returns the value codec of a column whose JSON input differs from
+// its text form (hstore objects, structured ranges and multiranges).
+func CodecFor(cat *introspect.Catalog, c *introspect.Column) (*contrib.Codec, bool) {
+	if c == nil || c.IsArray || strings.HasPrefix(c.PGType, "_") {
+		return nil, false
+	}
+	for _, v := range contrib.ForColumn(cat, c) {
+		if v.Codec == nil {
+			continue
+		}
+		switch v.Codec.Arg {
+		case contrib.ArgHstore, contrib.ArgRange, contrib.ArgMultirange:
+			return v.Codec, true
+		}
+	}
+	return nil, false
+}
+
+// ContribFilterFor resolves the contrib operator a filter spelled name on c
+// with operand v compiles to, ignoring the filter policy (the parser applies
+// it). cs on a range column with an element operand resolves to element
+// containment.
+func ContribFilterFor(cat *introspect.Catalog, c *introspect.Column, name string, v any) (ContribFilter, bool) {
+	for _, voc := range contrib.ForColumn(cat, c) {
+		for _, sp := range contribSpellings[voc.Name] {
+			if sp.url != name {
+				continue
+			}
+			op := sp.op
+			if name == "cs" && (voc.Name == contrib.VocabRange || voc.Name == contrib.VocabMultirange) && !RangeOperand(v) {
+				op = "containsElement"
+			}
+			if o, ok := voc.Op(op); ok {
+				return ContribFilter{Name: name, Op: o, Vocabulary: voc}, true
+			}
+		}
+	}
+	return ContribFilter{}, false
+}
+
+// ContribFilters returns the contrib filter operators column c of r accepts
+// under the filter policy, in documentation order. With
+// filters.indexed_only an operator needs an index on the column whose
+// access method serves it (pdbcore's index hints; operator classes are not
+// introspected) unless the column is listed in filters.allow_columns.
+func (b *Built) ContribFilters(r *Resource, c *introspect.Column) []ContribFilter {
+	return contribFilters(b.Catalog, b.Options, r, c)
+}
+
+// ContribOrders returns the contrib order terms column c of r accepts under
+// the filter policy: rank and rank_cd wherever a full-text operator is
+// accepted, trigram distances where an ordering index (GiST) serves them or
+// filters.indexed_only is off — unless r has a column or computed column
+// named trgm, which takes the trgm= parameter's place.
+func (b *Built) ContribOrders(r *Resource, c *introspect.Column) []ContribOrder {
+	return contribOrders(b.Catalog, b.Options, r, c)
+}
+
+func contribFilters(cat *introspect.Catalog, opts Options, r *Resource, c *introspect.Column) []ContribFilter {
+	var out []ContribFilter
+	seen := map[string]bool{}
+	for _, voc := range contrib.ForColumn(cat, c) {
+		for _, sp := range contribSpellings[voc.Name] {
+			o, ok := voc.Op(sp.op)
+			hints := o.Index
+			if voc.Name == contrib.VocabTextSearch {
+				hints = nil
+			}
+			if !ok || seen[sp.url] || !indexServes(opts, r, c, hints, false) {
+				continue
+			}
+			seen[sp.url] = true
+			out = append(out, ContribFilter{Name: sp.url, Op: o, Vocabulary: voc})
+		}
+	}
+	return out
+}
+
+func contribOrders(cat *introspect.Catalog, opts Options, r *Resource, c *introspect.Column) []ContribOrder {
+	var out []ContribOrder
+	for _, f := range contribFilters(cat, opts, r, c) {
+		if IsFullTextOp(f.Name) {
+			for _, ro := range rankOrders {
+				out = append(out, ContribOrder{Name: ro.name, Rank: ro.rank})
+			}
+			break
+		}
+	}
+	for _, voc := range contrib.ForColumn(cat, c) {
+		if voc.Name != contrib.VocabTrgm || (r != nil && r.NameTaken("trgm")) {
+			continue
+		}
+		for _, sp := range trgmOrders {
+			e, ok := voc.Expr(sp.op)
+			if ok && indexServes(opts, r, c, e.Index, true) {
+				out = append(out, ContribOrder{Name: sp.url, Expr: e})
+			}
+		}
+	}
+	return out
+}
+
+// NameTaken reports whether r has a column or computed column named key; a
+// soft-reserved query parameter (near, trgm) of that name is then a filter.
+func (r *Resource) NameTaken(key string) bool {
+	return r.Field(key) != nil || r.Computed[key] != nil
+}
+
+// indexServes applies filters.indexed_only to a contrib operator or
+// expression: some index of the table must cover the column with one of the
+// hinted access methods (ordering hints for ORDER BY, predicate hints
+// otherwise). Expression indexes carry no columns, so full-text search on a
+// text column (served only by an index on to_tsvector) needs
+// filters.allow_columns.
+func indexServes(opts Options, r *Resource, c *introspect.Column, hints []contrib.IndexHint, ordering bool) bool {
+	if !opts.FilterIndexedOnly || r == nil || r.Table == nil {
+		return true
+	}
+	t := r.Table
+	if slices.Contains(opts.AllowColumns[t.Schema+"."+t.Name], c.Name) {
+		return true
+	}
+	for _, h := range hints {
+		if h.Ordering != ordering {
+			continue
+		}
+		for _, ix := range t.Indexes {
+			if ix.Method == h.Method && slices.Contains(ix.Columns, c.Name) {
+				return true
+			}
+		}
+	}
+	return false
+}

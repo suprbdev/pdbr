@@ -1,0 +1,2 @@
+-- request: GET /api/kb/docs?order=title.trgm_dist
+-- error: 400 invalid_filter: order by title.trgm_dist requires trgm=<text>

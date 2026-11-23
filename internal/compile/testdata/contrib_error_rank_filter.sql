@@ -1,0 +1,2 @@
+-- request: GET /api/kb/docs?order=search.rank.desc
+-- error: 400 invalid_filter: order by search.rank needs a non-negated fts, plfts, phfts or wfts filter on search outside or=/not.

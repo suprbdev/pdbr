@@ -1,0 +1,3 @@
+PATCH /api/kb/notes?author=eq.ADA@example.com
+
+{"body": "y"}

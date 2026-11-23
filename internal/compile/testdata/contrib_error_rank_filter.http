@@ -1,0 +1,1 @@
+GET /api/kb/docs?order=search.rank.desc

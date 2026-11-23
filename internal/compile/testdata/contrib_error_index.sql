@@ -1,0 +1,2 @@
+-- request: GET /api/users?email=fts.ada
+-- error: 400 column_not_filterable: operator "fts" on column "email" of "users" needs an index that serves it (filters.indexed_only) or the column in filters.allow_columns

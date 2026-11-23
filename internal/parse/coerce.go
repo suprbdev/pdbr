@@ -2,10 +2,12 @@ package parse
 
 import (
 	"encoding/json"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/suprbdev/pdbcore/contrib"
 	"github.com/suprbdev/pdbcore/introspect"
 	"github.com/suprbdev/pdbcore/postgis"
 
@@ -37,6 +39,12 @@ type colType struct {
 	enum    *api.Enum
 	flavour postgis.Flavour
 	srid    int
+	// owner names the extension vocabulary owning a scalar type (citext,
+	// hstore, ltree); "" otherwise.
+	owner string
+	// codec converts the JSON object / list form of an hstore, range or
+	// multirange (element) type; nil otherwise.
+	codec *contrib.Codec
 }
 
 func (t colType) elem() colType {
@@ -82,6 +90,12 @@ func (p *parser) typeFor(pgType, typeSchema string, isArray bool, enumRef string
 		return t
 	}
 	t.kind = scalarKind(base)
+	if v, ok := api.OwnerVocabulary(p.built.Catalog, &introspect.Column{PGType: pgType, TypeSchema: typeSchema, IsArray: t.isArray}); ok {
+		t.owner = v.Name
+	}
+	if c, ok := api.CodecFor(p.built.Catalog, &introspect.Column{PGType: base, TypeSchema: typeSchema}); ok {
+		t.codec = c
+	}
 	return t
 }
 
@@ -256,6 +270,16 @@ func (p *parser) coerceJSON(t colType, v any) (any, *compile.UserError) {
 		}
 		return out, nil
 	}
+	if t.codec != nil {
+		switch v.(type) {
+		case map[string]any, []any:
+			lit, err := contribLiteral(t.codec, v)
+			if err != nil {
+				return nil, errf(CodeInvalidFilter, "%s", err.Error())
+			}
+			return lit, nil
+		}
+	}
 	switch t.kind {
 	case kindJSON, kindComposite:
 		b, err := json.Marshal(v)
@@ -282,6 +306,55 @@ func (p *parser) coerceJSON(t colType, v any) (any, *compile.UserError) {
 		return p.coerceElem(t, strconv.FormatBool(x))
 	}
 	return nil, errf(CodeInvalidFilter, "expected a JSON scalar for %s", t.name())
+}
+
+// contribLiteral renders the JSON form of an hstore, range or multirange
+// value (validated by its contrib codec) as the type's text literal, for
+// places that bind one text parameter per value: RPC arguments and array
+// elements.
+func contribLiteral(c *contrib.Codec, v any) (string, error) {
+	params, err := c.Params(v)
+	if err != nil {
+		return "", err
+	}
+	quote := func(s *string) string {
+		if s == nil {
+			return ""
+		}
+		return `"` + strings.ReplaceAll(strings.ReplaceAll(*s, `\`, `\\`), `"`, `\"`) + `"`
+	}
+	str := func(x any) *string {
+		if s, ok := x.(string); ok {
+			return &s
+		}
+		return nil
+	}
+	rangeLit := func(lo, hi *string, bounds string) string {
+		return bounds[:1] + quote(lo) + "," + quote(hi) + bounds[1:]
+	}
+	switch c.Arg {
+	case contrib.ArgHstore:
+		kv := params[0].([]*string)
+		pairs := make([]string, 0, len(kv)/2)
+		for i := 0; i+1 < len(kv); i += 2 {
+			val := "NULL"
+			if kv[i+1] != nil {
+				val = quote(kv[i+1])
+			}
+			pairs = append(pairs, quote(kv[i])+"=>"+val)
+		}
+		return strings.Join(pairs, ", "), nil
+	case contrib.ArgRange:
+		return rangeLit(str(params[0]), str(params[1]), params[2].(string)), nil
+	case contrib.ArgMultirange:
+		lo, hi, bounds := params[0].([]*string), params[1].([]*string), params[2].([]string)
+		parts := make([]string, len(bounds))
+		for i := range bounds {
+			parts[i] = rangeLit(lo[i], hi[i], bounds[i])
+		}
+		return "{" + strings.Join(parts, ",") + "}", nil
+	}
+	return "", fmt.Errorf("no literal form for %s values", c.Arg)
 }
 
 // parseArrayLiteral parses a one-dimensional PostgreSQL array literal

@@ -106,7 +106,9 @@ exists.
 ## Query parameters
 
 Reserved: `select`, `order`, `limit`, `offset`, `after`, `before`, `count`,
-`distinct`, `near`, `on_conflict`. Every other parameter is a filter
+`distinct`, `on_conflict`; `near` and `trgm` only where no column, computed
+column or RPC argument carries the name (there it is a filter or the
+argument, and `.dist` / `.trgm_*` ordering is unavailable). Every other parameter is a filter
 (`col=op.value`, `rel.col=op.value`, `and=`/`or=`/`not.and=`/`not.or=`) — see
 [filtering.md](filtering.md). A column literally named like a reserved
 parameter cannot be filtered in the bare form; use it inside `and=(…)`.

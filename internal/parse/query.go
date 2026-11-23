@@ -43,6 +43,36 @@ func splitQuery(raw string) ([]param, error) {
 var reserved = map[string]bool{
 	"select": true, "order": true, "limit": true, "offset": true, "after": true,
 	"before": true, "count": true, "distinct": true, "near": true, "on_conflict": true,
+	"trgm": true,
+}
+
+// softReserved are the reserved params that yield to a column, computed
+// column or RPC argument of the same name on the route: there the name is a
+// filter (or the argument) and the parameter is unavailable.
+var softReserved = map[string]bool{"near": true, "trgm": true}
+
+// isReserved reports whether key is a reserved parameter on this route.
+func (p *parser) isReserved(key string, res *api.Resource) bool {
+	if !reserved[key] {
+		return false
+	}
+	return !softReserved[key] || !nameTaken(key, res, p.match.RPC)
+}
+
+// nameTaken reports whether a column or computed column of res, or an
+// argument of rpc, is named key.
+func nameTaken(key string, res *api.Resource, rpc *api.RPC) bool {
+	if res != nil && (res.Field(key) != nil || res.Computed[key] != nil) {
+		return true
+	}
+	if rpc != nil {
+		for _, a := range rpc.Args {
+			if a.Name == key {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // listOnly are the reserved params that only make sense on list requests.
@@ -85,7 +115,7 @@ func (p *parser) parseQueryWith(raw string, res *api.Resource, extra func(key, v
 	}
 	seen := map[string]bool{}
 	for _, q := range params {
-		if reserved[q.key] {
+		if p.isReserved(q.key, res) {
 			if seen[q.key] {
 				return errf(CodeInvalidFilter, "duplicate parameter %q", q.key)
 			}
@@ -107,8 +137,8 @@ func (p *parser) parseQueryWith(raw string, res *api.Resource, extra func(key, v
 		}
 	}
 	p.root = root
-	var near string
-	hasNear := false
+	var near, trgm string
+	hasNear, hasTrgm := false, false
 	for _, q := range params {
 		switch {
 		case q.key == "select":
@@ -116,15 +146,18 @@ func (p *parser) parseQueryWith(raw string, res *api.Resource, extra func(key, v
 				return errf(CodeInvalidSelect, "select is not valid on this route")
 			}
 			continue
-		case q.key == "near":
+		case q.key == "near" && p.isReserved(q.key, res):
 			near, hasNear = q.val, true
+			continue
+		case q.key == "trgm" && p.isReserved(q.key, res):
+			trgm, hasTrgm = q.val, true
 			continue
 		case q.key == "on_conflict":
 			if err := p.parseOnConflict(q.val, res); err != nil {
 				return err
 			}
 			continue
-		case reserved[q.key]:
+		case p.isReserved(q.key, res):
 			if err := p.parseListParam(q.key, q.val, res); err != nil {
 				return err
 			}
@@ -144,6 +177,9 @@ func (p *parser) parseQueryWith(raw string, res *api.Resource, extra func(key, v
 		}
 	}
 	if err := p.resolveNear(near, hasNear); err != nil {
+		return err
+	}
+	if err := p.resolveContribOrders(trgm, hasTrgm); err != nil {
 		return err
 	}
 	if p.req.Page.Limit == 0 {

@@ -1,0 +1,2 @@
+-- request: GET /api/kb/docs?paths=ancestor.top
+-- error: 400 column_not_filterable: operator "ancestor" on column "paths" of "kb.docs" needs an index that serves it (filters.indexed_only) or the column in filters.allow_columns

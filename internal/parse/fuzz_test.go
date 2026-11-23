@@ -33,11 +33,14 @@ func FuzzParse(f *testing.F) {
 		{"DELETE", "/posts", "or=(id.eq.1,title.like.x*)", "return=headers-only, tx=rollback", ""},
 		{"POST", "/users", "on_conflict=email", "resolution=ignore-duplicates, missing=default", `[{"email":"x"},{}]`},
 		{"PUT", "/users/by/email/a%40b.c", "select=id", "count=exact", `{"email":"a@b.c","mood":"ok"}`},
+		{"GET", "/kb/docs", "search=fts(english).fat%20%26%20cat&body=not.wfts.x&order=search.rank.desc,title.trgm_dist&trgm=pg&title=trgm_sim.pg", "", ""},
+		{"GET", "/kb/docs", `or=(attrs.hk_all.{a,b},attrs.cs.{"a":"1"},path.lquery.*.b,paths.lquery_any.{a,*.b})&pages=cs.3&valid=adj.[2020-01-01,)&net=cd_strict.10.0.0.0/8&email=ilike.*A*`, "", ""},
+		{"PATCH", "/kb/docs/1", "", "", `{"attrs":{"a":null},"pages":{"start":1,"isEmpty":false},"slots":["[1,2)",{"end":9}]}`},
 	}
 	for _, s := range seeds {
 		f.Add(s.method, s.path, s.query, s.accept, s.body)
 	}
-	built := buildFixture(f, true)
+	built := buildContrib(f, true)
 	optsList := []Options{allOn, {}, {Spatial: true, CSV: true}, {RelationFilters: true, ComputedOrder: true, MaxPageSize: 3, MaxEmbedDepth: 1}}
 	f.Fuzz(func(t *testing.T, method, path, query, accept, body string) {
 		if strings.ContainsAny(method, " \r\n\t") || strings.ContainsAny(path+query, " \r\n\t#") {
