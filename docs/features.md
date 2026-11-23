@@ -126,7 +126,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] `Link: <…>; rel="next", <…>; rel="prev"` built from the request URL (`after=`/`before=`, or `offset=` for offset-only resources) (new)
 - [x] Cost limit `server.max_cost` (1 + Σ mult × child; `@costMultiplier` lowers) → 400 `cost_exceeded` (parity)
 - [x] `Prefer: count=exact|planned|estimated` (planned = `pg_class.reltuples`, summed over leaf partitions; estimated = exact up to `server.max_page_size` rows; filtered/distinct/RLS/view/function requests count exactly) and `Content-Range: 0-24/*|N` on list pages, alongside `X-Total-Count` (new)
-- [ ] `Range` request header pagination and `206 Partial Content` (PostgREST style) (new)
+- [x] `Range: <first>-<last>` / `<first>-` request header (`Range-Unit: items`), intersected with `limit`/`offset`; `206 Partial Content` for a counted partial page and `416 Range Not Satisfiable` with `Content-Range: */<total>` past the total (parity)
 
 ## Mutations
 
@@ -228,7 +228,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] No embedded UI, no CDN assets (bring your own OpenAPI tooling) — by decision (new)
 - [x] `/metrics` (Prometheus) endpoint: HTTP, database, pool, schema-rebuild and compile metrics by fixed route class, cost-limit and aggregate counters, main or separate listener (`metrics.*`) — see [metrics.md](metrics.md) (parity)
 - [x] `Content-Range` response header on list pages and bulk writes (new)
-- [ ] `Range` request header (new)
+- [x] `Range` request header (see Pagination) (parity)
 
 ## OpenAPI 3.1
 
@@ -331,9 +331,13 @@ these are the deliberate departures (each documented in its topic page):
   `server.max_page_size`, PostgREST's `db-max-rows`) apply to unfiltered
   scans of tables without RLS only and fall back to `exact` otherwise
   (`Preference-Applied` says so).
-- **Counted list responses stay `200`** (PostgREST: `206 Partial Content`);
-  keyset pages carry no `Content-Range`; the `Range` request header is not
-  supported. `X-Total-Count` is kept next to `Content-Range`.
+- **Keyset pages carry no `Content-Range`** and stay `200`; a `Range` header
+  cannot be combined with `after`/`before` (`400 keyset_unsupported`).
+  `X-Total-Count` is kept next to `Content-Range`. `206`/`416`, the
+  `Range` grammar and its intersection with `limit`/`offset` follow
+  PostgREST; `HEAD` honours `Range` (PostgREST ignores it), and an explicit
+  `limit=` above `server.max_page_size` stays `400` (PostgREST clamps it to
+  `db-max-rows`) while a `Range` is clamped.
 - **`PUT` on a single-row path is a partial upsert**: PostgREST requires
   every column in the body (`PUT /t?id=eq.1`); pdbr keeps its collection
   `PUT` semantics (unprovided columns keep their values on update), takes

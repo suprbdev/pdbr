@@ -81,7 +81,7 @@ func getJSON(t *testing.T, url string, v any) *http.Response {
 	// reused destination cannot carry keys over from an earlier response.
 	reflect.ValueOf(v).Elem().Set(reflect.Zero(reflect.TypeOf(v).Elem()))
 	res, body := get(t, url)
-	if res.StatusCode != 200 {
+	if res.StatusCode != 200 && res.StatusCode != 206 {
 		t.Fatalf("GET %s = %d %s", url, res.StatusCode, body)
 	}
 	if err := json.Unmarshal(body, v); err != nil {
@@ -483,7 +483,7 @@ func TestPagination(t *testing.T) {
 	}
 	// HEAD with count is the cheapest total
 	res, body := do(t, "HEAD", srv.URL+"/api/posts?count=true&limit=1", nil)
-	if res.StatusCode != 200 || len(body) != 0 || res.Header.Get("X-Total-Count") != "4" || res.Header.Get("X-Next-Cursor") == "" {
+	if res.StatusCode != 206 || len(body) != 0 || res.Header.Get("X-Total-Count") != "4" || res.Header.Get("X-Next-Cursor") == "" {
 		t.Errorf("HEAD = %d %q %v", res.StatusCode, body, res.Header)
 	}
 	// errors

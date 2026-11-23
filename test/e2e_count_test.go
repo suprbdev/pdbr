@@ -30,7 +30,7 @@ func dbInt(t *testing.T, sql string) int64 {
 func wantRange(t *testing.T, method, url string, hdr map[string]string, wantRange, wantApplied string) {
 	t.Helper()
 	res, body := send(t, method, url, "", hdr)
-	if res.StatusCode != 200 {
+	if res.StatusCode != 200 && res.StatusCode != 206 {
 		t.Fatalf("%s %s = %d %s", method, url, res.StatusCode, body)
 	}
 	if got := res.Header.Get("Content-Range"); got != wantRange {
@@ -53,8 +53,11 @@ func TestPreferCountContentRange(t *testing.T) {
 	wantRange(t, "GET", srv.URL+"/api/posts?limit=2", exactHdr, "0-1/"+n, "count=exact")
 	wantRange(t, "HEAD", srv.URL+"/api/posts?limit=2&offset=1", exactHdr, "1-2/"+n, "count=exact")
 	wantRange(t, "GET", srv.URL+"/api/posts?limit=2&count=true", nil, "0-1/"+n, "")
-	wantRange(t, "GET", srv.URL+fmt.Sprintf("/api/posts?offset=%d", exact+5), exactHdr, "*/"+n, "count=exact")
-	res, _ := send(t, "GET", srv.URL+"/api/posts?limit=2", "", exactHdr)
+	res, body := send(t, "GET", srv.URL+fmt.Sprintf("/api/posts?offset=%d", exact+5), "", exactHdr)
+	if res.StatusCode != 416 || res.Header.Get("Content-Range") != "*/"+n {
+		t.Errorf("offset past total = %d %v %s", res.StatusCode, res.Header, body)
+	}
+	res, _ = send(t, "GET", srv.URL+"/api/posts?limit=2", "", exactHdr)
 	if res.Header.Get("X-Total-Count") != n {
 		t.Errorf("X-Total-Count = %q, want %s", res.Header.Get("X-Total-Count"), n)
 	}
@@ -80,7 +83,7 @@ func TestPreferCountContentRange(t *testing.T) {
 	est := strconv.FormatInt(max(pl, 3), 10)
 	wantRange(t, "GET", small.URL+"/api/users?limit=1", map[string]string{"Prefer": "count=estimated"}, "0-0/"+est, "count=estimated")
 
-	res, body := send(t, "PATCH", srv.URL+"/api/posts?title=like.M3%20count*&select=id", `{"body":"x"}`, map[string]string{"Prefer": "count=planned"})
+	res, body = send(t, "PATCH", srv.URL+"/api/posts?title=like.M3%20count*&select=id", `{"body":"x"}`, map[string]string{"Prefer": "count=planned"})
 	if res.StatusCode != 200 || res.Header.Get("Content-Range") != "0-1/2" || res.Header.Get("Preference-Applied") != "count=exact" {
 		t.Fatalf("bulk PATCH count = %d %s %v", res.StatusCode, body, res.Header)
 	}

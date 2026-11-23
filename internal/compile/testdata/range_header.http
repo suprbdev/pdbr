@@ -1,0 +1,3 @@
+GET /api/posts?order=id&count=true
+Range-Unit: items
+Range: 10-19

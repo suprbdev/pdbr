@@ -64,6 +64,8 @@ type Error struct {
 	PG map[string]any
 	// Allow is set on 405 responses.
 	Allow string
+	// Headers are extra response headers (Content-Range on 416).
+	Headers http.Header
 }
 
 func (e *Error) Error() string { return e.Detail }
@@ -78,6 +80,9 @@ const (
 	// CodeMaxAffectedExceeded: a PATCH / DELETE under Prefer: handling=strict,
 	// max-affected=N touched more than N rows; the transaction is rolled back.
 	CodeMaxAffectedExceeded = "max_affected_exceeded"
+	// CodeRangeNotSatisfiable: the requested offset lies beyond the counted
+	// total (416 with Content-Range: */<total>).
+	CodeRangeNotSatisfiable = "range_not_satisfiable"
 )
 
 // RequestHook mirrors plugin.RequestHook (redeclared here to avoid an

@@ -386,6 +386,11 @@ func (b *Builder) openAPI(built *Built) *Document {
 		Headers:     map[string]*Header{"Allow": {Schema: &Schema{Type: "string"}, Description: "Comma-separated methods available on this path."}},
 		Content:     map[string]*MediaType{"application/problem+json": {Schema: SchemaRef("Problem")}},
 	}
+	doc.Components.Responses[rangeNotSatisfiableResponse] = &Response{
+		Description: "Range Not Satisfiable: a count was requested and the first requested row (Range header or offset) is past the total (code range_not_satisfiable).",
+		Headers:     map[string]*Header{"Content-Range": {Schema: &Schema{Type: "string"}, Description: "*/<total>"}},
+		Content:     map[string]*MediaType{"application/problem+json": {Schema: SchemaRef("Problem")}},
+	}
 	if b.authOn() {
 		doc.Components.SecuritySchemes = map[string]*SecurityScheme{}
 	}

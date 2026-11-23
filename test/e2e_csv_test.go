@@ -76,7 +76,7 @@ func TestCSVLists(t *testing.T) {
 	// HEAD parity: same status, headers and media type, no body.
 	jsonRes, _ := do(t, "GET", srv+"/api/users?limit=1&order=id&count=true", nil)
 	head, hb := do(t, "HEAD", srv+"/api/users?limit=1&order=id&count=true", accept)
-	if head.StatusCode != 200 || len(hb) != 0 || head.Header.Get("Content-Type") != csvType {
+	if head.StatusCode != jsonRes.StatusCode || len(hb) != 0 || head.Header.Get("Content-Type") != csvType {
 		t.Errorf("HEAD csv = %d %q %v", head.StatusCode, hb, head.Header)
 	}
 	for _, h := range []string{"X-Total-Count", "X-Next-Cursor", "Link"} {

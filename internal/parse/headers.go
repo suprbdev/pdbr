@@ -35,8 +35,9 @@ func (p *parser) checkContentType(r *http.Request) error {
 	return nil
 }
 
-// parseHeaders reads Prefer, If-Match and If-None-Match.
+// parseHeaders reads Prefer, Range, If-Match and If-None-Match.
 func (p *parser) parseHeaders(r *http.Request) error {
+	p.readRange(r)
 	if err := p.parsePrefer(r.Header.Values("Prefer")); err != nil {
 		return err
 	}

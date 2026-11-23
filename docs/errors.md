@@ -52,7 +52,9 @@ has a `code`, see the note below the table):
 | `column_not_filterable` | 400 | column exists but is outside the filter policy (`filters.indexed_only`, `@omit filter`) |
 | `column_not_orderable` | 400 | column exists but is outside the order policy; with aggregates, an `order=` term that is not a grouping column |
 | `page_size_exceeded` | 400 | `limit` > `server.max_page_size` (also on embeds and RPC lists) |
-| `keyset_unsupported` | 400 | `after`/`before` on a resource without a PK, `before` combined with `offset`, `distinct=` or aggregate functions with keyset |
+| `keyset_unsupported` | 400 | `after`/`before` on a resource without a PK, `before` combined with `offset`, any cursor combined with a `Range` header, `distinct=` or aggregate functions with keyset |
+| `invalid_range` | 400 | `Range` header with the last item before the first, or no overlap with `offset`/`limit` ([pagination.md](pagination.md#range-request-header)) |
+| `range_not_satisfiable` | 416 | counted list whose `offset` / `Range` start is past the total; carries `Content-Range: */<total>` (PostgREST `PGRST103`) |
 | `cost_exceeded` | 400 | estimated cost > `server.max_cost` |
 | `embed_depth_exceeded` | 400 | `select=` nesting deeper than `server.max_embed_depth`; nested-mutation depth > `max_depth` |
 | `ambiguous_relation` | 400 | relation key matches ≥ 2 FKs and no `!hint`; detail lists the candidates |

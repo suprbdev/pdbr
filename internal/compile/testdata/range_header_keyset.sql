@@ -1,0 +1,2 @@
+-- request: GET /api/posts?after=WyJwdWJsaWMucG9zdHMiLCA3XQ
+-- error: 400 keyset_unsupported: Range cannot be combined with after/before; use limit with a cursor

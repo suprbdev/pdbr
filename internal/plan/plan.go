@@ -477,6 +477,9 @@ type Page struct {
 	// LimitSet reports that limit was given explicitly (cost estimation:
 	// an unset backward-embed limit is estimated at 10, not the cap).
 	LimitSet bool
+	// FromRange reports that the Range request header narrowed Limit or
+	// Offset (Link URLs then carry limit= so the next page keeps the size).
+	FromRange bool
 }
 
 // Prefer is the parsed Prefer header (RFC 7240, PostgREST vocabulary).
