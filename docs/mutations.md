@@ -270,7 +270,8 @@ Rules:
 | Rule | Behaviour |
 |---|---|
 | default target | the primary key; a PK-less table needs `?on_conflict=` naming one of its unique constraints (else `400 invalid_body`); no PK and no unique constraint → `PUT` absent (`405`) |
-| `?on_conflict=col1,col2` | column set (order-insensitive) must match a unique constraint or the PK → else `400 invalid_body` |
+| temporal keys (PostgreSQL 18 `WITHOUT OVERLAPS`) | never a conflict target: `ON CONFLICT` cannot infer the exclusion constraint behind them. A temporal PK is skipped as the default (`?on_conflict=` must name a plain unique constraint, else `400 temporal_conflict_target`), and a table whose only keys are temporal has no `PUT` (`405`) |
+| `?on_conflict=col1,col2` | column set (order-insensitive) must match a unique constraint or the PK → else `400 invalid_body`; naming a temporal key → `400 temporal_conflict_target` |
 | conflict columns | must be present in the body (every element for arrays) → else `400 invalid_body` |
 | non-key columns | every provided one becomes `SET c = EXCLUDED.c`; unprovided columns keep their existing values on conflict |
 | only-key body | `SET k = EXCLUDED.k` for the key itself so the statement returns the existing row instead of zero rows |
@@ -565,6 +566,7 @@ a known path → `405` with an `Allow` header listing what exists:
 | no DELETE privilege | no `DELETE` |
 | no PK and no unique constraint | no `/{pk}`, no `/by/…` → no `PATCH`/`DELETE` at all |
 | key with an identity / generated column | no `PUT` on that single-row path |
+| only temporal keys (`WITHOUT OVERLAPS`) | same as no key: no `/{pk}`, no `/by/…`, no `PUT` ([api.md](api.md#temporal-keys-and-postgresql-18-foreign-keys)) |
 | `@omit create|update|delete` (smart-comments) | method removed |
 | `server.read_only: true` (or `App.SetReadOnly(true)` at runtime) | every write on every resource → `405 read_only`, `Allow: GET, HEAD` (`OPTIONS` when CORS is on); answered before the body is read |
 | `PATCH`/`DELETE {base}/{table}` without a filter | not a `405`: `400 unfiltered_mutation` ([bulk writes](#bulk-patch--delete-by-filter)) |
@@ -701,6 +703,25 @@ the table. Only rows created in this request appear in those embeds; a
 `connect`ed parent is read from the table as usual. Nested CTEs use
 `RETURNING *` (they are internal row sources); the column-grant-friendly
 narrow `RETURNING` applies to `__mut` and the outer response only.
+
+### Temporal (`PERIOD`) relations
+
+A PostgreSQL 18 `PERIOD` foreign key, `FOREIGN KEY (room_id, PERIOD
+valid_at) REFERENCES room_bookings (room_id, PERIOD valid_at)`, relates a
+row to every referenced row whose period overlaps its own, so a nested write
+copies only the **equality** columns (`room_id`); the period column is
+always the referencing row's own and stays a required body column. Whether
+the referenced periods cover it is PostgreSQL's check (`409 pg:23503`
+otherwise).
+
+| Direction | Body | Meaning |
+|---|---|---|
+| forward `connect` | `"room_bookings": {"connect": {"room_id": 1}}` | names the referenced entity: the equality columns of the referenced key (or one of its plain keys); `__p_n AS (SELECT DISTINCT "room_id" FROM … WHERE "room_id" = $1)`, so one row is inserted however many periods match |
+| forward `create` | `"room_bookings": {"create": {"room_id": 1, "valid_at": "…", …}}` | inserts the parent; the child takes `room_id` from it and keeps its own `valid_at`. The response's embed reads the table **and** the new parent (`__vis_n AS (SELECT * FROM "public"."room_bookings" UNION ALL SELECT * FROM __p_1)`), because the child may overlap existing periods too |
+| backward `create` | `"booking_notes": {"create": [{"note": "…", "valid_at": "…"}]}` | children take `room_id` from the new parent, each with its own period |
+
+(goldens `temporal_nested_connect`, `temporal_nested_create_parent`,
+`temporal_nested_children`.)
 
 Atomicity — a child failure rolls back the parent:
 

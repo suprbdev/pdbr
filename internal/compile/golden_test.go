@@ -48,9 +48,10 @@ func goldenCompile(c *compile.Compiler) compile.Func {
 	return nestedmutations.New(nil).WrapCompile(c.Compile)
 }
 
-// goldenCatalog is the shared fixture plus two golden-only tables the
-// fixture lacks: a composite-primary-key table (memberships) and a table in
-// a second schema (audit.log), and the golden-only functions in
+// goldenCatalog is the shared fixture plus golden-only tables the fixture
+// lacks: a composite-primary-key table (memberships), a table in a second
+// schema (audit.log), the PostgreSQL 18 temporal tables (temporalTables),
+// and the golden-only functions in
 // goldenOnlyRPCs. They exist only in memory; the live fixture database does
 // not have them.
 func goldenCatalog() *introspect.Catalog {
@@ -81,6 +82,7 @@ func goldenCatalog() *introspect.Catalog {
 			Privileges: priv,
 		},
 	)
+	cat.Tables = append(cat.Tables, temporalTables(priv)...)
 	// A void function (the fixture has none) so the void shape has a golden,
 	// plus defaulted and variadic arguments.
 	pg := "pg_catalog"
@@ -113,6 +115,60 @@ func goldenCatalog() *introspect.Catalog {
 		},
 	})
 	return cat
+}
+
+// temporalTables are the PostgreSQL 18 key variants (tk_ prefix, the same
+// shapes test/e2e_temporal_test.go creates on PG18+): tk_bookings has only a
+// temporal primary key (room_id, valid_at WITHOUT OVERLAPS), tk_rates a
+// plain primary key plus a temporal unique, tk_notes a PERIOD foreign key to
+// tk_bookings, tk_readings a NOT ENFORCED foreign key to tk_rooms.
+func temporalTables(priv introspect.Privileges) []*introspect.Table {
+	pg := "pg_catalog"
+	col := func(pos int, name, typ string) *introspect.Column {
+		return &introspect.Column{Name: name, Position: pos, PGType: typ, TypeSchema: pg, NotNull: true}
+	}
+	ident := col(1, "id", "int4")
+	ident.HasDefault, ident.Generated, ident.GeneratedKind = true, true, introspect.GeneratedIdentity
+	return []*introspect.Table{
+		{
+			Schema: "public", Name: "tk_rooms", Kind: introspect.RelTable,
+			Columns:    []*introspect.Column{col(1, "id", "int4"), col(2, "name", "text")},
+			PrimaryKey: &introspect.Constraint{Name: "tk_rooms_pkey", Columns: []string{"id"}},
+			Privileges: priv,
+		},
+		{
+			Schema: "public", Name: "tk_bookings", Kind: introspect.RelTable,
+			Columns:     []*introspect.Column{col(1, "room_id", "int4"), col(2, "valid_at", "daterange"), col(3, "guest", "text")},
+			PrimaryKey:  &introspect.Constraint{Name: "tk_bookings_pkey", Columns: []string{"room_id", "valid_at"}, WithoutOverlaps: true},
+			ForeignKeys: []*introspect.ForeignKey{{Name: "tk_bookings_room_id_fkey", Columns: []string{"room_id"}, RefSchema: "public", RefTable: "tk_rooms", RefColumns: []string{"id"}}},
+			Indexes:     []*introspect.Index{{Name: "tk_bookings_guest_idx", Columns: []string{"guest"}, Method: "btree"}},
+			Privileges:  priv,
+		},
+		{
+			Schema: "public", Name: "tk_rates", Kind: introspect.RelTable,
+			Columns:    []*introspect.Column{col(1, "id", "int4"), col(2, "room_id", "int4"), col(3, "valid_at", "daterange"), col(4, "price", "numeric")},
+			PrimaryKey: &introspect.Constraint{Name: "tk_rates_pkey", Columns: []string{"id"}},
+			Uniques:    []*introspect.Constraint{{Name: "tk_rates_room_id_valid_at_key", Columns: []string{"room_id", "valid_at"}, WithoutOverlaps: true}},
+			Privileges: priv,
+		},
+		{
+			Schema: "public", Name: "tk_notes", Kind: introspect.RelTable,
+			Columns:    []*introspect.Column{ident, col(2, "room_id", "int4"), col(3, "valid_at", "daterange"), col(4, "note", "text")},
+			PrimaryKey: &introspect.Constraint{Name: "tk_notes_pkey", Columns: []string{"id"}},
+			ForeignKeys: []*introspect.ForeignKey{{
+				Name: "tk_notes_room_id_valid_at_fkey", Columns: []string{"room_id", "valid_at"},
+				RefSchema: "public", RefTable: "tk_bookings", RefColumns: []string{"room_id", "valid_at"}, Period: true,
+			}},
+			Privileges: priv,
+		},
+		{
+			Schema: "public", Name: "tk_readings", Kind: introspect.RelTable,
+			Columns:     []*introspect.Column{col(1, "id", "int4"), col(2, "room_id", "int4"), col(3, "celsius", "numeric")},
+			PrimaryKey:  &introspect.Constraint{Name: "tk_readings_pkey", Columns: []string{"id"}},
+			ForeignKeys: []*introspect.ForeignKey{{Name: "tk_readings_room_id_fkey", Columns: []string{"room_id"}, RefSchema: "public", RefTable: "tk_rooms", RefColumns: []string{"id"}, NotEnforced: true}},
+			Privileges:  priv,
+		},
+	}
 }
 
 func goldenBuilt(t testing.TB) *api.Built {
@@ -271,8 +327,8 @@ var goldenOnlyRPCs = map[string]bool{"noop": true, "greet": true, "sum_all": tru
 // TestGoldenAgainstDatabase executes every golden statement against the
 // live fixture database (PDBR_TEST_DATABASE_URL; skipped otherwise), each in
 // a transaction that is rolled back: a golden that does not run is a bug.
-// Goldens over the golden-only tables (memberships, audit.log) are skipped —
-// they do not exist in the fixture.
+// Goldens over the golden-only tables (memberships, audit.log, the tk_
+// temporal tables) are skipped — they do not exist in the fixture.
 func TestGoldenAgainstDatabase(t *testing.T) {
 	url := os.Getenv("PDBR_TEST_DATABASE_URL")
 	if url == "" {
@@ -291,7 +347,7 @@ func TestGoldenAgainstDatabase(t *testing.T) {
 		name := strings.TrimSuffix(filepath.Base(file), ".http")
 		t.Run(name, func(t *testing.T) {
 			r := readHTTPFile(t, file)
-			if strings.Contains(r.URL.Path, "/memberships") || strings.HasPrefix(r.URL.Path, "/api/audit/") || goldenOnlyRPCs[path.Base(r.URL.Path)] && strings.Contains(r.URL.Path, "/rpc/") {
+			if strings.Contains(r.URL.Path, "/memberships") || strings.Contains(r.URL.Path, "/tk_") || strings.HasPrefix(r.URL.Path, "/api/audit/") || goldenOnlyRPCs[path.Base(r.URL.Path)] && strings.Contains(r.URL.Path, "/rpc/") {
 				t.Skip("golden-only table")
 			}
 			m, ok := built.Match(strings.TrimPrefix(r.URL.EscapedPath(), goldenBasePath))

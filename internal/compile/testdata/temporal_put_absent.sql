@@ -1,0 +1,2 @@
+-- request: PUT /api/tk_bookings
+-- error: 405 method_not_allowed: Allow: GET, HEAD, POST

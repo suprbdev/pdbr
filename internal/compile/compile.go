@@ -626,14 +626,16 @@ func (s *stmt) innerExists(e *plan.Embed, parentAlias string) (string, error) {
 }
 
 // joinConds renders the FK correlation between the embedded row at
-// childAlias and the parent row at parentAlias.
+// childAlias and the parent row at parentAlias from the FK's join pairs:
+// equality, and range overlap (&&) for the period pair of a PERIOD key.
 func joinConds(rel *api.Relation, childAlias, parentAlias string) string {
-	parts := make([]string, len(rel.FK.Columns))
-	for i, col := range rel.FK.Columns {
+	pairs := rel.FK.JoinPairs()
+	parts := make([]string, len(pairs))
+	for i, jp := range pairs {
 		if rel.Forward {
-			parts[i] = colRef(childAlias, rel.FK.RefColumns[i]) + " = " + colRef(parentAlias, col)
+			parts[i] = colRef(childAlias, jp.RefColumn) + " " + string(jp.Op) + " " + colRef(parentAlias, jp.Column)
 		} else {
-			parts[i] = colRef(childAlias, col) + " = " + colRef(parentAlias, rel.FK.RefColumns[i])
+			parts[i] = colRef(childAlias, jp.Column) + " " + string(jp.Op) + " " + colRef(parentAlias, jp.RefColumn)
 		}
 	}
 	return strings.Join(parts, " AND ")

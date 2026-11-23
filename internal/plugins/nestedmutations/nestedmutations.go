@@ -10,8 +10,11 @@ package nestedmutations
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"strings"
+
+	"github.com/suprbdev/pdbcore/introspect"
 
 	"github.com/suprbdev/pdbr/internal/api"
 	"github.com/suprbdev/pdbr/internal/compile"
@@ -121,14 +124,24 @@ func (p *Plugin) TransformAPI(_ context.Context, b *api.Builder) error {
 }
 
 // connectSchema describes the key of an existing row: exactly one of the
-// resource's key sets (primary key, then each unique constraint).
+// resource's key sets (primary key, then each unique constraint), and for a
+// temporal (WITHOUT OVERLAPS) key its columns without the period, which a
+// PERIOD relation connects by.
 func connectSchema(b *api.Builder, r *api.Resource) *api.Schema {
 	var sets [][]string
-	if pk := r.Table.PrimaryKey; pk != nil {
+	if pk := r.PrimaryKey(); pk != nil {
 		sets = append(sets, pk.Columns)
 	}
 	for _, u := range r.Uniques {
 		sets = append(sets, u.Columns)
+	}
+	temporal := false
+	for _, k := range append([]*introspect.Constraint{r.Table.PrimaryKey}, r.Table.Uniques...) {
+		if k == nil || !k.WithoutOverlaps || slices.ContainsFunc(sets, func(s []string) bool { return sameSet(s, k.EqualityColumns()) }) {
+			continue
+		}
+		sets = append(sets, k.EqualityColumns())
+		temporal = true
 	}
 	var alts []*api.Schema
 	for _, cols := range sets {
@@ -150,6 +163,9 @@ func connectSchema(b *api.Builder, r *api.Resource) *api.Schema {
 		return nil
 	}
 	desc := "Key of an existing " + r.Path + " row for a nested {\"connect\": …} (nested-mutations plugin): the primary key or one unique constraint's columns."
+	if temporal {
+		desc += " A temporal (WITHOUT OVERLAPS) key is named without its period column."
+	}
 	if len(alts) == 1 {
 		alts[0].Description = desc
 		return alts[0]
@@ -176,7 +192,7 @@ func hasNested(req *compile.Request) bool {
 
 func (p *Plugin) compileNested(req *compile.Request) (*compile.Statement, error) {
 	c := compile.New(req.Built)
-	g := &chain{p: p, c: c, built: req.Built, ps: &compile.ParamSet{}, inserted: map[string][]string{}}
+	g := &chain{p: p, c: c, built: req.Built, ps: &compile.ParamSet{}, inserted: map[string][]string{}, withTable: map[string]bool{}}
 	root := req.Plan.Resource
 	nested := make([]nestedIn, 0, len(req.Plan.Body.Nested))
 	for key, n := range req.Plan.Body.Nested {
@@ -189,9 +205,13 @@ func (p *Plugin) compileNested(req *compile.Request) (*compile.Statement, error)
 	overrides := map[string]string{}
 	for _, table := range g.insertedOrder {
 		names := g.inserted[table]
-		parts := make([]string, len(names))
-		for i, n := range names {
-			parts[i] = "SELECT * FROM " + n
+		var parts []string
+		if g.withTable[table] {
+			res := req.Built.Resources[table]
+			parts = append(parts, "SELECT * FROM "+compile.TableRefSQL(res.Table.Schema, res.Table.Name))
+		}
+		for _, n := range names {
+			parts = append(parts, "SELECT * FROM "+n)
 		}
 		vis := g.name("vis")
 		g.ctes = append(g.ctes, vis+" AS (\n  "+strings.Join(parts, " UNION ALL ")+"\n)")

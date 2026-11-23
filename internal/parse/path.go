@@ -17,7 +17,7 @@ func (p *parser) parseKey() error {
 	res := m.Resource
 	switch m.Route.Kind {
 	case api.RouteRow:
-		pk := res.Table.PrimaryKey
+		pk := res.PrimaryKey()
 		if pk == nil {
 			return errf(CodeNotFound, "resource %q has no primary key", res.Path)
 		}

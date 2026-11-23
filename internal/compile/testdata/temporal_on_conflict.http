@@ -1,0 +1,3 @@
+PUT /api/tk_rates?on_conflict=room_id,valid_at
+
+{"id": 1, "room_id": 1, "valid_at": "[2026-01-01,2026-01-05)", "price": 10}

@@ -1,0 +1,1 @@
+GET /api/tk_bookings?select=guest,tk_notes(note)

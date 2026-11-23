@@ -134,15 +134,16 @@ func (s *stmt) nearExpr(col *introspect.Column) string {
 }
 
 // relationOrderSQL renders the correlated subquery for a related order
-// term. Forward relations select the sort column off the single referenced
-// row; backward relations aggregate over the referencing rows (MIN for asc,
-// MAX for desc), yielding NULL when no related row exists. The inner alias
-// is fixed: relational subqueries never nest, so it cannot collide.
+// term. To-one relations select the sort column off the single referenced
+// row; to-many relations (backward, or forward over a PERIOD key) aggregate
+// over the related rows (MIN for asc, MAX for desc), yielding NULL when no
+// related row exists. The inner alias is fixed: relational subqueries never
+// nest, so it cannot collide.
 func (s *stmt) relationOrderSQL(term orderTerm, alias string) string {
 	rel := term.rel
 	const sub = "__ro"
 	expr := colRef(sub, rel.Column.Name)
-	if !rel.Relation.Forward {
+	if rel.Relation.ToMany() {
 		agg := "MIN"
 		if term.desc {
 			agg = "MAX"

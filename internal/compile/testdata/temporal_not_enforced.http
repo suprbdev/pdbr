@@ -1,0 +1,1 @@
+GET /api/tk_readings?select=id,tk_rooms(name)

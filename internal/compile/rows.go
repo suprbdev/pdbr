@@ -63,10 +63,10 @@ func (s *stmt) rowJSON(node *plan.Node, alias string, depth int) (string, []stri
 		}
 		var expr, lat string
 		var err error
-		if e.Relation.Forward {
-			expr, lat, err = s.forwardEmbed(e, alias, depth+1)
+		if e.Relation.ToMany() {
+			expr, lat, err = s.manyEmbed(e, alias, depth+1)
 		} else {
-			expr, lat, err = s.backwardEmbed(e, alias, depth+1)
+			expr, lat, err = s.oneEmbed(e, alias, depth+1)
 		}
 		if err != nil {
 			return "", nil, err
@@ -382,10 +382,10 @@ func embedNode(e *plan.Embed) *plan.Node {
 	return e.Node
 }
 
-// forwardEmbed compiles a many-to-one embed: one lateral join fetching the
+// oneEmbed compiles a to-one embed: one lateral join fetching the
 // referenced row's JSON (null when the FK is null or the embed filter
 // excludes the row).
-func (s *stmt) forwardEmbed(e *plan.Embed, parentAlias string, depth int) (string, string, error) {
+func (s *stmt) oneEmbed(e *plan.Embed, parentAlias string, depth int) (string, string, error) {
 	rel := e.Relation
 	node := embedNode(e)
 	alias := s.alias("t")
@@ -407,11 +407,12 @@ func (s *stmt) forwardEmbed(e *plan.Embed, parentAlias string, depth int) (strin
 	return latAlias + ".data", lat, nil
 }
 
-// backwardEmbed compiles a one-to-many embed: a lateral join aggregating the
-// child rows' JSON into an array, with the embed's own filter, order and
-// offset paging. The correlation is rendered by listInner once the child
-// alias exists (a textual placeholder could collide with user JSON keys).
-func (s *stmt) backwardEmbed(e *plan.Embed, parentAlias string, depth int) (string, string, error) {
+// manyEmbed compiles a to-many embed (backward, or forward over a PERIOD
+// key): a lateral join aggregating the related rows' JSON into an array,
+// with the embed's own filter, order and offset paging. The correlation is
+// rendered by listInner once the child alias exists (a textual placeholder
+// could collide with user JSON keys).
+func (s *stmt) manyEmbed(e *plan.Embed, parentAlias string, depth int) (string, string, error) {
 	rel := e.Relation
 	corr := func(childAlias string) string { return joinConds(rel, childAlias, parentAlias) }
 	inner, err := s.listInner(embedNode(e), e.Filter, e.Order, e.Page, corr, depth)

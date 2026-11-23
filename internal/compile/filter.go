@@ -486,8 +486,9 @@ func toJSONParam(v any) string {
 
 // relationCond compiles a relation filter (advanced-filters): (NOT) EXISTS
 // over the related table joined to the current row. Quantifiers apply to
-// backward relations: some = EXISTS(match), none = NOT EXISTS(match),
-// every = NOT EXISTS(NOT match). exists.true/false take no leaf.
+// to-many relations (api.Relation.ToMany): some = EXISTS(match), none =
+// NOT EXISTS(match), every = NOT EXISTS(NOT match). exists.true/false take
+// no leaf.
 func (s *stmt) relationCond(c *plan.Cond, alias string) (string, error) {
 	rp := c.Relation
 	if len(rp.Steps) == 0 || rp.Steps[0] == nil {
@@ -497,8 +498,8 @@ func (s *stmt) relationCond(c *plan.Cond, alias string) (string, error) {
 	if quant == "" || quant == plan.Exists {
 		quant = plan.Some
 	}
-	if rp.Steps[0].Forward && quant != plan.Some {
-		return "", errUser(CodeInvalidFilter, "quantifiers apply to backward relations only")
+	if !rp.Steps[0].ToMany() && quant != plan.Some {
+		return "", errUser(CodeInvalidFilter, "quantifiers apply to to-many relations only")
 	}
 	if rp.Exists != nil && !*rp.Exists {
 		quant = plan.None

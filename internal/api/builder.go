@@ -376,7 +376,7 @@ func (b *Builder) addResources() {
 		r.Methods[MethodPost] = t.Insertable()
 		r.Methods[MethodPatch] = t.Updatable()
 		r.Methods[MethodDelete] = t.Deletable()
-		r.Methods[MethodPut] = t.Insertable() && t.Updatable() && (t.PrimaryKey != nil || len(t.Uniques) > 0)
+		r.Methods[MethodPut] = t.Insertable() && t.Updatable() && len(t.RowKeys()) > 0
 
 		keys := map[string]bool{}
 		for _, c := range t.Columns {
@@ -391,10 +391,14 @@ func (b *Builder) addResources() {
 				r.InputColumns[key] = c
 			}
 		}
-		r.Uniques = append(r.Uniques, t.Uniques...)
+		for _, u := range t.Uniques {
+			if u.RowKey() {
+				r.Uniques = append(r.Uniques, u)
+			}
+		}
 		sort.SliceStable(r.Uniques, func(i, j int) bool { return r.Uniques[i].Name < r.Uniques[j].Name })
 		r.Keyset = t.PrimaryKey != nil
-		r.Etag = b.Options.Etags && (t.PrimaryKey != nil || len(t.Uniques) > 0)
+		r.Etag = b.Options.Etags && len(t.RowKeys()) > 0
 		b.applyFilterPolicy(r)
 		b.Resources[t.Schema+"."+t.Name] = r
 	}
@@ -892,8 +896,8 @@ func (b *Builder) Build() (*Built, error) {
 			out.byResource[r][RouteList] = rt
 		}
 		rowMethods := methodList(r.Methods, MethodGet, MethodHead, MethodPut, MethodPatch, MethodDelete)
-		if r.Table.PrimaryKey != nil && len(rowMethods) > 0 {
-			rt := &Route{Kind: RouteRow, Pattern: base + "/" + r.keyTemplate(r.Table.PrimaryKey.Columns), Methods: keyedMethods(r, rowMethods, r.Table.PrimaryKey.Columns), Resource: r}
+		if pk := r.PrimaryKey(); pk != nil && len(rowMethods) > 0 {
+			rt := &Route{Kind: RouteRow, Pattern: base + "/" + r.keyTemplate(pk.Columns), Methods: keyedMethods(r, rowMethods, pk.Columns), Resource: r}
 			out.Routes = append(out.Routes, rt)
 			out.byResource[r][RouteRow] = rt
 		}

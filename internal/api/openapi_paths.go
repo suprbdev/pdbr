@@ -215,7 +215,7 @@ func (b *Builder) rowItem(item *PathItem, rt *Route) {
 	id, getID := r.Path, r.Path+".get"
 	what := "by primary key"
 	if rt.Kind == RouteRow {
-		cols = r.Table.PrimaryKey.Columns
+		cols = r.PrimaryKey().Columns
 	} else {
 		cols = rt.Unique.Columns
 		id = r.Path + ".by_" + strings.Join(r.keys(cols), "_")

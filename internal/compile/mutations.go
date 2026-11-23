@@ -258,6 +258,9 @@ func (s *stmt) upsertDML() (string, error) {
 	if target == nil {
 		return "", errUser(CodeInvalidBody, "upsert needs a primary key or ?on_conflict=")
 	}
+	if target.WithoutOverlaps {
+		return "", errUser(CodeTemporalConflict, "a temporal key (WITHOUT OVERLAPS) cannot be a conflict target")
+	}
 	cols := body.Columns
 	if len(cols) == 0 {
 		return "", errUser(CodeInvalidBody, "upsert body must set at least the conflict target columns")

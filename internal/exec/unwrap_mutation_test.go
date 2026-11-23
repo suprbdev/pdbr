@@ -35,6 +35,7 @@ func TestUnwrapMutation(t *testing.T) {
 		want  want
 	}{
 		{"patch row", op("PATCH", ""), compile.ShapeMutRow, `{"id":1}`, true, want{200, `{"id":1}`, "", ""}},
+		{"post composite key", op("POST", ""), compile.ShapeMutRow, `{"a":1,"b":2}`, true, want{201, `{"a":1,"b":2}`, "", ""}},
 		{"patch miss", op("PATCH", ""), compile.ShapeMutRow, ``, false, want{404, "", "", CodeNotFound}},
 		{"delete row", op("DELETE", ""), compile.ShapeMutRow, `{"id":1}`, true, want{200, `{"id":1}`, "", ""}},
 		{"bulk post", op("POST", ""), compile.ShapeMutList, `[{"id":1}]`, true, want{201, `[{"id":1}]`, "", ""}},

@@ -467,12 +467,16 @@ func (b *Builder) resourceSchema(r *Resource) *Schema {
 			if !rel.Embeddable {
 				continue
 			}
+			hint := rel.Hints[0]
 			if rel.Forward {
-				shapes = append(shapes, Nullable(SchemaRef(rel.To.Path)))
-				hints = append(hints, rel.Hints[len(rel.Hints)-1]+" (object)")
-			} else {
+				hint = rel.Hints[len(rel.Hints)-1]
+			}
+			if rel.ToMany() {
 				shapes = append(shapes, &Schema{Type: "array", Items: SchemaRef(rel.To.Path)})
-				hints = append(hints, rel.Hints[0]+" (array)")
+				hints = append(hints, hint+" (array)")
+			} else {
+				shapes = append(shapes, Nullable(SchemaRef(rel.To.Path)))
+				hints = append(hints, hint+" (object)")
 			}
 		}
 		if len(shapes) == 0 {
@@ -481,7 +485,7 @@ func (b *Builder) resourceSchema(r *Resource) *Schema {
 		var p *Schema
 		if len(shapes) == 1 {
 			p = shapes[0]
-			p.Description = "Embed via select=" + key + "(...)."
+			p.Description = "Embed via select=" + key + "(...)." + relationNote(cands[0])
 		} else {
 			p = &Schema{OneOf: shapes, Description: "Ambiguous relation; embed via select=" + key + "!<hint>(...) with hint one of: " + strings.Join(hints, ", ") + "."}
 		}
@@ -489,6 +493,20 @@ func (b *Builder) resourceSchema(r *Resource) *Schema {
 	}
 	sort.Strings(s.Required)
 	return s
+}
+
+// relationNote describes the PostgreSQL 18 foreign key variants in an embed
+// property: a PERIOD key embeds every referenced row whose period overlaps,
+// a NOT ENFORCED key may reference no row at all.
+func relationNote(rel *Relation) string {
+	var out string
+	if rel.Forward && rel.FK.Period {
+		out += " Temporal (PERIOD) foreign key: every " + rel.To.Path + " row whose period overlaps this row's."
+	}
+	if rel.Forward && rel.FK.NotEnforced {
+		out += " NOT ENFORCED foreign key: the referenced row may be missing (null)."
+	}
+	return out
 }
 
 // inputColumns lists the body keys a write method accepts, in catalog order.
@@ -538,7 +556,7 @@ func (b *Builder) inputSchema(r *Resource, m Method) *Schema {
 		s.MinProperties = intPtr(1)
 	case MethodPut:
 		s.Description = "Upsert body for " + r.Path + ": inserted or updated on the conflict target (the primary key, or ?on_conflict=<unique columns>), whose columns must be present."
-		if pk := r.Table.PrimaryKey; pk != nil {
+		if pk := r.PrimaryKey(); pk != nil {
 			all := true
 			for _, c := range pk.Columns {
 				if f := r.FieldByColumn(c); f == nil || s.Properties[f.Key] == nil {
@@ -591,9 +609,9 @@ func (b *Builder) nestedInputProps(r *Resource, s *Schema, required map[string]b
 			s.Properties[key] = &Schema{
 				Type: "object", Properties: props, MinProperties: intPtr(1), MaxProperties: intPtr(1), AdditionalProperties: boolPtr(false),
 				Description: "Nested input (nested-mutations plugin): exactly one of " + strings.Join(sortedKeys(props), " / ") +
-					" for the " + rel.To.Path + " row referenced by " + strings.Join(r.keys(rel.FK.Columns), ",") + ", which then need not be sent.",
+					" for the " + rel.To.Path + " row referenced by " + strings.Join(r.keys(rel.EqualityColumns()), ",") + ", which then need not be sent.",
 			}
-			for _, c := range rel.FK.Columns {
+			for _, c := range rel.EqualityColumns() {
 				if f := r.FieldByColumn(c); f != nil {
 					delete(required, f.Key)
 				}
@@ -608,7 +626,7 @@ func (b *Builder) nestedInputProps(r *Resource, s *Schema, required map[string]b
 			Properties: map[string]*Schema{"create": {Type: "array", Items: SchemaRef(insert), MinItems: intPtr(1)}},
 			Required:   []string{"create"}, AdditionalProperties: boolPtr(false),
 			Description: "Nested input (nested-mutations plugin): " + rel.To.Path + " rows to create referencing the new row (their " +
-				strings.Join(rel.To.keys(rel.FK.Columns), ",") + " is filled in).",
+				strings.Join(rel.To.keys(rel.EqualityColumns()), ",") + " is filled in).",
 		}
 	}
 }

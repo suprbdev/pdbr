@@ -1,0 +1,2 @@
+-- request: GET /api/tk_rates/by/room_id,valid_at/1,[2026-01-01%2C2026-01-05)
+-- error: 404 not_found: no such route

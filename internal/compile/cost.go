@@ -70,7 +70,7 @@ func nodeCost(node *plan.Node, maxPageSize int) int {
 			child = &c
 		}
 		mult := 1
-		if e.Relation != nil && !e.Relation.Forward {
+		if e.Relation != nil && e.Relation.ToMany() {
 			mult = defaultEmbedFanout
 			if e.Page.LimitSet && e.Page.Limit > 0 {
 				mult = min(e.Page.Limit, maxPageSize)

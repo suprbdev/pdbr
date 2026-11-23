@@ -1,0 +1,2 @@
+-- request: PUT /api/tk_rates?on_conflict=room_id,valid_at
+-- error: 400 temporal_conflict_target: on_conflict columns (room_id,valid_at) are a temporal key (WITHOUT OVERLAPS) of "tk_rates", which cannot be a conflict target

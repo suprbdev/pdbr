@@ -1,0 +1,3 @@
+POST /api/tk_notes
+
+{"note": "late checkout", "valid_at": "[2026-01-02,2026-01-03)", "tk_bookings": {"connect": {"room_id": 1}}}

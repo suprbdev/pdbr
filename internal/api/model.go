@@ -50,7 +50,9 @@ type Resource struct {
 	// Relations maps relation key -> candidates; more than one candidate
 	// means a !hint is required.
 	Relations map[string][]*Relation
-	// Uniques are the unique constraints backing /by/{cols}/{vals} lookups.
+	// Uniques are the unique constraints backing /by/{cols}/{vals} lookups
+	// and ?on_conflict= targets: row keys only (introspect.Constraint.RowKey),
+	// so temporal WITHOUT OVERLAPS keys are never listed.
 	Uniques []*introspect.Constraint
 	// FilterColumns / OrderColumns hold the policy-resolved keys.
 	FilterColumns map[string]bool
@@ -58,8 +60,8 @@ type Resource struct {
 	// InputColumns maps JSON key -> column for insert/update bodies
 	// (generated/identity columns are excluded).
 	InputColumns map[string]*introspect.Column
-	// Keyset reports whether the resource has a primary key (row path,
-	// cursors, Location header).
+	// Keyset reports whether the resource has a primary key (cursors). A
+	// temporal primary key still pages; the row path needs PrimaryKey.
 	Keyset bool
 	// Etag reports whether single-row GETs carry an ETag.
 	Etag bool
@@ -106,6 +108,37 @@ type Relation struct {
 	Filterable     bool
 	Orderable      bool
 	Embeddable     bool
+}
+
+// ToMany reports whether the embedded side can hold several rows, so an
+// embed renders as an array and relation filters accept !none / !every:
+// every backward relation, and a forward relation over a PERIOD foreign key
+// (each row references every row whose period overlaps its own).
+func (r *Relation) ToMany() bool { return !r.Forward || !r.FK.ReferencesOne() }
+
+// EqualityPairs returns the FK column pairs compared by equality: every
+// pair of FK.JoinPairs except the period pair of a PERIOD key. These are
+// the columns a nested write copies from the related row; the period
+// column is always the referencing row's own.
+func (r *Relation) EqualityPairs() []introspect.JoinPair {
+	pairs := r.FK.JoinPairs()
+	out := pairs[:0]
+	for _, p := range pairs {
+		if p.Op == introspect.JoinEqual {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// EqualityColumns returns the referencing columns of EqualityPairs.
+func (r *Relation) EqualityColumns() []string {
+	pairs := r.EqualityPairs()
+	out := make([]string, len(pairs))
+	for i, p := range pairs {
+		out[i] = p.Column
+	}
+	return out
 }
 
 // Computed is a stable/immutable function whose first argument is the
@@ -337,6 +370,32 @@ func (r *Resource) Resolve(key, hint string) (rel *Relation, candidates []*Relat
 		}
 	}
 	return nil, cands
+}
+
+// PrimaryKey returns the table's primary key when it addresses single rows
+// (the /{pk} route, the default PUT conflict target), or nil when the table
+// has none or it is a temporal WITHOUT OVERLAPS key.
+func (r *Resource) PrimaryKey() *introspect.Constraint {
+	if pk := r.Table.PrimaryKey; pk.RowKey() {
+		return pk
+	}
+	return nil
+}
+
+// TemporalKeyFor returns the temporal (WITHOUT OVERLAPS) primary key or
+// unique constraint whose column set equals cols (order-insensitive), or
+// nil. Such keys are never conflict targets: ON CONFLICT cannot infer an
+// exclusion constraint.
+func (r *Resource) TemporalKeyFor(cols []string) *introspect.Constraint {
+	if pk := r.Table.PrimaryKey; pk != nil && pk.WithoutOverlaps && sameSet(pk.Columns, cols) {
+		return pk
+	}
+	for _, u := range r.Table.Uniques {
+		if u.WithoutOverlaps && sameSet(u.Columns, cols) {
+			return u
+		}
+	}
+	return nil
 }
 
 // UniqueFor returns the unique constraint whose column set equals cols

@@ -1,0 +1,1 @@
+GET /api/tk_notes?select=id,note,tk_bookings(guest,valid_at)
