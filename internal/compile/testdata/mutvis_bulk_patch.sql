@@ -23,11 +23,11 @@ FROM (
         FROM __vis t3
         WHERE t3."author_id" = t2."id"
         ORDER BY t3."id" ASC
-        LIMIT $3
+        LIMIT 100
       ) s4
     ) l5 ON true
     WHERE t2."id" = t1."author_id"
     LIMIT 1
   ) l6 ON true
 ) s7
--- args: [1,"bulk-probe",100]
+-- args: [1,"bulk-probe"]

@@ -216,7 +216,7 @@ func TestMutationWithCTEs(t *testing.T) {
 	has(t, st.SQL, "WITH __mut AS (", `RETURNING "id", "email"`, "FROM __vis_1 t1", "'key', jsonb_build_array(t0.\"id\")",
 		"__vis_1 AS NOT MATERIALIZED (\n  SELECT \"id\", \"author_id\", \"title\" FROM \"public\".\"posts\"\n  UNION ALL SELECT \"id\", \"author_id\", \"title\" FROM __c_1\n)")
 	lacks(t, st.SQL, "%%RETURNING%%", "__vis AS", `FROM "public"."posts" t1`)
-	if len(st.Args) != 3 || st.Args[0] != "a@b.c" || st.Args[1] != "One" {
+	if len(st.Args) != 2 || st.Args[0] != "a@b.c" || st.Args[1] != "One" {
 		t.Errorf("args %v", st.Args)
 	}
 	if _, err := f.c.MutationWithCTEs(req, "", ps, nil); err == nil {

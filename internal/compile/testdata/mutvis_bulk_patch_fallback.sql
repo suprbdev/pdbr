@@ -23,11 +23,11 @@ FROM (
         FROM __vis t3
         WHERE t3."user_id" = t2."id"
         ORDER BY t3."user_id" ASC, t3."team" ASC
-        LIMIT $4
+        LIMIT 100
       ) s4
     ) l5 ON true
     WHERE t2."id" = t1."user_id"
     LIMIT 1
   ) l6 ON true
 ) s7
--- args: [1,2,"ops",100]
+-- args: [1,2,"ops"]

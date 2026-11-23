@@ -24,7 +24,7 @@ LEFT JOIN LATERAL (
     ) l3 ON true
     WHERE t1."author_id" = t0."id"
     ORDER BY t1."id" ASC
-    LIMIT $3
+    LIMIT 100
   ) s4
 ) l5 ON true
--- args: ["new@b.c","a@b.c",100]
+-- args: ["new@b.c","a@b.c"]

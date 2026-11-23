@@ -168,13 +168,13 @@ const usersRowJSON = `json_build_object('id', t0."id", 'email', t0."email", 'ful
 func TestList(t *testing.T) {
 	f := newFixture(t)
 	stmt := f.compile(list(f.res("users")))
-	wantSQL(t, stmt, `SELECT json_build_object('has_next', coalesce(bool_or(s2.__rn > $2), false), 'has_prev', false, 'first', (json_agg(s2.__key ORDER BY s2.__rn ASC) FILTER (WHERE s2.__rn <= $2))->0, 'last', (json_agg(s2.__key ORDER BY s2.__rn ASC) FILTER (WHERE s2.__rn <= $2))->-1, 'n', count(*) FILTER (WHERE s2.__rn <= $2), 'rows', coalesce(json_agg(s2.data ORDER BY s2.__rn ASC) FILTER (WHERE s2.__rn <= $2), '[]'::json)) AS data
+	wantSQL(t, stmt, `SELECT json_build_object('has_next', coalesce(bool_or(s2.__rn > $1), false), 'has_prev', false, 'first', (json_agg(s2.__key ORDER BY s2.__rn ASC) FILTER (WHERE s2.__rn <= $1))->0, 'last', (json_agg(s2.__key ORDER BY s2.__rn ASC) FILTER (WHERE s2.__rn <= $1))->-1, 'n', count(*) FILTER (WHERE s2.__rn <= $1), 'rows', coalesce(json_agg(s2.data ORDER BY s2.__rn ASC) FILTER (WHERE s2.__rn <= $1), '[]'::json)) AS data
 FROM (
   SELECT `+usersRowJSON+` AS data, jsonb_build_array(t0."id") AS __key, row_number() OVER (ORDER BY t0."id" ASC) AS __rn
   FROM "public"."users" t0
   ORDER BY t0."id" ASC
-  LIMIT $1
-) s2`, 101, 100)
+  LIMIT 101
+) s2`, 100)
 	if stmt.Shape != compile.ShapePage || !stmt.Cursors || stmt.Total || stmt.Mutation {
 		t.Errorf("shape metadata: %+v", stmt)
 	}
@@ -188,14 +188,14 @@ func TestListSelectOffset(t *testing.T) {
 	p.Select.Fields = append(p.Select.Fields, plan.FieldSel{Alias: "n", Column: f.col("users", "full_name")})
 	p.Page = plan.Page{Limit: 20, Offset: 40}
 	stmt := f.compile(p)
-	wantSQL(t, stmt, `SELECT json_build_object('has_next', coalesce(bool_or(s1.__rn > $4), false), 'has_prev', true, 'first', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $4))->0, 'last', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $4))->-1, 'n', count(*) FILTER (WHERE s1.__rn <= $4), 'rows', coalesce(json_agg(s1.data ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $4), '[]'::json)) AS data
+	wantSQL(t, stmt, `SELECT json_build_object('has_next', coalesce(bool_or(s1.__rn > $3), false), 'has_prev', true, 'first', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $3))->0, 'last', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $3))->-1, 'n', count(*) FILTER (WHERE s1.__rn <= $3), 'rows', coalesce(json_agg(s1.data ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $3), '[]'::json)) AS data
 FROM (
   SELECT json_build_object('id', t0."id", 'email', t0."email", $1::text, t0."full_name") AS data, jsonb_build_array(t0."id") AS __key, row_number() OVER (ORDER BY t0."id" ASC) AS __rn
   FROM "public"."users" t0
   ORDER BY t0."id" ASC
-  LIMIT $2
-  OFFSET $3
-) s1`, "n", 21, 40, 60)
+  LIMIT 21
+  OFFSET $2
+) s1`, "n", 40, 60)
 }
 
 func TestListStarPlusComputed(t *testing.T) {
@@ -222,14 +222,14 @@ func TestOffsetView(t *testing.T) {
 	p.Page = plan.Page{Limit: 10, Offset: 10}
 	p.Order = []plan.OrderTerm{{Column: f.col("metrics", "value"), Desc: true}}
 	stmt := f.compile(p)
-	wantSQL(t, stmt, `SELECT json_build_object('has_next', coalesce(bool_or(s1.__rn > $3), false), 'has_prev', true, 'n', count(*) FILTER (WHERE s1.__rn <= $3), 'rows', coalesce(json_agg(s1.data ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $3), '[]'::json)) AS data
+	wantSQL(t, stmt, `SELECT json_build_object('has_next', coalesce(bool_or(s1.__rn > $2), false), 'has_prev', true, 'n', count(*) FILTER (WHERE s1.__rn <= $2), 'rows', coalesce(json_agg(s1.data ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $2), '[]'::json)) AS data
 FROM (
   SELECT json_build_object('name', t0."name", 'value', t0."value") AS data, row_number() OVER (ORDER BY t0."value" DESC NULLS LAST) AS __rn
   FROM "public"."metrics" t0
   ORDER BY t0."value" DESC NULLS LAST
-  LIMIT $1
-  OFFSET $2
-) s1`, 11, 10, 20)
+  LIMIT 11
+  OFFSET $1
+) s1`, 10, 20)
 	if stmt.Cursors {
 		t.Error("view must not emit cursors")
 	}
@@ -260,19 +260,22 @@ func TestEmbedForward(t *testing.T) {
 		Node: fields(f.res("users"), "id", "email"),
 	}}}
 	stmt := f.compile(p)
-	wantSQL(t, stmt, `SELECT json_build_object('has_next', coalesce(bool_or(s3.__rn > $3), false), 'has_prev', false, 'first', (json_agg(s3.__key ORDER BY s3.__rn ASC) FILTER (WHERE s3.__rn <= $3))->0, 'last', (json_agg(s3.__key ORDER BY s3.__rn ASC) FILTER (WHERE s3.__rn <= $3))->-1, 'n', count(*) FILTER (WHERE s3.__rn <= $3), 'rows', coalesce(json_agg(s3.data ORDER BY s3.__rn ASC) FILTER (WHERE s3.__rn <= $3), '[]'::json)) AS data
+	wantSQL(t, stmt, `SELECT json_build_object('has_next', coalesce(bool_or(s3.__rn > $2), false), 'has_prev', false, 'first', (json_agg(s3.__key ORDER BY s3.__rn ASC) FILTER (WHERE s3.__rn <= $2))->0, 'last', (json_agg(s3.__key ORDER BY s3.__rn ASC) FILTER (WHERE s3.__rn <= $2))->-1, 'n', count(*) FILTER (WHERE s3.__rn <= $2), 'rows', coalesce(json_agg(s3.data ORDER BY s3.__rn ASC) FILTER (WHERE s3.__rn <= $2), '[]'::json)) AS data
 FROM (
-  SELECT json_build_object('id', t0."id", 'title', t0."title", $1::text, l2.data) AS data, jsonb_build_array(t0."id") AS __key, row_number() OVER (ORDER BY t0."id" ASC) AS __rn
-  FROM "public"."posts" t0
+  SELECT json_build_object('id', t0."id", 'title', t0."title", $1::text, l2.data) AS data, jsonb_build_array(t0."id") AS __key, t0.__rn
+  FROM (
+    SELECT t0."id", t0."author_id", t0."title", row_number() OVER (ORDER BY t0."id" ASC) AS __rn
+    FROM "public"."posts" t0
+    ORDER BY t0."id" ASC
+    LIMIT 101
+  ) t0
   LEFT JOIN LATERAL (
     SELECT json_build_object('id', t1."id", 'email', t1."email") AS data
     FROM "public"."users" t1
     WHERE t1."id" = t0."author_id"
     LIMIT 1
   ) l2 ON true
-  ORDER BY t0."id" ASC
-  LIMIT $2
-) s3`, "author", 101, 100)
+) s3`, "author", 100)
 }
 
 func TestEmbedBackwardPagedNested(t *testing.T) {
@@ -293,10 +296,15 @@ func TestEmbedBackwardPagedNested(t *testing.T) {
 		Page:   plan.Page{Limit: 5, Offset: 5, LimitSet: true},
 	}}}
 	stmt := f.compile(p)
-	wantSQL(t, stmt, `SELECT json_build_object('has_next', coalesce(bool_or(s7.__rn > $5), false), 'has_prev', false, 'first', (json_agg(s7.__key ORDER BY s7.__rn ASC) FILTER (WHERE s7.__rn <= $5))->0, 'last', (json_agg(s7.__key ORDER BY s7.__rn ASC) FILTER (WHERE s7.__rn <= $5))->-1, 'n', count(*) FILTER (WHERE s7.__rn <= $5), 'rows', coalesce(json_agg(s7.data ORDER BY s7.__rn ASC) FILTER (WHERE s7.__rn <= $5), '[]'::json)) AS data
+	wantSQL(t, stmt, `SELECT json_build_object('has_next', coalesce(bool_or(s7.__rn > $2), false), 'has_prev', false, 'first', (json_agg(s7.__key ORDER BY s7.__rn ASC) FILTER (WHERE s7.__rn <= $2))->0, 'last', (json_agg(s7.__key ORDER BY s7.__rn ASC) FILTER (WHERE s7.__rn <= $2))->-1, 'n', count(*) FILTER (WHERE s7.__rn <= $2), 'rows', coalesce(json_agg(s7.data ORDER BY s7.__rn ASC) FILTER (WHERE s7.__rn <= $2), '[]'::json)) AS data
 FROM (
-  SELECT json_build_object('id', t0."id", 'posts', l6.data) AS data, jsonb_build_array(t0."id") AS __key, row_number() OVER (ORDER BY t0."id" ASC) AS __rn
-  FROM "public"."users" t0
+  SELECT json_build_object('id', t0."id", 'posts', l6.data) AS data, jsonb_build_array(t0."id") AS __key, t0.__rn
+  FROM (
+    SELECT t0."id", row_number() OVER (ORDER BY t0."id" ASC) AS __rn
+    FROM "public"."users" t0
+    ORDER BY t0."id" ASC
+    LIMIT 6
+  ) t0
   LEFT JOIN LATERAL (
     SELECT coalesce(json_agg(s5.data), '[]'::json) AS data
     FROM (
@@ -309,18 +317,16 @@ FROM (
           FROM "public"."comments" t2
           WHERE t2."post_id" = t1."id"
           ORDER BY t2."id" ASC
-          LIMIT $1
+          LIMIT 3
         ) s3
       ) l4 ON true
       WHERE t1."author_id" = t0."id" AND t1."published" IS TRUE
       ORDER BY t1."title" DESC, t1."id" ASC
-      LIMIT $2
-      OFFSET $3
+      LIMIT 5
+      OFFSET $1
     ) s5
   ) l6 ON true
-  ORDER BY t0."id" ASC
-  LIMIT $4
-) s7`, 3, 5, 5, 6, 5)
+) s7`, 5, 5)
 }
 
 func TestEmbedInner(t *testing.T) {
@@ -334,16 +340,16 @@ func TestEmbedInner(t *testing.T) {
 		Filter: cond(f.col("posts", "title"), plan.OpSw, "A"),
 	}}}
 	stmt := f.compile(p)
-	if !strings.Contains(stmt.SQL, `WHERE EXISTS (SELECT 1 FROM "public"."posts" r4 WHERE r4."author_id" = t0."id" AND r4."title" LIKE $3 || '%')`) {
+	if !strings.Contains(stmt.SQL, `WHERE EXISTS (SELECT 1 FROM "public"."posts" r4 WHERE r4."author_id" = t0."id" AND r4."title" LIKE $2 || '%')`) {
 		t.Errorf("inner EXISTS missing:\n%s", stmt.SQL)
 	}
 	if !strings.Contains(stmt.SQL, `WHERE t1."author_id" = t0."id" AND t1."title" LIKE $1 || '%'`) {
 		t.Errorf("lateral filter missing:\n%s", stmt.SQL)
 	}
-	if !strings.Contains(stmt.SQL, `'total', (SELECT count(*) FROM "public"."users" c6 WHERE EXISTS (SELECT 1 FROM "public"."posts" r7 WHERE r7."author_id" = c6."id" AND r7."title" LIKE $6 || '%')), 'n', `) {
+	if !strings.Contains(stmt.SQL, `'total', (SELECT count(*) FROM "public"."users" c6 WHERE EXISTS (SELECT 1 FROM "public"."posts" r7 WHERE r7."author_id" = c6."id" AND r7."title" LIKE $4 || '%')), 'n', `) {
 		t.Errorf("count must repeat the inner restriction:\n%s", stmt.SQL)
 	}
-	if len(stmt.Args) != 6 {
+	if len(stmt.Args) != 4 {
 		t.Errorf("args: %v", stmt.Args)
 	}
 	if !stmt.Total {
@@ -363,10 +369,10 @@ func TestEmbedHintsSelfRef(t *testing.T) {
 	if !strings.Contains(stmt.SQL, `WHERE t1."id" = t0."parent_id"`) || !strings.Contains(stmt.SQL, `WHERE t3."parent_id" = t0."id"`) {
 		t.Errorf("self-reference embeds:\n%s", stmt.SQL)
 	}
-	if !strings.Contains(stmt.SQL, `$1::text, l2.data, $3::text, l5.data`) {
+	if !strings.Contains(stmt.SQL, `$1::text, l2.data, $2::text, l5.data`) {
 		t.Errorf("aliases:\n%s", stmt.SQL)
 	}
-	if stmt.Args[0] != "parent" || stmt.Args[2] != "replies" {
+	if stmt.Args[0] != "parent" || stmt.Args[1] != "replies" {
 		t.Errorf("alias args %v", stmt.Args)
 	}
 }
@@ -440,8 +446,8 @@ func TestFilterOps(t *testing.T) {
 			if !strings.Contains(stmt.SQL, "\n  WHERE "+tc.sql+"\n") {
 				t.Errorf("want predicate %q in:\n%s", tc.sql, stmt.SQL)
 			}
-			// args: predicate params first, then LIMIT and trim.
-			if len(stmt.Args) != len(tc.args)+2 {
+			// args: predicate params first, then the trim.
+			if len(stmt.Args) != len(tc.args)+1 {
 				t.Fatalf("args: %v", stmt.Args)
 			}
 			for i, want := range tc.args {
@@ -649,7 +655,7 @@ func TestFilterSpatial(t *testing.T) {
 			if !strings.Contains(stmt.SQL, tc.want) {
 				t.Errorf("want %s\n%s", tc.want, stmt.SQL)
 			}
-			if len(stmt.Args) != tc.n+2 {
+			if len(stmt.Args) != tc.n+1 {
 				t.Errorf("args: %v", stmt.Args)
 			}
 			if tc.arg != nil && stmt.Args[0] != tc.arg {
@@ -777,14 +783,14 @@ func TestKeysetAfter(t *testing.T) {
 	p.Order = []plan.OrderTerm{{Column: f.col("posts", "title")}}
 	p.Page = plan.Page{Limit: 2, After: []any{7}}
 	stmt := f.compile(p)
-	wantSQL(t, stmt, `SELECT json_build_object('has_next', coalesce(bool_or(s1.__rn > $4), false), 'has_prev', true, 'first', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $4))->0, 'last', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $4))->-1, 'n', count(*) FILTER (WHERE s1.__rn <= $4), 'rows', coalesce(json_agg(s1.data ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $4), '[]'::json)) AS data
+	wantSQL(t, stmt, `SELECT json_build_object('has_next', coalesce(bool_or(s1.__rn > $3), false), 'has_prev', true, 'first', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $3))->0, 'last', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $3))->-1, 'n', count(*) FILTER (WHERE s1.__rn <= $3), 'rows', coalesce(json_agg(s1.data ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $3), '[]'::json)) AS data
 FROM (
   SELECT json_build_object('id', t0."id", 'title', t0."title") AS data, jsonb_build_array(t0."id") AS __key, row_number() OVER (ORDER BY t0."title" ASC, t0."id" ASC) AS __rn
   FROM "public"."posts" t0
   WHERE (t0."title", t0."id") > ((SELECT __a."title" FROM "public"."posts" __a WHERE __a."id" = $1), $2)
   ORDER BY t0."title" ASC, t0."id" ASC
-  LIMIT $3
-) s1`, 7, 7, 3, 2)
+  LIMIT 3
+) s1`, 7, 7, 2)
 	// Mixed directions / nullable → expanded chain; PK-only order → params only.
 	p.Order = []plan.OrderTerm{{Column: f.col("posts", "body"), Desc: true}}
 	stmt = f.compile(p)
@@ -813,14 +819,14 @@ func TestKeysetBefore(t *testing.T) {
 	p.Order = []plan.OrderTerm{{Column: f.col("posts", "title")}}
 	p.Page = plan.Page{Limit: 2, Before: []any{13}}
 	stmt := f.compile(p)
-	wantSQL(t, stmt, `SELECT json_build_object('has_next', true, 'has_prev', coalesce(bool_or(s1.__rn > $4), false), 'first', (json_agg(s1.__key ORDER BY s1.__rn DESC) FILTER (WHERE s1.__rn <= $4))->0, 'last', (json_agg(s1.__key ORDER BY s1.__rn DESC) FILTER (WHERE s1.__rn <= $4))->-1, 'n', count(*) FILTER (WHERE s1.__rn <= $4), 'rows', coalesce(json_agg(s1.data ORDER BY s1.__rn DESC) FILTER (WHERE s1.__rn <= $4), '[]'::json)) AS data
+	wantSQL(t, stmt, `SELECT json_build_object('has_next', true, 'has_prev', coalesce(bool_or(s1.__rn > $3), false), 'first', (json_agg(s1.__key ORDER BY s1.__rn DESC) FILTER (WHERE s1.__rn <= $3))->0, 'last', (json_agg(s1.__key ORDER BY s1.__rn DESC) FILTER (WHERE s1.__rn <= $3))->-1, 'n', count(*) FILTER (WHERE s1.__rn <= $3), 'rows', coalesce(json_agg(s1.data ORDER BY s1.__rn DESC) FILTER (WHERE s1.__rn <= $3), '[]'::json)) AS data
 FROM (
   SELECT json_build_object('id', t0."id") AS data, jsonb_build_array(t0."id") AS __key, row_number() OVER (ORDER BY t0."title" DESC, t0."id" DESC) AS __rn
   FROM "public"."posts" t0
   WHERE (t0."title", t0."id") < ((SELECT __a."title" FROM "public"."posts" __a WHERE __a."id" = $1), $2)
   ORDER BY t0."title" DESC, t0."id" DESC
-  LIMIT $3
-) s1`, 13, 13, 3, 2)
+  LIMIT 3
+) s1`, 13, 13, 2)
 	p.Page.Offset = 1
 	userErr(t, f.compileErr(p), compile.CodeKeysetUnsupported)
 	// nullable desc reversed → ASC NULLS FIRST
@@ -842,10 +848,10 @@ func TestCount(t *testing.T) {
 	p.Count = true
 	p.Filter = cond(f.col("users", "mood"), plan.OpEq, "happy")
 	stmt := f.compile(p)
-	if !strings.Contains(stmt.SQL, `'total', (SELECT count(*) FROM "public"."users" c2 WHERE c2."mood" = $4), 'n', `) {
+	if !strings.Contains(stmt.SQL, `'total', (SELECT count(*) FROM "public"."users" c2 WHERE c2."mood" = $3), 'n', `) {
 		t.Errorf("count:\n%s", stmt.SQL)
 	}
-	if !stmt.Total || len(stmt.Args) != 4 {
+	if !stmt.Total || len(stmt.Args) != 3 {
 		t.Errorf("metadata/args: %+v", stmt)
 	}
 }
@@ -860,16 +866,16 @@ func TestDistinct(t *testing.T) {
 	p.Count = true
 	p.Page.Limit = 5
 	stmt := f.compile(p)
-	wantSQL(t, stmt, `SELECT json_build_object('has_next', coalesce(bool_or(s2.__rn > $2), false), 'has_prev', false, 'total', (SELECT count(*) FROM (SELECT DISTINCT c3."mood" FROM "public"."users" c3) c4), 'n', count(*) FILTER (WHERE s2.__rn <= $2), 'rows', coalesce(json_agg(s2.data ORDER BY s2.__rn ASC) FILTER (WHERE s2.__rn <= $2), '[]'::json)) AS data
+	wantSQL(t, stmt, `SELECT json_build_object('has_next', coalesce(bool_or(s2.__rn > $1), false), 'has_prev', false, 'total', (SELECT count(*) FROM (SELECT DISTINCT c3."mood" FROM "public"."users" c3) c4), 'n', count(*) FILTER (WHERE s2.__rn <= $1), 'rows', coalesce(json_agg(s2.data ORDER BY s2.__rn ASC) FILTER (WHERE s2.__rn <= $1), '[]'::json)) AS data
 FROM (
   SELECT d1.*, row_number() OVER (ORDER BY d1.__rn0) AS __rn
   FROM (
     SELECT DISTINCT ON (t0."mood") json_build_object('mood', t0."mood") AS data, row_number() OVER (ORDER BY t0."mood" DESC NULLS LAST, t0."email" ASC, t0."id" ASC) AS __rn0
     FROM "public"."users" t0
     ORDER BY t0."mood" DESC NULLS LAST, t0."email" ASC, t0."id" ASC
-    LIMIT $1
+    LIMIT 6
   ) d1
-) s2`, 6, 5)
+) s2`, 5)
 	if stmt.Cursors {
 		t.Error("distinct must not emit cursors")
 	}
@@ -953,13 +959,13 @@ func TestRowByUniqueWithEmbedAndFilter(t *testing.T) {
 		Filter: cond(f.col("users", "mood"), plan.OpEq, "happy"),
 	}
 	stmt := f.compile(p)
-	if !strings.Contains(stmt.SQL, `WHERE t0."email" = $2 AND t0."mood" = $3`) {
+	if !strings.Contains(stmt.SQL, `WHERE t0."email" = $1 AND t0."mood" = $2`) {
 		t.Errorf("unique + filter:\n%s", stmt.SQL)
 	}
 	if !strings.Contains(stmt.SQL, `LEFT JOIN LATERAL (`) || !strings.Contains(stmt.SQL, `'post_count', ("public"."users_post_count"(`) {
 		t.Errorf("embed/computed:\n%s", stmt.SQL)
 	}
-	if len(stmt.Args) != 3 || stmt.Args[0] != 100 || stmt.Args[1] != "a@b.c" {
+	if len(stmt.Args) != 2 || stmt.Args[0] != "a@b.c" {
 		t.Errorf("args: %v", stmt.Args)
 	}
 }
@@ -1121,7 +1127,7 @@ func TestHooksHelpers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if json != `json_build_object('id', __mut."id", 'posts', l1002.data)` || !strings.Contains(laterals, `WHERE t1000."author_id" = __mut."id"`) || len(ps.Args()) != 4 {
+	if json != `json_build_object('id', __mut."id", 'posts', l1002.data)` || !strings.Contains(laterals, `WHERE t1000."author_id" = __mut."id"`) || len(ps.Args()) != 3 {
 		t.Errorf("RowJSON: %s\n%s\n%v", json, laterals, ps.Args())
 	}
 }

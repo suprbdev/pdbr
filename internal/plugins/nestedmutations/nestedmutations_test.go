@@ -274,7 +274,7 @@ func TestChainSQL(t *testing.T) {
 		if strings.Contains(st.SQL, `FROM "public"."posts" t1`) {
 			t.Errorf("embed reads the table instead of the visibility CTE:\n%s", st.SQL)
 		}
-		if len(st.Args) != 4 || st.Args[0] != "a@b.c" || st.Args[1] != "One" || st.Args[2] != "Two" {
+		if len(st.Args) != 3 || st.Args[0] != "a@b.c" || st.Args[1] != "One" || st.Args[2] != "Two" {
 			t.Errorf("args = %v", st.Args)
 		}
 		if !st.Mutation || st.Shape != compile.ShapeMutWrap {
@@ -383,7 +383,7 @@ func TestSQLIsShapePure(t *testing.T) {
 	}
 	a, na := shape(`{"email":"a","full_name":null,"posts":{"create":[{"title":"x","body":"y"},{"title":"z"}]}}`)
 	b, nb := shape(`{"email":"zzz'; DROP TABLE users; --","full_name":"Ada","posts":{"create":[{"title":"","body":null},{"title":"$1"}]}}`)
-	if a != b || na != nb || na != 6 {
+	if a != b || na != nb || na != 5 {
 		t.Fatalf("SQL differs across values (%d/%d args):\n%s\n---\n%s", na, nb, a, b)
 	}
 	if strings.Contains(a, "DROP") || strings.Contains(a, "Ada") {

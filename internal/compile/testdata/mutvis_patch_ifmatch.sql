@@ -31,8 +31,8 @@ SELECT json_build_object('found', EXISTS (SELECT 1 FROM cur), 'row', (
       ) l3 ON true
       WHERE t1."author_id" = t0."id"
       ORDER BY t1."id" ASC
-      LIMIT $4
+      LIMIT 100
     ) s4
   ) l5 ON true
 )) AS data
--- args: ["Grace",1,"5d41402abc4b2a76b9719d911017c592",100]
+-- args: ["Grace",1,"5d41402abc4b2a76b9719d911017c592"]

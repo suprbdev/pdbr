@@ -177,16 +177,16 @@ func TestRPCVoidRowSetOf(t *testing.T) {
 	req.Count = true
 	req.Filter = cond(posts.Table.Column("author_id"), plan.OpEq, int64(1))
 	st = f.compile(req)
-	want := `SELECT json_build_object('has_next', coalesce(bool_or(s1.__rn > $5), false), 'has_prev', true, 'total', (SELECT count(*) FROM "public"."search_posts"("term" => $1::"text") c2 WHERE c2."author_id" = $6), 'n', count(*) FILTER (WHERE s1.__rn <= $5), 'rows', coalesce(json_agg(s1.data ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $5), '[]'::json)) AS data
+	want := `SELECT json_build_object('has_next', coalesce(bool_or(s1.__rn > $4), false), 'has_prev', true, 'total', (SELECT count(*) FROM "public"."search_posts"("term" => $1::"text") c2 WHERE c2."author_id" = $5), 'n', count(*) FILTER (WHERE s1.__rn <= $4), 'rows', coalesce(json_agg(s1.data ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $4), '[]'::json)) AS data
 FROM (
   SELECT json_build_object('id', t0."id") AS data, row_number() OVER (ORDER BY t0."id" ASC) AS __rn
   FROM "public"."search_posts"("term" => $1::"text") t0
   WHERE t0."author_id" = $2
   ORDER BY t0."id" ASC
-  LIMIT $3
-  OFFSET $4
+  LIMIT 3
+  OFFSET $3
 ) s1`
-	wantSQL(t, st, want, "x", int64(1), 3, 2, 4, int64(1))
+	wantSQL(t, st, want, "x", int64(1), 2, 4, int64(1))
 	if st.Shape != compile.ShapePage || st.Cursors || !st.Total {
 		t.Errorf("setof shape: %+v", st)
 	}
@@ -208,7 +208,7 @@ func TestRPCSetOfValuesAndMint(t *testing.T) {
 	req := rpcReq(f, "mood_moods", nil)
 	req.Page = plan.Page{Limit: 5, Offset: 1}
 	st := f.compile(req)
-	wantSQL(t, st, "SELECT coalesce(json_agg(to_json(__s.v)), '[]'::json) AS data\nFROM (SELECT __v.v FROM \"public\".\"mood_moods\"() AS __v(v) LIMIT $1 OFFSET $2) AS __s", 5, 1)
+	wantSQL(t, st, "SELECT coalesce(json_agg(to_json(__s.v)), '[]'::json) AS data\nFROM (SELECT __v.v FROM \"public\".\"mood_moods\"() AS __v(v) LIMIT 5 OFFSET $1) AS __s", 1)
 	if st.Shape != compile.ShapeScalar {
 		t.Errorf("setof scalar shape %s", st.Shape)
 	}
@@ -217,7 +217,7 @@ func TestRPCSetOfValuesAndMint(t *testing.T) {
 
 	st = f.compile(rpcReq(f, "addresses", nil))
 	if !strings.Contains(st.SQL, `json_agg(CASE WHEN (__s.v)::text IS NULL THEN NULL ELSE json_build_object('street', (__s.v)."street"`) ||
-		!strings.Contains(st.SQL, `FROM (SELECT __v AS v FROM "public"."addresses"() AS __v LIMIT $1) AS __s`) {
+		!strings.Contains(st.SQL, `FROM (SELECT __v AS v FROM "public"."addresses"() AS __v LIMIT 100) AS __s`) {
 		t.Errorf("setof composite: %s", st.SQL)
 	}
 
@@ -227,7 +227,7 @@ func TestRPCSetOfValuesAndMint(t *testing.T) {
 		t.Errorf("mint: %+v", st)
 	}
 	st = f.compile(rpcReq(f, "all_tokens", nil))
-	wantSQL(t, st, "SELECT coalesce(json_agg(to_jsonb(__s.v)), '[]'::json) AS data\nFROM (SELECT __v AS v FROM \"public\".\"all_tokens\"() AS __v LIMIT $1) AS __s", 100)
+	wantSQL(t, st, "SELECT coalesce(json_agg(to_jsonb(__s.v)), '[]'::json) AS data\nFROM (SELECT __v AS v FROM \"public\".\"all_tokens\"() AS __v LIMIT 100) AS __s")
 	if st.Shape != compile.ShapeJWTSet {
 		t.Errorf("mint set shape %s", st.Shape)
 	}

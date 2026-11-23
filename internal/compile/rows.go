@@ -631,7 +631,7 @@ func (s *stmt) listInnerWith(node *plan.Node, filter plan.Expr, order []plan.Ord
 	if err != nil {
 		return "", err
 	}
-	pageSQL := "\nLIMIT " + s.param(limit)
+	pageSQL := "\nLIMIT " + strconv.Itoa(limit)
 	if page.Offset > 0 {
 		pageSQL += "\nOFFSET " + s.param(page.Offset)
 	}

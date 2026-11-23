@@ -20,10 +20,10 @@ LEFT JOIN LATERAL (
       FROM __vis t2
       WHERE t2."author_id" = t1."id"
       ORDER BY t2."id" ASC
-      LIMIT $3
+      LIMIT 100
     ) s3
   ) l4 ON true
   WHERE t1."id" = t0."author_id"
   LIMIT 1
 ) l5 ON true
--- args: [1,"vis-probe",100]
+-- args: [1,"vis-probe"]

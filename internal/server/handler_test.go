@@ -120,7 +120,7 @@ func TestHandlerList(t *testing.T) {
 	if link := res.Header.Get("Link"); !strings.HasPrefix(link, `</api/users?select=id,email&limit=2&count=true&after=`) || !strings.HasSuffix(link, `>; rel="next"`) {
 		t.Fatalf("Link = %q", link)
 	}
-	if !strings.Contains(db.seen[0], `LIMIT $`) {
+	if !strings.Contains(db.seen[0], "LIMIT 3\n") {
 		t.Fatalf("sql = %s", db.seen[0])
 	}
 }
@@ -262,7 +262,7 @@ func TestHandlerCompileSQL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(out, "-- request: GET /api/users?select=id&limit=2\n") || !strings.Contains(out, `FROM "public"."users"`) || !strings.HasSuffix(out, "-- args: [3,2]\n") {
+	if !strings.HasPrefix(out, "-- request: GET /api/users?select=id&limit=2\n") || !strings.Contains(out, `FROM "public"."users"`) || !strings.HasSuffix(out, "-- args: [2]\n") {
 		t.Fatalf("out = %q", out)
 	}
 	r, _ = http.NewRequest("GET", "http://x/api/nope", nil)

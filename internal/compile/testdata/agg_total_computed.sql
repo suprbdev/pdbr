@@ -1,5 +1,5 @@
 -- request: GET /api/users?select=mood,post_count,count()&limit=2
-SELECT json_build_object('has_next', coalesce(bool_or(s2.__rn > $2), false), 'has_prev', false, 'total', (SELECT count(*) FROM (SELECT 1 FROM "public"."users" c3 GROUP BY c3."mood", to_jsonb(("public"."users_post_count"("u" => ROW(c3."id", c3."email", c3."full_name", c3."mood", c3."settings", c3."tags", c3."balance", c3."created_at", c3."address", c3."prev_addresses", c3."moods")::"public"."users"))::text)) g4), 'n', count(*) FILTER (WHERE s2.__rn <= $2), 'rows', coalesce(json_agg(s2.data ORDER BY s2.__rn ASC) FILTER (WHERE s2.__rn <= $2), '[]'::json)) AS data
+SELECT json_build_object('has_next', coalesce(bool_or(s2.__rn > $1), false), 'has_prev', false, 'total', (SELECT count(*) FROM (SELECT 1 FROM "public"."users" c3 GROUP BY c3."mood", to_jsonb(("public"."users_post_count"("u" => ROW(c3."id", c3."email", c3."full_name", c3."mood", c3."settings", c3."tags", c3."balance", c3."created_at", c3."address", c3."prev_addresses", c3."moods")::"public"."users"))::text)) g4), 'n', count(*) FILTER (WHERE s2.__rn <= $1), 'rows', coalesce(json_agg(s2.data ORDER BY s2.__rn ASC) FILTER (WHERE s2.__rn <= $1), '[]'::json)) AS data
 FROM (
   SELECT json_build_object('mood', g1."__k0", 'post_count', g1."__k1", 'count', to_json(g1."__a0")) AS data, row_number() OVER (ORDER BY g1."__k0" ASC, g1."__k1" ASC) AS __rn
   FROM (
@@ -8,6 +8,6 @@ FROM (
     GROUP BY 1, 2
   ) g1
   ORDER BY g1."__k0" ASC, g1."__k1" ASC
-  LIMIT $1
+  LIMIT 3
 ) s2
--- args: [3,2]
+-- args: [2]

@@ -1,8 +1,13 @@
 -- request: GET /api/users?select=id,posts(id,title,comments(id,body))&posts.limit=3&posts.comments.limit=2&posts.comments.order=id.desc
-SELECT json_build_object('has_next', coalesce(bool_or(s7.__rn > $4), false), 'has_prev', false, 'first', (json_agg(s7.__key ORDER BY s7.__rn ASC) FILTER (WHERE s7.__rn <= $4))->0, 'last', (json_agg(s7.__key ORDER BY s7.__rn ASC) FILTER (WHERE s7.__rn <= $4))->-1, 'n', count(*) FILTER (WHERE s7.__rn <= $4), 'rows', coalesce(json_agg(s7.data ORDER BY s7.__rn ASC) FILTER (WHERE s7.__rn <= $4), '[]'::json)) AS data
+SELECT json_build_object('has_next', coalesce(bool_or(s7.__rn > $1), false), 'has_prev', false, 'first', (json_agg(s7.__key ORDER BY s7.__rn ASC) FILTER (WHERE s7.__rn <= $1))->0, 'last', (json_agg(s7.__key ORDER BY s7.__rn ASC) FILTER (WHERE s7.__rn <= $1))->-1, 'n', count(*) FILTER (WHERE s7.__rn <= $1), 'rows', coalesce(json_agg(s7.data ORDER BY s7.__rn ASC) FILTER (WHERE s7.__rn <= $1), '[]'::json)) AS data
 FROM (
-  SELECT json_build_object('id', t0."id", 'posts', l6.data) AS data, jsonb_build_array(t0."id") AS __key, row_number() OVER (ORDER BY t0."id" ASC) AS __rn
-  FROM "public"."users" t0
+  SELECT json_build_object('id', t0."id", 'posts', l6.data) AS data, jsonb_build_array(t0."id") AS __key, t0.__rn
+  FROM (
+    SELECT t0."id", row_number() OVER (ORDER BY t0."id" ASC) AS __rn
+    FROM "public"."users" t0
+    ORDER BY t0."id" ASC
+    LIMIT 101
+  ) t0
   LEFT JOIN LATERAL (
     SELECT coalesce(json_agg(s5.data), '[]'::json) AS data
     FROM (
@@ -15,15 +20,13 @@ FROM (
           FROM "public"."comments" t2
           WHERE t2."post_id" = t1."id"
           ORDER BY t2."id" DESC
-          LIMIT $1
+          LIMIT 2
         ) s3
       ) l4 ON true
       WHERE t1."author_id" = t0."id"
       ORDER BY t1."id" ASC
-      LIMIT $2
+      LIMIT 3
     ) s5
   ) l6 ON true
-  ORDER BY t0."id" ASC
-  LIMIT $3
 ) s7
--- args: [2,3,101,100]
+-- args: [100]

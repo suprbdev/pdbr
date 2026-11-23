@@ -20,10 +20,10 @@ LEFT JOIN LATERAL (
       FROM __vis t2
       WHERE t2."author_id" = t1."id" AND t2."id" > $3
       ORDER BY t2."id" DESC
-      LIMIT $4
+      LIMIT 2
     ) s3
   ) l4 ON true
   WHERE t1."id" = t0."author_id"
   LIMIT 1
 ) l5 ON true
--- args: [1,"filtered",1,2]
+-- args: [1,"filtered",1]

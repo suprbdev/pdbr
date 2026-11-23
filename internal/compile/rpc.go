@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/suprbdev/pdbcore/introspect"
@@ -203,7 +204,7 @@ func (s *stmt) rpcSetOfValues(rpc *api.RPC, call string) (*Statement, error) {
 	if s.plan.Page.Offset < 0 {
 		return nil, errUser(CodeInvalidFilter, "offset must be >= 0")
 	}
-	pageSQL := " LIMIT " + s.param(limit)
+	pageSQL := " LIMIT " + strconv.Itoa(limit)
 	if s.plan.Page.Offset > 0 {
 		pageSQL += " OFFSET " + s.param(s.plan.Page.Offset)
 	}

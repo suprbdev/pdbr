@@ -551,7 +551,9 @@ which pdbq did not need (SDL served that role).
 2. **SQL text is a pure function of request shape.** Values only travel as
    parameters (`$n`); enforced by fuzz tests. Identifiers only via
    `quoteIdent`. The only structural literals: `is.null`/`is.true`/`is.false`,
-   `exists.true/false`, SRID ints, jsonb build keys.
+   `exists.true/false`, SRID ints, jsonb build keys, and `LIMIT` values
+   (Go integers capped by `server.max_page_size`, written as literals so
+   Postgres can reuse a generic plan; `OFFSET` stays a parameter).
 3. **RLS via `SET LOCAL` only**, claims via `set_config(prefix.k, v, true)`;
    role validated `[A-Za-z0-9_]+`.
 4. **No unbounded scans**: absent `limit` → `server.max_page_size`; over →
