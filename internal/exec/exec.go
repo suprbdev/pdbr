@@ -85,10 +85,12 @@ type RequestHook interface {
 	AfterRequest(ctx context.Context, op *Operation, res *Result)
 }
 
-// DB is the pool surface the executor needs (satisfied by *pgxpool.Pool).
+// DB is the pool surface the executor needs (satisfied by *pgxpool.Pool):
+// QueryRow for statements outside a transaction, Acquire for the pipelined
+// transactions of pgexec.QueryTx.
 type DB interface {
 	pgexec.Querier
-	pgexec.TxBeginner
+	pgexec.ConnAcquirer
 }
 
 // Options are the config bits the executor consults per request.
@@ -124,6 +126,8 @@ type Executor struct {
 	Compile compile.Func
 	Hooks   []RequestHook
 	Opts    Options
+
+	queryTx func(ctx context.Context, db pgexec.ConnAcquirer, opts pgexec.TxOptions, id pgexec.Identity, stmts ...pgexec.Stmt) error
 }
 
 // New creates an executor. compileFn is normally the CompileHook chain
@@ -263,16 +267,19 @@ func (e *Executor) needsTx(op *Operation, stmt *compile.Statement) bool {
 }
 
 // run executes the statement (in a transaction when the policy asks for
-// one) and unwraps its data column.
+// one) and unwraps its data column. A transaction is one pipelined batch
+// (pgexec.QueryTx): identity and statement, plus BEGIN/COMMIT only for a
+// non-default isolation level or a Prefer: max-affected cap, whose check
+// must run before the commit.
 func (e *Executor) run(ctx context.Context, op *Operation, stmt *compile.Statement) *Result {
 	if e.DB == nil {
 		return e.errResult(&Error{Status: http.StatusServiceUnavailable, Code: CodeUnavailable, Detail: "no database connection"})
 	}
 	var raw []byte
 	var found bool
-	query := func(q pgexec.Querier) error {
+	scan := func(row pgx.Row) error {
 		raw, found = nil, false
-		err := q.QueryRow(ctx, stmt.SQL, stmt.Args...).Scan(&raw)
+		err := row.Scan(&raw)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
 		}
@@ -294,18 +301,23 @@ func (e *Executor) run(ctx context.Context, op *Operation, stmt *compile.Stateme
 	}
 	var err error
 	if e.needsTx(op, stmt) {
-		err = pgexec.RunTx(ctx, e.DB, pgexec.TxOptions{
-			Isolation:  e.Opts.Isolation,
-			MaxRetries: e.Opts.MaxRetries,
-			RLS:        e.Opts.RLS,
-			Log:        e.Opts.Logger,
+		queryTx := e.queryTx
+		if queryTx == nil {
+			queryTx = pgexec.QueryTx
+		}
+		err = queryTx(ctx, e.DB, pgexec.TxOptions{
+			Isolation:        batchIsolation(e.Opts.Isolation),
+			MaxRetries:       e.Opts.MaxRetries,
+			RLS:              e.Opts.RLS,
+			ScanBeforeCommit: maxAffected(op) != nil,
+			Log:              e.Opts.Logger,
 		}, pgexec.Identity{
 			Role:         op.Role,
 			Claims:       op.Claims,
 			ClaimsPrefix: e.Opts.ClaimsPrefix,
-		}, query)
+		}, pgexec.Stmt{SQL: stmt.SQL, Args: stmt.Args, Scan: scan})
 	} else {
-		err = query(e.DB)
+		err = scan(e.DB.QueryRow(ctx, stmt.SQL, stmt.Args...))
 	}
 	if err != nil {
 		var xe *Error
@@ -325,6 +337,17 @@ func (e *Executor) run(ctx context.Context, op *Operation, stmt *compile.Stateme
 		return e.errResult(err)
 	}
 	return res
+}
+
+// batchIsolation is the pgexec.QueryTx isolation for transactions.isolation:
+// read committed (the default) runs in the pipeline's implicit transaction
+// at the server's default_transaction_isolation, saving the BEGIN/COMMIT;
+// stricter levels need an explicit BEGIN ISOLATION LEVEL.
+func batchIsolation(iso pgx.TxIsoLevel) pgx.TxIsoLevel {
+	if iso == pgx.ReadCommitted {
+		return ""
+	}
+	return iso
 }
 
 // maxAffected is the Prefer: max-affected cap of a resource write, or nil.

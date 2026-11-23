@@ -87,7 +87,7 @@ See [cli.md](cli.md) for details.
 | `rls.auth.trusted_proxies` | []string | `[]` | CIDRs/IPs allowed to supply claim headers; empty trusts every peer (startup warning) |
 | `rls.auth.jwt_type` | string | — | schema-qualified composite (e.g. `public.jwt`); functions returning it yield a minted HS256 token |
 | `transactions.mutations` | bool | `true` | wrap every write in a tx |
-| `transactions.isolation` | string | `read_committed` | or `repeatable_read`, `serializable` |
+| `transactions.isolation` | string | `read_committed` | or `repeatable_read`, `serializable`; `read_committed` runs in the pipeline's implicit transaction at the server's `default_transaction_isolation` (read committed unless changed) |
 | `transactions.max_retries` | int | 0 | automatic re-runs on serialization failure/deadlock (40001/40P01); exhausted → `409` |
 | `watch.enabled` | bool | `false` | dev only; refuses to combine with cache |
 | `watch.poll_interval` | duration | `5s` | fallback polling when event triggers can't be installed |

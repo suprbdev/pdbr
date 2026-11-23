@@ -415,12 +415,20 @@ Transaction decision table (evaluated after RequestHooks ran, once per request):
 | yes | no | false | no | pool query (DML autocommits) |
 | yes | yes | false | — | tx (SET LOCAL forces it) |
 
-Inside a tx (`pgexec.RunTx`): `BEGIN` with `transactions.isolation`, `SET
-LOCAL ROLE "<role>"` when role set, `SELECT set_config('<prefix>.<k>', $1,
-true)` per claim (invariant 3; role validated `[A-Za-z0-9_]+`, claim keys
-validated), run the statement, `COMMIT`; any error → rollback. Serialization
-failure / deadlock (`40001` / `40P01`) → whole request re-run up to
-`transactions.max_retries` times, no backoff; still failing → 409.
+Inside a tx (`pgexec.QueryTx`): one pipelined batch, so one network round
+trip per request. The identity is a single statement, `SELECT
+set_config('role', $1, true), (SELECT count(set_config(k, v, true)) FROM
+unnest($2, $3))` (what `SET LOCAL ROLE` runs, with every claim as
+`<prefix>.<k>`; invariant 3; role validated by `pgexec.ValidRole`, claim keys
+validated), followed by the statement. Under `transactions.isolation:
+read_committed` (the default) the batch runs in PostgreSQL's implicit
+pipeline transaction at the server's `default_transaction_isolation`;
+`repeatable_read` / `serializable` wrap it in `BEGIN ISOLATION LEVEL …` /
+`COMMIT` in the same batch. A `Prefer: max-affected` write holds the
+`COMMIT` back until the affected-row check passed (a second round trip).
+Any error → rollback. Serialization failure / deadlock (`40001` / `40P01`)
+→ whole batch re-sent up to `transactions.max_retries` times, no backoff;
+still failing → 409.
 
 Read-only gate: `App.readOnly` (atomic) is consulted in exec before compile
 for every mutation → 405 `read_only` + `Allow` (survives runtime swaps).
@@ -606,7 +614,7 @@ lives in `CLAUDE.md` § Gotchas.
 | Add a config option | field + `koanf`/`doc` tags in `internal/config/config.go` (or `pdbcore/confx` if shared); `DefaultConfig`/`Validate`; mirror flag in `cmd/pdbr`; `make example-config`; add a row to `docs/configuration.md` |
 | Status code / problem mapping | `pdbcore/pgexec/classify.go` (PG classes) + `internal/server/problem.go` (status table, `code`) |
 | Write a plugin | `internal/plugin/plugin.go` (interfaces) + `internal/plugins/nestedmutations` (worked example: APIHook + CompileHook + RequestHook) and `internal/plugins/postgis` (APIHook only) + `docs/plugins.md` |
-| RLS / auth / claims | `pdbcore/pgexec` (`RunTx`, `applyRLS`) + `pdbcore/auth` |
+| RLS / auth / claims | `pdbcore/pgexec` (`QueryTx`, `ValidRole`) + `pdbcore/auth` |
 | ETag / If-Match / CSV / Prefer | `internal/server/handler.go` (negotiation, CSV) + `internal/exec/unwrap*.go` (headers) + `internal/compile/mutations.go` (`If-Match` CTE) |
 | Schema cache / CI drift gate | `pdbcore/cache`, `cmd/pdbr/main.go` (`schema dump\|check`, `schemaDrift`), tests `cmd/pdbr/schema_test.go`, `test/e2e_cache_test.go` |
 | Watch mode / hot swap | `pdbcore/watch` + `pdbr.go` (`buildServer`: `Watcher{TriggerName: "pdbr_watch"}` → `Server.Swap`) + `internal/server/server.go`; e2e `test/e2e_watch_test.go` |

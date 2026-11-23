@@ -8,9 +8,11 @@
 RLS support is **on by default**. Whenever a request resolves to a role or
 carries claims (under `rls.enabled` that is every request, since anonymous
 requests still switch to `rls.anonymous_role`), the statement runs inside a
-transaction that:
+transaction that first applies the identity, in one statement sent in the
+same pipelined batch as the request's statement (one network round trip):
 
-1. `SET LOCAL ROLE "<role>"` — the role from the request's claims
+1. `SET LOCAL ROLE "<role>"` (as `set_config('role', $1, true)`, the same
+   operation with the role as a bind parameter) — the role from the request's claims
    (`rls.role_claim`, default claim `role`), falling back to
    `rls.default_role`, then `rls.anonymous_role` for unauthenticated
    requests. A role must match `[A-Za-z0-9_]+` and must not be `none`,
