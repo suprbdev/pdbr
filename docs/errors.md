@@ -263,8 +263,8 @@ the limit short-circuits without reading.
 | PG refused/dropped the connection (`08*`), pool acquire failed or timed out (`database.connect_timeout`), `53*` resource errors, `57P01` admin shutdown | 503 | `pg:08…` / `pg:53…` / `unavailable` (`detail` "database unavailable" outside `dev`) |
 
 Rule of thumb: the request was *too slow* → 504; the database was *not
-available* → 503 (safe to retry after a delay; a `Retry-After` header is not
-sent). `GET /readyz` answers 503 `unavailable` when the pool ping fails
+available* → 503 (safe to retry after a delay; every 503 problem carries
+`Retry-After: 1`). `GET /readyz` answers 503 `unavailable` when the pool ping fails
 within `server.readyz_timeout`; `/healthz` stays a liveness check
 ([deployment.md](deployment.md#docker-image)).
 

@@ -108,6 +108,9 @@ func TestReadyz(t *testing.T) {
 	}
 	down := testServerPing(t, cfg, nil, nil, func(context.Context) error { return errors.New("refused") })
 	res, body := do(t, "GET", down.URL+"/readyz", nil)
+	if res.Header.Get("Retry-After") != "1" {
+		t.Errorf("503 Retry-After = %q", res.Header.Get("Retry-After"))
+	}
 	if res.StatusCode != 503 || res.Header.Get("Content-Type") != ContentTypeProblem || problem(t, body).Code != "unavailable" {
 		t.Errorf("readyz with a failing ping = %d %q", res.StatusCode, body)
 	}

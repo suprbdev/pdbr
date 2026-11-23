@@ -183,6 +183,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] `errors.detail: dev` adds `pg` object `{sqlstate, message, detail, hint, table, constraint}` (parity)
 - [x] `errors.detail: dev|prod|strict` message policy (22*/23* pass through in prod; everything generic in strict) (parity)
 - [x] Status mapping: 400 grammar/body/22*/23502/23514/42*, 401 credentials, 403 `42501`/role not allowed, 404 route/row, 405 + `Allow`, 406, 409 `23505`/`23503`/`23P01`/serialization exhausted, 412, 413, 415, 500 other, 503 `53*`/`08*`, 504 `57014`/request timeout (new)
+- [x] `Retry-After: 1` on every `503` problem (`unavailable`, `pg:08…`, `pg:53…`, `/readyz`) (new)
 - [x] PostgreSQL 18 temporal keys: `WITHOUT OVERLAPS` keys back no single-row route, `ETag` or upsert target (`400 temporal_conflict_target`; `resolution=ignore-duplicates` skips overlaps via `ON CONFLICT ON CONSTRAINT`), `PERIOD` FK embeds/filters/order join on `&&` and embed forward as arrays, nested writes copy only the equality columns, `NOT ENFORCED` FK embeds documented nullable (new)
 - [x] `23001` restrict violation (PostgreSQL 18+) → 409; PostGIS input errors (`XX000` mixed SRID / invalid geometry) and contrib input errors (`42601` tsquery/ltree syntax, `42704` unknown text search configuration) → 400 with a sanitized message (`invalid geometry` / passthrough; `invalid input value` in strict) (new)
 

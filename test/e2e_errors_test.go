@@ -285,7 +285,7 @@ func TestErrorCodesNeedingConfig(t *testing.T) {
 		}).URL
 		runRows(t, srv, []errorRow{
 			{name: "pool acquire", path: "/api/users?limit=1", status: 503, code: "unavailable", check: func(t *testing.T, res *http.Response, p problem) {
-				if p.Detail != "database unavailable" || res.Header.Get("Retry-After") != "" {
+				if p.Detail != "database unavailable" || res.Header.Get("Retry-After") != "1" {
 					t.Errorf("problem = %+v headers %v", p, res.Header)
 				}
 			}},
