@@ -182,4 +182,4 @@ Load benchmarks (pdbr and PostgREST lanes next to pdbq) are tracked in
 
 ## License
 
-MIT, (c) 2026 suprbdev.
+MIT, (c) 2026 suprb.
