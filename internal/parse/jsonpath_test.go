@@ -128,7 +128,7 @@ func TestJSONPathFilterOrder(t *testing.T) {
 		{"/api/users?email->a=eq.x", CodeInvalidFilter},
 		{"/api/users?address->>city=eq.x", CodeColumnNotFilterable},
 		{"/api/users?settings->>a=fts.x", CodeInvalidFilter},
-		{"/api/users?order=email->a", CodeInvalidFilter},
+		{"/api/users?order=email->a", CodeInvalidParameter},
 		{"/api/users?order=address->>city", CodeColumnNotOrderable},
 	} {
 		_, err := doParse(t, b, req{url: c.url}, allOn)

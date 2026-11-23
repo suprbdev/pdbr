@@ -193,14 +193,14 @@ func TestRouting(t *testing.T) {
 		code         string
 		allow        string
 	}{
-		{"GET", "/api/users", 501, CodeNotImplemented, ""},
-		{"HEAD", "/api/users", 501, "", ""},
-		{"POST", "/api/users", 501, CodeNotImplemented, ""},
-		{"GET", "/api/users/1", 501, CodeNotImplemented, ""},
-		{"GET", "/api/users/by/email/a%40b.c", 501, CodeNotImplemented, ""},
-		{"GET", "/api/public/users", 501, CodeNotImplemented, ""},
-		{"GET", "/api/rpc/search_posts", 501, CodeNotImplemented, ""},
-		{"POST", "/api/rpc/add_numbers", 501, CodeNotImplemented, ""},
+		{"GET", "/api/users", 500, CodeInternal, ""},
+		{"HEAD", "/api/users", 500, "", ""},
+		{"POST", "/api/users", 500, CodeInternal, ""},
+		{"GET", "/api/users/1", 500, CodeInternal, ""},
+		{"GET", "/api/users/by/email/a%40b.c", 500, CodeInternal, ""},
+		{"GET", "/api/public/users", 500, CodeInternal, ""},
+		{"GET", "/api/rpc/search_posts", 500, CodeInternal, ""},
+		{"POST", "/api/rpc/add_numbers", 500, CodeInternal, ""},
 		{"GET", "/api/rpc/add_numbers", 405, CodeMethodNotAllowed, "POST"},
 		{"PATCH", "/api/metrics", 405, CodeMethodNotAllowed, "GET, HEAD"},
 		{"DELETE", "/api/metrics", 405, CodeMethodNotAllowed, "GET, HEAD"},
@@ -259,7 +259,7 @@ func TestBasePathVariants(t *testing.T) {
 		cfg.BasePath = base
 		srv := testServer(t, cfg, nil, nil)
 		res, _ := do(t, "GET", srv.URL+base+"/users", nil)
-		if res.StatusCode != 501 {
+		if res.StatusCode != 500 {
 			t.Errorf("base %q: /users = %d", base, res.StatusCode)
 		}
 		res, _ = do(t, "GET", srv.URL+base+"/openapi.json", nil)

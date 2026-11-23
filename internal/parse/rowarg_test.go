@@ -29,10 +29,10 @@ func TestRowArgument(t *testing.T) {
 		t.Fatalf("row document = %s", doc)
 	}
 	for body, code := range map[string]string{
-		`{"greeting":"Hi","u":{"nope":1}}`:       CodeInvalidBody,
-		`{"greeting":"Hi","u":[{"id":1}]}`:       CodeInvalidBody,
-		`{"greeting":"Hi","u":{"id":"x"}}`:       CodeInvalidBody,
-		`{"greeting":"Hi","u":{"mood":"angry"}}`: CodeInvalidBody,
+		`{"greeting":"Hi","u":{"nope":1}}`:       CodeInvalidArgument,
+		`{"greeting":"Hi","u":[{"id":1}]}`:       CodeInvalidArgument,
+		`{"greeting":"Hi","u":{"id":"x"}}`:       CodeInvalidArgument,
+		`{"greeting":"Hi","u":{"mood":"angry"}}`: CodeInvalidArgument,
 	} {
 		_, err := post(body)
 		wantCode(t, err, code)
@@ -46,7 +46,7 @@ func TestRowArgument(t *testing.T) {
 		t.Fatalf("GET row document = %s", doc)
 	}
 	_, err = doParse(t, b, req{method: "GET", url: "/api/rpc/user_greeting?greeting=Hi&u=nope"}, allOn)
-	wantCode(t, err, CodeInvalidFilter)
+	wantCode(t, err, CodeInvalidArgument)
 
 	r, err = parseBodyReq(t, b, "POST", "/api/rpc/total_title_length", `{"ps":[{"title":"a"},null]}`, nil)
 	if err != nil {
@@ -56,7 +56,7 @@ func TestRowArgument(t *testing.T) {
 		t.Fatalf("array document = %s", doc)
 	}
 	_, err = parseBodyReq(t, b, "POST", "/api/rpc/total_title_length", `{"ps":{"title":"a"}}`, nil)
-	wantCode(t, err, CodeInvalidBody)
+	wantCode(t, err, CodeInvalidArgument)
 }
 
 func TestRowArgumentHiddenColumn(t *testing.T) {
@@ -68,7 +68,7 @@ func TestRowArgumentHiddenColumn(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = parseBodyReq(t, b, "POST", "/api/rpc/user_greeting", `{"greeting":"Hi","u":{"settings":{}}}`, nil)
-	wantCode(t, err, CodeInvalidBody)
+	wantCode(t, err, CodeInvalidArgument)
 	if _, err := parseBodyReq(t, b, "POST", "/api/rpc/user_greeting", `{"greeting":"Hi","u":{"id":1}}`, nil); err != nil {
 		t.Fatal(err)
 	}

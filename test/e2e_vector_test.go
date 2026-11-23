@@ -152,9 +152,9 @@ func TestVectorOrder(t *testing.T) {
 	}
 
 	for path, code := range map[string]string{
-		"/api/items?order=emb.vec_l2":                                     "invalid_filter",
-		"/api/items?order=id&vec=" + q:                                    "invalid_filter",
-		"/api/items?order=emb.vec_l2&vec=" + url.QueryEscape(`[1,"a",0]`): "invalid_filter",
+		"/api/items?order=emb.vec_l2":                                     "invalid_parameter",
+		"/api/items?order=id&vec=" + q:                                    "invalid_parameter",
+		"/api/items?order=emb.vec_l2&vec=" + url.QueryEscape(`[1,"a",0]`): "invalid_parameter",
 		"/api/items?order=emb.vec_l2&vec=" + url.QueryEscape("[1,0]"):     "pg:22000",
 		"/api/items?order=emb.vec_l2&vec=" + url.QueryEscape("nope"):      "pg:22P02",
 		"/api/items?order=emb":                                            "column_not_orderable",

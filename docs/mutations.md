@@ -193,7 +193,7 @@ FROM (
 | no restriction | neither a root filter nor an `!inner` embed → `400 unfiltered_mutation` before any SQL runs, unless `mutations.allow_unfiltered: true` (then the DML has no `WHERE`; RLS still applies). The guard checks that a restriction is **present**, not how selective it is: a match-all filter (`id=gt.0`, `or=(id.is.null,id.not.is.null)`) passes, as with PostgREST's `pg-safeupdate`. Cap the blast radius with `Prefer: handling=strict, max-affected=N`. Per-embed filters on a plain embed (`users.email=…` with `users(...)` in `select=`) shape the response only and do not count — use `users!inner(...)`, or alias the embed (`author:users(email)`) so `users.email=` becomes a relation filter |
 | body | `PATCH`: one JSON object (arrays → `400 invalid_body`), set on every matching row; `{}` → `400 invalid_body`. `DELETE` never reads a body |
 | response | `200` + JSON array of the written rows (`select=` and embeds apply, compiled against `__mut`); `[]` when nothing matched — never `404`. `Prefer: return=minimal` / `headers-only` → `204` |
-| `limit`, `offset`, `order`, `count`, `distinct`, `after`/`before`, `on_conflict` | `400 invalid_filter` (PostgREST's ordered "limited update/delete" is not supported) |
+| `limit`, `offset`, `order`, `count`, `distinct`, `after`/`before`, `on_conflict` | `400 invalid_parameter` (PostgREST's ordered "limited update/delete" is not supported) |
 | `If-Match` | `400 if_match_unsupported` (with `server.etags` on; ETags address single rows) |
 | `Prefer: max-affected=N` | with `handling=strict`: more than `N` rows → `400 max_affected_exceeded`, nothing written ([below](#prefer)) |
 | availability | wherever the keyed `PATCH`/`DELETE` exists (UPDATE / DELETE privilege, no `@omit update|delete`) **and** the collection is listable: `@omit read` / `@omit all` remove bulk writes too (they would otherwise count hidden rows and, with `return=representation`, return them); PK-less tables included; views and read-only mode → `405` |
@@ -415,7 +415,7 @@ FROM __mut t0
 | body | one JSON object (arrays → `400 invalid_body`); `NOT NULL` columns without a default are required as for an insert |
 | other columns | provided ones are set on conflict; unprovided ones keep their values (same partial semantics as the collection `PUT`) |
 | status | `201` + `Location` when inserted, `200` when updated, `204` under `return=minimal` (`201` + `Location` if inserted) |
-| `?on_conflict=`, filters | `400 invalid_filter` (the path is the target) |
+| `?on_conflict=`, filters | `400 invalid_parameter` / `400 invalid_filter` (the path is the target) |
 | `If-Match` | `400 if_match_unsupported` (use `PATCH` on the same path for a conditional update) |
 | availability | wherever the collection `PUT` exists **and** every key column is writable by a `PUT` body: a key with an identity `ALWAYS` or generated column (the fixture's `users.id`), or one under `@omit create` / `@omit update`, has no `PUT` on that path (`405`), because inserting the path value would write a column bodies may never set; identity `BY DEFAULT` keys have one |
 
@@ -449,7 +449,7 @@ SELECT json_build_object('n', (SELECT count(*) FROM __mut)) AS data
 | temporal keys (`WITHOUT OVERLAPS`) | `ignore-duplicates` accepts a temporal PK (the default target) or a temporal unique in `?on_conflict=` and renders `ON CONFLICT ON CONSTRAINT "<name>" DO NOTHING`, the only form PostgreSQL accepts for the exclusion constraint behind it, so an overlapping row is skipped; `merge-duplicates` on a temporal target → `400 temporal_conflict_target` (`ON CONFLICT DO UPDATE` is not supported with exclusion constraints) |
 | conflict columns | **not** required in the body (unlike `PUT`): an element without them is a plain insert (surrogate keys from their default) |
 | status | `201` (single object also for a merge that updated, as in PostgREST), `Location` from the row's key |
-| `?on_conflict=` without `resolution=` | `400 invalid_filter` |
+| `?on_conflict=` without `resolution=` | `400 invalid_parameter` |
 | nested-mutation keys | `400 invalid_body` (nested writes cannot be combined with conflict resolution) |
 | bulk gaps | missing keys insert `DEFAULT`; with `merge-duplicates` a gap on a conflicting row therefore writes the column default (`EXCLUDED.c` is the default), exactly like PostgREST with `missing=default` |
 

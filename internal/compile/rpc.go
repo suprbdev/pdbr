@@ -207,7 +207,7 @@ func (s *stmt) rpcSetOfValues(rpc *api.RPC, call string) (*Statement, error) {
 		return nil, err
 	}
 	if s.plan.Page.Offset < 0 {
-		return nil, errUser(CodeInvalidFilter, "offset must be >= 0")
+		return nil, errUser(CodeInvalidParameter, "offset must be >= 0")
 	}
 	pageSQL := " LIMIT " + strconv.Itoa(limit)
 	if s.plan.Page.Offset > 0 {

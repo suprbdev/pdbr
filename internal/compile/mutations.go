@@ -515,7 +515,7 @@ func (s *stmt) keyedDML() (cur, dml string, rep replaced, err error) {
 		return "", "", rep, fmt.Errorf("compile: %s without a key", p.Method)
 	}
 	if len(key.Values) != len(key.Constraint.Columns) {
-		return "", "", rep, errUser(CodeInvalidFilter, "key has %d values, want %d", len(key.Values), len(key.Constraint.Columns))
+		return "", "", rep, errUser(CodeInvalidParameter, "key has %d values, want %d", len(key.Values), len(key.Constraint.Columns))
 	}
 	var sets []string
 	if p.Method == plan.PATCH {

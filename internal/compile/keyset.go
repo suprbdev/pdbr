@@ -39,7 +39,7 @@ func (s *stmt) planPage(r *api.Resource, page plan.Page) (pagePlan, error) {
 		return p, errPageSize(p.limit, s.maxPageSize)
 	}
 	if p.offset < 0 {
-		return p, errUser(CodeInvalidFilter, "offset must be >= 0")
+		return p, errUser(CodeInvalidParameter, "offset must be >= 0")
 	}
 	if page.After != nil {
 		p.hasAfter, p.afterKeys = true, page.After

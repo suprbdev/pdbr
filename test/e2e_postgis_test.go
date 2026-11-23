@@ -144,7 +144,7 @@ func TestPostGISFilters(t *testing.T) {
 		{[]string{"location=bbox_leftof.(1,2,3,4)"}, "invalid_filter"},
 		{[]string{"owner_id=st_exactlyequals.POINT(1 2)"}, "invalid_filter"},
 		{[]string{"location=bbox_intersectsnd.not a geometry"}, "invalid_filter"},
-		{[]string{"distinct=location", "select=id"}, "invalid_filter"},
+		{[]string{"distinct=location", "select=id"}, "invalid_parameter"},
 	}
 	for _, tc := range bad {
 		res, body := get(t, q(srv.URL, tc.params...))
@@ -407,7 +407,7 @@ func TestPostGISDistanceOrder(t *testing.T) {
 		t.Errorf("bare WKT near = %v", got)
 	}
 	res, out := get(t, q(srv.URL, "select=id", "order=id", "near="+trafalgar, "limit=1"))
-	wantProblem(t, res, out, 400, "invalid_filter")
+	wantProblem(t, res, out, 400, "invalid_parameter")
 	// Keyset paging keeps the distance order.
 	res = getJSON(t, q(srv.URL, "select=id", "order=location.dist.asc", "near="+trafalgar, "limit=2"), &rows)
 	next := res.Header.Get("X-Next-Cursor")
@@ -422,10 +422,10 @@ func TestPostGISDistanceOrder(t *testing.T) {
 		params []string
 		code   string
 	}{
-		{[]string{"order=location.dist.asc"}, "invalid_filter"},
-		{[]string{"order=location.dist.asc", "near=garbage"}, "invalid_filter"},
-		{[]string{"order=location.dist.asc", "near="}, "invalid_filter"},
-		{[]string{"order=name.dist.asc", "near=" + trafalgar}, "invalid_filter"},
+		{[]string{"order=location.dist.asc"}, "invalid_parameter"},
+		{[]string{"order=location.dist.asc", "near=garbage"}, "invalid_parameter"},
+		{[]string{"order=location.dist.asc", "near="}, "invalid_parameter"},
+		{[]string{"order=name.dist.asc", "near=" + trafalgar}, "invalid_parameter"},
 		{[]string{"order=location.asc"}, "column_not_orderable"},
 		{[]string{"order=nope.dist.asc", "near=" + trafalgar}, "unknown_column"},
 	} {
@@ -587,7 +587,7 @@ func TestPostGISDisabledAndSettings(t *testing.T) {
 		srv := testServer(t, func(c *config.Config) { c.Plugins.Disabled = []string{"postgis"} })
 		expect(t, srv.URL, spatialFilter, "invalid_filter")
 		expect(t, srv.URL, pseudo, "unknown_column")
-		expect(t, srv.URL, dist, "invalid_filter")
+		expect(t, srv.URL, dist, "invalid_parameter")
 		expect(t, srv.URL, proj, "invalid_select")
 		// Core GeoJSON read/write and is.null keep working.
 		var rows []row
@@ -641,7 +641,7 @@ func TestPostGISDisabledAndSettings(t *testing.T) {
 		})
 		expect(t, srv.URL, spatialFilter, "")
 		expect(t, srv.URL, pseudo, "")
-		expect(t, srv.URL, dist, "invalid_filter")
+		expect(t, srv.URL, dist, "invalid_parameter")
 		expect(t, srv.URL, proj, "")
 	})
 	t.Run("projection=false", func(t *testing.T) {

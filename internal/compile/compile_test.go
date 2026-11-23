@@ -771,7 +771,7 @@ func TestOrderRelatedComputedDistance(t *testing.T) {
 		t.Errorf("near arg: %v", stmt.Args)
 	}
 	p.Near = nil
-	userErr(t, f.compileErr(p), compile.CodeInvalidFilter)
+	userErr(t, f.compileErr(p), compile.CodeInvalidParameter)
 }
 
 // ---- keyset ----

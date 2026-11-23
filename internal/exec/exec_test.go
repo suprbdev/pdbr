@@ -233,12 +233,8 @@ func TestExecuteCompileErrors(t *testing.T) {
 	if xe.Status != 500 || xe.Detail != "compile: invalid request" {
 		t.Fatalf("got %+v", xe)
 	}
-	notImpl := func(context.Context, *compile.Request) (*compile.Statement, error) {
-		return nil, compile.ErrNotImplemented
-	}
-	e = New(&fakeDB{}, b, notImpl, nil, Options{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
-	if xe = errOf(t, e.Execute(context.Background(), listOp(b, "/users"))); xe.Status != 501 || xe.Code != compile.CodeNotImplemented {
-		t.Fatalf("got %+v", xe)
+	if xe.Code != CodeInternal {
+		t.Fatalf("code = %q, want %q", xe.Code, CodeInternal)
 	}
 }
 

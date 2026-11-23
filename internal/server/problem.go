@@ -29,7 +29,6 @@ const (
 	CodeBodyTooLarge     = "body_too_large"
 	CodeTimeout          = "timeout"
 	CodeInternal         = "internal"
-	CodeNotImplemented   = "not_implemented"
 	CodeUnavailable      = exec.CodeUnavailable
 )
 

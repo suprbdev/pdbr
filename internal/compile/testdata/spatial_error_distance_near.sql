@@ -1,2 +1,2 @@
 -- request: GET /api/places?select=id,location_distance
--- error: 400 invalid_filter: location_distance requires near=<GeoJSON or WKT>
+-- error: 400 invalid_parameter: location_distance requires near=<GeoJSON or WKT>

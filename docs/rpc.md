@@ -76,8 +76,7 @@ fixture, so `POST` only —, `search_posts(term text) SETOF posts`,
   `@anyelement <type>` / `@anycompatible <type>` smart tag names (see
   [polymorphic functions](#polymorphic-functions)); after resolution they
   are coerced and cast like any argument of that type.
-- Uncoercible value → `400 invalid_body` (POST) / `400 invalid_filter` (GET)
-  when detectable at compile time; otherwise PG's `22*` → `400 pg:22P02`.
+- Uncoercible value → `400 invalid_argument` (GET or POST) when detectable at compile time; otherwise PG's `22*` → `400 pg:22P02`.
 - Body must be a JSON object (`{}` allowed → every argument omitted);
   non-object → `400 invalid_body`; missing body on POST is treated as `{}`.
 
@@ -273,8 +272,8 @@ POST /rpc/rename_user   {"u": {"id": 2}, "new_name": "Grace"}            (volati
   `@omit update` and column INSERT/UPDATE privileges do not apply: the
   argument is a value handed to the function, not a write. Every key is
   optional; an omitted key is a `NULL` attribute. An unknown or hidden key,
-  a non-object value or an uncoercible attribute → `400 invalid_body`
-  (POST) / `400 invalid_filter` (GET), naming the argument and column.
+  a non-object value or an uncoercible attribute → `400 invalid_argument`
+  (GET or POST), naming the argument and column.
 - **Values** follow the request-body coercion of each column (enum labels,
   `int8`/`numeric` as number or string, arrays, json, composites, GeoJSON or
   WKT/EWKT for spatial columns); hstore, range and multirange columns take
@@ -390,7 +389,7 @@ LIMIT 1
 **Extra arguments** go in the select item: `posts_excerpt(p posts, max_chars
 int4)` is `select=id,excerpt(max_chars=80)`. Each `k=v` is validated against the
 function's arguments (unknown → `400 unknown_argument`), coerced by the
-argument's pg type (`400 invalid_filter` on a bad value) and bound as a typed
+argument's pg type (`400 invalid_argument` on a bad value) and bound as a typed
 parameter; the call uses named notation and passes only the arguments present,
 so the SQL text depends on which arguments are given, never on their values
 (golden `computed_args`). A required argument that is absent → `400

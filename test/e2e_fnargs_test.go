@@ -40,11 +40,11 @@ func TestRPCRowArguments(t *testing.T) {
 	}
 
 	res, body, _ := rpcCall(t, "POST", base+"user_greeting", `{"greeting": "Hi", "u": {"nope": 1}}`, nil)
-	wantProblem(t, res, body, 400, "invalid_body")
+	wantProblem(t, res, body, 400, "invalid_argument")
 	res, body, _ = rpcCall(t, "POST", base+"user_greeting", `{"greeting": "Hi", "u": "x"}`, nil)
-	wantProblem(t, res, body, 400, "invalid_body")
+	wantProblem(t, res, body, 400, "invalid_argument")
 	res, body, _ = rpcCall(t, "GET", base+"user_greeting?greeting=Hi&u=nope", "", nil)
-	wantProblem(t, res, body, 400, "invalid_filter")
+	wantProblem(t, res, body, 400, "invalid_argument")
 	res, body, _ = rpcCall(t, "GET", base+"rename_user", "", nil)
 	if res.StatusCode != 405 {
 		t.Errorf("GET rename_user = %d %s", res.StatusCode, body)

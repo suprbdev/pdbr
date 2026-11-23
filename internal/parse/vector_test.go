@@ -36,17 +36,17 @@ func TestVectorOrder(t *testing.T) {
 	mustParse(t, b, "/api/kb/embeddings?order=sparse.vec_l1,half.vec_l2&vec="+vec)
 
 	for q, code := range map[string]string{
-		"order=emb.vec_l2":    CodeInvalidFilter,
-		"vec=" + vec:          CodeInvalidFilter,
-		"order=id&vec=" + vec: CodeInvalidFilter,
-		"order=emb.vec_l2&vec=" + url.QueryEscape("[1,"):   CodeInvalidFilter,
-		"order=emb.vec_l2&vec=" + url.QueryEscape(`["a"]`): CodeInvalidFilter,
-		"order=emb.vec_l2&vec=" + url.QueryEscape("[]"):    CodeInvalidFilter,
-		"order=emb.vec_l2&vec=":                            CodeInvalidFilter,
+		"order=emb.vec_l2":    CodeInvalidParameter,
+		"vec=" + vec:          CodeInvalidParameter,
+		"order=id&vec=" + vec: CodeInvalidParameter,
+		"order=emb.vec_l2&vec=" + url.QueryEscape("[1,"):   CodeInvalidParameter,
+		"order=emb.vec_l2&vec=" + url.QueryEscape(`["a"]`): CodeInvalidParameter,
+		"order=emb.vec_l2&vec=" + url.QueryEscape("[]"):    CodeInvalidParameter,
+		"order=emb.vec_l2&vec=":                            CodeInvalidParameter,
 		"order=emb":                                        CodeColumnNotOrderable,
 		"order=title.vec_l2&vec=" + vec:                    CodeColumnNotOrderable,
 		"order=emb.trgm_dist&trgm=x":                       CodeColumnNotOrderable,
-		"distinct=emb":                                     CodeInvalidFilter,
+		"distinct=emb":                                     CodeInvalidParameter,
 		"emb=eq." + vec:                                    CodeInvalidFilter,
 		"emb=in.(" + vec + ")":                             CodeInvalidFilter,
 		"emb=not.eq." + vec:                                CodeInvalidFilter,
@@ -134,7 +134,7 @@ func TestVectorBody(t *testing.T) {
 		wantCode(t, err, CodeInvalidBody)
 	}
 	_, err = doParse(t, b, req{method: "POST", url: "/api/rpc/vector_probe", header: json, body: `{"v": [1, "x"]}`}, allOn)
-	wantCode(t, err, CodeInvalidBody)
+	wantCode(t, err, CodeInvalidArgument)
 }
 
 // TestUnaccentFilters: the unaccent operators parse with not. and inside

@@ -123,7 +123,7 @@ func TestContribKeysAndJoins(t *testing.T) {
 		}
 	}
 	res, out := get(t, srv+"/api/docs?trgm=x")
-	wantProblem(t, res, out, 400, "invalid_filter")
+	wantProblem(t, res, out, 400, "invalid_parameter")
 
 	var created row
 	sendJSON(t, "POST", srv+"/api/authors?select=email,meta,tags", `{"email": "Cy@Example.com", "meta": {"a": "0"}, "tags": [{"k": "v"}, "x=>y"]}`, 201, &created)
@@ -448,7 +448,7 @@ func TestContribErrors(t *testing.T) {
 		{[]string{"pages=cs.x"}, "invalid_filter"},
 		{[]string{"attrs=gt.a=>1"}, "invalid_filter"},
 		{[]string{"attrs=cs.{\"a\":1}"}, "invalid_filter"},
-		{[]string{"order=title.trgm_dist"}, "invalid_filter"},
+		{[]string{"order=title.trgm_dist"}, "invalid_parameter"},
 		{[]string{"order=search.rank"}, "invalid_filter"},
 		{[]string{"order=email.trgm_dist", "trgm=x"}, "column_not_orderable"},
 		{[]string{"search=fts(english.x"}, "invalid_filter"},

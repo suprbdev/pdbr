@@ -61,7 +61,7 @@ func (p *parser) parseRPC(r *http.Request) error {
 			if a.Variadic() {
 				v, err := p.coerceText(t.elem(), val)
 				if err != nil {
-					return false, errf(CodeInvalidFilter, "argument %q: %s", key, err.Detail)
+					return false, errf(CodeInvalidArgument, "argument %q: %s", key, err.Detail)
 				}
 				list, _ := args[key].([]any)
 				args[key] = append(list, v)
@@ -69,7 +69,7 @@ func (p *parser) parseRPC(r *http.Request) error {
 			}
 			v, err := p.coerceText(t, val)
 			if err != nil {
-				return false, errf(CodeInvalidFilter, "argument %q: %s", key, err.Detail)
+				return false, errf(CodeInvalidArgument, "argument %q: %s", key, err.Detail)
 			}
 			args[key] = v
 			return true, nil
@@ -110,7 +110,7 @@ func (p *parser) parseRPCBody(r *http.Request, argByName map[string]introspect.F
 			return errf(CodeUnknownArgument, "function %q has no argument %q", p.match.RPC.Function.Name, k)
 		}
 		if row := p.match.RPC.RowArgs[k]; row != nil {
-			val, rerr := p.rowArg(a, row, v, strings.HasPrefix(a.PGType, "_"), CodeInvalidBody)
+			val, rerr := p.rowArg(a, row, v, strings.HasPrefix(a.PGType, "_"), CodeInvalidArgument)
 			if rerr != nil {
 				return rerr
 			}
@@ -120,7 +120,7 @@ func (p *parser) parseRPCBody(r *http.Request, argByName map[string]introspect.F
 		t := p.typeOf(api.ArgColumn(p.built.Catalog, a))
 		val, cerr := p.coerceJSON(t, v)
 		if cerr != nil {
-			return errf(CodeInvalidBody, "argument %q: %s", k, cerr.Detail)
+			return errf(CodeInvalidArgument, "argument %q: %s", k, cerr.Detail)
 		}
 		args[k] = val
 	}
@@ -133,10 +133,10 @@ func (p *parser) parseRPCBody(r *http.Request, argByName map[string]introspect.F
 func (p *parser) rowArgText(a introspect.FuncArg, res *api.Resource, args map[string]any, text string) error {
 	v, ok := decodeJSONArg(text)
 	if !ok {
-		return errf(CodeInvalidFilter, "argument %q: %q is not valid JSON", a.Name, text)
+		return errf(CodeInvalidArgument, "argument %q: %q is not valid JSON", a.Name, text)
 	}
 	if a.Variadic() {
-		row, err := p.rowObject(a, res, v, CodeInvalidFilter)
+		row, err := p.rowObject(a, res, v, CodeInvalidArgument)
 		if err != nil {
 			return err
 		}
@@ -144,7 +144,7 @@ func (p *parser) rowArgText(a introspect.FuncArg, res *api.Resource, args map[st
 		args[a.Name] = append(list, row)
 		return nil
 	}
-	val, err := p.rowArg(a, res, v, strings.HasPrefix(a.PGType, "_"), CodeInvalidFilter)
+	val, err := p.rowArg(a, res, v, strings.HasPrefix(a.PGType, "_"), CodeInvalidArgument)
 	if err != nil {
 		return err
 	}

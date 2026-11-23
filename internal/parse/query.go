@@ -28,11 +28,11 @@ func splitQuery(raw string) ([]param, error) {
 		k, v, _ := strings.Cut(part, "=")
 		key, err := url.QueryUnescape(k)
 		if err != nil {
-			return nil, errf(CodeInvalidFilter, "malformed query parameter %q", part)
+			return nil, errf(CodeInvalidParameter, "malformed query parameter %q", part)
 		}
 		val, err := url.QueryUnescape(v)
 		if err != nil {
-			return nil, errf(CodeInvalidFilter, "malformed query parameter %q", part)
+			return nil, errf(CodeInvalidParameter, "malformed query parameter %q", part)
 		}
 		out = append(out, param{key: key, val: val})
 	}
@@ -123,7 +123,7 @@ func (p *parser) parseQueryWith(raw string, res *api.Resource, extra func(key, v
 	for _, q := range params {
 		if p.isReserved(q.key, res) {
 			if seen[q.key] {
-				return errf(CodeInvalidFilter, "duplicate parameter %q", q.key)
+				return errf(CodeInvalidParameter, "duplicate parameter %q", q.key)
 			}
 			seen[q.key] = true
 		}
@@ -169,7 +169,7 @@ func (p *parser) parseQueryWith(raw string, res *api.Resource, extra func(key, v
 			continue
 		case q.key == "geometry" && p.isReserved(q.key, res):
 			if q.val == "" {
-				return errf(CodeInvalidFilter, "geometry= needs the key of a spatial select item")
+				return errf(CodeInvalidParameter, "geometry= needs the key of a spatial select item")
 			}
 			p.req.Geometry = q.val
 			continue
@@ -227,16 +227,16 @@ func (p *parser) parseQueryWith(raw string, res *api.Resource, extra func(key, v
 func (p *parser) parseListParam(key, val string, res *api.Resource) error {
 	if listOnly[key] {
 		if p.isMutation() {
-			return errf(CodeInvalidFilter, "%s is not valid on a mutation route", key)
+			return errf(CodeInvalidParameter, "%s is not valid on a mutation route", key)
 		}
 		if !p.isList() {
-			return errf(CodeInvalidFilter, "%s is not valid on a single-row path", key)
+			return errf(CodeInvalidParameter, "%s is not valid on a single-row path", key)
 		}
 	}
 	switch key {
 	case "order":
 		if res == nil {
-			return errf(CodeInvalidFilter, "order is not valid on this route")
+			return errf(CodeInvalidParameter, "order is not valid on this route")
 		}
 		terms, err := p.parseOrder(val, res)
 		if err != nil {
@@ -274,11 +274,11 @@ func (p *parser) parseListParam(key, val string, res *api.Resource) error {
 			p.req.Count = true
 		case "false":
 		default:
-			return errf(CodeInvalidFilter, "count must be true or false, got %q", val)
+			return errf(CodeInvalidParameter, "count must be true or false, got %q", val)
 		}
 	case "distinct":
 		if res == nil {
-			return errf(CodeInvalidFilter, "distinct is not valid on this route")
+			return errf(CodeInvalidParameter, "distinct is not valid on this route")
 		}
 		cols, err := p.parseDistinct(val, res)
 		if err != nil {
@@ -292,10 +292,10 @@ func (p *parser) parseListParam(key, val string, res *api.Resource) error {
 func (p *parser) parseLimit(val string) (int, error) {
 	n, err := strconv.Atoi(val)
 	if err != nil {
-		return 0, errf(CodeInvalidFilter, "limit must be an integer, got %q", val)
+		return 0, errf(CodeInvalidParameter, "limit must be an integer, got %q", val)
 	}
 	if n <= 0 {
-		return 0, errf(CodeInvalidFilter, "limit must be positive, got %d", n)
+		return 0, errf(CodeInvalidParameter, "limit must be positive, got %d", n)
 	}
 	if n > p.opts.maxPageSize() {
 		return 0, errf(CodePageSizeExceeded, "limit %d exceeds the maximum page size %d", n, p.opts.maxPageSize())
@@ -306,10 +306,10 @@ func (p *parser) parseLimit(val string) (int, error) {
 func parseOffset(val string) (int, error) {
 	n, err := strconv.Atoi(val)
 	if err != nil {
-		return 0, errf(CodeInvalidFilter, "offset must be an integer, got %q", val)
+		return 0, errf(CodeInvalidParameter, "offset must be an integer, got %q", val)
 	}
 	if n < 0 {
-		return 0, errf(CodeInvalidFilter, "offset must not be negative, got %d", n)
+		return 0, errf(CodeInvalidParameter, "offset must not be negative, got %d", n)
 	}
 	return n, nil
 }
@@ -338,11 +338,11 @@ func (p *parser) checkPaging(res *api.Resource) error {
 func (p *parser) parseOnConflict(val string, res *api.Resource) error {
 	switch {
 	case res == nil, p.match.Route.Kind != api.RouteList:
-		return errf(CodeInvalidFilter, "on_conflict is only valid on the collection path (PUT, or POST with Prefer: resolution=)")
+		return errf(CodeInvalidParameter, "on_conflict is only valid on the collection path (PUT, or POST with Prefer: resolution=)")
 	case p.method == plan.POST && p.req.Prefer.Resolution == "":
-		return errf(CodeInvalidFilter, "on_conflict on POST needs Prefer: resolution=merge-duplicates or resolution=ignore-duplicates")
+		return errf(CodeInvalidParameter, "on_conflict on POST needs Prefer: resolution=merge-duplicates or resolution=ignore-duplicates")
 	case p.method != plan.PUT && p.method != plan.POST:
-		return errf(CodeInvalidFilter, "on_conflict is only valid on PUT, or POST with Prefer: resolution=")
+		return errf(CodeInvalidParameter, "on_conflict is only valid on PUT, or POST with Prefer: resolution=")
 	}
 	var cols []string
 	for _, k := range strings.Split(val, ",") {
@@ -456,7 +456,7 @@ func (p *parser) parseEmbedParam(emb *plan.Embed, rest, val string, depth int) e
 		emb.Page.Offset = n
 		return nil
 	case "select", "after", "before", "count", "distinct":
-		return errf(CodeInvalidFilter, "%s is not supported on embeds", rest)
+		return errf(CodeInvalidParameter, "%s is not supported on embeds", rest)
 	}
 	return p.parseDotted(emb.Node, rest, val, depth)
 }

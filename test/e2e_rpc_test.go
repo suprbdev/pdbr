@@ -126,7 +126,7 @@ func TestRPCScalarAndEnums(t *testing.T) {
 	}
 	// Errors: bad enum label, unknown argument, non-object body, media type.
 	res, body, _ = rpcCall(t, "GET", srv.URL+"/api/rpc/describe_mood?m=meh", "", nil)
-	wantProblem(t, res, body, 400, "invalid_filter")
+	wantProblem(t, res, body, 400, "invalid_argument")
 	res, body, _ = rpcCall(t, "GET", srv.URL+"/api/rpc/describe_mood?mood=happy", "", nil)
 	wantProblem(t, res, body, 400, "unknown_argument")
 	res, body, _ = rpcCall(t, "POST", srv.URL+"/api/rpc/describe_mood", `{"nope": 1}`, nil)
@@ -241,7 +241,7 @@ func TestRPCDefaultsAndVariadic(t *testing.T) {
 		t.Errorf("variadic leading omission detail = %q", p.Detail)
 	}
 	res, body, _ = rpcCall(t, "GET", srv.URL+"/api/rpc/e2e_sum?base=1&nums=x", "", nil)
-	wantProblem(t, res, body, 400, "invalid_filter")
+	wantProblem(t, res, body, 400, "invalid_argument")
 
 	var rows []row
 	getJSON(t, srv.URL+"/api/users?select=id,label&id=eq.1", &rows)
@@ -458,7 +458,7 @@ func TestComputedColumns(t *testing.T) {
 		"/api/users/1?select=recent_posts":         "missing_argument",
 		"/api/posts/1?select=excerpt":              "missing_argument",
 		"/api/posts/1?select=excerpt(len=1)":       "unknown_argument",
-		"/api/posts/1?select=excerpt(max_chars=x)": "invalid_filter",
+		"/api/posts/1?select=excerpt(max_chars=x)": "invalid_argument",
 		"/api/users/1?select=post_count(len=1)":    "unknown_argument",
 		"/api/posts?select=excerpt&excerpt=eq.a":   "column_not_filterable",
 	} {

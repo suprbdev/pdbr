@@ -95,14 +95,14 @@ func TestCubeOperands(t *testing.T) {
 		"/kb/shapes?box=cs.%5B%5D":                      CodeInvalidFilter,
 		"/kb/shapes?box=cs.%5B1":                        CodeInvalidFilter,
 		"/kb/shapes?order=box":                          CodeColumnNotOrderable,
-		"/kb/shapes?distinct=box":                       CodeInvalidFilter,
-		"/kb/shapes?order=box.vec_l2":                   CodeInvalidFilter,
+		"/kb/shapes?distinct=box":                       CodeInvalidParameter,
+		"/kb/shapes?order=box.vec_l2":                   CodeInvalidParameter,
 		"/kb/shapes?order=box.vec_ip&vec=%5B1%5D":       CodeColumnNotOrderable,
 		"/kb/shapes?order=pt.vec_l2&vec=%5B1%5D":        CodeColumnNotOrderable,
 		"/kb/shapes?box=vec_l2_lt.x&vec=%5B1%5D":        CodeInvalidFilter,
-		"/kb/shapes?box=vec_l2_lt.1":                    CodeInvalidFilter,
-		"/kb/shapes?vec=%5B1%5D":                        CodeInvalidFilter,
-		"/kb/shapes?order=box.vec_l2&vec=%5B%22a%22%5D": CodeInvalidFilter,
+		"/kb/shapes?box=vec_l2_lt.1":                    CodeInvalidParameter,
+		"/kb/shapes?vec=%5B1%5D":                        CodeInvalidParameter,
+		"/kb/shapes?order=box.vec_l2&vec=%5B%22a%22%5D": CodeInvalidParameter,
 	} {
 		if _, err := parseGeo(t, built, target); err == nil {
 			t.Errorf("%s: no error", target)
@@ -142,17 +142,17 @@ func TestLatLon(t *testing.T) {
 		t.Errorf("allowlisted point column: %v", err)
 	}
 	for target, code := range map[string]string{
-		"/kb/sites?order=loc.earth_dist":                      CodeInvalidFilter,
-		"/kb/sites?latlon=1,2":                                CodeInvalidFilter,
-		"/kb/sites?order=loc.earth_dist&latlon=1":             CodeInvalidFilter,
-		"/kb/sites?order=loc.earth_dist&latlon=1,2,3":         CodeInvalidFilter,
-		"/kb/sites?order=loc.earth_dist&latlon=x,2":           CodeInvalidFilter,
-		"/kb/sites?order=loc.earth_dist&latlon=0,181":         CodeInvalidFilter,
-		"/kb/sites?order=loc.earth_dist&latlon=NaN,0":         CodeInvalidFilter,
+		"/kb/sites?order=loc.earth_dist":                      CodeInvalidParameter,
+		"/kb/sites?latlon=1,2":                                CodeInvalidParameter,
+		"/kb/sites?order=loc.earth_dist&latlon=1":             CodeInvalidParameter,
+		"/kb/sites?order=loc.earth_dist&latlon=1,2,3":         CodeInvalidParameter,
+		"/kb/sites?order=loc.earth_dist&latlon=x,2":           CodeInvalidParameter,
+		"/kb/sites?order=loc.earth_dist&latlon=0,181":         CodeInvalidParameter,
+		"/kb/sites?order=loc.earth_dist&latlon=NaN,0":         CodeInvalidParameter,
 		"/kb/sites?order=loc":                                 CodeColumnNotOrderable,
 		"/kb/sites?loc=eq.(1,2,3)":                            CodeInvalidFilter,
 		"/kb/sites?loc=earth_lt.inf&latlon=0,0":               CodeInvalidFilter,
-		"/kb/sites?select=ll_earth_distance_miles":            CodeInvalidFilter,
+		"/kb/sites?select=ll_earth_distance_miles":            CodeInvalidParameter,
 		"/kb/sites?order=loc.earth_miles&latlon=0,0":          CodeColumnNotOrderable,
 		"/kb/sites?order=name.earth_dist&latlon=0,0":          CodeColumnNotOrderable,
 		"/kb/sites?select=loc_earth_distance(x=1)&latlon=0,0": CodeInvalidSelect,
@@ -232,7 +232,7 @@ func TestRasterSurface(t *testing.T) {
 		"/kb/tiles?rast=intersects.junk":                               CodeInvalidFilter,
 		"/kb/tiles?history=is.null":                                    CodeColumnNotFilterable,
 		"/kb/tiles?name=intersects.POINT(0%200)":                       CodeColumnNotFilterable,
-		"/kb/tiles?select=rast_value":                                  CodeInvalidFilter,
+		"/kb/tiles?select=rast_value":                                  CodeInvalidParameter,
 		"/kb/tiles?select=rast_value(band=0)&near=POINT(0%200)":        CodeInvalidSelect,
 		"/kb/tiles?select=rast_value(band=x)&near=POINT(0%200)":        CodeInvalidSelect,
 		"/kb/tiles?select=rast_value(spheroid=true)&near=POINT(0%200)": CodeInvalidSelect,
@@ -240,7 +240,7 @@ func TestRasterSurface(t *testing.T) {
 		"/kb/tiles?select=rast_envelope(transform=3857)":               CodeInvalidSelect,
 		"/kb/tiles?select=rast_width(precision=2)":                     CodeInvalidSelect,
 		"/kb/tiles?select=rast_srid(band=1)":                           CodeInvalidSelect,
-		"/kb/tiles?near=POINT(0%200)":                                  CodeInvalidFilter,
+		"/kb/tiles?near=POINT(0%200)":                                  CodeInvalidParameter,
 		"/places?location=intersects.POINT(0%200)":                     CodeInvalidFilter,
 	} {
 		_, err := parseGeo(t, built, target)

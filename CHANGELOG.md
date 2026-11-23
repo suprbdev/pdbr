@@ -31,6 +31,17 @@ becomes the release notes of the next tag.
   embedding/plugin API are marked experimental
   ([docs/compatibility.md](docs/compatibility.md)).
 
+### Breaking
+
+- The problem `code` vocabulary is closed and listed in
+  [docs/errors.md](docs/errors.md#code-vocabulary). `invalid_filter` is split:
+  reserved query parameters, the reference parameters and path keys answer
+  `invalid_parameter`, and RPC and computed-column argument values answer
+  `invalid_argument` (also in a `POST` body, which used `invalid_body`). A hint
+  that selects no relation is `unknown_relation` instead of
+  `ambiguous_relation`. The never-emitted `not_implemented` (501) and
+  `compile.ErrNotImplemented` are removed.
+
 For the changes between 0.x and 1.0 see [docs/upgrading.md](docs/upgrading.md).
 
 ## [0.18.0] - 2026-11-23

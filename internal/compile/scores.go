@@ -37,11 +37,11 @@ func (s *stmt) scoreSQL(p *api.PseudoColumn, args map[string]any, alias string) 
 			val = s.plan.Levenshtein
 		}
 		if val == nil {
-			return "", errUser(CodeInvalidFilter, "%s requires %s=", p.Key, p.Score.Param)
+			return "", errUser(CodeInvalidParameter, "%s requires %s=", p.Key, p.Score.Param)
 		}
 		params, err := p.Score.Expr.Params(val)
 		if err != nil {
-			return "", errUser(CodeInvalidFilter, "%s: %s", p.Score.Param, err.Error())
+			return "", errUser(CodeInvalidParameter, "%s: %s", p.Score.Param, err.Error())
 		}
 		return p.Score.Expr.Render(ref, s.params(params)...), nil
 	}

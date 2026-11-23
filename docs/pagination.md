@@ -319,7 +319,7 @@ many` removes the backward direction; `relations_opt_in` limits it to FKs
 tagged `@filterable`/`@sortable`. Keyset cursors work under related
 orderings (the anchor's value is re-evaluated by the same subquery). With
 `relation_order: false` (or `relations: false`, or the plugin disabled) the
-`rel(col)` syntax is `400 invalid_filter`.
+`rel(col)` syntax is `400 invalid_parameter`.
 
 ### Computed columns
 
@@ -344,7 +344,7 @@ GET /items?order=embedding.vec_cos&vec=%5B0.1%2C0.2%2C0.3%5D&limit=10
 request's top-level full-text filter on the same column (missing or
 ambiguous → `400 invalid_filter`); `<col>.trgm_dist` (and `trgm_wdist`,
 `trgm_swdist`) by the `pg_trgm` distance to the `trgm=` parameter (missing →
-`400 invalid_filter`), nearest-first under `asc`; `<col>.vec_l2` (and
+`400 invalid_parameter`), nearest-first under `asc`; `<col>.vec_l2` (and
 `vec_ip`, `vec_cos`, `vec_l1`) by the pgvector distance to the `vec=`
 parameter in the same way. Details and the index policy in
 [contrib.md](contrib.md#ordering) and [contrib.md](contrib.md#pgvector-pdbr).
@@ -358,18 +358,18 @@ GET /places?order=location.dist.asc&near=SRID%3D4326%3BPOINT(-0.1281%2051.508)&l
 `<col>.dist` compiles to the KNN operator `<->` against `near=` (GeoJSON or
 WKT/EWKT, cast to the column's flavour so geography columns rank in metres),
 which a GiST index answers directly. `near` missing or unparseable → `400
-invalid_filter` (deliberately stricter than pdbq, which drops the term
+invalid_parameter` (deliberately stricter than pdbq, which drops the term
 silently); one `near=` serves the root and every per-embed `.dist` term, and
-a `near=` without any `.dist` term is `400 invalid_filter` too (on a route
+a `near=` without any `.dist` term is `400 invalid_parameter` too (on a route
 with a column or argument named `near` the name is that filter instead,
 and `.dist` is unavailable). The column follows the
 indexed-only policy and `@omit order` like any other (`400
 column_not_orderable`); plain `order=<spatialcol>.asc` is
 `column_not_orderable` too, `.dist` on a non-spatial column
-`invalid_filter`. Distance ordering is unaffected by the `nulls` modifier
+`invalid_parameter`. Distance ordering is unaffected by the `nulls` modifier
 (NULL geometries sort last); the PK tiebreaker and keyset cursors work as for
 any order. Off with `plugins.settings.postgis.ordering: false` or the plugin
-disabled (`400 invalid_filter`).
+disabled (`400 invalid_parameter`).
 
 ## `distinct=`
 
@@ -476,11 +476,13 @@ offset-only.
 | `unknown_column` | 400 | unknown column / computed column in `order=` or `distinct=` |
 | `unknown_relation` | 400 | relation key in an `order=` path or per-embed param matches no FK of the resource |
 | `cost_exceeded` | 400 | estimated cost above `limits.max_cost` |
-| `invalid_filter` | 400 | malformed `order=` term, unknown direction/nulls token, `near` missing or unparseable |
+| `invalid_parameter` | 400 | malformed `order=` term, unknown direction/nulls token, malformed `limit`/`offset`/`count`/`distinct=`, a reference parameter (`near`, `trgm`, `vec`, `latlon`, `levenshtein`) missing or unparseable |
+| `invalid_filter` | 400 | a rank term without exactly one usable full-text filter on its column |
 | `ambiguous_relation` | 400 | related order path without a required hint |
+| `unknown_relation` | 400 | related order path whose hint selects no FK of the key |
 
-Decided (M6): `order=` grammar errors keep `invalid_filter` (as
-[errors.md](errors.md) does for a missing `near=`); no dedicated code — the
-`code` vocabulary is closed for v1 and `detail` names the offending term.
+`order=` grammar errors are `invalid_parameter`, like every other reserved
+parameter; `detail` names the offending term. The full, closed vocabulary is
+in [errors.md](errors.md#code-vocabulary).
 
 See also [api.md](api.md) and [filtering.md](filtering.md).

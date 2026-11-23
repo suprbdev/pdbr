@@ -71,8 +71,14 @@ fallback):
 ## Responses and errors
 
 - **Errors are RFC 9457 problem details**, `application/problem+json`, with a
-  stable `code` (`unknown_column`, `page_size_exceeded`, `pg:23505`, ...), not
-  `PGRSTxxx` codes and not PostgREST's `{code, message, details, hint}` body.
+  stable `code` from a closed vocabulary (`unknown_column`,
+  `page_size_exceeded`, `pg:23505`, ...), not `PGRSTxxx` codes and not
+  PostgREST's `{code, message, details, hint}` body. Grammar codes name the
+  part of the request at fault: `invalid_filter` (a filter),
+  `invalid_parameter` (`limit`, `order`, other reserved parameters, a path
+  key), `invalid_select`, `invalid_argument` (an RPC or computed-column
+  argument) and `invalid_body`. A hint that selects no relation, such as
+  PostgREST's `!left`, is `unknown_relation`.
   Database errors carry `pg:<SQLSTATE>`; with `errors.detail: dev` a `pg`
   member adds the message, detail, hint, table and constraint. Map your client's
   error handling using [errors.md](errors.md).

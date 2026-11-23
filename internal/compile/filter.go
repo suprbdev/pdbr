@@ -425,7 +425,7 @@ func (s *stmt) contribFilterSQL(cf api.ContribFilter, ref string, v any) (string
 	switch cf.Op.Arg {
 	case contrib.ArgVectorDistance, contrib.ArgCubeDistance:
 		if s.plan.Vec == nil {
-			return "", errUser(CodeInvalidFilter, "filter %s requires vec=", cf.Name)
+			return "", errUser(CodeInvalidParameter, "filter %s requires vec=", cf.Name)
 		}
 		key := "vector"
 		if cf.Op.Arg == contrib.ArgCubeDistance {
@@ -435,13 +435,13 @@ func (s *stmt) contribFilterSQL(cf api.ContribFilter, ref string, v any) (string
 	case contrib.ArgLatLonDistance:
 		ll, ok := s.plan.LatLon.(map[string]any)
 		if !ok {
-			return "", errUser(CodeInvalidFilter, "filter %s requires latlon=", cf.Name)
+			return "", errUser(CodeInvalidParameter, "filter %s requires latlon=", cf.Name)
 		}
 		v = map[string]any{"lat": ll["lat"], "lon": ll["lon"], "distance": v}
 	}
 	if cf.Op.Arg == contrib.ArgTextDistance {
 		if s.plan.Levenshtein == nil {
-			return "", errUser(CodeInvalidFilter, "filter %s requires levenshtein=", cf.Name)
+			return "", errUser(CodeInvalidParameter, "filter %s requires levenshtein=", cf.Name)
 		}
 		v = map[string]any{"text": s.plan.Levenshtein, "distance": v}
 	}

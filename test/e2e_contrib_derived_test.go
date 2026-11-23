@@ -96,9 +96,9 @@ func TestContribDerivedFilters(t *testing.T) {
 		"nums=query_int.1":                         "column_not_filterable",
 		"order=nums_icount":                        "column_not_orderable",
 		"path_parent=eq.top":                       "column_not_filterable",
-		"name=levenshtein_lt.2":                    "invalid_filter",
+		"name=levenshtein_lt.2":                    "invalid_parameter",
 		"name=levenshtein_lt.x&levenshtein=a":      "invalid_filter",
-		"levenshtein=Robert":                       "invalid_filter",
+		"levenshtein=Robert":                       "invalid_parameter",
 		"tags=query_int." + url.QueryEscape("1 &"): "pg:42601",
 		"select=attrs->a->b":                       "invalid_select",
 		"select=path_subpath":                      "invalid_select",
@@ -146,7 +146,7 @@ func TestContribDerivedSelect(t *testing.T) {
 	}
 
 	res, out := get(t, srv+"/api/items?select=name_levenshtein_distance")
-	wantProblem(t, res, out, 400, "invalid_filter")
+	wantProblem(t, res, out, 400, "invalid_parameter")
 
 	body, doc := fetchOpenAPI(t, srv)
 	validateOpenAPI(t, oasSchema(t), body)

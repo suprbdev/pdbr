@@ -100,7 +100,7 @@ func (p *parser) coerceKey(res *api.Resource, cols []string, raw []string) ([]an
 		}
 		v, err := p.coerceScalar(col, raw[i])
 		if err != nil {
-			return nil, errf(CodeInvalidFilter, "invalid key value for %q: %s", name, err.Detail)
+			return nil, errf(CodeInvalidParameter, "invalid key value for %q: %s", name, err.Detail)
 		}
 		out[i] = v
 	}

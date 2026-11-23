@@ -381,7 +381,7 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if rt.Handler == nil {
-		WriteProblem(w, r, http.StatusNotImplemented, CodeNotImplemented, "request execution is not implemented yet")
+		WriteProblem(w, r, http.StatusInternalServerError, CodeInternal, "no route handler")
 		return
 	}
 	rt.Handler.ServeRoute(w, r, m)
