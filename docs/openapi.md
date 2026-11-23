@@ -50,7 +50,7 @@ false` credentials are ignored, so neither the scheme nor `401` appears.
 | Schema | When | Shape |
 |---|---|---|
 | `<name>` | every resource | object; one property per selectable column, computed column, pseudo-column (postgis accessors and the nullable `number` score columns) and relation key (relations reference the related resource schema — nullable object for forward, array for backward and for a forward `PERIOD` FK (PostgreSQL 18; the description says so, as it does for a `NOT ENFORCED` FK), `oneOf` when the key is ambiguous — and are only present when embedded via `select=`); `required` = non-nullable columns |
-| `<name>.insert` | resource has `POST` | object; properties = `Resource.InputColumnsFor(POST)` (generated/identity columns and `@omit create` columns excluded); `required` = `NOT NULL` without default; `additionalProperties: false` (unknown keys are `400 invalid_body`) |
+| `<name>.insert` | resource has `POST` | object; properties = `Resource.InputColumnsFor(POST)` (generated, identity `ALWAYS` and `@omit create` columns excluded); `required` = `NOT NULL` without default, identity or generation; `additionalProperties: false` (unknown keys are `400 invalid_body`) |
 | `<name>.update` | resource has `PATCH` | object; properties = `InputColumnsFor(PATCH)`; no `required`, `minProperties: 1` (an empty patch is `400 invalid_body`); `additionalProperties: false` |
 | `<name>.upsert` | resource has `PUT` | like `.insert` over `InputColumnsFor(PUT)`; the primary-key columns are added to `required` when they are all insertable (an identity `ALWAYS` key is not — the conflict target then comes from `?on_conflict=`, described on the parameter) |
 | nested-input variants | `nested-mutations` plugin enabled | `.insert` and `.update` are extended **in place** (no separate schema): one property per key of `api.Surface.NestedKeys(resource)` that offers an operation there (`api.Surface.NestedSchema`), each an object with one property per operation, `minProperties: 1`. Forward: `create` (`$ref <related>.insert`), `connect` (`$ref <related>.connect`), and on `.update` `disconnect` / `delete` (`boolean`, `const: true`) and `update` (`$ref <related>.update`); `.insert` adds `maxProperties: 1` and the FK columns of a forward key leave `required`. Backward: non-empty arrays — `create` of `<related>.insert`, `connect` of `<related>.connect`, and on `.update` `delete` / `disconnect` of `<related>.connect` and `update` of `{"where": <related>.connect, "data": <related>.update}`. Operations the relation does not offer (privileges, `@omit`, FK writability, hidden referenced columns, nullable FK for `disconnect`) are left out. `.update` also serves `PATCH` by filter, which rejects nested keys. Depth (`max_depth`) is enforced at runtime, not in the schema graph, which is naturally recursive |
@@ -73,7 +73,7 @@ Per-property details:
   stripped ([smart-comments.md](smart-comments.md)).
 - `deprecated: true` and `x-deprecation-reason` from `@deprecated [reason]`
   (on the resource property, the input property and the filter parameter).
-- `readOnly: true` for generated/identity columns, computed columns and
+- `readOnly: true` for generated and identity `ALWAYS` columns, computed columns and
   pseudo-columns (they appear in the resource schema, never in the input
   schemas; sending a generated column → `400 column_readonly`).
 - Nullable columns use a type array: `{"type": ["string", "null"]}`; for

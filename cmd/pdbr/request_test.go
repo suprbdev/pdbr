@@ -55,7 +55,7 @@ func TestBuildRequestPaths(t *testing.T) {
 // the fixture catalog is byte-identical to the checked-in .sql file.
 func TestPrintSQLMatchesGolden(t *testing.T) {
 	cachePath := filepath.Join(t.TempDir(), "schema.cache")
-	if err := cache.Save(cachePath, testutil.FixtureCatalog()); err != nil {
+	if err := cache.Save(cachePath, testutil.FixtureCatalog(), cache.Writer{Product: "pdbr", Version: "test"}); err != nil {
 		t.Fatal(err)
 	}
 	cfg := config.DefaultConfig()

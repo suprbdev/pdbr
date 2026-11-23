@@ -420,7 +420,7 @@ FROM __mut t0
 | status | `201` + `Location` when inserted, `200` when updated, `204` under `return=minimal` (`201` + `Location` if inserted) |
 | `?on_conflict=`, filters | `400 invalid_filter` (the path is the target) |
 | `If-Match` | `400 if_match_unsupported` (use `PATCH` on the same path for a conditional update) |
-| availability | wherever the collection `PUT` exists **and** every key column is writable by a `PUT` body: a key with an identity or generated column (the fixture's `users.id`), or one under `@omit create` / `@omit update`, has no `PUT` on that path (`405`), because inserting the path value would write a column bodies may never set (identity `BY DEFAULT` keys included until pdbcore tells the two identity kinds apart) |
+| availability | wherever the collection `PUT` exists **and** every key column is writable by a `PUT` body: a key with an identity `ALWAYS` or generated column (the fixture's `users.id`), or one under `@omit create` / `@omit update`, has no `PUT` on that path (`405`), because inserting the path value would write a column bodies may never set; identity `BY DEFAULT` keys have one |
 
 Golden files: `put_by_pk`, `put_by_unique`, `put_by_pk_mismatch`,
 `put_by_pk_array`, `put_by_identity_pk`, `put_by_unique_on_conflict`.
@@ -593,11 +593,9 @@ prefixed `element N:` and keep their code.
 | PUT: conflict-target columns missing | `400 invalid_body` |
 | value not coercible to the column type (e.g. object for `int4`) | `400 invalid_body` |
 
-Identity `BY DEFAULT` columns are meant to be writable (an explicit value
-overrides the sequence), but pdbcore's catalog (`Column.Generated`) flags
-both identity kinds alike, so as built every identity column is
-`column_readonly` until pdbcore distinguishes them (tracked as an M3
-leftover). Serial columns (`HasDefault`) are writable.
+Identity `BY DEFAULT` columns are writable, like serial columns: optional
+on `POST` (an omitted value takes the sequence's next one), settable by
+`PATCH` and `PUT`, and usable as a `PUT` conflict target.
 
 Unknown body keys use `invalid_body` (resolved in M3; `unknown_column` stays
 reserved for query-side names).
@@ -738,7 +736,7 @@ a known path → `405` with an `Allow` header listing what exists:
 | no UPDATE privilege | no `PATCH`, no `PUT` |
 | no DELETE privilege | no `DELETE` |
 | no PK and no unique constraint | no `/{pk}`, no `/by/…` → `PATCH`/`DELETE` only by filter on the collection |
-| key with an identity / generated column | no `PUT` on that single-row path |
+| key with an identity `ALWAYS` / generated column | no `PUT` on that single-row path |
 | only temporal keys (`WITHOUT OVERLAPS`) | same as no key: no `/{pk}`, no `/by/…`, no `PUT` ([api.md](api.md#temporal-keys-and-postgresql-18-foreign-keys)) |
 | `@omit create|update|delete` (smart-comments) | method removed |
 | `server.read_only: true` (or `App.SetReadOnly(true)` at runtime) | every write on every resource → `405 read_only`, `Allow: GET, HEAD` (`OPTIONS` when CORS is on); answered before the body is read |
@@ -1168,6 +1166,4 @@ See [rls.md](rls.md) for the claim mechanism.
 - `limit`/`order` on bulk `PATCH`/`DELETE` (PostgREST's limited update/delete).
 - Savepoints (`SAVEPOINT` per nested CTE for partial success).
 - Writable views (`INSTEAD OF` triggers / auto-updatable views).
-- `PUT` on single-row paths whose key is an identity `BY DEFAULT` column
-  (needs a pdbcore catalog field).
 - `ETag` on mutation responses.

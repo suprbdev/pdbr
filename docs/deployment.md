@@ -89,6 +89,8 @@ strings in intermediary log formats.
 
 ## Production checklist
 
+- PostgreSQL 14 or later: older servers are refused at introspection and on
+  every pool connection.
 - **Terminate TLS in front of pdbr.** The server speaks plain HTTP only —
   JWTs, claims and all data cross the wire in cleartext until a
   TLS-terminating reverse proxy, load balancer or ingress controller sits in

@@ -323,6 +323,47 @@ func TestRPCMint(t *testing.T) {
 	}
 }
 
+func TestIdentityKinds(t *testing.T) {
+	cat := testutil.FixtureCatalog()
+	priv := introspect.Privileges{Select: true, Insert: true, Update: true, Delete: true}
+	for name, kind := range map[string]introspect.GeneratedKind{
+		"soft": introspect.GeneratedIdentityByDefault,
+		"hard": introspect.GeneratedIdentityAlways,
+	} {
+		cat.Tables = append(cat.Tables, &introspect.Table{
+			Schema: "public", Name: name, Kind: introspect.RelTable, Privileges: priv,
+			Columns: []*introspect.Column{
+				{Name: "id", Position: 1, PGType: "int4", TypeSchema: "pg_catalog", NotNull: true, GeneratedKind: kind},
+				{Name: "name", Position: 2, PGType: "text", TypeSchema: "pg_catalog", NotNull: true},
+			},
+			PrimaryKey: &introspect.Constraint{Name: name + "_pkey", Columns: []string{"id"}},
+		})
+	}
+	b := build(t, cat, defaultOptions())
+	allow := map[string]string{}
+	for _, rt := range b.Routes {
+		allow[rt.Pattern] = rt.AllowHeader()
+	}
+	for _, tc := range []struct {
+		name, allow string
+		writable    bool
+	}{
+		{"soft", "GET, HEAD, PUT, PATCH, DELETE", true},
+		{"hard", "GET, HEAD, PATCH, DELETE", false},
+	} {
+		r := b.Resources["public."+tc.name]
+		_, insertable := r.InputColumnsFor(MethodPost)["id"]
+		_, patchable := r.InputColumnsFor(MethodPatch)["id"]
+		if insertable != tc.writable || patchable != tc.writable || r.Columns[0].ReadOnly == tc.writable {
+			t.Errorf("%s: insertable %v patchable %v readOnly %v, want writable %v",
+				tc.name, insertable, patchable, r.Columns[0].ReadOnly, tc.writable)
+		}
+		if got := allow["/"+tc.name+"/{id}"]; got != tc.allow {
+			t.Errorf("%s: /{id} allow = %q, want %q", tc.name, got, tc.allow)
+		}
+	}
+}
+
 func TestOverloadKeepFirst(t *testing.T) {
 	cat := testutil.FixtureCatalog()
 	cat.Functions = append(cat.Functions, &introspect.Function{

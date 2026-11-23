@@ -284,8 +284,8 @@ serializable and does not need to be — `pdbr request --print-sql` re-parses.
 - `limit` absent → `server.max_page_size`; over → 400 `page_size_exceeded`
   (invariant 4). `distinct` with `after`/`before`, `offset` with `before`, and
   keyset on a PK-less resource → 400 `keyset_unsupported`.
-- Body: unknown key → 400 `invalid_body`; generated/identity → 400
-  `column_readonly`; required = `NOT NULL && !HasDefault` on create; PATCH
+- Body: unknown key → 400 `invalid_body`; generated/identity `ALWAYS` → 400
+  `column_readonly`; required = `!Column.OmittableOnInsert()` on create; PATCH
   all optional. `{}` on POST → `DEFAULT VALUES`. `int8`/`numeric` accept
   number or string.
 

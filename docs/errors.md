@@ -234,7 +234,7 @@ static per path until a hot swap):
 |---|---|
 | `/{table}` (full privileges) | `GET, HEAD, POST, PUT, PATCH, DELETE` (+ `OPTIONS` when `server.cors_origins` set) |
 | `/{table}` (view) | `GET, HEAD` |
-| `/{table}/{pk}` (identity / generated key) | `GET, HEAD, PATCH, DELETE` |
+| `/{table}/{pk}` (identity `ALWAYS` / generated key) | `GET, HEAD, PATCH, DELETE` |
 | `/{table}/{pk}`, `/{table}/by/{cols}/…` (writable key) | `GET, HEAD, PUT, PATCH, DELETE` |
 | `/{table}/{pk}` on a table without UPDATE grant (*unreachable in e2e*: the fixture's connection role owns everything) | `GET, HEAD, DELETE` |
 | `/rpc/{stable_fn}` | `GET, HEAD, POST` |

@@ -13,8 +13,9 @@ $ pdbr serve --schema.cache_path schema.cache   # at runtime
 ```
 
 The cache is gzipped JSON of the introspected catalog wrapped in an envelope
-carrying a **format version** (`CatalogFormatVersion`, currently 6) and a
-**content hash**; `serve` refuses mismatched versions and corrupted files, and
+carrying a **format version** (`CatalogFormatVersion`, currently 10), the
+**writer** (product, version and pdbcore version) and a **content hash**;
+`serve` refuses mismatched versions (naming the writer) and corrupted files, and
 the loader caps decompressed size at 256 MiB as a gzip-bomb guard. Booting from
 cache never touches `pg_catalog`, so the runtime role only needs privileges on
 the actual data.
@@ -28,8 +29,9 @@ $ pdbr schema check --cache schema.cache   # exit 1 when live DB drifted
 `check` loads the cache file **before** it touches the database, so a
 missing, corrupt or stale-format file fails fast with exit 1 and no
 connection attempt. It then introspects live (ignoring `schema.cache_path`),
-compares catalog hashes and, on drift, prints the report to **stdout** and
-exits 1; a matching cache prints `schema cache is up to date` and exits 0.
+compares catalog hashes (which cover the PostgreSQL major version, not the
+minor one, so a minor upgrade is not drift) and, on drift, prints the report
+to **stdout** and exits 1; a matching cache prints `schema cache is up to date` and exits 0.
 The report lists every difference, one per line, after the hash summary
 (lines come from `pdbcore/introspect.Diff`):
 
