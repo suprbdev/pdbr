@@ -254,7 +254,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Plugins add their surface via `APIHook` (postgis params, relation-filter prose, nested-input schemas) (new)
 - [x] Deterministic output; golden test; validity checked in e2e with a test-only validator (new)
 - [x] `pdbr schema print [--yaml]` emits the same document (new)
-- [ ] OpenAPI-driven schema contracts (per-audience variants) (parity)
+- [x] Schema contracts: per-audience API variants from `@contract` / `@behavior ±contract:<name>` tags, each with its own base path and OpenAPI document (`schema print --contract`) (parity; [contracts.md](contracts.md))
 
 ## Schema cache & watch mode
 

@@ -242,6 +242,7 @@ func schemaCmd() *cobra.Command {
 	configFlags(check)
 
 	var asYAML bool
+	var contractName string
 	print := &cobra.Command{
 		Use:   "print",
 		Short: "Print the OpenAPI 3.1 document (JSON, or YAML with --yaml)",
@@ -257,7 +258,7 @@ func schemaCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			built, err := app.BuildAPI(ctx, cat)
+			built, err := app.BuildContractAPI(ctx, cat, contractName)
 			if err != nil {
 				return err
 			}
@@ -274,6 +275,7 @@ func schemaCmd() *cobra.Command {
 		},
 	}
 	print.Flags().BoolVar(&asYAML, "yaml", false, "output YAML instead of JSON")
+	print.Flags().StringVar(&contractName, "contract", "", "print the OpenAPI document of this configured contract instead of the full API")
 	configFlags(print)
 
 	cmd.AddCommand(dump, check, print)

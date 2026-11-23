@@ -100,7 +100,12 @@ $ pdbr schema dump -o schema.cache          # introspect + write versioned cache
 $ pdbr schema check --cache schema.cache    # exit 1 on drift (CI gate)
 $ pdbr schema print                         # OpenAPI 3.1 JSON to stdout
 $ pdbr schema print --yaml                  # same document as YAML
+$ pdbr schema print --contract public       # the document of one configured contract
 ```
+
+`print --contract <name>` renders the OpenAPI document of a contract from
+the `contracts` config list instead of the full API (see
+[contracts.md](contracts.md)).
 
 `dump` always introspects the live database (it ignores `schema.cache_path`)
 and writes the gzipped catalog envelope. `check` loads the cache, introspects
