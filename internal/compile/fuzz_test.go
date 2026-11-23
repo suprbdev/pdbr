@@ -2,7 +2,9 @@ package compile_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/suprbdev/pdbcore/contrib"
@@ -20,7 +22,8 @@ import (
 // golden-only kb.docs table, the next two an aggregated root (grouped scan,
 // group count, casts) and an aggregated embed, the last two JSON paths
 // (keys, indexes and the path-derived response keys are values) in select,
-// filters, order, casts and grouping.
+// filters, order, casts and grouping; a path-derived key equal to another
+// item's key is a duplicate-key error, which those two skip.
 func FuzzFilter(f *testing.F) {
 	fx := newFixture(f)
 	cfx := &fixture{t: f, built: goldenBuilt(f)}
@@ -183,6 +186,9 @@ func FuzzFilter(f *testing.F) {
 		p.Order = []plan.OrderTerm{{Column: settings, Path: path(true), Desc: true}, {Column: settings, Path: path(false)}}
 		p.Page = plan.Page{Limit: 10, After: []any{n}}
 		stmt, err := fx.c.Compile(context.Background(), &compile.Request{Plan: p, Built: fx.built})
+		if duplicateKey(err) {
+			return nil
+		}
 		if err != nil {
 			t.Fatalf("path compile error on valid input: %v", err)
 		}
@@ -201,6 +207,9 @@ func FuzzFilter(f *testing.F) {
 		p.Page = plan.Page{Limit: 10, Offset: 2}
 		p.Count = true
 		stmt, err := fx.c.Compile(context.Background(), &compile.Request{Plan: p, Built: fx.built})
+		if duplicateKey(err) {
+			return nil
+		}
 		if err != nil {
 			t.Fatalf("path aggregate compile error on valid input: %v", err)
 		}
@@ -228,6 +237,9 @@ func FuzzFilter(f *testing.F) {
 			{compilePath(t, e, tag, n), pathBaseline},
 			{compilePathAgg(t, e, tag, n), pathAggBaseline},
 		} {
+			if c.stmt == nil {
+				continue
+			}
 			if c.stmt.SQL != c.baseline.SQL {
 				t.Fatalf("SQL text varied with input values:\n--- baseline ---\n%s\n--- got ---\n%s", c.baseline.SQL, c.stmt.SQL)
 			}
@@ -297,4 +309,11 @@ func FuzzSpatial(f *testing.F) {
 			t.Fatalf("parameter count varied: %d != %d", len(stmt.Args), len(baseline.Args))
 		}
 	})
+}
+
+// duplicateKey reports the user error of two select items answering under
+// the same response key.
+func duplicateKey(err error) bool {
+	var ue *compile.UserError
+	return errors.As(err, &ue) && ue.Code == compile.CodeInvalidSelect && strings.HasPrefix(ue.Detail, "two select items answer under")
 }
