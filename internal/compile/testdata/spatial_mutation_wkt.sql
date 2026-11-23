@@ -5,6 +5,6 @@ WITH __mut AS (
   WHERE "public"."places"."id" = $2
   RETURNING "id", "location"
 )
-SELECT jsonb_build_object('id', t0."id", 'location_srid', ST_SRID(t0."location")) AS data
+SELECT json_build_object('id', t0."id", 'location_srid', ST_SRID(t0."location")) AS data
 FROM __mut t0
 -- args: ["SRID=4326;POINT(-0.1281 51.508)",1]

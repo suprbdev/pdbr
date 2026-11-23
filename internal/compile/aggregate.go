@@ -67,8 +67,14 @@ func (s *stmt) grouped(node *plan.Node, filter plan.Expr, corr func(childAlias s
 		return s.columnJSON(g.alias, &kc, args, depth)
 	}
 	seen := map[string]bool{}
+	pos := map[string]int{}
 	add := func(k, expr string) {
 		seen[k] = true
+		if i, ok := pos[k]; ok {
+			pairs[i+1] = expr
+			return
+		}
+		pos[k] = len(pairs)
 		pairs = append(pairs, quoteLiteral(k), expr)
 	}
 	if node.Star {
@@ -256,17 +262,17 @@ func (s *stmt) aggregateSQL(f *plan.FieldSel, alias string) string {
 }
 
 // aggregateJSON renders an aggregate result: through the output cast when
-// one is given, GeoJSON for the spatial extensions, and to_jsonb otherwise
+// one is given, GeoJSON for the spatial extensions, and to_json otherwise
 // — numbers (bigint and numeric included) are JSON numbers, as PostgREST
 // returns them.
 func aggregateJSON(ref string, a *plan.Aggregate) string {
 	switch {
 	case a.OutputCast != nil:
-		return "to_jsonb((" + ref + ")::" + typeRefSQL(a.OutputCast) + ")"
+		return "to_json((" + ref + ")::" + typeRefSQL(a.OutputCast) + ")"
 	case a.Func.Spatial():
 		return postgis.OutputSQL(ref)
 	}
-	return "to_jsonb(" + ref + ")"
+	return "to_json(" + ref + ")"
 }
 
 // typeRefSQL renders a cast target schema-qualified and quoted, so it never

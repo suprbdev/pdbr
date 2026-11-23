@@ -4,6 +4,6 @@ WITH __mut AS (
   WHERE "kb"."authors"."email" OPERATOR("ext".=) $1::"ext".citext
   RETURNING "email", "name", "meta"
 )
-SELECT jsonb_build_object('email', t0."email", 'name', t0."name", 'meta', t0."meta") AS data
+SELECT json_build_object('email', t0."email", 'name', t0."name", 'meta', t0."meta") AS data
 FROM __mut t0
 -- args: ["Ada@Example.com"]

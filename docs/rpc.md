@@ -4,7 +4,7 @@ As built (M4). Every function in `schema.schemas` that
 passes the [exclusion rules](#exclusion-rules) becomes an RPC route; functions
 whose first argument is a table's row type instead become
 [computed columns](#computed-columns). `schema.functions: false` disables
-both. One request → one statement → one jsonb `data` row, as everywhere else.
+both. One request → one statement → one json `data` row, as everywhere else.
 
 | Route | Volatility | Args | Semantics |
 |---|---|---|---|
@@ -121,13 +121,13 @@ POST /api/rpc/add_numbers
 ```
 
 ```sql
-SELECT to_jsonb(__fn.v) AS data
+SELECT to_json(__fn.v) AS data
 FROM (SELECT "public"."add_numbers"("a" => $1::"int4", "b" => $2::"int4") AS v) AS __fn
 -- args: [2,40]
 ```
 
 The call is materialized in a subquery so the value expression (which may
-subscript arrays or stringify `int8` — `to_jsonb((__fn.v)::text)`) evaluates
+subscript arrays or stringify `int8` — `to_json((__fn.v)::text)`) evaluates
 it once. Statement shape `scalar`: exec writes the value verbatim.
 
 Void (`noop()` is a golden-only function; the fixture has no void function):
@@ -146,10 +146,10 @@ POST /api/rpc/publish_post?select=title,users(email)
 ```
 
 ```sql
-SELECT CASE WHEN t0 IS NULL THEN NULL ELSE jsonb_build_object('title', t0."title", 'users', l2.data) END AS data
+SELECT CASE WHEN t0 IS NULL THEN NULL ELSE json_build_object('title', t0."title", 'users', l2.data) END AS data
 FROM "public"."publish_post"($1::"int4") AS t0
 LEFT JOIN LATERAL (
-  SELECT jsonb_build_object('email', t1."email") AS data
+  SELECT json_build_object('email', t1."email") AS data
   FROM "public"."users" t1
   WHERE t1."id" = t0."author_id"
   LIMIT 1
@@ -169,12 +169,12 @@ GET /api/rpc/search_posts?term=rest&author_id=eq.1&order=id.desc&limit=20&count=
 ```
 
 ```sql
-SELECT jsonb_build_object('rows', coalesce(jsonb_agg(s3.data ORDER BY s3.__rn ASC) FILTER (WHERE s3.__rn <= $4), '[]'::jsonb), 'has_next', coalesce(bool_or(s3.__rn > $4), false), 'has_prev', false, 'total', (SELECT count(*) FROM "public"."search_posts"("term" => $1::"text") c4 WHERE c4."author_id" = $5)) AS data
+SELECT json_build_object('rows', coalesce(json_agg(s3.data ORDER BY s3.__rn ASC) FILTER (WHERE s3.__rn <= $4), '[]'::json), 'has_next', coalesce(bool_or(s3.__rn > $4), false), 'has_prev', false, 'total', (SELECT count(*) FROM "public"."search_posts"("term" => $1::"text") c4 WHERE c4."author_id" = $5)) AS data
 FROM (
-  SELECT jsonb_build_object('id', t0."id", 'title', t0."title", 'users', l2.data) AS data, row_number() OVER (ORDER BY t0."id" DESC) AS __rn
+  SELECT json_build_object('id', t0."id", 'title', t0."title", 'users', l2.data) AS data, row_number() OVER (ORDER BY t0."id" DESC) AS __rn
   FROM "public"."search_posts"("term" => $1::"text") t0
   LEFT JOIN LATERAL (
-    SELECT jsonb_build_object('email', t1."email") AS data
+    SELECT json_build_object('email', t1."email") AS data
     FROM "public"."users" t1
     WHERE t1."id" = t0."author_id"
     LIMIT 1
@@ -203,14 +203,14 @@ GET /api/rpc/mood_moods?limit=5&offset=1
 ```
 
 ```sql
-SELECT coalesce(jsonb_agg(to_jsonb(__s.v)), '[]'::jsonb) AS data
+SELECT coalesce(json_agg(to_json(__s.v)), '[]'::json) AS data
 FROM (SELECT __v.v FROM "public"."mood_moods"() AS __v(v) LIMIT $1 OFFSET $2) AS __s
 -- args: [5,1]
 ```
 
 Composite (non-table) return: `SELECT <composite expansion of __fn.v> AS data
 FROM (SELECT fn(...) AS v) AS __fn` — attributes are expanded with the same
-`CASE WHEN (v)::text IS NULL THEN NULL ELSE jsonb_build_object(...) END` the
+`CASE WHEN (v)::text IS NULL THEN NULL ELSE json_build_object(...) END` the
 composite columns use, so nested `int8`/`numeric` attributes are strings
 (settled, pinned by `TestRPCTypedArguments`). `SETOF <composite>` wraps
 `SELECT __v AS v FROM fn(...) AS __v LIMIT/OFFSET` the same way. The one
@@ -286,7 +286,7 @@ GET /api/users/1?select=id,post_count
 ```
 
 ```sql
-SELECT jsonb_build_object('etag', md5(to_jsonb(t0)::text), 'row', jsonb_build_object('id', t0."id", 'post_count', ("public"."users_post_count"("u" => ROW(t0."id", t0."email", t0."full_name", t0."mood", t0."settings", t0."tags", t0."balance", t0."created_at", t0."address", t0."prev_addresses", t0."moods")::"public"."users"))::text)) AS data
+SELECT json_build_object('etag', md5(to_jsonb(t0)::text), 'row', json_build_object('id', t0."id", 'post_count', ("public"."users_post_count"("u" => ROW(t0."id", t0."email", t0."full_name", t0."mood", t0."settings", t0."tags", t0."balance", t0."created_at", t0."address", t0."prev_addresses", t0."moods")::"public"."users"))::text)) AS data
 FROM "public"."users" t0
 WHERE t0."id" = $1
 LIMIT 1

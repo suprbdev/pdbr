@@ -11,7 +11,7 @@ pdbr is a zero-boilerplate REST API for PostgreSQL: point it at a live
 database, it introspects `pg_catalog`, generates a PostgREST-style REST
 surface (resources, embeds, filters, pagination, CRUD, RPC, OpenAPI 3.1) and
 compiles every HTTP request into **one** parameterized SQL statement that
-returns the response JSON in a single `jsonb` column. Same engine philosophy
+returns the response JSON in a single `json` column. Same engine philosophy
 as [pdbq](https://github.com/suprbdev/pdbq) (GraphQL); the transport-neutral
 half of that engine is shared through the
 [`pdbcore`](pdbcore.md) module.
@@ -38,7 +38,7 @@ plan.Request                       ← transport-neutral query plan (tree of sel
 compile.Statement                  ← ONE SQL string + args (+ Mutation flag)
    │  pdbcore/pgexec: tx policy, SET LOCAL ROLE/claims, retry, error classify
    ▼
-jsonb `data` (one row, one column) ← PG builds the response JSON; Go only maps status/headers (+CSV encode)
+json `data` (one row, one column) ← PG builds the response JSON; Go only maps status/headers (+CSV encode)
    │
    ▼
 server (net/http, atomic *Runtime pointer, hot-swap on watch)
@@ -330,27 +330,27 @@ Body shape)`:
 
 | Request kind | SQL shape (abridged; `t0`, `t1`… are allocated aliases) |
 |---|---|
-| list `GET /users` | `SELECT coalesce(jsonb_agg(jsonb_build_object(…) ORDER BY …), '[]') AS data FROM (SELECT … FROM "public"."users" t0 WHERE <filter> ORDER BY <order>, <pk> LIMIT $1 OFFSET $2) t0 <laterals>` |
-| row `GET /users/1` | `SELECT jsonb_build_object(…) AS data FROM "public"."users" t0 <laterals> WHERE t0."id" = $1` (zero rows → 404) |
+| list `GET /users` | `SELECT coalesce(json_agg(json_build_object(…) ORDER BY …), '[]') AS data FROM (SELECT … FROM "public"."users" t0 WHERE <filter> ORDER BY <order>, <pk> LIMIT $1 OFFSET $2) t0 <laterals>` |
+| row `GET /users/1` | `SELECT json_build_object(…) AS data FROM "public"."users" t0 <laterals> WHERE t0."id" = $1` (zero rows → 404) |
 | by-unique `GET /users/by/email/x` | as row, `WHERE t0."email" = $1` (multi-column: `AND` chain in constraint order) |
-| embeds | one `LEFT JOIN LATERAL (SELECT jsonb_agg(…) AS data FROM "public"."posts" t1 WHERE t1."author_id" = t0."id" AND <embed filter> ORDER BY … LIMIT $n) t1 ON true` per embed; forward embeds use `jsonb_build_object` and yield `null`; `!inner` additionally emits `AND EXISTS (SELECT 1 FROM … same correlation and filter)` on the parent (or an inner lateral) |
+| embeds | one `LEFT JOIN LATERAL (SELECT json_agg(…) AS data FROM "public"."posts" t1 WHERE t1."author_id" = t0."id" AND <embed filter> ORDER BY … LIMIT $n) t1 ON true` per embed; forward embeds use `json_build_object` and yield `null`; `!inner` additionally emits `AND EXISTS (SELECT 1 FROM … same correlation and filter)` on the parent (or an inner lateral) |
 | keyset `after=` | `WHERE (t0."created_at", t0."id") > ($1, $2)` for uniform direction, expanded `OR` chain when mixed directions/nulls; `before=` reverses direction inside the subquery and the outer `ORDER BY` re-reverses; the statement also emits `has_next`/`has_prev` via `LIMIT $n + 1` and a boolean in the wrapper (see below) |
-| `count=true` | `jsonb_build_object('rows', <list agg>, 'total', (SELECT count(*) FROM "public"."users" t9 WHERE <same filter>))` — the wrapper object is unwrapped by exec (`X-Total-Count`); distinct-aware: `count(*) FROM (SELECT DISTINCT ON (...) 1 …)` |
-| aggregates (`select=author_id,count()`) | grouped scan `SELECT t0."author_id" AS __k0, count(*) AS __a0 FROM … WHERE … GROUP BY 1` (plain columns raw, computed fields as `to_jsonb`; no embeds; casts `::"pg_catalog"."int4"` from an allowlist) wrapped by `SELECT jsonb_build_object('author_id', g."__k0", 'count', to_jsonb(g."__a0")) AS data, row_number() OVER (ORDER BY <requested keys>, <remaining keys>) … LIMIT $n+1 OFFSET $m` and the usual page wrapper (no cursors; `total` = `count(*)` over a key-only `SELECT 1 … GROUP BY <keys>`); an aggregated to-many embed is the same grouped scan inside its lateral, correlated in the inner `WHERE` ([aggregates.md](aggregates.md)) |
+| `count=true` | `json_build_object('rows', <list agg>, 'total', (SELECT count(*) FROM "public"."users" t9 WHERE <same filter>))` — the wrapper object is unwrapped by exec (`X-Total-Count`); distinct-aware: `count(*) FROM (SELECT DISTINCT ON (...) 1 …)` |
+| aggregates (`select=author_id,count()`) | grouped scan `SELECT t0."author_id" AS __k0, count(*) AS __a0 FROM … WHERE … GROUP BY 1` (plain columns raw, computed fields as `to_jsonb`; no embeds; casts `::"pg_catalog"."int4"` from an allowlist) wrapped by `SELECT json_build_object('author_id', g."__k0", 'count', to_json(g."__a0")) AS data, row_number() OVER (ORDER BY <requested keys>, <remaining keys>) … LIMIT $n+1 OFFSET $m` and the usual page wrapper (no cursors; `total` = `count(*)` over a key-only `SELECT 1 … GROUP BY <keys>`); an aggregated to-many embed is the same grouped scan inside its lateral, correlated in the inner `WHERE` ([aggregates.md](aggregates.md)) |
 | `distinct=` | inner `SELECT DISTINCT ON (t0."a", t0."b") … ORDER BY t0."a", t0."b", <rest>, <pk>` wrapped by the outer agg that re-applies the requested order |
-| `POST` (create) | `WITH __mut AS (INSERT INTO "public"."users" ("email","full_name") VALUES ($1,$2) RETURNING "id","email",…) SELECT jsonb_build_object('row', jsonb_build_object(…), 'key', jsonb_build_array(t0."id")) AS data FROM __mut t0 <laterals>` (`key` only for a single-column PK; exec builds `Location` from it) — bulk: `VALUES ($1,$2),($3,DEFAULT)` + `coalesce(jsonb_agg(…),'[]')`, no wrapper |
+| `POST` (create) | `WITH __mut AS (INSERT INTO "public"."users" ("email","full_name") VALUES ($1,$2) RETURNING "id","email",…) SELECT json_build_object('row', json_build_object(…), 'key', jsonb_build_array(t0."id")) AS data FROM __mut t0 <laterals>` (`key` only for a single-column PK; exec builds `Location` from it) — bulk: `VALUES ($1,$2),($3,DEFAULT)` + `coalesce(json_agg(…),'[]')`, no wrapper |
 | `PATCH` by key | `WITH __mut AS (UPDATE "public"."users" SET "full_name" = $1 WHERE "public"."users"."id" = $2 RETURNING …) SELECT … FROM __mut t0` (row verbatim; `return=minimal` → `RETURNING 1` + `{'n': count}`) |
 | `DELETE` by key | `WITH __mut AS (DELETE FROM … WHERE … RETURNING …) SELECT …` |
-| bulk `PATCH`/`DELETE` by filter | `WITH __mut AS (UPDATE "public"."users" m0 SET … WHERE <filter over m0> RETURNING …) SELECT jsonb_build_object('n', count(*), 'rows', coalesce(jsonb_agg(s.data), '[]')) FROM (SELECT … FROM __mut t1 <laterals>) s` — shape `mut_bulk`; no filter → `400 unfiltered_mutation` in the parser unless `server.allow_unfiltered_mutations` |
-| `PUT` (upsert) | `WITH __mut AS (INSERT … VALUES … ON CONFLICT ("email") DO UPDATE SET "full_name" = EXCLUDED."full_name", … RETURNING …, (xmax = 0) AS __inserted) SELECT jsonb_build_object('row', …, 'inserted', t0.__inserted, 'key', jsonb_build_array(t0."id"))` (single) / `jsonb_agg` (array, always 200) |
+| bulk `PATCH`/`DELETE` by filter | `WITH __mut AS (UPDATE "public"."users" m0 SET … WHERE <filter over m0> RETURNING …) SELECT json_build_object('n', count(*), 'rows', coalesce(json_agg(s.data), '[]')) FROM (SELECT … FROM __mut t1 <laterals>) s` — shape `mut_bulk`; no filter → `400 unfiltered_mutation` in the parser unless `server.allow_unfiltered_mutations` |
+| `PUT` (upsert) | `WITH __mut AS (INSERT … VALUES … ON CONFLICT ("email") DO UPDATE SET "full_name" = EXCLUDED."full_name", … RETURNING …, (xmax = 0) AS __inserted) SELECT json_build_object('row', …, 'inserted', t0.__inserted, 'key', jsonb_build_array(t0."id"))` (single) / `json_agg` (array, always 200) |
 | `POST` + `Prefer: resolution=` / `PUT {pk}` | the `POST` / `PUT` shapes with `ON CONFLICT (<on_conflict or PK>) DO UPDATE SET …` (merge) or `DO NOTHING` (ignore) appended to the `INSERT`; a single-row `PUT` takes its conflict target and key values from the path |
-| `If-Match` | `WITH cur AS (SELECT md5(to_jsonb(__cur)::text) AS h FROM "public"."users" __cur WHERE __cur."id" = $2), __mut AS (UPDATE … WHERE "public"."users"."id" = $2 AND (SELECT h FROM cur) = $3 RETURNING …) SELECT jsonb_build_object('found', EXISTS (SELECT 1 FROM cur), 'row', (SELECT jsonb_build_object(…) FROM __mut t0)) AS data` → exec: `!found` → 404, `found && row IS NULL` → 412 (`= ANY($3)` for several tags; `*` drops the hash predicate) |
-| single-row `GET` ETag | `SELECT jsonb_build_object('etag', md5(to_jsonb(t0)::text), 'row', jsonb_build_object(…)) AS data FROM …` — hash over **all** columns regardless of `select=` |
-| RPC scalar / composite | `SELECT to_jsonb(__fn.v) AS data FROM (SELECT "public"."add_numbers"("a" => $1::"int4", "b" => $2::"int4") AS v) AS __fn` (named notation via `introspect.Function.CallSQL`: omitted args take their `DEFAULT`, `null` → `NULL::type`, variadic functions positional with `VARIADIC`; composites expanded per attribute like composite columns; `jwt_type` composites raw → shapes `jwt`/`jwt_set`) — shape `scalar` |
+| `If-Match` | `WITH cur AS (SELECT md5(to_jsonb(__cur)::text) AS h FROM "public"."users" __cur WHERE __cur."id" = $2), __mut AS (UPDATE … WHERE "public"."users"."id" = $2 AND (SELECT h FROM cur) = $3 RETURNING …) SELECT json_build_object('found', EXISTS (SELECT 1 FROM cur), 'row', (SELECT json_build_object(…) FROM __mut t0)) AS data` → exec: `!found` → 404, `found && row IS NULL` → 412 (`= ANY($3)` for several tags; `*` drops the hash predicate) |
+| single-row `GET` ETag | `SELECT json_build_object('etag', md5(to_jsonb(t0)::text), 'row', json_build_object(…)) AS data FROM …` — hash over **all** columns regardless of `select=` |
+| RPC scalar / composite | `SELECT to_json(__fn.v) AS data FROM (SELECT "public"."add_numbers"("a" => $1::"int4", "b" => $2::"int4") AS v) AS __fn` (named notation via `introspect.Function.CallSQL`: omitted args take their `DEFAULT`, `null` → `NULL::type`, variadic functions positional with `VARIADIC`; composites expanded per attribute like composite columns; `jwt_type` composites raw → shapes `jwt`/`jwt_set`) — shape `scalar` |
 | RPC void | `SELECT 'null'::jsonb AS data FROM (SELECT "public"."f"($1)) AS __v` — shape `void`, exec emits `204` because of the shape, never because of the value. Two statements (`SELECT f(); SELECT …`) are not allowed |
-| RPC single row | `SELECT CASE WHEN t0 IS NULL THEN NULL ELSE jsonb_build_object(…) END AS data FROM "public"."publish_post"($1::"int4") AS t0 <laterals>` — shape `scalar` (NULL row → body `null`, 200) |
+| RPC single row | `SELECT CASE WHEN t0 IS NULL THEN NULL ELSE json_build_object(…) END AS data FROM "public"."publish_post"($1::"int4") AS t0 <laterals>` — shape `scalar` (NULL row → body `null`, 200) |
 | RPC `SETOF <table>` | the list statement (`page` shape) with the root scan replaced by `FROM "public"."search_posts"("term" => $1::"text") t0` (`stmt.rootSource`), the resource's filters/order/limit/offset/count, cursors off (offset `Link`s only) |
-| RPC `SETOF <scalar>` / `SETOF <composite>` | `SELECT coalesce(jsonb_agg(<value>), '[]') AS data FROM (SELECT __v.v FROM "public"."f"($1) AS __v(v) LIMIT $2 [OFFSET $3]) AS __s` — shape `scalar` |
+| RPC `SETOF <scalar>` / `SETOF <composite>` | `SELECT coalesce(json_agg(<value>), '[]') AS data FROM (SELECT __v.v FROM "public"."f"($1) AS __v(v) LIMIT $2 [OFFSET $3]) AS __s` — shape `scalar` |
 | nested mutations | `WITH __p0 AS (INSERT INTO parents … RETURNING *), __mut AS (INSERT INTO posts (author_id, …) SELECT __p0.id, $n FROM __p0 RETURNING *), __c1 AS (INSERT INTO comments … FROM __mut RETURNING *), __vis_comments AS (SELECT * FROM __c1) SELECT … FROM __mut t0 <laterals reading __vis_*>` — built by the nested-mutations CompileHook via `MutationWithCTEs`; child rows are `UNION ALL`ed into a visibility CTE so embeds in the response see uncommitted inserts |
 
 Notes:
@@ -359,8 +359,8 @@ Notes:
   child alias is allocated — no textual placeholder, so user-chosen JSON keys
   can never collide with it (pdbq's `%%ALIAS%%` trick is deliberately not
   used).
-- `jsonb_build_object` takes at most 100 arguments; rows with more than ~40
-  selected pairs are chunked (`jsonb_build_object(…) || jsonb_build_object(…)`).
+- `json_build_object` takes at most 100 arguments; rows with more than ~40
+  selected pairs are chunked (`json_build_object(…) || json_build_object(…)`).
 - Filter keys are sorted before rendering so equal filter sets produce equal
   SQL (invariant 5).
 - The wrapper-object convention (`{'rows','total'}`, `{'etag','row'}`, and
@@ -535,7 +535,7 @@ which pdbq did not need (SDL served that role).
 ## Invariants
 
 1. **One statement per request.** Embeds → `LEFT JOIN LATERAL`, lists →
-   `jsonb_agg`, rows → `jsonb_build_object` (chunked ≤40 pairs), mutations →
+   `json_agg`, rows → `json_build_object` (chunked ≤40 pairs), mutations →
    `WITH __mut AS (DML RETURNING …) SELECT …`, nested mutations → multi-CTE.
    Zero rows on a single-row path → 404 (query and mutation alike). No N+1,
    no Go-side row marshaling.
@@ -572,7 +572,7 @@ lives in `CLAUDE.md` § Gotchas.
    `_`: `PDBR_FILTERS_INDEXED__ONLY` → `filters.indexed_only`,
    `PDBR_SERVER_BASE__PATH` → `server.base_path`.
 5. **Cursors are base64url JSON arrays decoded structurally, never compared
-   textually.** `["public.posts", 1]` — jsonb text rendering inserts spaces;
+   textually.** `["public.posts", 1]` — json text rendering inserts spaces;
    must stay harmless. Not interchangeable with pdbq `nodeId` (type name
    differs).
 6. **SQL-injection invariant enforced by `FuzzFilter`/`FuzzSpatial`.** Never

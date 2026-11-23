@@ -74,7 +74,7 @@ func TestRPCScalarArgsAndNulls(t *testing.T) {
 	f := rpcFixture(t)
 	userErr(t, f.compileErr(rpcReq(f, "add_numbers", map[string]any{"a": int64(2)})), compile.CodeMissingArgument)
 	st := f.compile(rpcReq(f, "add_numbers", map[string]any{"a": int64(2), "b": nil}))
-	wantSQL(t, st, "SELECT to_jsonb(__fn.v) AS data\nFROM (SELECT \"public\".\"add_numbers\"(\"a\" => $1::\"int4\", \"b\" => NULL::\"int4\") AS v) AS __fn", int64(2))
+	wantSQL(t, st, "SELECT to_json(__fn.v) AS data\nFROM (SELECT \"public\".\"add_numbers\"(\"a\" => $1::\"int4\", \"b\" => NULL::\"int4\") AS v) AS __fn", int64(2))
 	if st.Shape != compile.ShapeScalar || !st.Mutation {
 		t.Errorf("shape %s mutation %v", st.Shape, st.Mutation)
 	}
@@ -83,7 +83,7 @@ func TestRPCScalarArgsAndNulls(t *testing.T) {
 		t.Errorf("explicit null should bind as NULL literal: %s", st.SQL)
 	}
 	st = f.compile(rpcReq(f, "big", map[string]any{"n": "9007199254740993"}))
-	wantSQL(t, st, "SELECT to_jsonb((__fn.v)::text) AS data\nFROM (SELECT \"public\".\"big\"(\"n\" => $1::\"int8\") AS v) AS __fn", "9007199254740993")
+	wantSQL(t, st, "SELECT to_json((__fn.v)::text) AS data\nFROM (SELECT \"public\".\"big\"(\"n\" => $1::\"int8\") AS v) AS __fn", "9007199254740993")
 	st = f.compile(rpcReq(f, "best_mood", nil))
 	if st.Mutation || st.Shape != compile.ShapeScalar {
 		t.Errorf("stable scalar: %+v", st)
@@ -93,16 +93,16 @@ func TestRPCScalarArgsAndNulls(t *testing.T) {
 func TestRPCDefaultsAndVariadic(t *testing.T) {
 	f := rpcFixture(t)
 	st := f.compile(rpcReq(f, "greet", nil))
-	wantSQL(t, st, "SELECT to_jsonb(__fn.v) AS data\nFROM (SELECT \"public\".\"greet\"() AS v) AS __fn")
+	wantSQL(t, st, "SELECT to_json(__fn.v) AS data\nFROM (SELECT \"public\".\"greet\"() AS v) AS __fn")
 	st = f.compile(rpcReq(f, "greet", map[string]any{"greeting": "hi"}))
-	wantSQL(t, st, "SELECT to_jsonb(__fn.v) AS data\nFROM (SELECT \"public\".\"greet\"(\"greeting\" => $1::\"text\") AS v) AS __fn", "hi")
+	wantSQL(t, st, "SELECT to_json(__fn.v) AS data\nFROM (SELECT \"public\".\"greet\"(\"greeting\" => $1::\"text\") AS v) AS __fn", "hi")
 	st = f.compile(rpcReq(f, "greet", map[string]any{"name": nil, "greeting": "hi"}))
 	if !strings.Contains(st.SQL, `"public"."greet"("name" => NULL::"text", "greeting" => $1::"text")`) {
 		t.Errorf("explicit null beside a default: %s", st.SQL)
 	}
 
 	st = f.compile(rpcReq(f, "sum_all", map[string]any{"base": int64(1), "nums": []any{int64(2), int64(3)}}))
-	wantSQL(t, st, "SELECT to_jsonb(__fn.v) AS data\nFROM (SELECT \"public\".\"sum_all\"($1::\"int4\", VARIADIC $2::\"int4\"[]) AS v) AS __fn", int64(1), []any{int64(2), int64(3)})
+	wantSQL(t, st, "SELECT to_json(__fn.v) AS data\nFROM (SELECT \"public\".\"sum_all\"($1::\"int4\", VARIADIC $2::\"int4\"[]) AS v) AS __fn", int64(1), []any{int64(2), int64(3)})
 	st = f.compile(rpcReq(f, "sum_all", map[string]any{"base": int64(1), "nums": []any{}}))
 	if !strings.Contains(st.SQL, `"public"."sum_all"($1::"int4", VARIADIC $2::"int4"[])`) {
 		t.Errorf("empty variadic: %s", st.SQL)
@@ -131,7 +131,7 @@ func TestRPCTypedArguments(t *testing.T) {
 		"a":    `{"street":"1 Main","city":"X","mood":"ok"}`,
 		"prev": []any{`{"street":"2 Main"}`, nil},
 	}))
-	want := `SELECT CASE WHEN (__fn.v)::text IS NULL THEN NULL ELSE jsonb_build_object('street', (__fn.v)."street", 'city', (__fn.v)."city", 'mood', (__fn.v)."mood") END AS data
+	want := `SELECT CASE WHEN (__fn.v)::text IS NULL THEN NULL ELSE json_build_object('street', (__fn.v)."street", 'city', (__fn.v)."city", 'mood', (__fn.v)."mood") END AS data
 FROM (SELECT "public"."home"("a" => jsonb_populate_record(NULL::"public"."address", $1::jsonb), "prev" => ARRAY(SELECT jsonb_populate_recordset(NULL::"public"."address", $2::jsonb))) AS v) AS __fn`
 	wantSQL(t, st, want, `{"street":"1 Main","city":"X","mood":"ok"}`, `[{"street":"2 Main"},null]`)
 
@@ -156,7 +156,7 @@ FROM (SELECT "public"."home"("a" => jsonb_populate_record(NULL::"public"."addres
 func TestRPCVoidRowSetOf(t *testing.T) {
 	f := rpcFixture(t)
 	st := f.compile(rpcReq(f, "noop", nil))
-	wantSQL(t, st, `SELECT 'null'::jsonb AS data FROM (SELECT "public"."noop"()) AS __v`)
+	wantSQL(t, st, `SELECT 'null'::json AS data FROM (SELECT "public"."noop"()) AS __v`)
 	if st.Shape != compile.ShapeVoid || !st.Mutation {
 		t.Errorf("void: %+v", st)
 	}
@@ -165,7 +165,7 @@ func TestRPCVoidRowSetOf(t *testing.T) {
 	req := rpcReq(f, "publish_post", map[string]any{"post_id": int64(7)})
 	req.Select = fields(posts, "id", "title")
 	st = f.compile(req)
-	wantSQL(t, st, "SELECT CASE WHEN t0 IS NULL THEN NULL ELSE jsonb_build_object('id', t0.\"id\", 'title', t0.\"title\") END AS data\nFROM \"public\".\"publish_post\"(\"post_id\" => $1::\"int4\") AS t0", int64(7))
+	wantSQL(t, st, "SELECT CASE WHEN t0 IS NULL THEN NULL ELSE json_build_object('id', t0.\"id\", 'title', t0.\"title\") END AS data\nFROM \"public\".\"publish_post\"(\"post_id\" => $1::\"int4\") AS t0", int64(7))
 	if st.Shape != compile.ShapeScalar {
 		t.Errorf("row shape %s", st.Shape)
 	}
@@ -177,9 +177,9 @@ func TestRPCVoidRowSetOf(t *testing.T) {
 	req.Count = true
 	req.Filter = cond(posts.Table.Column("author_id"), plan.OpEq, int64(1))
 	st = f.compile(req)
-	want := `SELECT jsonb_build_object('rows', coalesce(jsonb_agg(s1.data ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $5), '[]'::jsonb), 'has_next', coalesce(bool_or(s1.__rn > $5), false), 'has_prev', true, 'total', (SELECT count(*) FROM "public"."search_posts"("term" => $1::"text") c2 WHERE c2."author_id" = $6)) AS data
+	want := `SELECT json_build_object('rows', coalesce(json_agg(s1.data ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $5), '[]'::json), 'has_next', coalesce(bool_or(s1.__rn > $5), false), 'has_prev', true, 'total', (SELECT count(*) FROM "public"."search_posts"("term" => $1::"text") c2 WHERE c2."author_id" = $6)) AS data
 FROM (
-  SELECT jsonb_build_object('id', t0."id") AS data, row_number() OVER (ORDER BY t0."id" ASC) AS __rn
+  SELECT json_build_object('id', t0."id") AS data, row_number() OVER (ORDER BY t0."id" ASC) AS __rn
   FROM "public"."search_posts"("term" => $1::"text") t0
   WHERE t0."author_id" = $2
   ORDER BY t0."id" ASC
@@ -208,7 +208,7 @@ func TestRPCSetOfValuesAndMint(t *testing.T) {
 	req := rpcReq(f, "mood_moods", nil)
 	req.Page = plan.Page{Limit: 5, Offset: 1}
 	st := f.compile(req)
-	wantSQL(t, st, "SELECT coalesce(jsonb_agg(to_jsonb(__s.v)), '[]'::jsonb) AS data\nFROM (SELECT __v.v FROM \"public\".\"mood_moods\"() AS __v(v) LIMIT $1 OFFSET $2) AS __s", 5, 1)
+	wantSQL(t, st, "SELECT coalesce(json_agg(to_json(__s.v)), '[]'::json) AS data\nFROM (SELECT __v.v FROM \"public\".\"mood_moods\"() AS __v(v) LIMIT $1 OFFSET $2) AS __s", 5, 1)
 	if st.Shape != compile.ShapeScalar {
 		t.Errorf("setof scalar shape %s", st.Shape)
 	}
@@ -216,7 +216,7 @@ func TestRPCSetOfValuesAndMint(t *testing.T) {
 	userErr(t, f.compileErr(req), compile.CodePageSizeExceeded)
 
 	st = f.compile(rpcReq(f, "addresses", nil))
-	if !strings.Contains(st.SQL, `jsonb_agg(CASE WHEN (__s.v)::text IS NULL THEN NULL ELSE jsonb_build_object('street', (__s.v)."street"`) ||
+	if !strings.Contains(st.SQL, `json_agg(CASE WHEN (__s.v)::text IS NULL THEN NULL ELSE json_build_object('street', (__s.v)."street"`) ||
 		!strings.Contains(st.SQL, `FROM (SELECT __v AS v FROM "public"."addresses"() AS __v LIMIT $1) AS __s`) {
 		t.Errorf("setof composite: %s", st.SQL)
 	}
@@ -227,7 +227,7 @@ func TestRPCSetOfValuesAndMint(t *testing.T) {
 		t.Errorf("mint: %+v", st)
 	}
 	st = f.compile(rpcReq(f, "all_tokens", nil))
-	wantSQL(t, st, "SELECT coalesce(jsonb_agg(to_jsonb(__s.v)), '[]'::jsonb) AS data\nFROM (SELECT __v AS v FROM \"public\".\"all_tokens\"() AS __v LIMIT $1) AS __s", 100)
+	wantSQL(t, st, "SELECT coalesce(json_agg(to_jsonb(__s.v)), '[]'::json) AS data\nFROM (SELECT __v AS v FROM \"public\".\"all_tokens\"() AS __v LIMIT $1) AS __s", 100)
 	if st.Shape != compile.ShapeJWTSet {
 		t.Errorf("mint set shape %s", st.Shape)
 	}

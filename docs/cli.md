@@ -81,7 +81,7 @@ real request, so what you see is exactly what would run:
 ```console
 $ pdbr request GET '/users?select=id,email&mood=eq.happy&limit=2' --print-sql
 -- request: GET /api/users?select=id,email&mood=eq.happy&limit=2
-SELECT coalesce(jsonb_agg(...), '[]'::jsonb) AS data FROM ...
+SELECT coalesce(json_agg(...), '[]'::json) AS data FROM ...
 -- args: ["happy",2]
 ```
 

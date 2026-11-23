@@ -341,7 +341,7 @@ so there is one file. **Drift fixes to make during extraction:**
   `api` instead; there is no shared abstraction worth the coupling.
 - `pdbq/internal/compile` — consumes `*ast.Field`; the REST compiler consumes
   `plan.Request`. Shared *SQL rendering helpers* (`quoteIdent`, table refs,
-  keyset predicate builder, chunked `jsonb_build_object`) could move later
+  keyset predicate builder, chunked `json_build_object`) could move later
   into a `pdbcore/sqlgen` package once both compilers exist and the shape is
   proven identical — deliberately **not** in v0.1.0.
 - GraphQL half of `exec` (`Executor`, depth/cost over AST, introspection

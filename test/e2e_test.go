@@ -92,6 +92,16 @@ func getJSON(t *testing.T, url string, v any) *http.Response {
 
 type row = map[string]any
 
+// sameJSON reports whether body and want encode the same JSON value,
+// ignoring whitespace and object key order.
+func sameJSON(body []byte, want string) bool {
+	var a, b any
+	if json.Unmarshal(body, &a) != nil || json.Unmarshal([]byte(want), &b) != nil {
+		return false
+	}
+	return reflect.DeepEqual(a, b)
+}
+
 func ids(rows []row, key string) []int {
 	out := make([]int, 0, len(rows))
 	for _, r := range rows {
@@ -724,5 +734,31 @@ func TestBasePathRoot(t *testing.T) {
 	res := getJSON(t, srv.URL+"/posts?limit=1&order=id", &rows)
 	if len(rows) != 1 || !strings.HasPrefix(res.Header.Get("Link"), "</posts?limit=1&order=id&after=") {
 		t.Errorf("root base path: %v %v", rows, res.Header)
+	}
+}
+
+// TestKeyOrderFollowsSelect: response objects keep the select= order of
+// their fields (json objects are built in pair order; embeds follow the
+// fields), at the root, in embeds and in composites, and a key selected
+// twice appears once with its last value.
+func TestKeyOrderFollowsSelect(t *testing.T) {
+	srv := testServer(t, nil)
+	res, body := get(t, srv.URL+"/api/users?select=title:email,id,posts(title,id),address&order=id&limit=1")
+	if res.StatusCode != 200 {
+		t.Fatalf("status %d %s", res.StatusCode, body)
+	}
+	s := string(body)
+	order := []string{`"title"`, `"id"`, `"address"`, `"street"`, `"city"`, `"mood"`, `"posts"`, `"title"`, `"id"`}
+	at := 0
+	for _, k := range order {
+		i := strings.Index(s[at:], k)
+		if i < 0 {
+			t.Fatalf("key %s missing or out of order in %s", k, s)
+		}
+		at += i + len(k)
+	}
+	res, body = get(t, srv.URL+"/api/users?select=id,email,email:full_name&order=id&limit=1")
+	if res.StatusCode != 200 || strings.Count(string(body), `"email"`) != 1 || !sameJSON(body, `[{"id": 1, "email": "Ada Lovelace"}]`) {
+		t.Errorf("duplicate key = %d %s", res.StatusCode, body)
 	}
 }

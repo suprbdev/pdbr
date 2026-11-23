@@ -4,10 +4,10 @@ WITH __mut AS (
   VALUES ($1, $2)
   RETURNING "id", "author_id", "title"
 )
-SELECT jsonb_build_object('row', jsonb_build_object('id', t0."id", 'title', t0."title", 'users', l2.data), 'key', jsonb_build_array(t0."id")) AS data
+SELECT json_build_object('row', json_build_object('id', t0."id", 'title', t0."title", 'users', l2.data), 'key', jsonb_build_array(t0."id")) AS data
 FROM __mut t0
 LEFT JOIN LATERAL (
-  SELECT jsonb_build_object('id', t1."id", 'email', t1."email") AS data
+  SELECT json_build_object('id', t1."id", 'email', t1."email") AS data
   FROM "public"."users" t1
   WHERE t1."id" = t0."author_id"
   LIMIT 1

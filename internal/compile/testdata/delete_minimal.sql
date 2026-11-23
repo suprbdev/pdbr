@@ -4,5 +4,5 @@ WITH __mut AS (
   WHERE "public"."posts"."id" = $1
   RETURNING 1
 )
-SELECT jsonb_build_object('n', (SELECT count(*) FROM __mut)) AS data
+SELECT json_build_object('n', (SELECT count(*) FROM __mut)) AS data
 -- args: [2]

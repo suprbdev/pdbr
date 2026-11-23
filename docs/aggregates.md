@@ -96,7 +96,7 @@ GET /api/users?select=mood,total:balance.sum(),mean:id::float8.avg()
 
 ### Values
 
-Aggregate results are rendered with PostgreSQL's `to_jsonb`, as PostgREST
+Aggregate results are rendered with PostgreSQL's `to_json`, as PostgREST
 returns them: `count`, `sum`, `avg` and numeric `max`/`min` results are JSON
 **numbers**, `bigint` and `numeric` included (pdbr renders `int8`, `numeric`
 and `money` *columns* as strings, [api.md](api.md#request-and-response-bodies);

@@ -82,7 +82,7 @@ func (s *stmt) mutationResponse(ctes string) (*Statement, error) {
 	case p.Key == nil && (p.Method == plan.PATCH || p.Method == plan.DELETE):
 		shape = ShapeMutBulk
 		if minimal {
-			body = "SELECT jsonb_build_object('n', (SELECT count(*) FROM __mut)) AS data"
+			body = "SELECT json_build_object('n', (SELECT count(*) FROM __mut)) AS data"
 			break
 		}
 		jsonExpr, laterals, err := s.rowJSON(s.rootNode(), alias, 0)
@@ -90,12 +90,12 @@ func (s *stmt) mutationResponse(ctes string) (*Statement, error) {
 			return nil, err
 		}
 		sub := s.alias("s")
-		body = fmt.Sprintf("SELECT jsonb_build_object('n', count(*), 'rows', coalesce(jsonb_agg(%s.data), '[]'::jsonb)) AS data\nFROM (\n%s\n) %s",
+		body = fmt.Sprintf("SELECT json_build_object('n', count(*), 'rows', coalesce(json_agg(%s.data), '[]'::json)) AS data\nFROM (\n%s\n) %s",
 			sub, indent(fmt.Sprintf("SELECT %s AS data\nFROM __mut %s%s", jsonExpr, alias, joinLaterals(laterals))), sub)
 	case minimal && ifMatch:
 		body = fmt.Sprintf("SELECT %s AS data", buildJSONObject([]string{
 			"'found'", "EXISTS (SELECT 1 FROM cur)",
-			"'row'", "(SELECT to_jsonb(true) FROM __mut " + alias + ")",
+			"'row'", "(SELECT to_json(true) FROM __mut " + alias + ")",
 		}))
 	case minimal:
 		pairs := []string{"'n'", "(SELECT count(*) FROM __mut)"}
@@ -116,7 +116,7 @@ func (s *stmt) mutationResponse(ctes string) (*Statement, error) {
 		case bulk:
 			shape = ShapeMutList
 			sub := s.alias("s")
-			body = fmt.Sprintf("SELECT coalesce(jsonb_agg(%s.data), '[]'::jsonb) AS data\nFROM (\n%s\n) %s",
+			body = fmt.Sprintf("SELECT coalesce(json_agg(%s.data), '[]'::json) AS data\nFROM (\n%s\n) %s",
 				sub, indent(fmt.Sprintf("SELECT %s AS data\n%s", jsonExpr, from)), sub)
 		case ifMatch:
 			body = fmt.Sprintf("SELECT %s AS data", buildJSONObject([]string{

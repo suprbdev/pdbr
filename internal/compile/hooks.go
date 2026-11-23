@@ -45,7 +45,7 @@ func (p *ParamSet) SpatialValue(col *introspect.Column, v any) (string, error) {
 }
 
 // RowJSON compiles a projection node over its resource at alias into a
-// jsonb expression plus the LEFT JOIN LATERAL clauses it needs (joined by
+// json expression plus the LEFT JOIN LATERAL clauses it needs (joined by
 // newlines), continuing parameter numbering in ps. A nil node means every
 // column of the plan's resource.
 func (c *Compiler) RowJSON(req *Request, node *plan.Node, alias string, ps *ParamSet) (jsonExpr, laterals string, err error) {

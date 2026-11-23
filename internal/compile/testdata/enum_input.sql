@@ -4,6 +4,6 @@ WITH __mut AS (
   VALUES ($1, $2, $3::jsonb, $4::"text"[], $5::text[]::"public"."mood"[])
   RETURNING "id", "mood", "settings", "tags", "moods"
 )
-SELECT jsonb_build_object('row', jsonb_build_object('id', t0."id", 'mood', t0."mood", 'moods', to_jsonb(t0."moods"), 'tags', to_jsonb(t0."tags"), 'settings', t0."settings"), 'key', jsonb_build_array(t0."id")) AS data
+SELECT json_build_object('row', json_build_object('id', t0."id", 'mood', t0."mood", 'moods', to_json(t0."moods"), 'tags', to_json(t0."tags"), 'settings', t0."settings"), 'key', jsonb_build_array(t0."id")) AS data
 FROM __mut t0
 -- args: ["a@b.c","happy","{\"theme\":\"dark\"}",["admin","founder"],["sad","happy"]]

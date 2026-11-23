@@ -5,5 +5,5 @@ WITH __mut AS (
   ON CONFLICT ("email") DO NOTHING
   RETURNING 1
 )
-SELECT jsonb_build_object('n', (SELECT count(*) FROM __mut)) AS data
+SELECT json_build_object('n', (SELECT count(*) FROM __mut)) AS data
 -- args: ["a@b.c","d@e.f","ok"]

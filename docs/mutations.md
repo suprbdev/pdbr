@@ -53,7 +53,7 @@ WITH __mut AS (
   VALUES ($1, $2, $3)
   RETURNING "id", "email", "full_name", "mood", "settings", "tags", "balance", "created_at", "address", "prev_addresses", "moods"
 )
-SELECT jsonb_build_object('row', jsonb_build_object('id', t0."id", 'email', t0."email", 'full_name', t0."full_name", 'mood', t0."mood", …), 'key', jsonb_build_array(t0."id")) AS data
+SELECT json_build_object('row', json_build_object('id', t0."id", 'email', t0."email", 'full_name', t0."full_name", 'mood', t0."mood", …), 'key', jsonb_build_array(t0."id")) AS data
 FROM __mut t0
 -- args: ["a@b.c","Ada","happy"]
 ```
@@ -81,9 +81,9 @@ WITH __mut AS (
   VALUES ($1, $2), ($3, DEFAULT)
   RETURNING "id", "email", "full_name", …
 )
-SELECT coalesce(jsonb_agg(s2.data), '[]'::jsonb) AS data
+SELECT coalesce(json_agg(s2.data), '[]'::json) AS data
 FROM (
-  SELECT jsonb_build_object('id', t0."id", 'email', t0."email", 'full_name', t0."full_name", …) AS data
+  SELECT json_build_object('id', t0."id", 'email', t0."email", 'full_name', t0."full_name", …) AS data
   FROM __mut t0
 ) s2
 -- args: ["a@b.c","Ada","d@e.f"]
@@ -115,7 +115,7 @@ WITH __mut AS (
   WHERE "public"."users"."id" = $2
   RETURNING "id", "email", "full_name", …
 )
-SELECT jsonb_build_object('id', t0."id", …) AS data
+SELECT json_build_object('id', t0."id", …) AS data
 FROM __mut t0
 -- args: ["Grace",1]
 ```
@@ -147,7 +147,7 @@ WITH __mut AS (
   WHERE "public"."posts"."id" = $1
   RETURNING "id", "author_id", "title", "body", "published"
 )
-SELECT jsonb_build_object('id', t0."id", 'author_id', t0."author_id", 'title', t0."title", 'body', t0."body", 'published', t0."published") AS data
+SELECT json_build_object('id', t0."id", 'author_id', t0."author_id", 'title', t0."title", 'body', t0."body", 'published', t0."published") AS data
 FROM __mut t0
 -- args: [2]
 ```
@@ -179,9 +179,9 @@ WITH __mut AS (
   WHERE m0."id" > $1 AND m0."mood" = $2
   RETURNING "id", "email", "full_name", …
 )
-SELECT jsonb_build_object('n', count(*), 'rows', coalesce(jsonb_agg(s3.data), '[]'::jsonb)) AS data
+SELECT json_build_object('n', count(*), 'rows', coalesce(json_agg(s3.data), '[]'::json)) AS data
 FROM (
-  SELECT jsonb_build_object('id', t1."id", …) AS data
+  SELECT json_build_object('id', t1."id", …) AS data
   FROM __mut t1
 ) s3
 -- args: [1,"sad","Grace"]
@@ -256,7 +256,7 @@ WITH __mut AS (
   SET "full_name" = EXCLUDED."full_name"
   RETURNING "id", "email", "full_name", …, (xmax = 0) AS __inserted
 )
-SELECT jsonb_build_object('row', jsonb_build_object('id', t0."id", …), 'inserted', t0.__inserted, 'key', jsonb_build_array(t0."id")) AS data
+SELECT json_build_object('row', json_build_object('id', t0."id", …), 'inserted', t0.__inserted, 'key', jsonb_build_array(t0."id")) AS data
 FROM __mut t0
 -- args: ["a@b.c","Ada"]
 ```
@@ -312,7 +312,7 @@ WITH __mut AS (
   SET "full_name" = EXCLUDED."full_name"
   RETURNING "id", "full_name", (xmax = 0) AS __inserted
 )
-SELECT jsonb_build_object('row', jsonb_build_object('id', t0."id", 'full_name', t0."full_name"), 'inserted', t0.__inserted, 'key', jsonb_build_array(t0."id")) AS data
+SELECT json_build_object('row', json_build_object('id', t0."id", 'full_name', t0."full_name"), 'inserted', t0.__inserted, 'key', jsonb_build_array(t0."id")) AS data
 FROM __mut t0
 -- args: ["a@b.c","Ada"]
 ```
@@ -346,7 +346,7 @@ WITH __mut AS (
   ON CONFLICT ("email") DO NOTHING
   RETURNING 1
 )
-SELECT jsonb_build_object('n', (SELECT count(*) FROM __mut)) AS data
+SELECT json_build_object('n', (SELECT count(*) FROM __mut)) AS data
 -- args: ["a@b.c","d@e.f","ok"]
 ```
 
@@ -387,10 +387,10 @@ WITH __mut AS (
   VALUES ($1, $2)
   RETURNING "id", "author_id", "title"
 )
-SELECT jsonb_build_object('row', jsonb_build_object('id', t0."id", 'title', t0."title", 'users', l2.data), 'key', jsonb_build_array(t0."id")) AS data
+SELECT json_build_object('row', json_build_object('id', t0."id", 'title', t0."title", 'users', l2.data), 'key', jsonb_build_array(t0."id")) AS data
 FROM __mut t0
 LEFT JOIN LATERAL (
-  SELECT jsonb_build_object('id', t1."id", 'email', t1."email") AS data
+  SELECT json_build_object('id', t1."id", 'email', t1."email") AS data
   FROM "public"."users" t1
   WHERE t1."id" = t0."author_id"
   LIMIT 1
@@ -482,8 +482,8 @@ __mut AS (
     AND (SELECT h FROM cur) = $3
   RETURNING "id", "email", "full_name", …
 )
-SELECT jsonb_build_object('found', EXISTS (SELECT 1 FROM cur), 'row', (
-  SELECT jsonb_build_object('id', t0."id", …)
+SELECT json_build_object('found', EXISTS (SELECT 1 FROM cur), 'row', (
+  SELECT json_build_object('id', t0."id", …)
   FROM __mut t0
 )) AS data
 -- args: ["Grace",1,"5d41402abc4b2a76b9719d911017c592"]
@@ -512,9 +512,9 @@ PATCH → PATCH chains without an intermediate GET).
 
 Every mutation statement is `WITH __mut AS (<DML> RETURNING <cols>) SELECT
 <jsonb> AS data`. The outer `SELECT` is the same row/list compiler used by
-reads, with `__mut` as the row source; row JSON is `jsonb_build_object`
-(chunked ≤ 40 pairs, `||`-concatenated), lists are `coalesce(jsonb_agg(…),
-'[]'::jsonb)`.
+reads, with `__mut` as the row source; row JSON is `json_build_object`
+(chunked ≤ 40 pairs, `||`-concatenated), lists are `coalesce(json_agg(…),
+'[]'::json)`.
 
 When Go needs a value that is not part of the body (the primary key for
 `Location`, upsert `inserted`, `If-Match` `found`, the affected count under
@@ -676,12 +676,12 @@ __c_2 AS (
 __vis_3 AS (
   SELECT * FROM __c_1 UNION ALL SELECT * FROM __c_2
 )
-SELECT jsonb_build_object('row', jsonb_build_object('id', t0."id", 'email', t0."email", 'posts', l3.data), 'key', jsonb_build_array(t0."id")) AS data
+SELECT json_build_object('row', json_build_object('id', t0."id", 'email', t0."email", 'posts', l3.data), 'key', jsonb_build_array(t0."id")) AS data
 FROM __mut t0
 LEFT JOIN LATERAL (
-  SELECT coalesce(jsonb_agg(s2.data), '[]'::jsonb) AS data
+  SELECT coalesce(json_agg(s2.data), '[]'::json) AS data
   FROM (
-    SELECT jsonb_build_object('id', t1."id", 'title', t1."title") AS data
+    SELECT json_build_object('id', t1."id", 'title', t1."title") AS data
     FROM __vis_3 t1
     WHERE t1."author_id" = t0."id"
     ORDER BY t1."id" ASC
