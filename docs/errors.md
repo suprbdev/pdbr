@@ -45,8 +45,8 @@ has a `code`, see the note below the table):
 | `code` | Status | Meaning |
 |---|---|---|
 | `not_found` | 404 | no such route/resource/function, or single-row path matched zero rows (incl. rows hidden by RLS), or a nested `connect` / `update` / `delete` matched no row (detail `nested "<path>": matched 0 rows`; the whole statement is rolled back) |
-| `invalid_filter` | 400 | filter grammar: bad `op`, unparsable value, bad `and=`/`or=` nesting, missing `near=` / `trgm=` / `vec=` with a distance order term, score column or `vec_*_lt` threshold (or one of them without any), a non-numeric threshold, a `vec=` that is not a vector, a comparison on a pgvector column, bad `in.(…)` list, uncoercible RPC GET arg |
-| `invalid_select` | 400 | `select=` grammar: unbalanced parens, empty item, bad alias, unknown hint, `col(k=v)` args on a non-spatial column; aggregates ([aggregates.md](aggregates.md#errors)): a cast outside an aggregate or to a type outside the allowlist (`::regclass`), an aggregate without the input type (`text.sum()`), an embed or ungroupable column as a grouping key, duplicate response keys, aggregates on single-row paths, mutations or in to-one embeds, `distinct=` with aggregates |
+| `invalid_filter` | 400 | filter grammar: bad `op`, unparsable value, bad `and=`/`or=` nesting, missing `near=` / `trgm=` / `vec=` / `latlon=` with a distance order term, score column (raster `<col>_value` included) or `vec_*_lt` / `earth_lt` threshold (or one of them without any), a non-numeric threshold, a `vec=` that is not a vector or cube, a `latlon=` that is not `<lat>,<lon>` in range, a comparison on a pgvector, cube or earth column, an operator other than `intersects`/`is` on a raster column, bad `in.(…)` list, uncoercible RPC GET arg |
+| `invalid_select` | 400 | `select=` grammar: unbalanced parens, empty item, bad alias, unknown hint, `col(k=v)` args on a non-spatial column, an explicit select of a raster column (never readable), a bad `band=` on a raster pseudo-column; aggregates ([aggregates.md](aggregates.md#errors)): a cast outside an aggregate or to a type outside the allowlist (`::regclass`), an aggregate without the input type (`text.sum()`), an embed or ungroupable column as a grouping key, duplicate response keys, aggregates on single-row paths, mutations or in to-one embeds, `distinct=` with aggregates |
 | `aggregates_disabled` | 400 | an aggregate function in `select=` while `server.aggregates` is off (PostgREST `PGRST123`) |
 | `unknown_column` | 400 | column / computed name not on the resource — in `select=`, filters, `order=`, `distinct=`, `on_conflict=` |
 | `column_not_filterable` | 400 | column exists but is outside the filter policy (`filters.indexed_only`, `@omit filter`) |
@@ -110,6 +110,7 @@ returns `{Class, SQLState, Message(detail)}`):
 | `42*` other than `42501` (undefined function/column, syntax — should not happen; message "invalid operation" in prod/strict) | 400 | `pg:42…` |
 | malformed full-text / ltree operand (`pdbcore/pgexec` contrib input errors): `42601` raised while parsing a `tsquery`/`tsvector`/`ltree`/`lquery`/`ltxtquery` value (`syntax error in tsquery: …`, `ltree syntax error …`, …), `42704` unknown text search configuration | 400 | `pg:42601` / `pg:42704` |
 | PostGIS input error (`XX000` with `Operation on mixed SRID geometries`, `parse error - invalid geometry` or an `lwgeom_*` message): an operand or body value PostGIS rejects | 400 | `pg:XX000` |
+| raster / geometry SRID mismatch (`P0001` with `Raster and geometry do not have the same SRID`, raised by PostGIS when a raster `intersects` operand in another SRID overlaps a row's raster) | 400 | `pg:P0001` |
 | missing or invalid credentials when the request cannot be served anonymously; invalid token | 401 | `invalid_token` |
 | `42501` insufficient privilege (incl. RLS `RETURNING` filtering) | 403 | `pg:42501` |
 | resolved role not in `rls.allowed_roles`, or not assumable (`none`, `public`, `pg_*`) | 403 | `role_not_allowed` |
@@ -121,7 +122,7 @@ returns `{Class, SQLState, Message(detail)}`):
 | `If-Match` mismatch | 412 | `etag_mismatch` |
 | body larger than `server.max_body_bytes` | 413 | `body_too_large` |
 | body `Content-Type` not JSON | 415 | `unsupported_media_type` |
-| any other PG SQLSTATE (`21000`, `2D000`, `P0001` `RAISE EXCEPTION`, `XX000` other than the PostGIS input errors above, …) | 500 | `pg:<SQLSTATE>` |
+| any other PG SQLSTATE (`21000`, `2D000`, `P0001` `RAISE EXCEPTION` other than the raster SRID mismatch above, `XX000` other than the PostGIS input errors above, …) | 500 | `pg:<SQLSTATE>` |
 | hook / plugin / internal error that is not a `UserError` | 500 | `internal` |
 | `53*` insufficient resources (`53300` too many connections, `53200` OOM), `08*` connection exceptions (*unreachable in e2e*), pool acquire / connection failure without a SQLSTATE | 503 | `pg:53…` / `pg:08…` / `unavailable` |
 | `57014` statement timeout (`database.statement_timeout`), `server.request_timeout` elapsed | 504 | `pg:57014` / `timeout` |

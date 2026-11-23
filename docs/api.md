@@ -97,7 +97,11 @@ prefixed:
   `<col>_similarity`, `_word_similarity`, `_strict_word_similarity`
   (pg_trgm, against `trgm=`) and `<col>_l2_distance`,
   `_negative_inner_product`, `_cosine_distance`, `_l1_distance`,
-  `_hamming_distance`, `_jaccard_distance` (pgvector, from `vec=`): the
+  `_hamming_distance`, `_jaccard_distance` (pgvector, from `vec=`),
+  `<col>_chebyshev_distance` and the L2 / L1 ones on cube columns (from
+  `vec=`), `<col>_earth_distance` and `<col>_earth_distance_miles`
+  (earthdistance, from `latlon=`) and the raster `<col>_value(band=)` (from
+  `near=`): the
   pdbcore expression names in snake_case, the same names pdbq gives its
   `<field>Distance` / `<field>Similarity` / `<field>CosineDistance` fields
   ([postgis.md](postgis.md#selecting-the-distance),
@@ -115,9 +119,10 @@ exists.
 ## Query parameters
 
 Reserved: `select`, `order`, `limit`, `offset`, `after`, `before`, `count`,
-`distinct`, `on_conflict`; `near`, `trgm` and `vec` only where no column,
-computed column or RPC argument carries the name (there it is a filter or the
-argument, and `.dist` / `.trgm_*` / `.vec_*` ordering is unavailable). Every other parameter is a filter
+`distinct`, `on_conflict`; `near`, `trgm`, `vec`, `latlon` and
+`levenshtein` only where no column, computed column or RPC argument carries
+the name (there it is a filter or the argument, and `.dist` / `.trgm_*` /
+`.vec_*` / `.earth_*` / `.levenshtein` ordering is unavailable). Every other parameter is a filter
 (`col=op.value`, `rel.col=op.value`, `and=`/`or=`/`not.and=`/`not.or=`) — see
 [filtering.md](filtering.md). A column literally named like a reserved
 parameter cannot be filtered in the bare form; use it inside `and=(…)`.

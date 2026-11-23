@@ -1,0 +1,2 @@
+-- request: GET /api/kb/shapes?box=eq.(1%2C2)
+-- error: 400 invalid_filter: operator "eq" is not supported on cube column "box" (is.null and its own operators only; order by distance)

@@ -1,0 +1,2 @@
+-- request: GET /api/kb/tiles?select=history
+-- error: 400 invalid_select: raster array column "history" of "kb.tiles" is not readable; expose it through a computed column

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/suprbdev/pdbcore/contrib"
+	"github.com/suprbdev/pdbcore/postgis"
 
 	"github.com/suprbdev/pdbr/internal/api"
 	"github.com/suprbdev/pdbr/internal/compile"
@@ -29,8 +30,9 @@ type opSpec struct {
 	op plan.Op
 	// list: value is a parenthesised list (in); structural: is; spatial:
 	// postgis; contrib: only a pdbcore/contrib vocabulary serves it (cs, cd,
-	// ov and hk are core operators that some vocabularies also serve).
-	list, structural, spatial, contrib bool
+	// ov and hk are core operators that some vocabularies also serve);
+	// raster: the postgis_raster filter (intersects).
+	list, structural, spatial, contrib, raster bool
 }
 
 func init() {
@@ -83,6 +85,7 @@ var ops = map[string]opSpec{
 	"st_intersects3d":        {op: plan.OpStIntersects3D, spatial: true},
 	"bbox_intersectsnd":      {op: plan.OpBBoxIntersectsND, spatial: true},
 	"bbox_intersects2d":      {op: plan.OpBBoxIntersects2D, spatial: true},
+	"intersects":             {op: plan.OpRasterIntersects, raster: true},
 }
 
 // operand is a parsed "[not.]op[(config)].value".
@@ -170,6 +173,9 @@ func (p *parser) columnCond(res *api.Resource, key string, o operand) (plan.Expr
 	if hasJSONPath(key) {
 		return p.pathCond(res, key, o)
 	}
+	if f := res.Raster(key); f != nil {
+		return p.rasterCond(res, f, o)
+	}
 	if f := res.Field(key); f != nil {
 		if !res.FilterColumns[key] {
 			return nil, errf(CodeColumnNotFilterable, "column %q on %q is not filterable", key, res.Path)
@@ -221,7 +227,7 @@ func (p *parser) pathCond(res *api.Resource, key string, o operand) (plan.Expr, 
 	if !res.FilterColumns[f.Key] {
 		return nil, errf(CodeColumnNotFilterable, "column %q on %q is not filterable", f.Key, res.Path)
 	}
-	if o.spec.contrib || o.spec.spatial {
+	if o.spec.contrib || o.spec.spatial || o.spec.raster {
 		return nil, errf(CodeInvalidFilter, "operator %q is not supported on JSON path %q", o.op, key)
 	}
 	t := p.pathType(f.Column, path)
@@ -276,8 +282,11 @@ func (p *parser) contribCond(res *api.Resource, f *api.Field, o operand) (plan.E
 		return nil, true, err
 	}
 	switch cf.Op.Arg {
-	case contrib.ArgVectorDistance:
+	case contrib.ArgVectorDistance, contrib.ArgCubeDistance:
 		p.vecFilters = append(p.vecFilters, vecFilter{Column: c, Op: cf.Op, Name: o.op})
+		return plan.Cond{Column: c, Op: o.spec.op, Value: v, Negate: o.negate}, true, nil
+	case contrib.ArgLatLonDistance:
+		p.latlonFilters = append(p.latlonFilters, vecFilter{Column: c, Op: cf.Op, Name: o.op})
 		return plan.Cond{Column: c, Op: o.spec.op, Value: v, Negate: o.negate}, true, nil
 	case contrib.ArgTextDistance:
 		p.levFilters = append(p.levFilters, vecFilter{Column: c, Op: cf.Op, Name: o.op})
@@ -297,12 +306,25 @@ func contribOperand(arg contrib.ArgKind, o operand) (any, *compile.UserError) {
 	switch arg {
 	case contrib.ArgFullText:
 		return contrib.FullTextQuery{Query: o.value, Config: o.config}, nil
-	case contrib.ArgVectorDistance:
+	case contrib.ArgVectorDistance, contrib.ArgCubeDistance, contrib.ArgLatLonDistance:
+		ref := "the vector is vec="
+		if arg == contrib.ArgLatLonDistance {
+			ref = "the location is latlon="
+		}
 		d, err := strconv.ParseFloat(strings.TrimSpace(o.value), 64)
 		if err != nil || math.IsNaN(d) || math.IsInf(d, 0) {
-			return nil, errf(CodeInvalidFilter, "%s takes a finite number (the distance threshold; the vector is vec=), got %q", o.op, o.value)
+			return nil, errf(CodeInvalidFilter, "%s takes a finite number (the distance threshold; %s), got %q", o.op, ref, o.value)
 		}
 		return d, nil
+	case contrib.ArgCube:
+		if !strings.HasPrefix(strings.TrimSpace(o.value), "[") {
+			return o.value, nil
+		}
+		v, err := api.VectorOperand(o.value)
+		if err != nil {
+			return nil, errf(CodeInvalidFilter, "%s operand %q is not a JSON array (a point [1,2] or a box [[1,2],[3,4]]) or a cube literal", o.op, o.value)
+		}
+		return v, nil
 	case contrib.ArgTextDistance:
 		d, err := strconv.ParseInt(strings.TrimSpace(o.value), 10, 32)
 		if err != nil || d < 0 {
@@ -345,6 +367,12 @@ func (p *parser) coerceOperand(t colType, key string, o operand) (any, error) {
 	}
 	if t.kind == kindVector && spec.op != plan.OpIs {
 		return nil, errf(CodeInvalidFilter, "operator %q is not supported on %s column %q (is.null only; order by distance with vec=)", o.op, t.name(), key)
+	}
+	if t.kind == kindCube && spec.op != plan.OpIs {
+		return nil, errf(CodeInvalidFilter, "operator %q is not supported on %s column %q (is.null and its own operators only; order by distance)", o.op, t.name(), key)
+	}
+	if spec.raster {
+		return nil, errf(CodeInvalidFilter, "operator %q applies to raster columns only, %q is %s", o.op, key, t.name())
 	}
 	if spec.contrib {
 		return nil, errf(CodeInvalidFilter, "operator %q is not supported on %s column %q", o.op, t.name(), key)
@@ -677,7 +705,7 @@ func (p *parser) parseLogicItem(res *api.Resource, item string, depth int) (plan
 	if !ok || col == "" {
 		return nil, errf(CodeInvalidFilter, "malformed condition %q (want column.op.value)", item)
 	}
-	if res.Field(col) == nil && res.Computed[col] == nil && contribPseudo(res, col) == nil && !isPathKey(res, col) {
+	if !filterKey(res, col) {
 		// Relation filter inside a logic list: rel[!hint].col.op.value or
 		// rel=exists.true spelled rel.exists.true.
 		relKey, _, _ := strings.Cut(col, "!")
@@ -704,10 +732,45 @@ func (p *parser) parseLogicItem(res *api.Resource, item string, depth int) (plan
 		}
 		o.value = v
 	}
-	if res.Field(col) != nil || res.Computed[col] != nil || contribPseudo(res, col) != nil || isPathKey(res, col) {
+	if filterKey(res, col) {
 		return p.columnCond(res, col, o)
 	}
 	return p.relationCond(res, col, o)
+}
+
+// filterKey reports whether key addresses a filter target of res itself: a
+// column (raster columns included), a computed column, a filterable contrib
+// pseudo-column or a JSON path.
+func filterKey(res *api.Resource, key string) bool {
+	return res.Field(key) != nil || res.Raster(key) != nil || res.Computed[key] != nil || contribPseudo(res, key) != nil || isPathKey(res, key)
+}
+
+// rasterCond builds a filter on a raster column: is.null / not.is.null, or
+// intersects with a GeoJSON or WKT/EWKT geometry (postgis plugin filters).
+func (p *parser) rasterCond(res *api.Resource, f *api.Field, o operand) (plan.Expr, error) {
+	if f.Column.IsArray || !res.FilterColumns[f.Key] {
+		return nil, errf(CodeColumnNotFilterable, "raster column %q on %q is not filterable (under filters.indexed_only a raster column needs filters.allow_columns: the GiST index serving intersects is on an expression)", f.Key, res.Path)
+	}
+	if o.mod != "" {
+		return nil, errf(CodeInvalidFilter, "%s(%s) is not supported on raster column %q", o.op, o.mod, f.Key)
+	}
+	switch o.spec.op {
+	case plan.OpIs:
+		if !strings.EqualFold(o.value, "null") {
+			return nil, errf(CodeInvalidFilter, "is takes null on raster column %q, got %q", f.Key, o.value)
+		}
+		return plan.Cond{Column: f.Column, Op: plan.OpIs, Negate: o.negate}, nil
+	case plan.OpRasterIntersects:
+		if !p.opts.spatialFilters() {
+			return nil, errf(CodeInvalidFilter, "raster operator %q is not enabled (postgis plugin)", o.op)
+		}
+		v, err := p.coerceSpatial(colType{kind: kindSpatial, flavour: postgis.Geometry}, o.value)
+		if err != nil {
+			return nil, err
+		}
+		return plan.Cond{Column: f.Column, Op: plan.OpRasterIntersects, Value: v, Negate: o.negate}, nil
+	}
+	return nil, errf(CodeInvalidFilter, "operator %q is not supported on raster column %q (intersects.<geometry> and is.null only)", o.op, f.Key)
 }
 
 // parseRelationFilter parses "<relkey[!hint]*>[.<column>]=<operand>" for a
@@ -782,7 +845,7 @@ func (p *parser) relationCond(res *api.Resource, key string, o operand) (plan.Ex
 	if o.op == "exists" {
 		return nil, errf(CodeInvalidFilter, "exists applies to the relation key itself (%s=exists.true)", relKey)
 	}
-	if rel.To.Field(rest) == nil && rel.To.Computed[rest] == nil && contribPseudo(rel.To, rest) == nil && !isPathKey(rel.To, rest) {
+	if !filterKey(rel.To, rest) {
 		if strings.Contains(rest, ".") {
 			return nil, errf(CodeInvalidFilter, "relation filter paths are one level deep (%s.<column>)", relKey)
 		}

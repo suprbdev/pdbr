@@ -45,6 +45,15 @@ type Resource struct {
 	Methods map[Method]bool
 	// Columns are the exposed columns in catalog order.
 	Columns []*Field
+	// Rasters are the postgis_raster columns (and arrays of rasters) in
+	// catalog order. Their values are never read: they are not in Columns,
+	// so not in select=*, the read schema, embeds, mutation responses or
+	// the ETag hash, and an explicit select= of one is 400 invalid_select.
+	// They stay writable through InputColumns, and the postgis plugin gives
+	// the scalar ones metadata, pixel value and statistics pseudo-columns
+	// and an intersects filter (FilterColumns holds the key when the filter
+	// policy admits it).
+	Rasters []*Field
 	// Computed maps key -> row-type function.
 	Computed map[string]*Computed
 	// Pseudo maps key -> derived pseudo-column (postgis plugin).
@@ -196,13 +205,16 @@ type Computed struct {
 }
 
 // PseudoColumn is a derived value over a real column: a PostGIS accessor
-// (postgis plugin: <col>_area, <col>_centroid, ...), a pdbcore/contrib
-// accessor or derived value (Contrib set: <col>_nlevel, <col>_parent,
-// <col>_lca, <col>_subpath, <col>_icount), a full-text headline (Headline
-// set: <col>_headline) or a score measured against the
+// (postgis plugin: <col>_area, <col>_centroid, ...), a raster accessor,
+// pixel value or summary statistics (postgis plugin, Raster set:
+// <col>_width, <col>_value(band=), <col>_summary_stats(band=), ...), a
+// pdbcore/contrib accessor or derived value (Contrib set: <col>_nlevel,
+// <col>_parent, <col>_lca, <col>_subpath, <col>_icount), a full-text
+// headline (Headline set: <col>_headline) or a score measured against the
 // request's reference parameter (Score set: <col>_distance from near=,
 // <col>_similarity from trgm=, <col>_cosine_distance from vec=,
-// <col>_levenshtein_distance from levenshtein=, ...).
+// <col>_earth_distance from latlon=, <col>_levenshtein_distance from
+// levenshtein=, ...; a raster's <col>_value has both Score and Raster).
 type PseudoColumn struct {
 	Key      string
 	Column   *introspect.Column
@@ -215,6 +227,9 @@ type PseudoColumn struct {
 	// Headline is set on a <col>_headline pseudo-column; Accessor is then
 	// empty.
 	Headline *Headline
+	// Raster is set on a pseudo-column over a raster column (one of
+	// Resource.Rasters); Accessor is then empty.
+	Raster *RasterValue
 	// Filterable and Orderable report that the pseudo-column takes filters
 	// (<key>=<op>.<value>) and order terms (order=<key>); only integer
 	// contrib accessors the filter policy admits do.
@@ -227,8 +242,8 @@ type PseudoColumn struct {
 // Score binds a score pseudo-column to its reference parameter and
 // expression.
 type Score struct {
-	// Param is the query parameter holding the reference: "near", "trgm"
-	// or "vec".
+	// Param is the query parameter holding the reference: "near", "trgm",
+	// "vec", "latlon" or "levenshtein".
 	Param string
 	// Expr is the pdbcore/contrib expression measured (similarity,
 	// cosineDistance, hammingDistance, ...); the zero Expr for the spatial
@@ -259,6 +274,20 @@ type ContribValue struct {
 	// documentation order.
 	Args []ContribArg
 }
+
+// RasterValue binds a pseudo-column to a raster column's surface: a
+// header-only metadata accessor (Accessor set), the pixel value at near=
+// (Value) or the summary statistics of a band (SummaryStats). The value
+// and statistics take an optional band=<n> select argument (default 1).
+type RasterValue struct {
+	Accessor     *postgis.RasterAccessor
+	Value        bool
+	SummaryStats bool
+}
+
+// TakesBand reports whether the pseudo-column takes the band=<n> select
+// argument.
+func (v *RasterValue) TakesBand() bool { return v != nil && (v.Value || v.SummaryStats) }
 
 // ContribArg is one select argument of a derived contrib pseudo-column.
 type ContribArg struct {
@@ -389,6 +418,28 @@ func (r *Route) AllowHeader() string {
 func (r *Resource) Field(key string) *Field {
 	for _, f := range r.Columns {
 		if f.Key == key {
+			return f
+		}
+	}
+	return nil
+}
+
+// Raster returns the raster column (one of Rasters) with the given JSON
+// key, or nil.
+func (r *Resource) Raster(key string) *Field {
+	for _, f := range r.Rasters {
+		if f.Key == key {
+			return f
+		}
+	}
+	return nil
+}
+
+// RasterByColumn returns the raster field backed by the named pg column,
+// or nil.
+func (r *Resource) RasterByColumn(name string) *Field {
+	for _, f := range r.Rasters {
+		if f.Column.Name == name {
 			return f
 		}
 	}

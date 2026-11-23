@@ -13,41 +13,53 @@ import (
 
 // TestFilterOpsMatchParser pins the OpenAPI operator vocabulary
 // (api.Built.FilterOps) to what the parser actually accepts: for every
-// filterable column of the fixture plus the contrib-typed kb tables, under
-// both filter policies, and every operator (core and contrib), the request
-// parses iff the operator is documented for the column.
+// filterable column of the fixture plus the contrib-typed kb tables (the
+// cube, earth, point and raster ones with the postgis plugin applied),
+// under both filter policies, and every operator (core, contrib and the
+// raster intersects), the request parses iff the operator is documented for
+// the column.
 func TestFilterOpsMatchParser(t *testing.T) {
 	all := []string{"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct",
-		"like", "ilike", "sw", "ew", "match", "imatch", "cs", "cd", "ov", "hk", "jpe", "jpm"}
+		"like", "ilike", "sw", "ew", "match", "imatch", "cs", "cd", "ov", "hk", "jpe", "jpm", "intersects"}
 	for _, name := range api.ContribFilterNames() {
 		if !slices.Contains(all, name) {
 			all = append(all, name)
 		}
 	}
 	for _, indexedOnly := range []bool{false, true} {
-		built := buildContrib(t, indexedOnly)
-		for _, path := range []string{"users", "posts", "places", "events", "kb.docs", "kb.embeddings", "kb.labels"} {
-			res := built.ByPath[path]
-			for _, f := range res.Columns {
-				if !res.FilterColumns[f.Key] {
-					continue
-				}
-				documented := map[string]bool{}
-				for _, op := range built.FilterOps(res, f.Column) {
-					documented[op] = true
-				}
-				for _, op := range all {
-					val := sampleValue(op, f.Column)
-					u := "/api/" + strings.ReplaceAll(path, ".", "/") + "?" + f.Key + "=" + op + "." + url.QueryEscape(val)
-					switch api.ThresholdParam(op) {
-					case "vec":
-						u = "/api/" + strings.ReplaceAll(path, ".", "/") + "?" + f.Key + "=" + op + ".0.5&vec=" + url.QueryEscape(sampleVector(f.Column))
-					case "levenshtein":
-						u = "/api/" + strings.ReplaceAll(path, ".", "/") + "?" + f.Key + "=" + op + ".2&levenshtein=x"
+		for _, set := range []struct {
+			built *api.Built
+			paths []string
+		}{
+			{buildContrib(t, indexedOnly), []string{"users", "posts", "places", "events", "kb.docs", "kb.embeddings", "kb.labels"}},
+			{buildGeo(t, indexedOnly), []string{"kb.shapes", "kb.sites", "kb.tiles"}},
+		} {
+			built := set.built
+			for _, path := range set.paths {
+				res := built.ByPath[path]
+				for _, f := range append(append([]*api.Field(nil), res.Columns...), res.Rasters...) {
+					if !res.FilterColumns[f.Key] {
+						continue
 					}
-					_, err := doParse(t, built, req{url: u}, allOn)
-					if (err == nil) != documented[op] {
-						t.Errorf("indexed_only=%v %s.%s %s: parse err=%v, documented=%v (url %s)", indexedOnly, path, f.Key, op, err, documented[op], u)
+					documented := map[string]bool{}
+					for _, op := range built.FilterOps(res, f.Column) {
+						documented[op] = true
+					}
+					for _, op := range all {
+						val := sampleValue(op, f.Column)
+						u := "/api/" + strings.ReplaceAll(path, ".", "/") + "?" + f.Key + "=" + op + "." + url.QueryEscape(val)
+						switch api.ThresholdParam(op) {
+						case "vec":
+							u = "/api/" + strings.ReplaceAll(path, ".", "/") + "?" + f.Key + "=" + op + ".0.5&vec=" + url.QueryEscape(sampleVector(f.Column))
+						case "levenshtein":
+							u = "/api/" + strings.ReplaceAll(path, ".", "/") + "?" + f.Key + "=" + op + ".2&levenshtein=x"
+						case "latlon":
+							u = "/api/" + strings.ReplaceAll(path, ".", "/") + "?" + f.Key + "=" + op + ".2&latlon=1,2"
+						}
+						_, err := doParse(t, built, req{url: u}, allOn)
+						if (err == nil) != documented[op] {
+							t.Errorf("indexed_only=%v %s.%s %s: parse err=%v, documented=%v (url %s)", indexedOnly, path, f.Key, op, err, documented[op], u)
+						}
 					}
 				}
 			}
@@ -59,33 +71,44 @@ func TestFilterOpsMatchParser(t *testing.T) {
 // (api.Built.ContribOrders, rendered into the order parameter) to the
 // parser.
 func TestContribOrdersMatchParser(t *testing.T) {
-	mods := []string{"rank", "rank_cd", "trgm_dist", "trgm_wdist", "trgm_swdist", "vec_l2", "vec_ip", "vec_cos", "vec_l1", "vec_hamming", "vec_jaccard", "levenshtein"}
+	mods := []string{"rank", "rank_cd", "trgm_dist", "trgm_wdist", "trgm_swdist", "vec_l2", "vec_ip", "vec_cos", "vec_l1", "vec_chebyshev",
+		"vec_hamming", "vec_jaccard", "levenshtein", "earth_dist", "earth_miles"}
 	for _, indexedOnly := range []bool{false, true} {
-		built := buildContrib(t, indexedOnly)
-		for _, path := range []string{"kb.docs", "kb.embeddings"} {
-			res := built.ByPath[path]
-			for _, f := range res.Columns {
-				documented := map[string]bool{}
-				if res.OrderColumns[f.Key] {
-					for _, o := range built.ContribOrders(res, f.Column) {
-						documented[o.Name] = o.Rank == "" || res.FilterColumns[f.Key]
+		for _, set := range []struct {
+			built *api.Built
+			paths []string
+		}{
+			{buildContrib(t, indexedOnly), []string{"kb.docs", "kb.embeddings"}},
+			{buildGeo(t, indexedOnly), []string{"kb.shapes", "kb.sites"}},
+		} {
+			built := set.built
+			for _, path := range set.paths {
+				res := built.ByPath[path]
+				for _, f := range res.Columns {
+					documented := map[string]bool{}
+					if res.OrderColumns[f.Key] {
+						for _, o := range built.ContribOrders(res, f.Column) {
+							documented[o.Name] = o.Rank == "" || res.FilterColumns[f.Key]
+						}
 					}
-				}
-				for _, mod := range mods {
-					q := "order=" + f.Key + "." + mod + ".desc"
-					switch {
-					case strings.HasPrefix(mod, "vec_"):
-						q += "&vec=" + url.QueryEscape(sampleVector(f.Column))
-					case mod == "levenshtein":
-						q += "&levenshtein=x"
-					case !strings.HasPrefix(mod, "rank"):
-						q += "&trgm=x"
-					case res.FilterColumns[f.Key]:
-						q += "&" + f.Key + "=fts.x"
-					}
-					_, err := doParse(t, built, req{url: "/api/" + strings.ReplaceAll(path, ".", "/") + "?" + q}, allOn)
-					if (err == nil) != documented[mod] {
-						t.Errorf("indexed_only=%v %s %s.%s: parse err=%v, documented=%v", indexedOnly, path, f.Key, mod, err, documented[mod])
+					for _, mod := range mods {
+						q := "order=" + f.Key + "." + mod + ".desc"
+						switch {
+						case strings.HasPrefix(mod, "vec_"):
+							q += "&vec=" + url.QueryEscape(sampleVector(f.Column))
+						case mod == "levenshtein":
+							q += "&levenshtein=x"
+						case strings.HasPrefix(mod, "earth_"):
+							q += "&latlon=1,2"
+						case !strings.HasPrefix(mod, "rank"):
+							q += "&trgm=x"
+						case res.FilterColumns[f.Key]:
+							q += "&" + f.Key + "=fts.x"
+						}
+						_, err := doParse(t, built, req{url: "/api/" + strings.ReplaceAll(path, ".", "/") + "?" + q}, allOn)
+						if (err == nil) != documented[mod] {
+							t.Errorf("indexed_only=%v %s %s.%s: parse err=%v, documented=%v", indexedOnly, path, f.Key, mod, err, documented[mod])
+						}
 					}
 				}
 			}
@@ -137,6 +160,10 @@ func sampleValue(op string, c *introspect.Column) string {
 			return "10.0.0.0/8"
 		case "ltree":
 			return "a.b"
+		case "cube":
+			return "(1,2)"
+		case "point":
+			return "(1,2)"
 		}
 		return "x"
 	}
@@ -158,6 +185,8 @@ func sampleValue(op string, c *introspect.Column) string {
 		return "a"
 	case "query_int":
 		return "1&2"
+	case "intersects":
+		return "POINT(1 2)"
 	case "sl", "sr", "nxr", "nxl", "adj", "ov", "cs", "cd":
 		switch base {
 		case "int4multirange":

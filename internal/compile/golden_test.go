@@ -55,7 +55,8 @@ func goldenCompile(c *compile.Compiler) compile.Func {
 // goldenCatalog is the shared fixture plus golden-only objects the fixture
 // lacks: a composite-primary-key table (memberships), a table in a second
 // schema (audit.log), the PostgreSQL 18 temporal tables (temporalTables),
-// the contrib-typed kb tables with their extensions (testcatalog.Contrib),
+// the contrib-typed kb tables with their extensions (testcatalog.Contrib
+// and testcatalog.Geo),
 // and the golden-only functions in goldenOnlyRPCs. They exist only in
 // memory; the live fixture database does not have them.
 func goldenCatalog() *introspect.Catalog {
@@ -121,7 +122,7 @@ func goldenCatalog() *introspect.Catalog {
 	if err := plugin.NewRegistry(smartcatalog.New()).TransformCatalog(context.Background(), nil, cat); err != nil {
 		panic(err)
 	}
-	return testcatalog.Contrib(cat)
+	return testcatalog.Geo(testcatalog.Contrib(cat))
 }
 
 // temporalTables are the PostgreSQL 18 key variants (tk_ prefix, the same
@@ -187,6 +188,8 @@ func goldenBuilt(t testing.TB) *api.Built {
 			testcatalog.ContribSchema + ".embeddings": {"emb", "code"},
 			testcatalog.ContribSchema + ".labels":     {"tags"},
 			testcatalog.ContribSchema + ".articles":   {"raw"},
+			testcatalog.ContribSchema + ".sites":      {"ll"},
+			testcatalog.ContribSchema + ".tiles":      {"rast"},
 		},
 		Functions:   true,
 		BasePath:    goldenBasePath,

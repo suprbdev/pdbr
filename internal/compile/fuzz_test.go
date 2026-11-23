@@ -21,7 +21,9 @@ import (
 // produce byte-identical SQL and the same parameter count. The second
 // statement covers the pdbcore/contrib operators and order terms over the
 // golden-only kb.docs table, the third pgvector distance ordering, output
-// and input over kb.embeddings, the next two an aggregated root (grouped scan,
+// and input over kb.embeddings, the next cube and earthdistance filters,
+// orderings, keyset cursors, scores, output and input over kb.shapes and
+// kb.sites, the next two an aggregated root (grouped scan,
 // group count, casts) and an aggregated embed, the last two JSON paths
 // (keys, indexes and the path-derived response keys are values) in select,
 // filters, order, casts and grouping, then spread embeds (to-one, to-many,
@@ -444,6 +446,65 @@ func FuzzFilter(f *testing.F) {
 		return &compile.Statement{SQL: read.SQL + "\n" + write.SQL, Args: append(read.Args, write.Args...)}
 	}
 	vectorBaseline := compileVector(f, "a@example.com", "admin", 5)
+	compileCube := func(t testing.TB, e, tag string, n int64) *compile.Statement {
+		t.Helper()
+		shapes, sites := cfx.res("kb.shapes"), cfx.res("kb.sites")
+		sc := func(name string) *introspect.Column { return cfx.col("kb.shapes", name) }
+		st := func(name string) *introspect.Column { return cfx.col("kb.sites", name) }
+		co := func(col *introspect.Column, name, expr string) plan.OrderTerm {
+			return plan.OrderTerm{Contrib: &plan.ContribOrder{Column: col, Name: name, Expr: expr}}
+		}
+		p := list(shapes)
+		p.Select = fields(shapes, "id", "box")
+		p.Select.Fields = append(p.Select.Fields, plan.FieldSel{Pseudo: shapes.Pseudo["box_chebyshev_distance"]}, plan.FieldSel{Pseudo: shapes.Pseudo["pt_l1_distance"]})
+		p.Filter = plan.And{Terms: []plan.Expr{
+			cond(sc("box"), plan.OpCs, []any{float64(n), 1.5}),
+			cond(sc("box"), plan.OpCd, "("+e+")"),
+			plan.Not{Term: cond(sc("box"), plan.OpOv, []any{[]any{float64(n)}, []any{float64(len(tag))}})},
+			cond(sc("box"), "vec_l2_lt", float64(n)/7),
+			plan.Or{Terms: []plan.Expr{cond(sc("box"), "vec_chebyshev_lt", float64(len(e))), cond(sc("name"), plan.OpEq, tag)}},
+		}}
+		p.Order = []plan.OrderTerm{co(sc("box"), "vec_l1", "l1Distance"), co(sc("box"), "vec_chebyshev", "chebyshevDistance")}
+		p.Order[1].Desc = true
+		p.Vec = []any{float64(n), float64(len(tag))}
+		p.Page = plan.Page{Limit: 10, After: []any{n}}
+		cubes, err := cfx.c.Compile(context.Background(), &compile.Request{Plan: p, Built: cfx.built})
+		if err != nil {
+			t.Fatalf("cube compile error on valid input: %v", err)
+		}
+		q := list(sites)
+		q.Select = fields(sites, "id", "loc", "ll")
+		q.Select.Fields = append(q.Select.Fields, plan.FieldSel{Pseudo: sites.Pseudo["loc_earth_distance"]}, plan.FieldSel{Pseudo: sites.Pseudo["ll_earth_distance_miles"]})
+		q.Filter = plan.And{Terms: []plan.Expr{
+			cond(st("loc"), "earth_lt", float64(n)),
+			plan.Not{Term: cond(st("ll"), "earth_miles_lt", float64(len(e)))},
+			cond(st("name"), plan.OpSw, e),
+		}}
+		q.Order = []plan.OrderTerm{co(st("loc"), "earth_dist", "earthDistance"), co(st("ll"), "earth_miles", "earthDistanceMiles")}
+		q.LatLon = map[string]any{"lat": float64(n % 90), "lon": float64(len(tag) % 180)}
+		q.Page = plan.Page{Limit: 10, After: []any{n}}
+		earth, err := cfx.c.Compile(context.Background(), &compile.Request{Plan: q, Built: cfx.built})
+		if err != nil {
+			t.Fatalf("earth compile error on valid input: %v", err)
+		}
+		ws := &plan.Request{Method: plan.POST, Resource: shapes, Select: fields(shapes, "id", "box"),
+			Body: body(shapes, map[string]any{"name": e, "box": []any{[]any{float64(n), 0.0}, []any{1.0, float64(len(tag))}}, "pt": "(" + tag + ")"})}
+		wshape, err := cfx.c.Compile(context.Background(), &compile.Request{Plan: ws, Built: cfx.built})
+		if err != nil {
+			t.Fatalf("cube insert compile error on valid input: %v", err)
+		}
+		we := &plan.Request{Method: plan.POST, Resource: sites, Select: fields(sites, "id", "loc"),
+			Body: body(sites, map[string]any{"name": tag, "loc": map[string]any{"lat": float64(n % 90), "lon": -float64(len(e) % 180)}, "ll": e})}
+		wsite, err := cfx.c.Compile(context.Background(), &compile.Request{Plan: we, Built: cfx.built})
+		if err != nil {
+			t.Fatalf("earth insert compile error on valid input: %v", err)
+		}
+		return &compile.Statement{
+			SQL:  strings.Join([]string{cubes.SQL, earth.SQL, wshape.SQL, wsite.SQL}, "\n"),
+			Args: append(append(append(cubes.Args, earth.Args...), wshape.Args...), wsite.Args...),
+		}
+	}
+	cubeBaseline := compileCube(f, "a@example.com", "admin", 5)
 	aggBaseline := compileAgg(f, "a@example.com", "admin", 5)
 	aggEmbedBaseline := compileAggEmbed(f, "a@example.com", "admin", 5)
 
@@ -460,6 +521,7 @@ func FuzzFilter(f *testing.F) {
 			{compileContrib(t, e, tag, n), contribBaseline},
 			{compileContribDerived(t, e, tag, n), derivedBaseline},
 			{compileVector(t, e, tag, n), vectorBaseline},
+			{compileCube(t, e, tag, n), cubeBaseline},
 			{compileAgg(t, e, tag, n), aggBaseline},
 			{compileAggEmbed(t, e, tag, n), aggEmbedBaseline},
 			{compilePath(t, e, tag, n), pathBaseline},
@@ -485,7 +547,9 @@ func FuzzFilter(f *testing.F) {
 
 // FuzzSpatial is FuzzFilter for the PostGIS path: WKT strings, bounding-box
 // coordinates and distances are user data and must move through the
-// parameter list exactly like scalars. Bare WKT and EWKT are distinct input
+// parameter list exactly like scalars, and so are the raster filter's
+// geometry, the raster value's point and the bands of the raster
+// pseudo-columns. Bare WKT and EWKT are distinct input
 // encodings (bare WKT is tagged with the column's SRID), so each has its own
 // baseline.
 func FuzzSpatial(f *testing.F) {
@@ -493,6 +557,8 @@ func FuzzSpatial(f *testing.F) {
 	fx.c = compile.New(fx.built)
 	places := fx.res("places")
 	loc := fx.col("places", "location")
+	tiles := fx.res("kb.tiles")
+	rast := tiles.Table.Column("rast")
 
 	compileWith := func(t testing.TB, wkt string, x, d float64) (*compile.Statement, bool) {
 		t.Helper()
@@ -522,7 +588,26 @@ func FuzzSpatial(f *testing.F) {
 			// a successful compile is subject to the invariant.
 			return nil, false
 		}
-		return stmt, true
+		r := list(tiles)
+		r.Select = fields(tiles, "id")
+		r.Select.Fields = append(r.Select.Fields,
+			plan.FieldSel{Pseudo: tiles.Pseudo["rast_width"]},
+			plan.FieldSel{Pseudo: tiles.Pseudo["rast_envelope"]},
+			plan.FieldSel{Pseudo: tiles.Pseudo["rast_envelope"], Alias: "e2", Args: map[string]any{"precision": int64(len(wkt) % 16)}},
+			plan.FieldSel{Pseudo: tiles.Pseudo["rast_value"]},
+			plan.FieldSel{Pseudo: tiles.Pseudo["rast_value"], Alias: "v2", Args: map[string]any{"band": int64(x)}},
+			plan.FieldSel{Pseudo: tiles.Pseudo["rast_summary_stats"], Args: map[string]any{"band": int64(d)}})
+		r.Filter = plan.Or{Terms: []plan.Expr{
+			cond(rast, plan.OpRasterIntersects, wkt),
+			plan.Not{Term: cond(rast, plan.OpRasterIntersects, wkt)},
+			cond(rast, plan.OpIs, nil),
+		}}
+		r.Near = wkt
+		raster, err := fx.c.Compile(context.Background(), &compile.Request{Plan: r, Built: fx.built})
+		if err != nil {
+			return nil, false
+		}
+		return &compile.Statement{SQL: stmt.SQL + "\n" + raster.SQL, Args: append(stmt.Args, raster.Args...)}, true
 	}
 	baseline, ok := compileWith(f, "POINT(1 2)", 1.5, 100)
 	if !ok {

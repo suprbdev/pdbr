@@ -18,7 +18,10 @@ import (
 //	cost(column) = 1; `*` costs the number of columns it expands to; an
 //	               aggregate function costs 1 like a column; a headline
 //	               costs contrib.HeadlineCost, a buffer argument adds
-//	               postgis.BufferCost
+//	               postgis.BufferCost; a raster pixel value costs
+//	               postgis.RasterValueCost and raster summary statistics
+//	               postgis.RasterSummaryStatsCost (raster metadata
+//	               accessors and every other pseudo-column cost 1)
 //
 // Spread embeds cost like embeds (a to-one spread joins one row, a to-many
 // spread aggregates its related rows). An aggregated list (a node selecting
@@ -29,7 +32,9 @@ import (
 // has no limit either and costs 1 + maxPageSize × the cost of its select.
 //
 // @costMultiplier on an FK replaces a backward embed's multiplier when lower.
-// exec compares the result to server.max_cost before compiling.
+// Filters are not priced (the estimate is the fan-out of what is returned),
+// so neither is the raster intersects filter. exec compares the result to
+// server.max_cost before compiling.
 func Cost(req *plan.Request, maxPageSize int) int {
 	if req == nil {
 		return 0
@@ -123,12 +128,23 @@ func nodeCost(node *plan.Node, maxPageSize int) int {
 }
 
 // fieldCost is the cost of one selected field: 1; contrib.HeadlineCost for
-// a headline; 1 + postgis.BufferCost for a spatial value with a buffer
-// argument; or for a set-returning computed column 1 + maxPageSize × the
-// cost of its rows (one value per row for a set of scalars).
+// a headline; the raster weight of a raster pixel value or summary
+// statistics pseudo-column; 1 + postgis.BufferCost for a spatial value
+// with a buffer argument; or for a set-returning computed column
+// 1 + maxPageSize × the cost of its rows (one value per row for a set of
+// scalars).
 func fieldCost(f *plan.FieldSel, maxPageSize int) int {
 	if f.Pseudo != nil && f.Pseudo.Headline != nil {
 		return contrib.HeadlineCost
+	}
+	if rv := rasterOf(f); rv != nil {
+		switch {
+		case rv.Value:
+			return postgis.RasterValueCost
+		case rv.SummaryStats:
+			return postgis.RasterSummaryStatsCost
+		}
+		return postgis.RasterAccessorCost
 	}
 	if _, ok := f.Args["buffer"]; ok {
 		return 1 + postgis.BufferCost
@@ -149,4 +165,12 @@ func fieldCost(f *plan.FieldSel, maxPageSize int) int {
 		child = &n
 	}
 	return 1 + maxPageSize*nodeCost(child, maxPageSize)
+}
+
+// rasterOf returns the raster surface a selected field reads, or nil.
+func rasterOf(f *plan.FieldSel) *api.RasterValue {
+	if f.Pseudo == nil {
+		return nil
+	}
+	return f.Pseudo.Raster
 }

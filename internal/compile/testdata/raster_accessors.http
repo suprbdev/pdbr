@@ -1,0 +1,1 @@
+GET /api/kb/tiles?select=id,rast_width,rast_height,rast_num_bands,rast_srid,rast_pixel_width,rast_pixel_height,rast_envelope

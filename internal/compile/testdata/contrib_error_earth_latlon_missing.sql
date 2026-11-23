@@ -1,0 +1,2 @@
+-- request: GET /api/kb/sites?order=loc.earth_dist
+-- error: 400 invalid_filter: order by loc.earth_dist requires latlon=<lat>,<lon>

@@ -1,0 +1,2 @@
+-- request: GET /api/kb/shapes?box=cs.%5B1%2C%22a%22%5D
+-- error: 400 invalid_filter: cs "box": cube value must be a list of numbers, a pair of such lists or a cube literal string

@@ -12,9 +12,10 @@ import (
 // scoreSQL renders a score pseudo-column of the row at alias against the
 // request's reference parameter: ST_Distance from near= (metres on
 // geography; on geometry SRID units, or metres on the spheroid with
-// spheroid=true), a pg_trgm similarity to trgm=, a pgvector distance from
-// vec= or the Levenshtein distance to levenshtein=. The reference is bound again for each score, so the SQL text only
-// depends on which scores are selected.
+// spheroid=true), a pg_trgm similarity to trgm=, a pgvector or cube
+// distance from vec=, an earthdistance distance from latlon= or the
+// Levenshtein distance to levenshtein=. The reference is bound again for
+// each score, so the SQL text only depends on which scores are selected.
 func (s *stmt) scoreSQL(p *api.PseudoColumn, args map[string]any, alias string) (string, error) {
 	ref := colRef(alias, p.Column.Name)
 	switch p.Score.Param {
@@ -24,11 +25,13 @@ func (s *stmt) scoreSQL(p *api.PseudoColumn, args map[string]any, alias string) 
 			return postgis.SpheroidDistanceSQL(ref, near), nil
 		}
 		return postgis.DistanceSQL(ref, near), nil
-	case "trgm", "vec", "levenshtein":
+	case "trgm", "vec", "latlon", "levenshtein":
 		val := s.plan.Trgm
 		switch p.Score.Param {
 		case "vec":
 			val = s.plan.Vec
+		case "latlon":
+			val = s.plan.LatLon
 		case "levenshtein":
 			val = s.plan.Levenshtein
 		}

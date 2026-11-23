@@ -175,3 +175,63 @@ func Contrib(cat *introspect.Catalog) *introspect.Catalog {
 	})
 	return cat
 }
+
+// Geo adds the cube and earthdistance extensions (in ContribExtSchema) and
+// postgis_raster (in public), and the ContribSchema tables of their column
+// types: kb.shapes has two cube columns, box (GiST index) and pt (no
+// index); kb.sites an earth column loc (earthdistance's earth domain, GiST
+// index) and a point column ll (no index, which only filters.allow_columns
+// admits the <@> surface on); kb.tiles a raster column rast (writable,
+// never read) and a raster[] column history. Call it after Contrib, which
+// adds ContribSchema to cat.Schemas.
+func Geo(cat *introspect.Catalog) *introspect.Catalog {
+	cat.Extensions = append(cat.Extensions,
+		&introspect.Extension{Name: "cube", Version: "1.5", Schema: ContribExtSchema},
+		&introspect.Extension{Name: "earthdistance", Version: "1.2", Schema: ContribExtSchema},
+		&introspect.Extension{Name: "postgis_raster", Version: "3.7.0", Schema: "public"},
+	)
+	priv := introspect.Privileges{Select: true, Insert: true, Update: true, Delete: true}
+	id := func() *introspect.Column {
+		return &introspect.Column{Name: "id", Position: 1, PGType: "int4", TypeSchema: "pg_catalog", NotNull: true}
+	}
+	text := func(name string, pos int) *introspect.Column {
+		return &introspect.Column{Name: name, Position: pos, PGType: "text", TypeSchema: "pg_catalog"}
+	}
+	cube := func(name string, pos int) *introspect.Column {
+		return &introspect.Column{Name: name, Position: pos, PGType: "cube", TypeSchema: ContribExtSchema, BaseTypeSchema: ContribExtSchema}
+	}
+	loc := cube("loc", 3)
+	loc.Domain = ContribExtSchema + ".earth"
+	idx := func(name, method string, cols ...string) *introspect.Index {
+		return &introspect.Index{Name: name, Columns: cols, Method: method}
+	}
+	pk := func(table string) *introspect.Constraint {
+		return &introspect.Constraint{Name: table + "_pkey", Columns: []string{"id"}}
+	}
+	cat.Tables = append(cat.Tables,
+		&introspect.Table{
+			Schema: ContribSchema, Name: "shapes", Kind: introspect.RelTable,
+			Columns:    []*introspect.Column{id(), text("name", 2), cube("box", 3), cube("pt", 4)},
+			PrimaryKey: pk("shapes"),
+			Indexes:    []*introspect.Index{idx("shapes_box_idx", "gist", "box")},
+			Privileges: priv,
+		},
+		&introspect.Table{
+			Schema: ContribSchema, Name: "sites", Kind: introspect.RelTable,
+			Columns: []*introspect.Column{id(), text("name", 2), loc,
+				{Name: "ll", Position: 4, PGType: "point", TypeSchema: "pg_catalog"}},
+			PrimaryKey: pk("sites"),
+			Indexes:    []*introspect.Index{idx("sites_loc_idx", "gist", "loc")},
+			Privileges: priv,
+		},
+		&introspect.Table{
+			Schema: ContribSchema, Name: "tiles", Kind: introspect.RelTable,
+			Columns: []*introspect.Column{id(), text("name", 2),
+				{Name: "rast", Position: 3, PGType: "raster", TypeSchema: "public"},
+				{Name: "history", Position: 4, PGType: "_raster", TypeSchema: "public", IsArray: true}},
+			PrimaryKey: pk("tiles"),
+			Privileges: priv,
+		},
+	)
+	return cat
+}

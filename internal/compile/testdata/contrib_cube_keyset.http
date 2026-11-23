@@ -1,0 +1,1 @@
+GET /api/kb/shapes?select=id&order=box.vec_l1&vec=%5B%5B0%2C0%5D%2C%5B1%2C1%5D%5D&limit=2&after=WyJrYi5zaGFwZXMiLCAzXQ

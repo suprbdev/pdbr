@@ -76,7 +76,7 @@ See [cli.md](cli.md) for details.
 | `schema.functions` | bool | `true` | expose functions as `/rpc/{fn}` routes and computed columns ([rpc.md](rpc.md)) |
 | `schema.expose_partitions` | bool | `false` | also expose each partition of a partitioned table as its own resource; off, only the partitioned parent is a resource (its rows already span every partition) — see [api.md](api.md#what-gets-generated) |
 | `filters.indexed_only` | bool | `true` | only indexed/PK/unique columns filterable and orderable; see [filtering.md](filtering.md) |
-| `filters.allow_columns` | map[string][]string | `{}` | per-table extra filterable columns keyed by `schema.table`, overriding `indexed_only` |
+| `filters.allow_columns` | map[string][]string | `{}` | per-table extra filterable columns keyed by `schema.table`, overriding `indexed_only`; also the only way to admit operators no index serves (unaccent, fuzzystrmatch, the earthdistance `<@>` surface on point columns) and the raster `intersects` filter, whose GiST index is on an expression |
 | `rls.enabled` | bool | `true` | switch role per request via `SET LOCAL ROLE`; see [rls.md](rls.md) |
 | `rls.default_role` | string | — | role for authenticated requests without a role claim |
 | `rls.anonymous_role` | string | `anonymous` | role for unauthenticated requests |

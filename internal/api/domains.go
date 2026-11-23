@@ -55,6 +55,9 @@ func (b *Builder) domainRef(ref, pgType string) *Schema {
 // colTypeSchema is typeSchema for a column-shaped value, referencing its
 // domain's component when it has one.
 func (b *Builder) colTypeSchema(c *introspect.Column) *Schema {
+	if s := locationSchema(b.Catalog, c, false); s != nil {
+		return s
+	}
 	if s := b.domainRef(c.Domain, c.PGType); s != nil {
 		return s
 	}
@@ -64,6 +67,9 @@ func (b *Builder) colTypeSchema(c *introspect.Column) *Schema {
 // colInputTypeSchema is inputTypeSchema for a column-shaped value,
 // referencing its domain's component when it has one.
 func (b *Builder) colInputTypeSchema(c *introspect.Column) *Schema {
+	if s := locationSchema(b.Catalog, c, true); s != nil {
+		return s
+	}
 	if s := b.domainRef(c.Domain, c.PGType); s != nil {
 		return s
 	}

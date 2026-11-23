@@ -1,0 +1,2 @@
+-- request: GET /api/kb/tiles?select=id,rast
+-- error: 400 invalid_select: raster column "rast" of "kb.tiles" is not readable: select its derived columns (rast_width, rast_num_bands, rast_envelope, rast_value(band=<n>) with near=, rast_summary_stats(band=<n>), ...) or expose the bytes through a computed column

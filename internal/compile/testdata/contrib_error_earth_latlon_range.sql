@@ -1,0 +1,2 @@
+-- request: GET /api/kb/sites?order=loc.earth_dist&latlon=95,0
+-- error: 400 invalid_filter: latlon: lat must be between -90 and 90

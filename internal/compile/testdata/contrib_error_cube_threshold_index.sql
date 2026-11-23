@@ -1,0 +1,2 @@
+-- request: GET /api/kb/shapes?pt=vec_l2_lt.1&vec=%5B1%5D
+-- error: 400 column_not_filterable: column "pt" on "kb.shapes" is not filterable

@@ -1,0 +1,1 @@
+GET /api/kb/sites?select=id,loc,ll

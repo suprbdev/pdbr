@@ -358,7 +358,8 @@ func (b *Builder) rpcItem(item *PathItem, rt *Route) {
 
 // listParams are the read parameters of a collection: select, order, paging,
 // count, distinct, the logic params, near (postgis), trgm (pg_trgm), vec
-// (pgvector) and one filter param per filterable column.
+// (pgvector, cube), latlon (earthdistance) and one filter param per
+// filterable column.
 func (b *Builder) listParams(r *Resource, rpc bool) []*Parameter {
 	out := []*Parameter{
 		b.listSelectParam(r, "Columns and embeds to return."),
@@ -393,6 +394,9 @@ func (b *Builder) listParams(r *Resource, rpc bool) []*Parameter {
 	}
 	if lev := b.levenshteinParam(r); lev != nil {
 		out = append(out, lev)
+	}
+	if ll := b.latlonParam(r); ll != nil {
+		out = append(out, ll)
 	}
 	return append(out, b.filterParams(r, nil)...)
 }
@@ -456,7 +460,13 @@ func (b *Builder) selectParam(r *Resource, lead string) *Parameter {
 		sb.WriteString(". Derived (select explicitly): " + strings.Join(derived, ", "))
 	}
 	if scores := pseudoKeys(r, true); len(scores) > 0 {
-		sb.WriteString(". Scores against near=, trgm=, vec= or levenshtein= (select explicitly; the parameter is required): " + strings.Join(scores, ", "))
+		for i, k := range scores {
+			scores[i] = k + r.Pseudo[k].SelectArgSyntax()
+		}
+		sb.WriteString(". Scores against near=, trgm=, vec=, latlon= or levenshtein= (select explicitly; the parameter is required): " + strings.Join(scores, ", "))
+	}
+	if rasters := fieldKeys(r.Rasters); len(rasters) > 0 {
+		sb.WriteString(". Raster columns (" + strings.Join(rasters, ", ") + ") are not readable (400 invalid_select): select their derived columns, or expose the bytes through a computed column")
 	}
 	if embeds := b.embedKeys(r); len(embeds) > 0 {
 		sb.WriteString(". Embeds: " + strings.Join(embeds, ", ") + " (rel(...) with a nested select; rel!inner(...) drops parents without a match; ...rel(...) spreads the embed's items into the row: values for a to-one relation, one array per item for a to-many one; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>)")
@@ -525,7 +535,10 @@ func (b *Builder) orderParam(r *Resource) *Parameter {
 		sb.WriteString(". Trigram distance to trgm=<text> (lower is better): " + strings.Join(dists["trgm"], ", "))
 	}
 	if len(dists["vec"]) > 0 {
-		sb.WriteString(". pgvector distance to vec=<vector> (lower is closer; asc is nearest first): " + strings.Join(dists["vec"], ", "))
+		sb.WriteString(". pgvector or cube distance to vec=<vector> (lower is closer; asc is nearest first): " + strings.Join(dists["vec"], ", "))
+	}
+	if len(dists["latlon"]) > 0 {
+		sb.WriteString(". Distance on the Earth's surface to latlon=<lat>,<lon> (earth_dist in metres, earth_miles in statute miles; asc is nearest first): " + strings.Join(dists["latlon"], ", "))
 	}
 	if len(dists["levenshtein"]) > 0 {
 		sb.WriteString(". Levenshtein edit distance to levenshtein=<text> (lower is closer): " + strings.Join(dists["levenshtein"], ", "))
@@ -570,14 +583,26 @@ func hasScore(r *Resource, param string) bool {
 	return false
 }
 
-// nearParam documents near= when distance ordering is on and the resource
-// has an orderable spatial column or a distance pseudo-column.
+// nearParam documents near= when the resource has a spatial column
+// orderable by distance (with distance ordering on), a distance
+// pseudo-column or a raster pixel value pseudo-column.
 func (b *Builder) nearParam(r *Resource) *Parameter {
-	if !b.Surface.SpatialOrder || len(spatialOrderKeys(r)) == 0 && !hasScore(r, "near") {
+	if (!b.Surface.SpatialOrder || len(spatialOrderKeys(r)) == 0) && !hasScore(r, "near") {
 		return nil
 	}
 	return &Parameter{Name: "near", In: "query", Schema: &Schema{Type: "string"},
-		Description: "Reference point (GeoJSON or WKT/EWKT) for order=<col>.dist and the <col>_distance columns; required whenever one is present."}
+		Description: "Reference point (GeoJSON or WKT/EWKT) for order=<col>.dist, the <col>_distance columns and the raster <col>_value columns; required whenever one is present."}
+}
+
+// latlonParam documents latlon= when the resource has a column orderable
+// by an earthdistance distance, an earthdistance score or an earth_lt /
+// earth_miles_lt filter.
+func (b *Builder) latlonParam(r *Resource) *Parameter {
+	if _, dists := b.contribOrderKeys(r); len(dists["latlon"]) == 0 && !hasScore(r, "latlon") && !b.hasThreshold(r, "latlon") {
+		return nil
+	}
+	return &Parameter{Name: "latlon", In: "query", Schema: &Schema{Type: "string"},
+		Description: "Reference location <lat>,<lon> in degrees (e.g. 51.508,-0.128) for order=<col>.earth_dist|earth_miles, the <col>_earth_distance and <col>_earth_distance_miles columns and the earth_lt / earth_miles_lt threshold filters (earthdistance); required whenever one is present."}
 }
 
 // trgmParam documents trgm= when the resource has a column orderable by
@@ -597,7 +622,7 @@ func (b *Builder) vecParam(r *Resource) *Parameter {
 		return nil
 	}
 	return &Parameter{Name: "vec", In: "query", Schema: &Schema{Type: "string"},
-		Description: "Reference vector for order=<col>.vec_l2|vec_ip|vec_cos|vec_l1|vec_hamming|vec_jaccard, the vector distance columns (<col>_cosine_distance, ...) and the vec_*_lt threshold filters (pgvector): a JSON array of numbers ([0.1,0.2,0.3]) or the column type's text form (a bit string such as 1010 for bit columns); required whenever one is present."}
+		Description: "Reference vector for order=<col>.vec_l2|vec_ip|vec_cos|vec_l1|vec_chebyshev|vec_hamming|vec_jaccard, the vector and cube distance columns (<col>_cosine_distance, <col>_chebyshev_distance, ...) and the vec_*_lt threshold filters (pgvector, cube): a JSON array of numbers ([0.1,0.2,0.3]), for cube columns also a pair of corner arrays ([[0,0],[1,1]]), or the column type's text form (a bit string such as 1010 for bit columns, (1, 2) for cube); required whenever one is present."}
 }
 
 // levenshteinParam documents levenshtein= when the resource has a column
@@ -616,7 +641,7 @@ func (b *Builder) levenshteinParam(r *Resource) *Parameter {
 func (b *Builder) hasVectorThreshold(r *Resource) bool { return b.hasThreshold(r, "vec") }
 
 // hasThreshold reports whether a filterable column of r takes a distance
-// threshold filter measured against param (vec, levenshtein).
+// threshold filter measured against param (vec, latlon, levenshtein).
 func (b *Builder) hasThreshold(r *Resource, param string) bool {
 	for _, f := range r.Columns {
 		if !r.FilterColumns[f.Key] {
@@ -685,6 +710,24 @@ func (b *Builder) filterParams(r *Resource, shadow map[string]bool) []*Parameter
 			p.Description += " Values by key: " + f.Key + "->key=<op>.<value> (or ->>key) compares the key's value as text (the text operators, match and imatch included)."
 		case jsonPathFilterable(f.Column):
 			p.Description += " JSON paths: " + f.Key + "->key=<op>.<value> compares jsonb (eq, neq, gt, gte, lt, lte, in, is, isdistinct, cs, cd, hk, jpe, jpm; JSON operands), " + f.Key + "->>key=<op>.<value> text (the text operators, match and imatch included)."
+		}
+		if f.Description != "" {
+			p.Description = f.Description + " " + p.Description
+		}
+		out = append(out, p)
+	}
+	for _, f := range r.Rasters {
+		if !r.FilterColumns[f.Key] || shadow[f.Key] || f.Column.IsArray {
+			continue
+		}
+		ops := b.filterOps(r, f.Column)
+		p := &Parameter{
+			Name: f.Key, In: "query", Schema: &Schema{Type: "string"}, XFilterOps: ops,
+			Description: "Filter: " + f.Key + "=<op>.<value> (raster). Ops: " + strings.Join(ops, ", ") + ". Prefix not. to negate.",
+			Deprecated:  f.Deprecated, XDeprecationReason: f.DeprecationReason,
+		}
+		if containsString(ops, "intersects") {
+			p.Description += " intersects.<geometry> (GeoJSON or WKT/EWKT, in the raster's SRID) holds when the raster's convex hull intersects the geometry."
 		}
 		if f.Description != "" {
 			p.Description = f.Description + " " + p.Description
@@ -1159,7 +1202,7 @@ func fieldKeys(fs []*Field) []string {
 func (b *Builder) orderableKeys(r *Resource) []string {
 	var out []string
 	for _, f := range r.Columns {
-		if _, vector := VectorVocabulary(b.Catalog, f.Column); r.OrderColumns[f.Key] && !vector {
+		if _, vector := DistanceOnly(b.Catalog, f.Column); r.OrderColumns[f.Key] && !vector {
 			out = append(out, f.Key)
 		}
 	}

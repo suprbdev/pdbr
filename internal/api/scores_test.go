@@ -53,7 +53,7 @@ func TestContribScores(t *testing.T) {
 		t.Errorf("emb_cosine_distance property = %+v", p)
 	}
 	get := b.OpenAPI.Paths["/kb/docs"].Get
-	if sel := paramByName(get.Parameters, "select").Description; !strings.Contains(sel, "Scores against near=, trgm=, vec= or levenshtein=") || !strings.Contains(sel, "title_similarity") {
+	if sel := paramByName(get.Parameters, "select").Description; !strings.Contains(sel, "Scores against near=, trgm=, vec=, latlon= or levenshtein=") || !strings.Contains(sel, "title_similarity") {
 		t.Errorf("select description: %s", sel)
 	}
 	if paramByName(get.Parameters, "trgm") == nil {

@@ -100,6 +100,9 @@ Per-property details:
 | `hstore` | `object` (string → string\|null) |
 | `vector`, `halfvec` (pgvector) | `array` of `number`; input: `oneOf [array of number, string]` (the text form) |
 | `sparsevec` (pgvector) | `string` (`{1:1.5,3:2}/5`); input: `oneOf [string, array of number]` (dense) |
+| `cube` | `oneOf [array of number (point), pair of arrays of number (box)]`; input adds the text form (`string`) |
+| `earth` (earthdistance) | `object` `{lat, lon}` (numbers in degrees, both required) |
+| `raster` (postgis_raster) | never in the read schema; input: `string` (hex WKB), write-only |
 | ranges, multiranges | `string` (the literal); input: `oneOf [string, {start, end, startInclusive, endInclusive, isEmpty}]` (multiranges: `oneOf [string, array]`) |
 | `inet`, `cidr`, `macaddr`, `ltree`, `tsvector` | `string` |
 | arrays (`T[]`) | `array`, `items` = element mapping (nested arrays nest) |
@@ -211,10 +214,11 @@ stay at their defaults):
 | `distinct` | list | `string` (comma list) |
 | `on_conflict` | `PUT` | `string` (comma list of a unique constraint's columns; the description lists the resource's unique column sets) |
 | `and`, `or`, `not.and`, `not.or` | list, `SETOF <table>` rpc | `string`; nested logic grammar |
-| `{column}` | list, `SETOF <table>` rpc — one per **filterable** column under the active policy (`filters.indexed_only`, `allow_columns`, `@omit filter`), catalog order | `string`; description lists the operator vocabulary for that column's type (scalar `eq neq gt gte lt lte in is isdistinct`; text adds `like ilike sw ew`; arrays `eq…lte is isdistinct cs cd ov`; `jsonb` `eq…lte is isdistinct cs cd hk jpe jpm`; `json` `is cs cd hk jpe jpm`; hstore `eq neq in is isdistinct`; pgvector types `is`; then the contrib operators the filter policy admits for the column — full-text, trigram, unaccent, hstore, ltree, range, inet, see [contrib.md](contrib.md); spatial types take `Built.Extra.FilterOps[type]` — the postgis `st_*`/`bbox_*`/`is` set, or just `is` without the plugin) and mentions the `not.` prefix once; vendor extension `x-pdbr-filter-ops: ["eq","neq",...]` carries the same list machine-readably (`internal/parse` has a test pinning it to what the parser accepts). `deprecated`/`x-deprecation-reason` from the column |
-| `near` | list of resources with a `.dist`-orderable spatial column (postgis plugin, `Surface.SpatialOrder`) | `string` (GeoJSON or WKT) |
+| `{column}` | list, `SETOF <table>` rpc — one per **filterable** column under the active policy (`filters.indexed_only`, `allow_columns`, `@omit filter`), catalog order | `string`; description lists the operator vocabulary for that column's type (scalar `eq neq gt gte lt lte in is isdistinct`; text adds `like ilike sw ew`; arrays `eq…lte is isdistinct cs cd ov`; `jsonb` `eq…lte is isdistinct cs cd hk jpe jpm`; `json` `is cs cd hk jpe jpm`; hstore `eq neq in is isdistinct`; pgvector, cube and earth types `is`; raster `intersects is` (`is` without the postgis plugin or with its `filters` off); then the contrib operators the filter policy admits for the column — full-text, trigram, unaccent, hstore, ltree, range, inet, see [contrib.md](contrib.md); spatial types take `Built.Extra.FilterOps[type]` — the postgis `st_*`/`bbox_*`/`is` set, or just `is` without the plugin) and mentions the `not.` prefix once; vendor extension `x-pdbr-filter-ops: ["eq","neq",...]` carries the same list machine-readably (`internal/parse` has a test pinning it to what the parser accepts). `deprecated`/`x-deprecation-reason` from the column |
+| `near` | list of resources with a `.dist`-orderable spatial column (postgis plugin, `Surface.SpatialOrder`), a `<col>_distance` column or a raster `<col>_value` | `string` (GeoJSON or WKT) |
 | `trgm` | list of resources with a column orderable by trigram distance | `string` (reference text for `<col>.trgm_dist` and the word forms) |
-| `vec` | list of resources with a column orderable by vector distance | `string` (reference vector for `<col>.vec_*`: JSON array of numbers or the pgvector text form) |
+| `vec` | list of resources with a column orderable by vector or cube distance, a vector or cube score or a `vec_*_lt` threshold | `string` (reference vector for `<col>.vec_*`: JSON array of numbers, for cube a pair of corner arrays, or the type's text form) |
+| `latlon` | list of resources with an earthdistance order term, score or `earth_lt` / `earth_miles_lt` threshold | `string` (`<lat>,<lon>` in degrees) |
 | `{arg}` | rpc `GET` | mapped type of the argument; `required` unless it has a `DEFAULT` (shown in the description) |
 
 Per-embed params (`posts.order=`, `posts.limit=`, `posts.title=eq.x`) are

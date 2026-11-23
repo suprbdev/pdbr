@@ -6,7 +6,11 @@
 // (order=<col>.dist with near=) and the <col>_distance score from near=,
 // and the spatial aggregate functions
 // (col.extent(), col.union(), col.collect(), col.centroid(); with
-// server.aggregates). Reading and writing GeoJSON is core; the
+// server.aggregates), and on postgis_raster columns the metadata, pixel
+// value and summary statistics pseudo-columns (<col>_width, ...,
+// <col>_value(band=) at near=, <col>_summary_stats(band=)) and the
+// intersects filter. Reading and writing GeoJSON, and keeping raster
+// values out of every response, is core; the
 // plugin only switches the grammar on (api.Surface), registers the
 // pseudo-columns on each resource, applies @omit filter|order per column
 // straight from the catalog comments, and documents the surface in OpenAPI
@@ -72,9 +76,9 @@ func (p *Plugin) Settings() (filters, derived, ordering, projection bool) {
 	return p.filters, p.derived, p.ordering, p.projection
 }
 
-// TransformAPI adds the spatial surface. Without a spatial column in the
-// model it is a no-op, so routes and OpenAPI stay byte-identical to a
-// database without PostGIS.
+// TransformAPI adds the spatial surface. Without a spatial or raster
+// column in the model it is a no-op, so routes and OpenAPI stay
+// byte-identical to a database without PostGIS.
 func (p *Plugin) TransformAPI(_ context.Context, b *api.Builder) error {
 	found := false
 	for _, key := range sortedKeys(b.Resources) {
@@ -90,6 +94,16 @@ func (p *Plugin) TransformAPI(_ context.Context, b *api.Builder) error {
 			}
 			if p.ordering && !r.NameTaken("near") {
 				addDistanceColumn(b, r, f)
+			}
+		}
+		for _, f := range r.Rasters {
+			if f.Column.IsArray {
+				continue
+			}
+			found = true
+			p.applyOmits(b, r, f)
+			if p.derived {
+				addRasterColumns(b, r, f)
 			}
 		}
 	}
@@ -135,7 +149,84 @@ func (p *Plugin) TransformAPI(_ context.Context, b *api.Builder) error {
 		}
 		b.Extra.FilterOps[t] = ops
 	}
+	b.Extra.FilterOps[postgis.RasterTypeName] = RasterFilterOps(p.filters)
 	return nil
+}
+
+// RasterFilterOps lists the filter operators of a raster column for OpenAPI
+// x-pdbr-filter-ops: intersects (with the filters setting) and is.
+func RasterFilterOps(filters bool) []string {
+	if filters {
+		return []string{"intersects", "is"}
+	}
+	return []string{"is"}
+}
+
+// addRasterColumns registers the pseudo-columns of a raster column:
+// <key>_<accessor> for each header-only metadata accessor
+// (postgis.RasterAccessors: width, height, num_bands, srid, pixel_width,
+// pixel_height, envelope), <key>_value(band=) (the pixel value at near=,
+// unless near is a column or computed column of the resource) and
+// <key>_summary_stats(band=). A real, raster, computed or other
+// pseudo-column owning a key keeps it.
+func addRasterColumns(b *api.Builder, r *api.Resource, f *api.Field) {
+	add := func(suffix string, pc *api.PseudoColumn) {
+		key := f.Key + "_" + suffix
+		if r.Field(key) != nil || r.Raster(key) != nil || r.Computed[key] != nil || r.Pseudo[key] != nil {
+			b.Warn("postgis: raster pseudo-column skipped: the key is taken", "resource", r.Path, "column", f.Column.Name, "key", key)
+			return
+		}
+		if r.Pseudo == nil {
+			r.Pseudo = map[string]*api.PseudoColumn{}
+		}
+		pc.Key, pc.Column = key, f.Column
+		r.Pseudo[key] = pc
+	}
+	for i := range postgis.RasterAccessors {
+		a := postgis.RasterAccessors[i]
+		add(RasterAccessor(a), &api.PseudoColumn{
+			Raster:      &api.RasterValue{Accessor: &a},
+			Schema:      rasterSchema(a.Type, a.GeoJSON),
+			Description: a.Description,
+		})
+	}
+	if !r.NameTaken("near") {
+		add("value", &api.PseudoColumn{
+			Raster:      &api.RasterValue{Value: true},
+			Score:       &api.Score{Param: "near"},
+			Schema:      &api.Schema{Type: "number", Format: "double"},
+			Description: "Pixel value (ST_Value) of band band= (default 1) at the near= point, reprojected to the raster's SRID; null for a NODATA pixel, a point outside the raster or a missing band. near= is required to select it.",
+		})
+	}
+	add("summary_stats", &api.PseudoColumn{
+		Raster:      &api.RasterValue{SummaryStats: true},
+		Schema:      SummaryStatsSchema(),
+		Description: "Summary statistics (ST_SummaryStats, NODATA pixels excluded) of band band= (default 1); null for a NULL raster or a missing band. Reads every pixel of the band.",
+	})
+}
+
+// SummaryStatsSchema is the OpenAPI schema of a raster's summary
+// statistics object.
+func SummaryStatsSchema() *api.Schema {
+	s := &api.Schema{Type: "object", Properties: map[string]*api.Schema{}}
+	for _, f := range postgis.RasterSummaryStatsFields {
+		typ := "number"
+		if f.Type == "Int" {
+			typ = "integer"
+		}
+		s.Properties[f.Name] = &api.Schema{Type: []string{typ, "null"}, Description: f.Description}
+	}
+	return s
+}
+
+func rasterSchema(typ string, geoJSON bool) *api.Schema {
+	switch {
+	case geoJSON:
+		return api.SchemaRef(SchemaName)
+	case typ == "Int":
+		return &api.Schema{Type: "integer", Format: "int32"}
+	}
+	return &api.Schema{Type: "number", Format: "double"}
 }
 
 // InputSchema is the request-body shape of a spatial value: a GeoJSON
@@ -243,9 +334,15 @@ func Applies(d postgis.Derived, col *introspect.Column) bool {
 
 // Accessor is the pseudo-column suffix of a derived accessor: the pdbcore
 // suffix in snake_case (GeometryType -> geometry_type, IsValid -> is_valid).
-func Accessor(d postgis.Derived) string {
+func Accessor(d postgis.Derived) string { return snake(d.Suffix) }
+
+// RasterAccessor is the pseudo-column suffix of a raster metadata accessor:
+// the pdbcore suffix in snake_case (NumBands -> num_bands).
+func RasterAccessor(a postgis.RasterAccessor) string { return snake(a.Suffix) }
+
+func snake(suffix string) string {
 	var sb strings.Builder
-	for i, ch := range d.Suffix {
+	for i, ch := range suffix {
 		if unicode.IsUpper(ch) {
 			if i > 0 {
 				sb.WriteByte('_')

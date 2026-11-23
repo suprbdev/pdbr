@@ -4,7 +4,9 @@ pdbr maps PostGIS `geometry` and `geography` columns to GeoJSON and generates
 the spatial query surface on top of them: bounding-box search, DE-9IM
 predicates, radius search, derived accessors, reprojection and distance
 ordering — all compiled into the same **single SQL statement** as the rest of
-the request.
+the request. `postgis_raster` columns get a read-only surface of their own
+([Rasters](#rasters)): metadata, pixel values, band statistics and an
+intersects filter, never the raw raster.
 
 Nothing needs to be configured. A column is spatial when its type name is
 `geometry` or `geography`, whatever schema the extension was installed in. If
@@ -461,6 +463,99 @@ the column, and `ordering: false` removes them with `.dist`. Like every
 pseudo-column they are not part of `*`, take no casts, filters or ordering,
 and cost 1 per row in `server.max_cost`.
 
+## Rasters
+
+A column of the `postgis_raster` type `raster` holds a pixel grid, often
+megabytes per row. pdbr **never returns raw raster bytes**:
+
+- The raster column is not part of `select=*`, embeds, mutation responses,
+  GeoJSON properties, CSV or the read schema in OpenAPI, and it is not in
+  the `ETag` / `If-Match` row hash (so a change to the raster alone does not
+  change the ETag). Naming it in `select=` is `400 invalid_select`, in
+  `order=` `400 column_not_orderable`; it takes no `distinct`, aggregates or
+  casts. Arrays of rasters (`raster[]`) are treated the same and get no
+  pseudo-columns or filter.
+- It stays **writable**: `POST`/`PATCH`/`PUT` bodies take it as text that
+  PostgreSQL's raster input reads — hex-encoded WKB (`encode(ST_AsBinary(rast),
+  'hex')` produces it) — bound as one parameter. The `.insert` / `.update` /
+  `.upsert` schemas document it as a write-only string.
+- The opt-in for the bytes is a [computed column](api.md) that encodes
+  them, for example
+  `CREATE FUNCTION tiles_wkb(t tiles) RETURNS text STABLE LANGUAGE sql AS $$ SELECT encode(ST_AsBinary(t.rast), 'base64') $$`
+  (`select=wkb`), or `ST_AsPNG`/`ST_AsGDALRaster` the same way (GDAL drivers
+  must be enabled through `postgis.gdal_enabled_drivers`).
+
+These exclusions are core: they hold with the postgis plugin disabled. The
+plugin adds the read surface, as pseudo-columns selected explicitly:
+
+| Pseudo-column | JSON type | PostGIS |
+|---|---|---|
+| `<col>_width`, `<col>_height` | integer | `ST_Width`, `ST_Height` (pixels) |
+| `<col>_num_bands` | integer | `ST_NumBands` |
+| `<col>_srid` | integer | `ST_SRID` |
+| `<col>_pixel_width`, `<col>_pixel_height` | number | `ST_PixelWidth`, `ST_PixelHeight` (SRID units) |
+| `<col>_envelope` | GeoJSON | `ST_Envelope` (the raster's extent as a polygon) |
+| `<col>_value[(band=<n>)]` | number | `ST_Value` of band `n` (default 1) at the `near=` point |
+| `<col>_summary_stats[(band=<n>)]` | object `{count, sum, mean, stddev, min, max}` | `ST_SummaryStats` of band `n` (default 1), NODATA excluded |
+
+```
+GET /api/tiles?select=id,rast_width,rast_num_bands,rast_envelope
+GET /api/tiles?select=id,elevation:rast_value,red:rast_value(band=2)&near=SRID%3D4326%3BPOINT(5%205)
+GET /api/tiles?select=id,rast_summary_stats(band=1)&rast=intersects.SRID%3D4326%3BPOINT(5%205)
+```
+
+- The metadata accessors read only the raster header; a NULL raster gives
+  NULL accessors. `<col>_envelope(precision=<0-15>)` rounds the GeoJSON
+  coordinates like `precision=` on spatial columns (a bound parameter); the
+  raster pseudo-columns take no `transform=`, `simplify=` or `buffer=`.
+- `<col>_value` samples the pixel under `near=` (GeoJSON or WKT/EWKT, the
+  same `near=` as `.dist` and `<col>_distance`, required when selected,
+  `400 invalid_filter` without it). The point is reprojected to the
+  raster's SRID when both carry a different one, and takes the raster's
+  SRID when it has none (bare WKT), so a GeoJSON (WGS 84) point samples a
+  raster stored in any projection. A NODATA pixel, a point outside the
+  raster and a missing band are `null`. `near=` is accepted on any
+  resource with a raster column, spatial columns or not.
+- `band=` is a positive integer (`400 invalid_select` otherwise), bound as
+  a parameter whether given or not, so the SQL text does not depend on it.
+  The other raster pseudo-columns take no arguments besides the envelope's
+  `precision=`.
+- `<col>_summary_stats` reads **every pixel** of the band: it is `null` for
+  a NULL raster or a missing band and costs
+  `postgis.RasterSummaryStatsCost` (100) per row in `server.max_cost`;
+  `<col>_value` costs `RasterValueCost` (10), the metadata accessors 1. The
+  cost estimate prices returned values only, so the intersects filter is
+  not priced.
+
+**Filter.** `<col>=intersects.<geometry>` (GeoJSON or WKT/EWKT, parsed like
+the spatial operators) holds when the raster's convex hull intersects the
+geometry (`ST_Intersects(rast, geom)`, an `&&` prefilter on the hull before
+the exact test); `not.`, `or=`/`and=` and embed filters take it, and
+`is.null` / `not.is.null` work too. The geometry must be in the **raster's
+SRID**: it is not reprojected, a row whose bounding box overlaps a geometry
+in another SRID fails the request with `400 pg:P0001` ("Raster and geometry
+do not have the same SRID"), and other rows simply do not match. A GiST
+expression index serves it:
+
+```sql
+CREATE INDEX tiles_rast_hull_idx ON tiles USING gist (ST_ConvexHull(rast));
+```
+
+Introspected expression indexes have no columns, so under
+`filters.indexed_only` a raster column is filterable (`intersects` and
+`is`) only when listed in `filters.allow_columns` (`400
+column_not_filterable` otherwise). The filter follows the plugin's
+`filters` setting (`400 invalid_filter` when off), the pseudo-columns its
+`derived` setting. `@omit read` on the raster column removes its
+pseudo-columns and filter (it stays writable), `@omit filter` the filter;
+a column hidden by a contract has none of it.
+
+OpenAPI lists the pseudo-columns as read-only properties (the statistics
+as an object schema), the raster filter parameter with
+`x-pdbr-filter-ops: [intersects, is]` (`[is]` with `filters: false`), and
+`near` wherever a `<col>_value` exists; the `select` description names the
+unreadable raster columns.
+
 ## Indexing
 
 Spatial filters and ordering respect `filters.indexed_only` exactly like
@@ -500,8 +595,8 @@ no spatial column.
 plugins:
   settings:
     postgis:
-      filters: true      # st_* / bbox_* operators on spatial columns
-      derived: true      # <col>_area, <col>_centroid, ...
+      filters: true      # st_* / bbox_* operators on spatial columns, intersects on rasters
+      derived: true      # <col>_area, <col>_centroid, ..., raster <col>_width, <col>_value, <col>_summary_stats, ...
       ordering: true     # order=<col>.dist.asc|desc, <col>_distance + near=
       projection: true   # select=col(transform=…,simplify=…)
       aggregates: true   # select=col.extent(), union(), collect(), centroid() (with server.aggregates)
@@ -558,19 +653,21 @@ COMMENT ON COLUMN places.secret_location IS '@omit filter,order';
 - **Injection safety.** Geometries, bounding-box corners, distances, buffer
   distances and GeoJSON precisions are all bind parameters; the compiled SQL text is a pure function of the request
   shape. This is enforced by `FuzzSpatial` in `internal/compile` (part of
-  `make fuzz`), the spatial twin of the `FuzzFilter` invariant.
+  `make fuzz`; it covers the raster filter, pixel value and band arguments
+  too), the spatial twin of the `FuzzFilter` invariant.
 - **Goldens.** `spatial_filter`, `spatial_dwithin`, `spatial_bbox_directional`,
   `spatial_equality`, `spatial_output`, `spatial_accessors`,
   `spatial_accessor_typmod`, `spatial_order`, `spatial_mutation`,
-  `spatial_precision_buffer`, `spatial_precision_geojson` in `internal/compile/testdata` (the
+  `spatial_precision_buffer`, `spatial_precision_geojson` and the
+  `raster_*` goldens in `internal/compile/testdata` (the
   golden harness applies the plugin so pseudo-columns resolve); e2e in
-  `test/e2e_postgis_test.go`.
+  `test/e2e_postgis_test.go` and `test/e2e_geo_test.go` (rasters).
 - **Malformed input fails fast.** A value that is neither valid GeoJSON nor
   plausible WKT is rejected at compile time with a `400` problem, rather than
   reaching Postgres as a type error mid-statement.
 - **CSV.** With `Accept: text/csv` spatial values and GeoJSON pseudo-columns
   are emitted as their JSON text in the cell.
-- **Not covered:** raster and topology types. `geometry(TypeName, SRID)`
+- **Not covered:** topology types. `geometry(TypeName, SRID)`
   type modifiers only decide which accessors a column gets; they are not
   reflected in the OpenAPI value schema (every spatial column is the same
   `GeoJSON` schema regardless of its declared geometry subtype; a

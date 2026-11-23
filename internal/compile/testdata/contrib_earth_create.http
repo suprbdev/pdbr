@@ -1,0 +1,4 @@
+POST /api/kb/sites?select=id,loc
+Prefer: return=representation
+
+{"id": 1, "name": "Trafalgar Square", "loc": {"lat": 51.508, "lon": -0.128}, "ll": "(-0.128,51.508)"}

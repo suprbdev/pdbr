@@ -1,0 +1,2 @@
+-- request: GET /api/kb/tiles?select=rast_value
+-- error: 400 invalid_filter: rast_value requires near=<GeoJSON or WKT>

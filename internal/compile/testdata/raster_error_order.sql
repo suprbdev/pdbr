@@ -1,0 +1,2 @@
+-- request: GET /api/kb/tiles?order=rast
+-- error: 400 column_not_orderable: raster column "rast" is not orderable

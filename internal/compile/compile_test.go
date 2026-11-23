@@ -1366,3 +1366,42 @@ func TestCostScores(t *testing.T) {
 		t.Errorf("cost = %d, want %d", got, want)
 	}
 }
+
+// TestCostGeo pins the cube and earthdistance scores at the cost of a
+// column, the raster metadata accessors at postgis.RasterAccessorCost, the
+// pixel value at RasterValueCost and the summary statistics at
+// RasterSummaryStatsCost per row; `*` over a resource with raster columns
+// costs its readable columns only, and filters (the raster intersects
+// filter included) are not priced.
+func TestCostGeo(t *testing.T) {
+	built := goldenBuilt(t)
+	shapes, sites, tiles := built.ByPath["kb.shapes"], built.ByPath["kb.sites"], built.ByPath["kb.tiles"]
+	p := list(shapes)
+	p.Page = plan.Page{Limit: 10, LimitSet: true}
+	p.Select = &plan.Node{Resource: shapes, Fields: []plan.FieldSel{{Column: shapes.Table.Column("box")}, {Pseudo: shapes.Pseudo["box_chebyshev_distance"]}}}
+	if got, want := compile.Cost(p, 100), 1+10*2; got != want {
+		t.Errorf("cube cost = %d, want %d", got, want)
+	}
+	p = list(sites)
+	p.Page = plan.Page{Limit: 10, LimitSet: true}
+	p.Select = &plan.Node{Resource: sites, Fields: []plan.FieldSel{{Pseudo: sites.Pseudo["loc_earth_distance"]}, {Pseudo: sites.Pseudo["ll_earth_distance_miles"]}}}
+	if got, want := compile.Cost(p, 100), 1+10*2; got != want {
+		t.Errorf("earth cost = %d, want %d", got, want)
+	}
+	p = list(tiles)
+	p.Page = plan.Page{Limit: 10, LimitSet: true}
+	p.Select = &plan.Node{Resource: tiles, Star: true, Fields: []plan.FieldSel{
+		{Pseudo: tiles.Pseudo["rast_width"]},
+		{Pseudo: tiles.Pseudo["rast_envelope"]},
+		{Pseudo: tiles.Pseudo["rast_value"], Args: map[string]any{"band": int64(2)}},
+		{Pseudo: tiles.Pseudo["rast_summary_stats"]},
+	}}
+	p.Filter = cond(tiles.Table.Column("rast"), plan.OpRasterIntersects, "POINT(1 2)")
+	want := 1 + 10*(2+2*postgis.RasterAccessorCost+postgis.RasterValueCost+postgis.RasterSummaryStatsCost)
+	if got := compile.Cost(p, 100); got != want {
+		t.Errorf("raster cost = %d, want %d", got, want)
+	}
+	if postgis.RasterValueCost <= 1 || postgis.RasterSummaryStatsCost <= postgis.RasterValueCost {
+		t.Errorf("raster weights %d/%d do not rank value below statistics", postgis.RasterValueCost, postgis.RasterSummaryStatsCost)
+	}
+}

@@ -1,0 +1,1 @@
+GET /api/kb/sites?loc=eq.(1%2C2%2C3)
