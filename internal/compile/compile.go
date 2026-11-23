@@ -109,9 +109,9 @@ type Statement struct {
 type Request struct {
 	Plan  *plan.Request
 	Built *api.Built
-	// MaxEmbedDepth is server.max_embed_depth (<= 0: 5).
+	// MaxEmbedDepth is limits.max_depth (<= 0: 5).
 	MaxEmbedDepth int
-	// MaxPageSize is server.max_page_size: the largest accepted limit and the
+	// MaxPageSize is limits.max_page_size: the largest accepted limit and the
 	// default when the plan carries none (<= 0: 100).
 	MaxPageSize int
 }

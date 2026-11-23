@@ -274,9 +274,8 @@ func TestTransactionDecision(t *testing.T) {
 		{"read with claims, no prefix", Options{}, "", map[string]any{"user_id": 1}, false, false, false},
 		{"read with json setting", Options{ClaimsJSONSetting: "request.jwt.claims"}, "", nil, false, false, true},
 		{"read forced", Options{ClaimsPrefix: "jwt.claims"}, "", nil, false, true, true},
-		{"mutation tx policy", Options{TxMutations: true}, "", nil, true, false, true},
-		{"mutation no tx policy", Options{TxMutations: false}, "", nil, true, false, false},
-		{"mutation no policy but role", Options{TxMutations: false}, "app_user", nil, true, false, true},
+		{"mutation", Options{}, "", nil, true, false, true},
+		{"mutation with role", Options{}, "app_user", nil, true, false, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -623,16 +622,16 @@ func TestExecuteMaxAffected(t *testing.T) {
 	data := []byte(`{"n":3,"rows":[{"id":1},{"id":2},{"id":3}]}`)
 
 	db := &fakeDB{row: fakeRow{data: data}}
-	res := newExec(db, b, nil, Options{TxMutations: false}).Execute(context.Background(), bulkOp(&two, "handling=strict", "max-affected=2"))
+	res := newExec(db, b, nil, Options{}).Execute(context.Background(), bulkOp(&two, "handling=strict", "max-affected=2"))
 	if xe := errOf(t, res); xe.Status != 400 || xe.Code != CodeMaxAffectedExceeded || !strings.Contains(xe.Detail, "affects 3 rows") {
 		t.Fatalf("exceeded: %+v", xe)
 	}
 	if len(db.txs) != 1 || db.txs[0].committed || !db.txs[0].rolled || !db.txs[0].opts.ScanBeforeCommit {
-		t.Fatalf("exceeded must run in a rolled-back tx even with transactions.mutations off: %+v", db.txs)
+		t.Fatalf("exceeded must run in a rolled-back tx: %+v", db.txs)
 	}
 
 	db = &fakeDB{row: fakeRow{data: data}}
-	res = newExec(db, b, nil, Options{TxMutations: true}).Execute(context.Background(), bulkOp(&three, "handling=strict", "max-affected=3"))
+	res = newExec(db, b, nil, Options{}).Execute(context.Background(), bulkOp(&three, "handling=strict", "max-affected=3"))
 	if res.Err != nil || res.Status != 200 || len(db.txs) != 1 || !db.txs[0].committed {
 		t.Fatalf("within cap: %+v %v", res, db.txs)
 	}
@@ -641,8 +640,8 @@ func TestExecuteMaxAffected(t *testing.T) {
 	}
 
 	db = &fakeDB{row: fakeRow{data: data}}
-	res = newExec(db, b, nil, Options{TxMutations: false}).Execute(context.Background(), bulkOp(nil))
-	if res.Err != nil || len(db.txs) != 0 || res.Headers.Get("Preference-Applied") != "" {
+	res = newExec(db, b, nil, Options{}).Execute(context.Background(), bulkOp(nil))
+	if res.Err != nil || len(db.txs) != 1 || !db.txs[0].committed || res.Headers.Get("Preference-Applied") != "" {
 		t.Fatalf("no cap: %+v txs=%d", res, len(db.txs))
 	}
 }
@@ -776,7 +775,7 @@ func TestExecuteRollback(t *testing.T) {
 		}}
 	}
 	db := &fakeDB{row: fakeRow{data: data}}
-	res := newExec(db, b, nil, Options{TxMutations: false}).Execute(context.Background(), op(plan.Prefer{Rollback: true, Applied: []string{"tx=rollback"}}))
+	res := newExec(db, b, nil, Options{}).Execute(context.Background(), op(plan.Prefer{Rollback: true, Applied: []string{"tx=rollback"}}))
 	if res.Err != nil || res.Status != 200 || string(res.Data) != `[{"id":1}]` {
 		t.Fatalf("rollback result: %+v", res)
 	}

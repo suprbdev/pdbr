@@ -21,9 +21,9 @@ mod    := "any" | "all"                                  -- eq, gt, gte, lt, lte
 [api.md](api.md#json-paths)) — see [JSON paths](#json-paths).
 
 ```http
-GET /api/users?mood=eq.happy&email=ilike.*@example.com
-GET /api/posts?published=is.true&title=not.like.Draft*
-GET /api/users?id=in.(1,2,3)&tags=cs.{admin}
+GET /users?mood=eq.happy&email=ilike.*@example.com
+GET /posts?published=is.true&title=not.like.Draft*
+GET /users?id=in.(1,2,3)&tags=cs.{admin}
 ```
 
 The value is everything after `op.`; it is coerced to the column's type at
@@ -80,8 +80,8 @@ through too — only `*` is translated (`compile.likePattern`); escape `_` as
 unless it uses `^`/`$`:
 
 ```http
-GET /api/users?email=match.^a.*@example\.com$
-GET /api/posts?title=imatch.engine
+GET /users?email=match.^a.*@example\.com$
+GET /posts?title=imatch.engine
 ```
 
 An invalid pattern is a database error (`400 pg:2201B`). On a `citext`
@@ -98,11 +98,11 @@ items quoted as in array filters); the condition holds when the operator
 matches any / every element:
 
 ```http
-GET /api/people?last_name=like(any).{O*,P*}       -- last_name LIKE ANY($1::text[])
-GET /api/people?last_name=like(all).{O*,*n}       -- LIKE ALL
-GET /api/users?id=gt(all).{1,2}                   -- id > ALL($1::int4[])
-GET /api/users?mood=eq(any).{ok,sad}              -- like in.(ok,sad)
-GET /api/users?or=(email.match(any).{^a,^g},id.eq(all).{3})
+GET /people?last_name=like(any).{O*,P*}       -- last_name LIKE ANY($1::text[])
+GET /people?last_name=like(all).{O*,*n}       -- LIKE ALL
+GET /users?id=gt(all).{1,2}                   -- id > ALL($1::int4[])
+GET /users?mood=eq(any).{ok,sad}              -- like in.(ok,sad)
+GET /users?or=(email.match(any).{^a,^g},id.eq(all).{3})
 ```
 
 Elements are coerced to the column type (enums, citext and other extension
@@ -120,8 +120,8 @@ Items are comma-separated inside the parentheses. An item containing `,`,
 escapes:
 
 ```http
-GET /api/users?email=in.(a@b.c,"x,y@z.io")
-GET /api/users?mood=not.in.(sad,ok)
+GET /users?email=in.(a@b.c,"x,y@z.io")
+GET /users?mood=not.in.(sad,ok)
 ```
 
 The whole list becomes one typed array parameter (`= ANY($1::text[])`), so the
@@ -130,12 +130,12 @@ SQL text is identical for one item or a thousand.
 ### Arrays, jsonb, jsonpath
 
 ```http
-GET /api/users?tags=cs.{admin,ops}                       -- tags @> '{admin,ops}'
-GET /api/users?tags=ov.{ops}                             -- tags && '{ops}'
-GET /api/users?settings=cs.{"theme":"dark"}              -- settings @> '{"theme":"dark"}'
-GET /api/users?settings=hk.theme                         -- settings ? 'theme'
-GET /api/users?settings=jpe.$.notifications[*]?(@=="email")
-GET /api/users?settings=jpm.$.theme=="dark"
+GET /users?tags=cs.{admin,ops}                       -- tags @> '{admin,ops}'
+GET /users?tags=ov.{ops}                             -- tags && '{ops}'
+GET /users?settings=cs.{"theme":"dark"}              -- settings @> '{"theme":"dark"}'
+GET /users?settings=hk.theme                         -- settings ? 'theme'
+GET /users?settings=jpe.$.notifications[*]?(@=="email")
+GET /users?settings=jpm.$.theme=="dark"
 ```
 
 Array values use the Postgres array literal (`{a,b}`); jsonb `cs`/`cd` take a
@@ -155,13 +155,13 @@ and `in` with JSON operands, `cs`/`cd` with a JSON literal, `hk`, `jpe`,
 `jpm`, `is.null`):
 
 ```http
-GET /api/users?settings->>theme=eq.dark                 -- (settings ->> $1::text) = $2
-GET /api/users?settings->age=gt.20                      -- (settings -> $1::text) > $2  (jsonb 20)
-GET /api/users?settings->theme=in.("dark","light")      -- = ANY($2::jsonb[]); quoted items are JSON strings
-GET /api/users?settings->prefs=cs.{"mail":true}
-GET /api/users?tags->>0=eq.admin                        -- arrays go through to_jsonb(tags)
-GET /api/users?or=(settings->>theme.eq.dark,settings->"a.b".is.null)
-GET /api/posts?users.settings->>theme=eq.dark           -- relation / embed filters too
+GET /users?settings->>theme=eq.dark                 -- (settings ->> $1::text) = $2
+GET /users?settings->age=gt.20                      -- (settings -> $1::text) > $2  (jsonb 20)
+GET /users?settings->theme=in.("dark","light")      -- = ANY($2::jsonb[]); quoted items are JSON strings
+GET /users?settings->prefs=cs.{"mail":true}
+GET /users?tags->>0=eq.admin                        -- arrays go through to_jsonb(tags)
+GET /users?or=(settings->>theme.eq.dark,settings->"a.b".is.null)
+GET /posts?users.settings->>theme=eq.dark           -- relation / embed filters too
 ```
 
 A `->` operand is JSON: `settings->theme=eq.dark` is `400 invalid_filter`;
@@ -181,8 +181,8 @@ On an hstore column the path is one key, `attrs->color` or
 Enums:
 
 ```http
-GET /api/users?mood=eq.happy
-GET /api/users?mood=in.(happy,ok)
+GET /users?mood=eq.happy
+GET /users?mood=in.(happy,ok)
 ```
 
 As built: composite-typed columns (`address`) are not filterable at all
@@ -195,9 +195,9 @@ Items inside a logic list use dots throughout — `col.[not.]op.value` — and
 nest arbitrarily:
 
 ```http
-GET /api/users?or=(mood.eq.happy,mood.is.null)
-GET /api/users?and=(mood.in.(happy,ok),or(email.ew.@example.com,tags.cs.{admin}),not.settings.hk.banned)
-GET /api/posts?not.or=(published.is.false,title.sw.Draft)
+GET /users?or=(mood.eq.happy,mood.is.null)
+GET /users?and=(mood.in.(happy,ok),or(email.ew.@example.com,tags.cs.{admin}),not.settings.hk.banned)
+GET /posts?not.or=(published.is.false,title.sw.Draft)
 ```
 
 Compiles to `WHERE (mood = $1 OR mood IS NULL)`, `WHERE (mood = ANY($1) AND
@@ -270,9 +270,9 @@ relation filter — it narrows the embedded list (backward) or nulls out the
 object (forward) without touching the parent:
 
 ```http
-GET /api/users?select=id,posts(id)&posts.published=is.true      -- all users; only published posts embedded
-GET /api/users?select=id,posts!inner(id)&posts.published=is.true -- only users with a published post
-GET /api/users?posts.published=is.true                           -- no embed: pure relation filter → EXISTS
+GET /users?select=id,posts(id)&posts.published=is.true      -- all users; only published posts embedded
+GET /users?select=id,posts!inner(id)&posts.published=is.true -- only users with a published post
+GET /users?posts.published=is.true                           -- no embed: pure relation filter → EXISTS
 ```
 
 With `!inner` the same parameter does both: the embed is restricted **and**
@@ -286,8 +286,8 @@ inner lateral). Quantified forms (`posts!none.`, `posts!every.`) and
 columns to filters and ordering:
 
 ```http
-GET /api/users?post_count=gt.3
-GET /api/users?post_count=in.(0,1)&order=post_count.desc
+GET /users?post_count=gt.3
+GET /users?post_count=in.(0,1)&order=post_count.desc
 ```
 
 Compiles to `users_post_count(u) > $1`; the operand is coerced by the

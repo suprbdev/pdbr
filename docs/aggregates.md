@@ -11,8 +11,8 @@ aggregates over geometry and geography columns (`extent()`, `union()`,
 Aggregates are **off by default**, as in PostgREST (`db-aggregates-enabled`):
 an aggregate reads every row its filters match, and `limit` only bounds the
 groups it returns. Turn them on with
-[`server.aggregates: true`](configuration.md) (`PDBR_SERVER_AGGREGATES=true`,
-`--server.aggregates`); while off, any aggregate in `select=` answers
+[`aggregates.enabled: true`](configuration.md) (`PDBR_AGGREGATES_ENABLED=true`,
+`--aggregates.enabled`); while off, any aggregate in `select=` answers
 `400 aggregates_disabled` (PostgREST `PGRST123`).
 
 ## Grammar
@@ -64,9 +64,9 @@ names. The same allowlist serves plain column casts (`select=id::text`,
 Every selected item that is not an aggregate is a grouping key:
 
 ```http
-GET /api/posts?select=count()
-GET /api/posts?select=author_id,count(),newest:id.max()&order=author_id.desc
-GET /api/users?select=mood,total:balance.sum(),mean:id::float8.avg()
+GET /posts?select=count()
+GET /posts?select=author_id,count(),newest:id.max()&order=author_id.desc
+GET /users?select=mood,total:balance.sum(),mean:id::float8.avg()
 ```
 
 ```json
@@ -117,9 +117,9 @@ its columns are grouping keys and its aggregates aggregate over the joined
 rows.
 
 ```http
-GET /api/posts?select=n:count(),...users(mood)                        -- posts per author mood
-GET /api/posts?select=published,...users(newest:created_at.max(),n:count())
-GET /api/users?select=id,posts(count(),...users(mood))                -- inside a to-many embed
+GET /posts?select=n:count(),...users(mood)                        -- posts per author mood
+GET /posts?select=published,...users(newest:created_at.max(),n:count())
+GET /users?select=id,posts(count(),...users(mood))                -- inside a to-many embed
 ```
 
 ```json
@@ -169,8 +169,8 @@ the embed's own other items (columns, computed fields; no nested embeds)
 and independent of the parent's columns:
 
 ```http
-GET /api/users?select=id,email,posts(count())
-GET /api/users?select=id,posts(author_id,n:count(),id.max())&posts.order=author_id.desc&posts.limit=5
+GET /users?select=id,email,posts(count())
+GET /users?select=id,posts(author_id,n:count(),id.max())&posts.order=author_id.desc&posts.limit=5
 ```
 
 ```json
@@ -192,7 +192,7 @@ a to-one embed are `400 invalid_select` (see the differences below).
 - After the requested terms pdbr orders by every remaining grouping key, so
   the order of groups — and with it `limit`/`offset` paging — is total.
 - `limit`/`offset` page **groups**: `limit` defaults to and is capped by
-  `server.max_page_size`, and `Link` headers carry `offset=` links.
+  `limits.max_page_size`, and `Link` headers carry `offset=` links.
 - Keyset cursors do not address groups: `after=`/`before=` with aggregates
   are `400 keyset_unsupported`, and no `X-Next-Cursor`/`X-Prev-Cursor` is
   sent. `distinct=` with aggregates is `400 invalid_select` (the grouping
@@ -232,7 +232,7 @@ on by default) four more functions return **GeoJSON**:
 | `col.centroid()` | `ST_Centroid(ST_Collect(col))` | centroid of the collected geometries |
 
 ```http
-GET /api/places?select=owner_id,location.extent(),location.centroid(),n:location.count()
+GET /places?select=owner_id,location.extent(),location.centroid(),n:location.count()
 ```
 
 ```json
@@ -256,14 +256,14 @@ GET /api/places?select=owner_id,location.extent(),location.centroid(),n:location
 
 ## Cost
 
-An aggregate reads every row its filters match, so `server.max_cost`
+An aggregate reads every row its filters match, so `limits.max_cost`
 ([pagination.md](pagination.md#cost-limit)) costs an aggregated list **as if
-it had no limit**: the root and a to-many embed at `server.max_page_size`
+it had no limit**: the root and a to-many embed at `limits.max_page_size`
 (an embed at its `@costMultiplier` when lower); `limit` still bounds the
 response. Each
 aggregate costs 1 like a column, and so does a computed grouping key per
 scanned row. A total (`count=true`, `Prefer: count=`) on an aggregated root
-scans again and adds `server.max_page_size` × its grouping keys. Examples
+scans again and adds `limits.max_page_size` × its grouping keys. Examples
 with the defaults:
 
 | Request | Cost |
@@ -281,7 +281,7 @@ grouping columns of the aggregates you expose, and keep
 
 | Request | Response |
 |---|---|
-| any aggregate while `server.aggregates` is off | `400 aggregates_disabled` |
+| any aggregate while `aggregates.enabled` is off | `400 aggregates_disabled` |
 | bad grammar (`col.sum(x)`, a hint on an aggregate), a cast type outside the allowlist (`::regclass`, `::record`, an unknown name), an aggregate over a computed or derived field, a type without the aggregate (`text.sum()`, `jsonb.max()`, `uuid.max()`), an embed (other than a to-one spread), a to-many spread, set-returning computed column or ungroupable column as a grouping key, aggregates inside a to-many spread, duplicate response keys, aggregates outside list reads or in to-one embeds, `distinct=` | `400 invalid_select` |
 | unknown column | `400 unknown_column` |
 | `order=` on something other than a grouping column (a JSON path term needs the same uncast path selected as a key) | `400 column_not_orderable` |

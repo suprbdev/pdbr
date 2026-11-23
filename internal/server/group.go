@@ -10,8 +10,6 @@ import (
 	"github.com/suprbdev/pdbcore/confx"
 	"github.com/suprbdev/pdbcore/httpx"
 	"github.com/suprbdev/pdbcore/metrics"
-
-	"github.com/suprbdev/pdbr/internal/config"
 )
 
 // Group serves several Servers, one per schema contract, each under its
@@ -20,7 +18,7 @@ import (
 // served at the root; every other path outside the base paths is a 404
 // problem.
 type Group struct {
-	cfg     config.Server
+	cfg     Config
 	log     *slog.Logger
 	servers []*Server
 
@@ -31,7 +29,7 @@ type Group struct {
 
 // NewGroup returns an empty Group; cfg supplies the listen address,
 // request and readyz timeouts. Its BasePath is not used.
-func NewGroup(cfg config.Server, log *slog.Logger) *Group {
+func NewGroup(cfg Config, log *slog.Logger) *Group {
 	if log == nil {
 		log = slog.Default()
 	}

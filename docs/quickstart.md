@@ -30,43 +30,44 @@ services:
       - "8080:8080"
 ```
 
-The API is then at `http://localhost:8080/api` (`server.base_path` defaults
-to `/api`). Try:
+The API is then at `http://localhost:8080` (`server.base_path` defaults to
+`""`, the root, as in PostgREST; set it to e.g. `/api` to prefix every
+route). Try:
 
 ```console
 # list with column selection and an embedded backward relation
-$ curl -s 'localhost:8080/api/users?select=id,email,posts(id,title)&limit=2' | jq
+$ curl -s 'localhost:8080/users?select=id,email,posts(id,title)&limit=2' | jq
 
 # one row by primary key (note the weak ETag)
-$ curl -si localhost:8080/api/users/1
+$ curl -si localhost:8080/users/1
 
 # filter + order + count (published is not indexed in the fixture, so it needs
 # filters.allow_columns or indexed_only: false — see filtering.md; title is)
-$ curl -si 'localhost:8080/api/posts?title=ilike.*hello*&order=id.desc&count=true' | grep -i x-total-count
+$ curl -si 'localhost:8080/posts?title=ilike.*hello*&order=id.desc&count=true' | grep -i x-total-count
 
 # create
-$ curl -si localhost:8080/api/posts \
+$ curl -si localhost:8080/posts \
     -H 'Content-Type: application/json' \
     -d '{"author_id":1,"title":"Hello","published":true}'
 HTTP/1.1 201 Created
-Location: /api/posts/4
+Location: /posts/4
 ...
 
 # call a function
-$ curl -s 'localhost:8080/api/rpc/search_posts?term=hello&select=id,title'
-$ curl -s localhost:8080/api/rpc/add_numbers -H 'Content-Type: application/json' -d '{"a":2,"b":3}'
+$ curl -s 'localhost:8080/rpc/search_posts?term=hello&select=id,title'
+$ curl -s localhost:8080/rpc/add_numbers -H 'Content-Type: application/json' -d '{"a":2,"b":3}'
 5
 
 # the OpenAPI 3.1 document
-$ curl -s localhost:8080/api/openapi.json | jq '.paths | keys'
+$ curl -s localhost:8080/openapi.json | jq '.paths | keys'
 ```
 
 Errors come back as RFC 9457 problem details
 (`application/problem+json`) with a stable `code` ([errors.md](errors.md)):
 
 ```console
-$ curl -s 'localhost:8080/api/users?nope=eq.1'
-{"type":"about:blank","title":"Bad Request","status":400,"detail":"unknown column \"nope\"","instance":"/api/users","code":"unknown_column"}
+$ curl -s 'localhost:8080/users?nope=eq.1'
+{"type":"about:blank","title":"Bad Request","status":400,"detail":"unknown column \"nope\"","instance":"/users","code":"unknown_column"}
 ```
 
 Because watch mode is on, `ALTER TABLE`/`CREATE TABLE` in the database is

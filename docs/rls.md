@@ -40,8 +40,7 @@ Only `SET LOCAL` / transaction-scoped `set_config` are ever used, so pooled
 connections cannot leak one request's identity into another. A request with
 no role to switch to and nothing to set (`roles.switch: false` and no
 claims, or an empty `claims.prefix` and no `json_setting`) runs outside a
-transaction; mutations are wrapped according to `transactions.mutations`
-regardless. There is one operation per HTTP request, so pdbr has no
+transaction; every mutation runs in one regardless. There is one operation per HTTP request, so pdbr has no
 `transactions.per_request` knob.
 
 ## Anonymous requests are refused by default
@@ -218,9 +217,9 @@ CREATE POLICY posts_own_writes ON posts FOR ALL TO app_user
 Against this schema, with a token `{"role":"app_user","user_id":1,"exp":…}`:
 
 ```
-GET /api/posts                       → published posts + user 1's drafts
-GET /api/posts?author_id=eq.2        → only user 2's published posts
-POST /api/posts {"author_id":2,…}    → 403 (WITH CHECK fails, SQLSTATE 42501)
+GET /posts                       → published posts + user 1's drafts
+GET /posts?author_id=eq.2        → only user 2's published posts
+POST /posts {"author_id":2,…}    → 403 (WITH CHECK fails, SQLSTATE 42501)
 ```
 
 With `roles.anonymous: anonymous`, the same requests without a token run as
@@ -322,12 +321,12 @@ roles:
 ```
 
 ```console
-$ curl -s -X POST localhost:8080/api/rpc/authenticate \
+$ curl -s -X POST localhost:8080/rpc/authenticate \
     -H 'content-type: application/json' \
     -d '{"user_email":"ada@example.com"}'
 "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.…"
 
-$ curl -s localhost:8080/api/posts -H "Authorization: Bearer eyJ…"
+$ curl -s localhost:8080/posts -H "Authorization: Bearer eyJ…"
 ```
 
 `authenticate` is volatile, so it is `POST`-only (`GET` → `405`). A function

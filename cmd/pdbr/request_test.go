@@ -17,6 +17,7 @@ import (
 
 func TestBuildRequestPaths(t *testing.T) {
 	cfg := config.DefaultConfig()
+	cfg.Server.BasePath = "/api"
 	cases := map[string]string{
 		"/users?select=id":     "/api/users?select=id",
 		"users":                "/api/users",
@@ -60,6 +61,7 @@ func TestPrintSQLMatchesGolden(t *testing.T) {
 	}
 	cfg := config.DefaultConfig()
 	cfg.Database.URL = "postgres://nobody@127.0.0.1:1/none"
+	cfg.Server.BasePath = "/api"
 	cfg.Schema.CachePath = cachePath
 	cfg.UseConnectionIdentity()
 	if err := cfg.Validate(); err != nil {
@@ -145,7 +147,7 @@ func TestCommandsRunOnDefaultConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, err := runCLI(t, "request", "GET", "/users?select=id", "--print-sql", "--schema.cache_path", cachePath, "--log.level", "error")
-	if err != nil || !strings.Contains(out, "-- request: GET /api/users?select=id") {
+	if err != nil || !strings.Contains(out, "-- request: GET /users?select=id") {
 		t.Fatalf("request --print-sql on defaults: %v\n%s", err, out)
 	}
 	if _, err := runCLI(t, "plugins", "list"); err != nil {

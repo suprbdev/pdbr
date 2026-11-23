@@ -112,47 +112,42 @@ func TestBulkPatchDelete(t *testing.T) {
 
 func TestBulkMaxAffected(t *testing.T) {
 	sweep(t)
-	for _, txOn := range []bool{true, false} {
-		t.Run(fmt.Sprintf("transactions.mutations=%v", txOn), func(t *testing.T) {
-			srv := testServer(t, func(c *config.Config) { c.TX.Mutations = txOn })
-			prefix := bulkUsers(t, srv.URL, 3)
-			sel := byPrefix(prefix)
-			strict := func(n int) map[string]string {
-				return map[string]string{"Prefer": fmt.Sprintf("handling=strict, max-affected=%d", n)}
-			}
-			res, body := send(t, "PATCH", srv.URL+"/api/users?"+sel, `{"full_name":"capped"}`, strict(2))
-			if p := wantProblem(t, res, body, 400, "max_affected_exceeded"); p.Detail == "" {
-				t.Error("no detail")
-			}
-			var rows []row
-			getJSON(t, srv.URL+"/api/users?"+sel+"&select=full_name", &rows)
-			for _, r := range rows {
-				if r["full_name"] == "capped" {
-					t.Fatalf("exceeded PATCH was not rolled back: %v", rows)
-				}
-			}
-			res, body = send(t, "DELETE", srv.URL+"/api/users?"+sel, "", strict(1))
-			wantProblem(t, res, body, 400, "max_affected_exceeded")
-			rows = nil
-			getJSON(t, srv.URL+"/api/users?"+sel, &rows)
-			if len(rows) != 3 {
-				t.Fatalf("exceeded DELETE was not rolled back: %d rows", len(rows))
-			}
-			res, body = send(t, "PATCH", srv.URL+"/api/users?"+sel, `{"full_name":"lenient"}`, map[string]string{"Prefer": "max-affected=1"})
-			if res.StatusCode != 200 || res.Header.Get("Preference-Applied") != "" {
-				t.Fatalf("lenient = %d %s %v", res.StatusCode, body, res.Header)
-			}
-			id := rowID(t, rows[0])
-			res, body = send(t, "PATCH", fmt.Sprintf("%s/api/users/%d", srv.URL, id), `{"full_name":"zero"}`, strict(0))
-			wantProblem(t, res, body, 400, "max_affected_exceeded")
-			res, body = send(t, "DELETE", srv.URL+"/api/users?"+sel, "", strict(3))
-			if res.StatusCode != 200 || res.Header.Get("Preference-Applied") != "handling=strict, max-affected=3" {
-				t.Fatalf("within cap = %d %s %v", res.StatusCode, body, res.Header)
-			}
-		})
-	}
 	srv := testServer(t, nil)
-	res, body := send(t, "PATCH", srv.URL+"/api/users/1", `{"full_name":"x"}`, map[string]string{"Prefer": "handling=strict, tx=rollback"})
+	prefix := bulkUsers(t, srv.URL, 3)
+	sel := byPrefix(prefix)
+	strict := func(n int) map[string]string {
+		return map[string]string{"Prefer": fmt.Sprintf("handling=strict, max-affected=%d", n)}
+	}
+	res, body := send(t, "PATCH", srv.URL+"/api/users?"+sel, `{"full_name":"capped"}`, strict(2))
+	if p := wantProblem(t, res, body, 400, "max_affected_exceeded"); p.Detail == "" {
+		t.Error("no detail")
+	}
+	var rows []row
+	getJSON(t, srv.URL+"/api/users?"+sel+"&select=full_name", &rows)
+	for _, r := range rows {
+		if r["full_name"] == "capped" {
+			t.Fatalf("exceeded PATCH was not rolled back: %v", rows)
+		}
+	}
+	res, body = send(t, "DELETE", srv.URL+"/api/users?"+sel, "", strict(1))
+	wantProblem(t, res, body, 400, "max_affected_exceeded")
+	rows = nil
+	getJSON(t, srv.URL+"/api/users?"+sel, &rows)
+	if len(rows) != 3 {
+		t.Fatalf("exceeded DELETE was not rolled back: %d rows", len(rows))
+	}
+	res, body = send(t, "PATCH", srv.URL+"/api/users?"+sel, `{"full_name":"lenient"}`, map[string]string{"Prefer": "max-affected=1"})
+	if res.StatusCode != 200 || res.Header.Get("Preference-Applied") != "" {
+		t.Fatalf("lenient = %d %s %v", res.StatusCode, body, res.Header)
+	}
+	id := rowID(t, rows[0])
+	res, body = send(t, "PATCH", fmt.Sprintf("%s/api/users/%d", srv.URL, id), `{"full_name":"zero"}`, strict(0))
+	wantProblem(t, res, body, 400, "max_affected_exceeded")
+	res, body = send(t, "DELETE", srv.URL+"/api/users?"+sel, "", strict(3))
+	if res.StatusCode != 200 || res.Header.Get("Preference-Applied") != "handling=strict, max-affected=3" {
+		t.Fatalf("within cap = %d %s %v", res.StatusCode, body, res.Header)
+	}
+	res, body = send(t, "PATCH", srv.URL+"/api/users/1", `{"full_name":"x"}`, map[string]string{"Prefer": "handling=strict, tx=rollback"})
 	wantProblem(t, res, body, 400, "invalid_preference")
 	res, body = send(t, "PATCH", srv.URL+"/api/users/1", `{"full_name":"Ada Lovelace"}`, map[string]string{"Prefer": "tx=rollback, return=minimal"})
 	if res.StatusCode != 204 || res.Header.Get("Preference-Applied") != "return=minimal" {
@@ -202,7 +197,7 @@ func TestBulkRLSAndUnfilteredKnob(t *testing.T) {
 	guarded := testServer(t, nil)
 	res, body = send(t, "DELETE", guarded.URL+"/api/e2e_bulk_probe", "", nil)
 	wantProblem(t, res, body, 400, "unfiltered_mutation")
-	open := testServer(t, func(c *config.Config) { c.Server.AllowUnfilteredMutations = true })
+	open := testServer(t, func(c *config.Config) { c.Mutations.AllowUnfiltered = true })
 	res, body = send(t, "PATCH", open.URL+"/api/e2e_bulk_probe", `{"label":"x"}`, map[string]string{"Prefer": "handling=strict, max-affected=2"})
 	wantProblem(t, res, body, 400, "max_affected_exceeded")
 	rows = nil

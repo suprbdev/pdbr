@@ -34,7 +34,6 @@ database:
   url: "postgres://USER:PASSWORD@HOST:5432/DB"
 server:
   addr: ":8080"
-  base_path: "/api"
 schema:
   schemas: ["public"]
 # No credentials, and every request runs as the connection role, so row-level

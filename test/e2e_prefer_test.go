@@ -30,7 +30,7 @@ func countByPrefix(t *testing.T, base, prefix string) int {
 
 func TestPreferTxOverride(t *testing.T) {
 	sweep(t)
-	srv := testServer(t, func(c *config.Config) { c.Server.TxEnd = "commit-allow-override" })
+	srv := testServer(t, func(c *config.Config) { c.TX.End = "commit-allow-override" })
 	prefix := fmt.Sprintf("m3-tx-%d", time.Now().UnixNano())
 	hdr := map[string]string{"Prefer": "tx=rollback"}
 
@@ -83,7 +83,7 @@ func TestPreferTxDisallowed(t *testing.T) {
 
 func TestTxEndRollbackConfig(t *testing.T) {
 	sweep(t)
-	srv := testServer(t, func(c *config.Config) { c.Server.TxEnd = "rollback-allow-override" })
+	srv := testServer(t, func(c *config.Config) { c.TX.End = "rollback-allow-override" })
 	prefix := fmt.Sprintf("m3-txr-%d", time.Now().UnixNano())
 
 	res, _ := send(t, "POST", srv.URL+"/api/users", fmt.Sprintf(`{"email":"%s-a@example.com"}`, prefix), nil)
@@ -95,7 +95,7 @@ func TestTxEndRollbackConfig(t *testing.T) {
 		t.Fatalf("tx=commit override: %d rows", n)
 	}
 
-	fixed := testServer(t, func(c *config.Config) { c.Server.TxEnd = "rollback" })
+	fixed := testServer(t, func(c *config.Config) { c.TX.End = "rollback" })
 	send(t, "POST", fixed.URL+"/api/users", fmt.Sprintf(`{"email":"%s-c@example.com"}`, prefix), map[string]string{"Prefer": "tx=commit"})
 	if n := countByPrefix(t, fixed.URL, prefix); n != 1 {
 		t.Fatalf("tx_end=rollback must ignore tx=commit: %d rows", n)

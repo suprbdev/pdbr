@@ -22,7 +22,7 @@ installed.
 | input | a GeoJSON object **or** a WKT/EWKT string |
 
 ```
-GET /api/places?select=name,location
+GET /places?select=name,location
 ```
 ```json
 [{"name": "Trafalgar Square",
@@ -33,11 +33,11 @@ Both input forms are accepted anywhere a spatial value is taken — filters,
 `near=`, request bodies of `POST`/`PATCH`/`PUT`, RPC arguments:
 
 ```
-POST /api/places
+POST /places
 {"name": "Trafalgar Square",
  "location": {"type": "Point", "coordinates": [-0.1281, 51.508]}}
 
-POST /api/places
+POST /places
 {"name": "Elsewhere", "location": "SRID=4326;POINT(1 2)"}
 ```
 
@@ -94,7 +94,7 @@ with `400 invalid_filter` / `400 invalid_body` before any SQL is built.
 directly.
 
 ```
-GET /api/places?select=id,name,location&limit=2
+GET /places?select=id,name,location&limit=2
 Accept: application/geo+json
 ```
 ```json
@@ -233,19 +233,19 @@ point — must be double-quoted, and quotes inside the value escaped as `\"`
 
 ```
 # EWKT, single operator
-GET /api/places?location=st_intersects.SRID%3D4326%3BPOINT(-0.1281%2051.508)
-GET /api/places?location=bbox_leftof.SRID%3D4326%3BPOINT(0%200)
+GET /places?location=st_intersects.SRID%3D4326%3BPOINT(-0.1281%2051.508)
+GET /places?location=bbox_leftof.SRID%3D4326%3BPOINT(0%200)
 
 # GeoJSON, single operator (encoded {"type":"Point","coordinates":[-0.1281,51.508]})
-GET /api/places?location=st_within.%7B%22type%22%3A%22Polygon%22%2C%22coordinates%22%3A%5B%5B%5B-0.5%2C51.3%5D%2C%5B0.3%2C51.3%5D%2C%5B0.3%2C51.7%5D%2C%5B-0.5%2C51.7%5D%2C%5B-0.5%2C51.3%5D%5D%5D%7D
+GET /places?location=st_within.%7B%22type%22%3A%22Polygon%22%2C%22coordinates%22%3A%5B%5B%5B-0.5%2C51.3%5D%2C%5B0.3%2C51.3%5D%2C%5B0.3%2C51.7%5D%2C%5B-0.5%2C51.7%5D%2C%5B-0.5%2C51.3%5D%5D%5D%7D
 
 # list operators: quote the geometry
-GET /api/places?location=st_dwithin.("SRID=4326;POINT(-0.1281 51.508)",5000,true)
-GET /api/places?location=bbox_intersects.(-0.5,51.3,0.3,51.7)
-GET /api/places?location=bbox_intersects.(-55000,6700000,33000,6750000,3857)
+GET /places?location=st_dwithin.("SRID=4326;POINT(-0.1281 51.508)",5000,true)
+GET /places?location=bbox_intersects.(-0.5,51.3,0.3,51.7)
+GET /places?location=bbox_intersects.(-55000,6700000,33000,6750000,3857)
 
 # GeoJSON inside a logic list: quoted, inner quotes escaped
-GET /api/places?or=(location.st_within."{\"type\":\"Polygon\",\"coordinates\":[[…]]}",area.is.null)
+GET /places?or=(location.st_within."{\"type\":\"Polygon\",\"coordinates\":[[…]]}",area.is.null)
 ```
 
 (Spaces and quotes shown unencoded for readability; clients send `%20`,
@@ -261,7 +261,7 @@ never match), so a `3857` box is for data stored in `3857`. This is the cheap
 first pass for "what is on screen":
 
 ```
-GET /api/places?select=name&location=bbox_intersects.(-0.5,51.3,0.3,51.7)
+GET /places?select=name&location=bbox_intersects.(-0.5,51.3,0.3,51.7)
 ```
 
 ### Radius search
@@ -274,7 +274,7 @@ degrees, which is rarely what you want). Pass `true` as the third element to
 measure a geometry column in metres — pdbr casts both sides to `geography`:
 
 ```
-GET /api/places?select=name&location=st_dwithin.("POINT(-0.1281 51.508)",5000,true)
+GET /places?select=name&location=st_dwithin.("POINT(-0.1281 51.508)",5000,true)
 ```
 
 compiles the predicate as
@@ -312,8 +312,8 @@ OpenAPI as `readOnly` properties, and cannot be written, filtered or ordered:
 | `<col>_xmin`, `<col>_ymin`, `<col>_xmax`, `<col>_ymax` | number | `ST_XMin` … `ST_YMax` (bounding-box extent; null when empty) |
 
 ```
-GET /api/places?select=name,location_centroid,location_srid,area_area
-GET /api/places?select=name,lon:location_x,lat:location_y,location_ewkt,area_xmin,area_ymax
+GET /places?select=name,location_centroid,location_srid,area_area
+GET /places?select=name,lon:location_x,lat:location_y,location_ewkt,area_xmin,area_ymax
 ```
 
 Geometry-only functions are applied to a geography column through a
@@ -362,7 +362,7 @@ polygon). `precision` rounds the GeoJSON coordinates. Aliases let you fetch
 several representations at once:
 
 ```
-GET /api/places?select=name,web_mercator:location(transform=3857),coarse:location(simplify=0.01),short:location(precision=6),around:area(buffer=250,precision=6)
+GET /places?select=name,web_mercator:location(transform=3857),coarse:location(simplify=0.01),short:location(precision=6),around:area(buffer=250,precision=6)
 ```
 
 | argument | SQL | value |
@@ -388,20 +388,20 @@ These are the only field arguments the `select=` grammar accepts on
 spatial values (`400 invalid_select` on anything else, on a duplicate, on
 empty parentheses, on a value out of range, or on a non-spatial field).
 Each `buffer` costs `pdbcore/postgis.BufferCost` (5) per row in
-`server.max_cost` on top of the column, because `ST_Buffer` builds a new
+`limits.max_cost` on top of the column, because `ST_Buffer` builds a new
 polygon for every row. A transformed value is no longer WGS84 even though
 it is still emitted as GeoJSON.
 
 ## Spatial aggregates
 
-With [`server.aggregates`](aggregates.md) on, spatial columns take four
+With [`aggregates.enabled`](aggregates.md) on, spatial columns take four
 aggregate functions in `select=` that return GeoJSON per group —
 `col.extent()` (bounding box, `ST_Extent`), `col.union()` (`ST_Union`),
 `col.collect()` (`ST_Collect`) and `col.centroid()` (centroid of the
 collected geometries); geography input is cast to `geometry`:
 
 ```
-GET /api/places?select=owner_id,location.extent(),location.centroid(),n:location.count()
+GET /places?select=owner_id,location.extent(),location.centroid(),n:location.count()
 ```
 
 `sum`/`avg`/`max`/`min` on a spatial column are `400 invalid_select`. See
@@ -415,7 +415,7 @@ parsing as filters). Ordering compiles to the KNN operator `<->`, which a
 GiST index answers directly — this is the fast "nearest N" path:
 
 ```
-GET /api/places?select=name&order=location.dist.asc&near=SRID%3D4326%3BPOINT(-0.1281%2051.508)&limit=10
+GET /places?select=name&order=location.dist.asc&near=SRID%3D4326%3BPOINT(-0.1281%2051.508)&limit=10
 ```
 
 `near=` is required: `order=location.dist.asc` without it (or with an
@@ -441,7 +441,7 @@ distance of the row's geometry from `near=`, selected explicitly like the
 other pseudo-columns. "Places near me, with the distance" is one request:
 
 ```
-GET /api/places?select=name,location_distance,metres:location_distance(spheroid=true),area_distance&order=location.dist&near=SRID%3D4326%3BPOINT(-0.1281%2051.508)&limit=10
+GET /places?select=name,location_distance,metres:location_distance(spheroid=true),area_distance&order=location.dist&near=SRID%3D4326%3BPOINT(-0.1281%2051.508)&limit=10
 ```
 
 It compiles to `ST_Distance(column, <near>)` in the same statement, with
@@ -461,7 +461,7 @@ projections of the returned rows: they need no GiST index and ignore
 `@omit order` and `filters.indexed_only`; `@omit read` removes them with
 the column, and `ordering: false` removes them with `.dist`. Like every
 pseudo-column they are not part of `*`, take no casts, filters or ordering,
-and cost 1 per row in `server.max_cost`.
+and cost 1 per row in `limits.max_cost`.
 
 ## Rasters
 
@@ -504,9 +504,9 @@ plugin adds the read surface, as pseudo-columns selected explicitly:
 | `<col>_summary_stats[(band=<n>)]` | object `{count, sum, mean, stddev, min, max}` | `ST_SummaryStats` of band `n` (default 1), NODATA excluded |
 
 ```
-GET /api/tiles?select=id,rast_width,rast_num_bands,rast_envelope
-GET /api/tiles?select=id,elevation:rast_value,red:rast_value(band=2)&near=SRID%3D4326%3BPOINT(5%205)
-GET /api/tiles?select=id,rast_summary_stats(band=1)&rast=intersects.SRID%3D4326%3BPOINT(5%205)
+GET /tiles?select=id,rast_width,rast_num_bands,rast_envelope
+GET /tiles?select=id,elevation:rast_value,red:rast_value(band=2)&near=SRID%3D4326%3BPOINT(5%205)
+GET /tiles?select=id,rast_summary_stats(band=1)&rast=intersects.SRID%3D4326%3BPOINT(5%205)
 ```
 
 - The metadata accessors read only the raster header; a NULL raster gives
@@ -527,7 +527,7 @@ GET /api/tiles?select=id,rast_summary_stats(band=1)&rast=intersects.SRID%3D4326%
   `precision=`.
 - `<col>_summary_stats` reads **every pixel** of the band: it is `null` for
   a NULL raster or a missing band and costs
-  `postgis.RasterSummaryStatsCost` (100) per row in `server.max_cost`;
+  `postgis.RasterSummaryStatsCost` (100) per row in `limits.max_cost`;
   `<col>_value` costs `RasterValueCost` (10), the metadata accessors 1. The
   cost estimate prices returned values only, so the intersects filter is
   not priced.
@@ -604,7 +604,7 @@ plugins:
       derived: true      # <col>_area, <col>_centroid, ..., raster <col>_width, <col>_value, <col>_summary_stats, ...
       ordering: true     # order=<col>.dist.asc|desc, <col>_distance + near=
       projection: true   # select=col(transform=…,simplify=…)
-      aggregates: true   # select=col.extent(), union(), collect(), centroid() (with server.aggregates)
+      aggregates: true   # select=col.extent(), union(), collect(), centroid() (with aggregates.enabled)
 ```
 
 Per-column control uses the usual [smart comments](smart-comments.md); the

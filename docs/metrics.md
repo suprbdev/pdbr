@@ -109,8 +109,8 @@ registry.
   `2xx`, `3xx`, `4xx` or `5xx`.
 - **`op`** of the database metrics: `query` for a statement run on the pool
   outside a transaction (reads without RLS identity, stable RPCs),
-  `query_tx` for one attempt of a pipelined transaction (writes under
-  `transactions.mutations`, RLS requests, `Prefer: max-affected`). A retried
+  `query_tx` for one attempt of a pipelined transaction (every write, RLS
+  requests, `Prefer: max-affected`). A retried
   transaction (`transactions.max_retries`) reports each attempt and counts
   the retries in `pdbr_db_retries_total`. A request whose database error
   maps to a problem response (a unique violation → `409`, a timeout →
@@ -124,7 +124,7 @@ registry.
   plus CompileHooks) of every request that passed the read-only and cost
   gates.
 - **`pdbr_cost_limit_rejections_total`** counts requests answered with
-  `400 cost_exceeded` because their estimated cost is over `server.max_cost`
+  `400 cost_exceeded` because their estimated cost is over `limits.max_cost`
   ([pagination.md](pagination.md)). A steady rate means clients need a
   `limit=` or the limit needs tuning.
 - **`pdbr_aggregate_requests_total`** counts executed requests whose
@@ -143,7 +143,7 @@ stays bounded however many tables and functions are exposed:
 |---|---|
 | `resource` | matched a table or view route below `server.base_path` (lists, rows, `by/` lookups, writes; 405s on those paths too) |
 | `rpc` | matched `{base}/rpc/{fn}` |
-| `openapi` | `{base}/openapi.json` (when `server.openapi` is on) |
+| `openapi` | `{base}/openapi.json` (when `openapi.enabled` is on) |
 | `health` | `/healthz`, `/readyz` |
 | `metrics` | scrapes of `metrics.path` on the main listener |
 | `other` | everything else: unknown paths (404), CORS preflights, and API requests auth rejected before routing (401, 403) |

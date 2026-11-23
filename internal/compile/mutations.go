@@ -562,7 +562,7 @@ func (s *stmt) keyedDML() (cur, dml string, rep replaced, err error) {
 // bulkDML renders the UPDATE / DELETE of a list route over exactly the rows
 // the same GET would list: the root filter plus one EXISTS per !inner embed,
 // compiled against an aliased target (no WHERE at all when
-// server.allow_unfiltered_mutations let an unrestricted request through).
+// mutations.allow_unfiltered let an unrestricted request through).
 //
 // An UPDATE or DELETE policy narrower than the SELECT one may skip rows the
 // filter matched, so the rows it replaced are those whose key __mut

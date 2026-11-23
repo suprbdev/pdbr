@@ -78,7 +78,7 @@ func TestPreferCountContentRange(t *testing.T) {
 	wantRange(t, "GET", srv.URL+"/api/metrics?limit=1", map[string]string{"Prefer": "count=planned"}, "0-0/"+strconv.FormatInt(dbInt(t, `SELECT count(*) FROM metrics`), 10), "count=exact")
 	wantRange(t, "GET", srv.URL+"/api/rpc/search_posts?term=M3&limit=1", exactHdr, "0-0/2", "count=exact")
 
-	small := testServer(t, func(c *config.Config) { c.Server.MaxPageSize = 2 })
+	small := testServer(t, func(c *config.Config) { c.Limits.MaxPageSize = 2 })
 	pl, _ := strconv.ParseInt(planned, 10, 64)
 	est := strconv.FormatInt(max(pl, 3), 10)
 	wantRange(t, "GET", small.URL+"/api/users?limit=1", map[string]string{"Prefer": "count=estimated"}, "0-0/"+est, "count=estimated")

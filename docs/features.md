@@ -22,7 +22,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Composite types read into the catalog (parity)
 - [x] Composite-type columns mapped to OpenAPI object schemas (nested objects in bodies; composite arrays included) (parity)
 - [x] `CatalogFormatVersion` shared with pdbq; cache files interchangeable (new)
-- [x] Domains surfaced as named schemas (`server.openapi_domains`, on by default: one component per domain over a built-in type, `pattern`/bounds from simple `CHECK`s; see [openapi.md](openapi.md#domains)) (parity)
+- [x] Domains surfaced as named schemas (`schema.domains`, on by default: one component per domain over a built-in type, `pattern`/bounds from simple `CHECK`s; see [openapi.md](openapi.md#domains)) (parity)
 - [x] Function argument default values / variadic args (`FuncArg.HasDefault`, `Function.Variadic`) (parity)
 - [x] Functions with `OUT`/`INOUT` parameters / `RETURNS TABLE` (`Function.ReturnColumns`) (parity)
 - [ ] Anonymous `record` returns (no output parameters: no shape to describe) (parity)
@@ -67,7 +67,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] `select=` projection: columns, `*`, `alias:field`, computed columns, PostGIS pseudo-columns (parity)
 - [x] PostGIS accessors `_x`, `_y`, `_z`, `_m`, `_num_points`, `_num_geometries`, `_start_point`, `_end_point`, `_point_on_surface`, `_wkt`, `_ewkt`, `_is_empty`, `_is_simple`, `_xmin`/`_ymin`/`_xmax`/`_ymax`; type-specific ones generated only where the column's typmod allows a non-null value (`introspect.Column.Spatial`) — see [PostGIS](postgis.md#derived-accessors-pseudo-columns) (parity)
 - [x] Embeds `rel(select)` compiled to `LEFT JOIN LATERAL` — forward → object or `null`, backward → array (parity)
-- [x] Arbitrarily nested embeds up to `server.max_embed_depth` (default 5) → else 400 `embed_depth_exceeded` (parity)
+- [x] Arbitrarily nested embeds up to `limits.max_depth` (default 5) → else 400 `embed_depth_exceeded` (parity)
 - [x] Relation keys = table names; `!fk_name` / `!column` hints for ambiguous relations; unhinted ambiguity → 400 `ambiguous_relation` listing candidates (new)
 - [x] `!inner` hint — embed filters also restrict the parent (new)
 - [x] Per-embed params on backward embeds: `posts.order=`, `posts.limit=`, `posts.offset=`, `posts.<col>=op.v` (parity)
@@ -80,12 +80,12 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Single-row weak `ETag: W/"<md5>"` computed in SQL over the exposed columns; `If-None-Match` → `304`; `server.etags` toggle (new)
 - [x] `Accept: text/csv` on lists and set-returning RPCs → RFC 4180 CSV, header row, arrays/json/composites as JSON text, NULL → empty; formula cells escaped (`server.csv_escape_formulas`); embeds → `406`; `server.csv` toggle (new)
 - [x] `Prefer: return=representation|minimal|headers-only` (new)
-- [x] Aggregate functions in `select=` (PostgREST v12): `count()`, `col.count()`, `sum`, `avg`, `max`, `min`, aliases, input/output casts, implicit `GROUP BY` (columns, casts, JSON paths, computed fields, to-one spread items — spread grouping), aggregates inside to-many embeds and to-one spreads, `order=` on grouping columns, offset paging and group totals, CSV; `server.aggregates` (off → 400 `aggregates_disabled`) — see [aggregates.md](aggregates.md) (parity)
+- [x] Aggregate functions in `select=` (PostgREST v12): `count()`, `col.count()`, `sum`, `avg`, `max`, `min`, aliases, input/output casts, implicit `GROUP BY` (columns, casts, JSON paths, computed fields, to-one spread items — spread grouping), aggregates inside to-many embeds and to-one spreads, `order=` on grouping columns, offset paging and group totals, CSV; `aggregates.enabled` (off → 400 `aggregates_disabled`) — see [aggregates.md](aggregates.md) (parity)
 - [x] `Accept: application/geo+json` → GeoJSON `FeatureCollection` (lists, `SETOF <table>` RPCs) / `Feature` (key lookups, single-row RPCs) built in SQL: first spatial select item or `geometry=<key>` is the geometry, other items (embeds included) the properties; paging, counts and `Range` unchanged; `406` without a spatial select item; OpenAPI lists the media type — see [PostGIS](postgis.md#accept-applicationgeojson) (parity)
 - [x] Spatial aggregates `col.extent()`, `col.union()`, `col.collect()`, `col.centroid()` → GeoJSON (postgis plugin) (new)
 - [x] `Prefer` tokens `resolution=`, `missing=` on writes (new)
-- [x] Opt-in partial success for bulk `POST`/`PUT`: `Prefer: partial=items` (needs `server.partial_bulk_writes`) runs each element in its own savepoint and answers a per-element report, `207` when one failed — see [Mutations](mutations.md#partial-success-for-bulk-writes)
-- [x] `Prefer: tx=commit|rollback` on writes, gated by `server.tx_end` (PostgREST `db-tx-end`: `commit`, `commit-allow-override`, `rollback`, `rollback-allow-override`); the rolled-back request still answers with its result (parity)
+- [x] Opt-in partial success for bulk `POST`/`PUT`: `Prefer: partial=items` (needs `transactions.partial.enabled`) runs each element in its own savepoint and answers a per-element report, `207` when one failed — see [Mutations](mutations.md#partial-success-for-bulk-writes)
+- [x] `Prefer: tx=commit|rollback` on writes, gated by `transactions.end` (PostgREST `db-tx-end`: `commit`, `commit-allow-override`, `rollback`, `rollback-allow-override`); the rolled-back request still answers with its result (parity)
 - [x] `Prefer: timezone=<IANA name>` sets `timezone` for the request's transaction, validated against `pg_timezone_names` (cached); echoed in `Preference-Applied` (parity)
 - [x] `columns=` query parameter on `POST`/`PATCH`/`PUT`: only the listed body keys are used, others ignored; a listed key an element omits takes `DEFAULT`; bulk bodies may be heterogeneous (parity)
 
@@ -133,7 +133,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Full-text relevance ordering `order=<col>.rank|rank_cd` against the column's fts filter; trigram distance ordering `order=<col>.trgm_dist|trgm_wdist|trgm_swdist&trgm=<text>` (new)
 - [x] Indexed-only policy per contrib operator from pdbcore index hints (new)
 - [x] hstore value by key `attrs->key` (select, text filters, `order=`) and `hk_def` (defined) — see [Contrib](contrib.md#hstore-pdbr) (new)
-- [x] Full-text headlines: `<col>_headline` (`ts_headline`) against the scope's full-text filter on text, json and jsonb columns, `<col>_headline(document=<col>)` on `tsvector` columns; bounded options (`max_words`, `min_words`, `short_word`, `max_fragments`, `highlight_all`, `start_sel`, `stop_sel`, `fragment_delimiter`) bound as one parameter; returned rows only, document cut to `server.max_headline_document` characters (65536) and priced 10 per started 8192 of them (80 per row by default) — see [Contrib](contrib.md#headlines) (new)
+- [x] Full-text headlines: `<col>_headline` (`ts_headline`) against the scope's full-text filter on text, json and jsonb columns, `<col>_headline(document=<col>)` on `tsvector` columns; bounded options (`max_words`, `min_words`, `short_word`, `max_fragments`, `highlight_all`, `start_sel`, `stop_sel`, `fragment_delimiter`) bound as one parameter; returned rows only, document cut to `limits.max_headline_document` characters (65536) and priced 10 per started 8192 of them (80 per row by default) — see [Contrib](contrib.md#headlines) (new)
 - [x] Derived pseudo-columns `<col>_nlevel`, `<col>_parent`, `<col>_lca(path=)`, `<col>_subpath(offset=,length=)` (ltree), `<col>_lca` (ltree[]), `<col>_icount` (intarray); `nlevel`/`icount` filterable and orderable on allowlisted columns — see [Contrib](contrib.md#derived-columns-ltree-and-intarray) (new)
 - [x] fuzzystrmatch on text-like columns: `levenshtein_lt` thresholds, `order=<col>.levenshtein` and `<col>_levenshtein_distance` against `levenshtein=`, phonetic `soundex`, `metaphone`, `dmetaphone` (allowlisted columns under `filters.indexed_only`) — see [Contrib](contrib.md#fuzzystrmatch-pdbr) (new)
 - [x] intarray `query_int` (`@@ query_int`) on `int4[]` columns (GIN/GiST under the policy) — see [Contrib](contrib.md#intarray-pdbr) (new)
@@ -142,7 +142,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 
 ## Pagination
 
-- [x] `limit` (default and cap = `server.max_page_size`, default 100; larger → 400 `page_size_exceeded`) and `offset` (parity)
+- [x] `limit` (default and cap = `limits.max_page_size`, default 100; larger → 400 `page_size_exceeded`) and `offset` (parity)
 - [x] Keyset `after=` / `before=` cursors = base64url(JSON `["schema.table", pk…]`), decoded structurally, PK-typed (parity)
 - [x] `before` = page immediately preceding the cursor (reversed scan, re-reversed) (parity)
 - [x] Keyset requires a PK; views/PK-less → 400 `keyset_unsupported`; `offset` + `before` → 400 (new)
@@ -150,8 +150,8 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] `count=true` → `X-Total-Count` via a `count(*)` subquery in the same statement, distinct-aware; off by default (parity)
 - [x] `X-Next-Cursor` / `X-Prev-Cursor` headers when a next/prev page exists (new)
 - [x] `Link: <…>; rel="next", <…>; rel="prev"` built from the request URL (`after=`/`before=`, or `offset=` for offset-only resources) (new)
-- [x] Cost limit `server.max_cost` (1 + Σ mult × child; `@costMultiplier` lowers) → 400 `cost_exceeded` (parity)
-- [x] `Prefer: count=exact|planned|estimated` (planned = `pg_class.reltuples`, summed over leaf partitions; estimated = exact up to `server.max_page_size` rows; filtered/distinct/RLS/view/function requests count exactly) and `Content-Range: 0-24/*|N` on list pages, alongside `X-Total-Count` (new)
+- [x] Cost limit `limits.max_cost` (1 + Σ mult × child; `@costMultiplier` lowers) → 400 `cost_exceeded` (parity)
+- [x] `Prefer: count=exact|planned|estimated` (planned = `pg_class.reltuples`, summed over leaf partitions; estimated = exact up to `limits.max_page_size` rows; filtered/distinct/RLS/view/function requests count exactly) and `Content-Range: 0-24/*|N` on list pages, alongside `X-Total-Count` (new)
 - [x] `Range: <first>-<last>` / `<first>-` request header (`Range-Unit: items`), intersected with `limit`/`offset`; `206 Partial Content` for a counted partial page and `416 Range Not Satisfiable` with `Content-Range: */<total>` past the total (parity)
 
 ## Mutations
@@ -173,7 +173,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] `server.read_only` → every write `405` `read_only`; runtime-toggleable `App.SetReadOnly` (parity)
 - [x] Not-found update/delete → `404`, transaction rolled back (parity)
 - [x] Nested mutations via `nested_mutations` plugin on `POST` create: forward `{"create":…}` **or** `{"connect":…}`, backward `{"create":[…]}`, depth ≤ `max_depth` (3), forced transaction, multi-CTE single statement, visibility CTE for response embeds (parity)
-- [x] `PATCH|DELETE {base}/{table}?<filters>` bulk-by-filter: read filter grammar and policy, `200` + array / `204`, unfiltered → `400 unfiltered_mutation` unless `server.allow_unfiltered_mutations` (parity)
+- [x] `PATCH|DELETE {base}/{table}?<filters>` bulk-by-filter: read filter grammar and policy, `200` + array / `204`, unfiltered → `400 unfiltered_mutation` unless `mutations.allow_unfiltered` (parity)
 - [x] `Prefer: handling=strict|lenient` (`400 invalid_preference`), `max-affected=N` on `PATCH`/`DELETE` (`400 max_affected_exceeded`, rolled back), `return=headers-only`, `Preference-Applied` (new)
 - [x] Nested `connect` on reverse relations (`{"connect":[{<key>}]}`) and, on single-row `PATCH`, nested update/delete/disconnect both ways (forward `{"update":{…}}`/`{"delete":true}`/`{"disconnect":true}`, backward `update:[{"where","data"}]`/`delete:[…]`/`disconnect:[…]`); guards (`404`, whole statement rolled back), RLS-scoped, `@omit` per action, `max_operations` (50), visibility CTEs exclude replaced/deleted rows — see [mutations.md](mutations.md#nested-mutations-plugin-nested_mutations) (parity)
 - [x] `PUT {base}/{table}/{pk}` and `…/by/{cols}/{vals}` single-row upsert by path key (body key columns optional, must match; writable keys only) (new)
@@ -232,7 +232,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 
 ## Transactions & execution
 
-- [x] Every mutation in a transaction by default (`transactions.mutations`) (parity)
+- [x] Every mutation in a transaction (always; no switch) (parity)
 - [x] Reads transaction-free unless RLS role/claims require `SET LOCAL` (parity)
 - [x] Plugins can force a transaction (`op.ForceTx`) (parity)
 - [x] Isolation level config (read_committed / repeatable_read / serializable) (parity)
@@ -243,9 +243,9 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 
 ## Server & protocol
 
-- [x] `server.base_path` (default `/api`; `""` = root) (new)
+- [x] `server.base_path` (default `""` = root, as in PostgREST; e.g. `/api`) (new)
 - [x] `GET /healthz` (liveness) / `/readyz` (bounded pool ping, `server.readyz_timeout`, `503 unavailable` when the database is unreachable) outside base_path (parity)
-- [x] `GET {base}/openapi.json` (`server.openapi`, default true) (new)
+- [x] `GET {base}/openapi.json` (`openapi.enabled`, default true) (new)
 - [x] Content negotiation: JSON default; `text/csv`; `415` non-JSON body; `406` unsatisfiable `Accept` (new)
 - [x] CORS configuration (`server.cors_origins`: exact allowlist or `*`) + preflight (parity)
 - [x] Response compression (gzip, opt-in via `server.compression`) (parity)
@@ -259,7 +259,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 
 ## OpenAPI 3.1
 
-- [x] `info` (title `pdbr`, version = binary version), `servers: [{url: base_path}]` (new)
+- [x] `info` (title `openapi.title`, default `pdbr`; version = binary version), `servers: [{url: openapi.server_url + base_path}]` (new)
 - [x] `tags`: one per resource (`users`, `audit.users`) + `rpc` / `<schema>.rpc`; operations tagged by resource, not schema (new)
 - [x] `components.schemas`: one per resource (`users` / `audit.users`), `<name>.insert`, `<name>.update`, `<name>.upsert` (new)
 - [x] Nested-input schema variants when `nested_mutations` is on (new) — the plugin publishes `Surface.NestedKeys`, `Surface.NestedSchema` and `<name>.connect` schemas; the core renders the `.insert` and `.update` properties (only the operations each key offers there; forward `create`/`connect` exactly-one on `.insert`, FK columns optional)
@@ -299,7 +299,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] `pdbr plugins list` with hook surfaces (parity)
 - [x] `pdbr schema print [--yaml]` (OpenAPI) (new)
 - [x] Shell completions (`bash|zsh|fish|powershell`, fixed-vocabulary flag values) (parity)
-- [x] Validation: pdbq's 16 checks minus dropped keys, plus `server.base_path` shape and `server.max_embed_depth ≥ 1` (parity)
+- [x] Validation: pdbq's 16 checks minus dropped keys, plus `server.base_path` shape and `limits.max_depth ≥ 1` (parity)
 
 ## Plugin system
 
@@ -315,7 +315,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Built-in: `smart_comments` (50) — catalog via pdbcore + inflection + APIHook (route/method/param removal, deprecation, description stripping) — see [smart-comments.md](smart-comments.md) (parity)
 - [x] Built-in: `advanced_filters` (150) — relation filters/existence, related order, computed filter/order; settings `relations`, `computed`, `relation_order`, `relations_opt_in`, `computed_opt_in`; `@omit filter|order` / `@filterable` read from the catalog (parity)
 - [x] Built-in: `postgis` (160) — spatial filter params, pseudo-columns, projection args, distance order and `<col>_distance` + `near`; settings `filters`, `derived`, `ordering`, `projection` (parity) — OpenAPI query params (`near`, spatial `x-pdbr-filter-ops` from `Built.Extra.FilterOps`, `oneOf [GeoJSON, string]` inputs from `Extra.InputTypes`) rendered by the core generator
-- [x] Built-in: `nested_mutations` (200) — APIHook input schemas, CompileHook multi-CTE, RequestHook `ForceTx`; settings `force_transactions`, `max_depth`, `max_operations` (parity)
+- [x] Built-in: `nested_mutations` (200) — APIHook input schemas, CompileHook multi-CTE, RequestHook `ForceTx`; settings `max_depth`, `max_operations` (parity)
 - [ ] Out-of-process plugins (go-plugin gRPC or wasm) (parity)
 
 ## Ops & delivery
@@ -342,7 +342,7 @@ these are the deliberate departures (each documented in its topic page):
   on single-object creates, so `return=headers-only` is an alias of
   `minimal`.
 - **Unfiltered bulk writes are refused** (`400 unfiltered_mutation`) unless
-  `server.allow_unfiltered_mutations` is on; PostgREST leaves this to
+  `mutations.allow_unfiltered` is on; PostgREST leaves this to
   `pg-safeupdate`. Like `pg-safeupdate`, the guard checks presence, not
   selectivity. Bulk writes are not offered on collections hidden by
   `@omit read|all`, and `If-Match` on them is `400 if_match_unsupported`.
@@ -355,7 +355,7 @@ these are the deliberate departures (each documented in its topic page):
   RPC results (PostgREST `PGRST128`).
 - **`count=planned` reads `pg_class.reltuples`** instead of running
   `EXPLAIN` (a second statement); it and `count=estimated` (threshold
-  `server.max_page_size`, PostgREST's `db-max-rows`) apply to unfiltered
+  `limits.max_page_size`, PostgREST's `db-max-rows`) apply to unfiltered
   scans of tables without RLS only and fall back to `exact` otherwise
   (`Preference-Applied` says so).
 - **Keyset pages carry no `Content-Range`** and stay `200`; a `Range` header
@@ -363,7 +363,7 @@ these are the deliberate departures (each documented in its topic page):
   `X-Total-Count` is kept next to `Content-Range`. `206`/`416`, the
   `Range` grammar and its intersection with `limit`/`offset` follow
   PostgREST; `HEAD` honours `Range` (PostgREST ignores it), and an explicit
-  `limit=` above `server.max_page_size` stays `400` (PostgREST clamps it to
+  `limit=` above `limits.max_page_size` stays `400` (PostgREST clamps it to
   `db-max-rows`) while a `Range` is clamped.
 - **`PUT` on a single-row path is a partial upsert**: PostgREST requires
   every column in the body (`PUT /t?id=eq.1`); pdbr keeps its collection
@@ -380,7 +380,7 @@ these are the deliberate departures (each documented in its topic page):
 - **`missing=default` is a no-op**: pdbr always inserts `DEFAULT` for keys a
   bulk element omits; PostgREST inserts `NULL` unless asked.
 - **`Prefer: tx=` is honoured on writes only** (resource `POST`/`PUT`/
-  `PATCH`/`DELETE` and volatile RPCs), and `server.tx_end: rollback*` rolls
+  `PATCH`/`DELETE` and volatile RPCs), and `transactions.end: rollback*` rolls
   back writes only; reads never need a rollback. PostgREST applies it to
   every request.
 - **`Prefer: timezone=` is matched case-insensitively** against
@@ -412,8 +412,8 @@ these are the deliberate departures (each documented in its topic page):
 - GraphiQL / any embedded UI
 - SDL export (`/schema.graphql`)
 - APQ / persisted queries / `persisted_only`
-- GraphQL introspection queries (`__schema`, `__type`) and `server.disable_introspection`
-- Depth limit `server.max_depth` (replaced by `server.max_embed_depth`)
+- GraphQL introspection queries (`__schema`, `__type`) and `server.introspection` (the REST analogue is `openapi.enabled`)
+- GraphQL selection depth (pdbr's `limits.max_depth` bounds `select=` embed nesting)
 - Fragments, field aliases via GraphQL syntax, directives (`@skip`/`@include`) — aliases become `alias:field`
 - Subscriptions / live queries
 - `nodeId` / `node()` global object identification

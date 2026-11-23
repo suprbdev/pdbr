@@ -46,6 +46,7 @@ func contractCatalog(t *testing.T) *introspect.Catalog {
 func contractConfig() config.Config {
 	cfg := config.DefaultConfig()
 	cfg.UseConnectionIdentity()
+	cfg.Server.BasePath = "/api"
 	cfg.Contracts = []confx.Contract{{Name: "internal"}, {Name: "public"}, {Name: "partner", Default: "exclude", Path: "/partners"}}
 	return cfg
 }
@@ -139,6 +140,7 @@ func TestContractFullAPIUnchanged(t *testing.T) {
 	quiet := WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	plain := config.DefaultConfig()
 	plain.UseConnectionIdentity()
+	plain.Server.BasePath = "/api"
 	want, err := New(plain, quiet).BuildAPI(ctx, contractCatalog(t))
 	if err != nil {
 		t.Fatal(err)
@@ -162,13 +164,13 @@ func TestContractGroupRoutes(t *testing.T) {
 	cfg := contractConfig()
 	app := New(cfg, WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))))
 	cat := contractCatalog(t)
-	group := server.NewGroup(cfg.Server, app.Log)
+	group := server.NewGroup(server.ConfigOf(cfg), app.Log)
 	for _, ct := range cfg.Contracts {
 		_, rt, err := app.contractRuntime(ctx, cat, ct.Name)
 		if err != nil {
 			t.Fatal(err)
 		}
-		scfg := cfg.Server
+		scfg := server.ConfigOf(cfg)
 		scfg.BasePath = cfg.ContractBase(ct)
 		group.Add(server.New(scfg, nil, rt, app.Log))
 	}

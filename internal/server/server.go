@@ -89,9 +89,24 @@ func NewRuntime(built *api.Built, h RouteHandler) (*Runtime, error) {
 	}, nil
 }
 
+// Config is the configuration a Server reads: the server section plus
+// openapi.enabled and limits.max_body_bytes.
+type Config struct {
+	config.Server
+	// OpenAPI serves the OpenAPI document at {BasePath}/openapi.json.
+	OpenAPI bool
+	// MaxBodyBytes caps request bodies (413 beyond it); <= 0 is no cap.
+	MaxBodyBytes int64
+}
+
+// ConfigOf returns the Server configuration of c.
+func ConfigOf(c config.Config) Config {
+	return Config{Server: c.Server, OpenAPI: c.OpenAPI.Enabled, MaxBodyBytes: c.Limits.MaxBodyBytes}
+}
+
 // Server is the HTTP front end.
 type Server struct {
-	cfg  config.Server
+	cfg  Config
 	auth *auth.Authenticator
 	log  *slog.Logger
 	rt   atomic.Pointer[Runtime]
@@ -113,7 +128,7 @@ const (
 
 // New creates a server over an initial runtime. authn may be nil (no auth:
 // every request runs without claims or a role).
-func New(cfg config.Server, authn *auth.Authenticator, rt *Runtime, log *slog.Logger) *Server {
+func New(cfg Config, authn *auth.Authenticator, rt *Runtime, log *slog.Logger) *Server {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -417,7 +432,7 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 	})
 }
 
-// withBodyLimit caps request bodies at server.max_body_bytes: an oversized
+// withBodyLimit caps request bodies at limits.max_body_bytes: an oversized
 // Content-Length short-circuits with 413, everything else is read through
 // MaxBytesReader (the reader's error surfaces as 413 in the exec layer).
 func (s *Server) withBodyLimit(next http.Handler) http.Handler {
@@ -427,7 +442,7 @@ func (s *Server) withBodyLimit(next http.Handler) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.ContentLength > max {
-			WriteProblem(w, r, http.StatusRequestEntityTooLarge, CodeBodyTooLarge, "request body exceeds server.max_body_bytes")
+			WriteProblem(w, r, http.StatusRequestEntityTooLarge, CodeBodyTooLarge, "request body exceeds limits.max_body_bytes")
 			return
 		}
 		if r.Body != nil {

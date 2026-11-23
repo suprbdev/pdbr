@@ -31,6 +31,7 @@ func testServer(t *testing.T, mutate func(*config.Config)) *httptest.Server {
 	}
 	cfg := config.DefaultConfig()
 	cfg.Database.URL = url
+	cfg.Server.BasePath = "/api"
 	cfg.UseConnectionIdentity()
 	cfg.Errors.Detail = "dev"
 	if mutate != nil {
@@ -503,7 +504,7 @@ func TestPagination(t *testing.T) {
 		res, body := get(t, srv.URL+"/api/"+q)
 		wantProblem(t, res, body, 400, code)
 	}
-	srv2 := testServer(t, func(c *config.Config) { c.Server.MaxCost = 50 })
+	srv2 := testServer(t, func(c *config.Config) { c.Limits.MaxCost = 50 })
 	res, body = get(t, srv2.URL+"/api/users?select=id,posts(id,comments(id))")
 	wantProblem(t, res, body, 400, "cost_exceeded")
 }

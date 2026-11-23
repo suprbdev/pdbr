@@ -12,7 +12,7 @@ import (
 )
 
 func TestJSONPaths(t *testing.T) {
-	srv := testServer(t, func(c *config.Config) { c.Server.Aggregates = true })
+	srv := testServer(t, func(c *config.Config) { c.Aggregates.Enabled = true })
 	base := srv.URL + "/api"
 	q := func(kv ...string) string {
 		v := url.Values{}
@@ -151,7 +151,7 @@ func TestMatchAndModifiers(t *testing.T) {
 }
 
 func TestSpreadEmbeds(t *testing.T) {
-	srv := testServer(t, func(c *config.Config) { c.Server.Aggregates = true })
+	srv := testServer(t, func(c *config.Config) { c.Aggregates.Enabled = true })
 	base := srv.URL + "/api"
 	want := func(t *testing.T, path, body string) {
 		t.Helper()
@@ -236,7 +236,7 @@ func TestSpreadGroupingNeedsUniqueTarget(t *testing.T) {
 		}
 	}
 	srv := testServer(t, func(c *config.Config) {
-		c.Server.Aggregates = true
+		c.Aggregates.Enabled = true
 		c.Filters.IndexedOnly = false
 	})
 	base := srv.URL + "/api"

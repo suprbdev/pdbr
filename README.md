@@ -17,8 +17,8 @@ GraphQL); the shared half lives in
 ```console
 $ pdbr serve --database.url postgres://localhost/mydb --auth.mode none --roles.switch=false
 time=... msg=introspected tables=12 enums=3 functions=2 took=38ms
-time=... msg=listening addr=:8080 base_path=/api openapi=true
-$ curl 'localhost:8080/api/users?select=id,email,posts(title)&mood=eq.happy&limit=2'
+time=... msg=listening addr=:8080 base_path="" openapi=true
+$ curl 'localhost:8080/users?select=id,email,posts(title)&mood=eq.happy&limit=2'
 ```
 
 ## Highlights
@@ -44,7 +44,7 @@ $ curl 'localhost:8080/api/users?select=id,email,posts(title)&mood=eq.happy&limi
   weak ETags computed in SQL with `If-None-Match`/`If-Match`, `Prefer:
   return=minimal`, `text/csv` streaming, `Link`/`X-Next-Cursor` headers,
   `405` + `Allow` for what a resource does not support.
-- **OpenAPI 3.1** — `GET /api/openapi.json` is a pure function of the
+- **OpenAPI 3.1** — `GET /openapi.json` is a pure function of the
   database (+ config + plugins), deterministic and pinned by golden tests. No embedded
   UI, no CDN assets: bring your own tooling.
 - **Schema cache** — `pdbr schema dump` / `serve --schema.cache_path` boots
@@ -91,7 +91,7 @@ $ go install github.com/suprbdev/pdbr/cmd/pdbr@latest
 
 ```console
 $ make dev                   # PostGIS-enabled Postgres + fixture + pdbr in watch mode (no host ports: add compose.override.yaml)
-$ curl localhost:8080/api/openapi.json | jq .paths | head
+$ curl localhost:8080/openapi.json | jq .paths | head
 ```
 
 Or against your own database:

@@ -132,7 +132,7 @@ func newInstruments(m *metrics.Metrics) (instruments, error) {
 	in := instruments{metrics: m}
 	var err error
 	if in.costRejections, err = m.NewCounter("cost_limit_rejections_total",
-		"Requests rejected because their estimated cost exceeds server.max_cost."); err != nil {
+		"Requests rejected because their estimated cost exceeds limits.max_cost."); err != nil {
 		return in, err
 	}
 	if in.aggregateRequests, err = m.NewCounter("aggregate_requests_total",
@@ -387,12 +387,14 @@ func (a *App) buildAPI(ctx context.Context, introspected map[string]bool, cat *i
 		ExposePartitions:  a.Config.Schema.ExposePartitions,
 		HiddenTables:      hidden,
 		BasePath:          basePath,
+		Title:             a.Config.OpenAPI.Title,
+		ServerURL:         a.Config.OpenAPI.ServerURL,
 		Schemas:           a.Config.Schema.Schemas,
-		MaxPageSize:       a.Config.Server.MaxPageSize,
+		MaxPageSize:       a.Config.Limits.MaxPageSize,
 		Etags:             a.Config.Server.Etags,
 		CSV:               a.Config.Server.CSV,
-		Domains:           a.Config.Server.OpenAPIDomains,
-		Aggregates:        a.Config.Server.Aggregates,
+		Domains:           a.Config.Schema.Domains,
+		Aggregates:        a.Config.Aggregates.Enabled,
 		JWTType:           a.Config.Auth.MintType,
 		AuthMode:          string(a.Config.Auth.Mode),
 		AuthRequired:      a.Config.Roles.Anonymous == "" && a.Config.Auth.Mode != auth.ModeNone,
@@ -426,15 +428,14 @@ func (a *App) routeHandler(built *api.Built, in instruments) *server.Handler {
 		db = a.pool
 	}
 	ex := exec.New(db, built, chain, execHooks, exec.Options{
-		TxMutations:       a.Config.TX.Mutations,
 		Isolation:         pgexec.ParseIsolation(a.Config.TX.Isolation),
 		MaxRetries:        a.Config.TX.MaxRetries,
 		ClaimsPrefix:      a.Config.Claims.Prefix,
 		ClaimsJSONSetting: a.Config.Claims.JSONSetting,
 		Detail:            pgexec.ParseDetail(a.Config.Errors.Detail),
-		MaxCost:           a.Config.Server.MaxCost,
-		MaxEmbedDepth:     a.Config.Server.MaxEmbedDepth,
-		MaxPageSize:       a.Config.Server.MaxPageSize,
+		MaxCost:           a.Config.Limits.MaxCost,
+		MaxEmbedDepth:     a.Config.Limits.MaxDepth,
+		MaxPageSize:       a.Config.Limits.MaxPageSize,
 		BasePath:          built.Options.BasePath,
 		ReadOnly:          &a.readOnly,
 		Mint:              a.mintOptions(),
@@ -443,13 +444,13 @@ func (a *App) routeHandler(built *api.Built, in instruments) *server.Handler {
 		CostRejections:    in.costRejections,
 		AggregateRequests: in.aggregateRequests,
 	})
-	opts := server.ParseOptions(built, a.Config.Server.MaxEmbedDepth, a.Config.Server.MaxPageSize, a.Config.Server.Etags, a.Config.Server.CSV)
-	opts.AllowUnfilteredMutations = a.Config.Server.AllowUnfilteredMutations
-	opts.Aggregates = a.Config.Server.Aggregates
-	opts.TxEnd = a.Config.Server.TxEnd
-	opts.MaxHeadlineDocument = a.Config.Server.MaxHeadlineDocument
-	opts.PartialBulk = a.Config.Server.PartialBulkWrites
-	opts.PartialBulkMaxItems = a.Config.Server.PartialBulkMaxItems
+	opts := server.ParseOptions(built, a.Config.Limits.MaxDepth, a.Config.Limits.MaxPageSize, a.Config.Server.Etags, a.Config.Server.CSV)
+	opts.AllowUnfilteredMutations = a.Config.Mutations.AllowUnfiltered
+	opts.Aggregates = a.Config.Aggregates.Enabled
+	opts.TxEnd = a.Config.TX.End
+	opts.MaxHeadlineDocument = a.Config.Limits.MaxHeadlineDocument
+	opts.PartialBulk = a.Config.TX.Partial.Enabled
+	opts.PartialBulkMaxItems = a.Config.TX.Partial.MaxItems
 	h := server.NewHandler(built, ex, opts, built.Options.BasePath, a.Log)
 	h.CSVRawFormulas = !a.Config.Server.CSVEscapeFormulas
 	return h
@@ -572,7 +573,7 @@ func (a *App) buildServer(ctx context.Context) (httpServer, error) {
 	if err != nil {
 		return nil, err
 	}
-	srv := server.New(a.Config.Server, authn, rt, a.Log)
+	srv := server.New(server.ConfigOf(a.Config), authn, rt, a.Log)
 	srv.SetMetrics(a.metrics, a.Config.Metrics)
 	srv.SetReadiness(a.pool.Ping)
 	if a.Config.Watch.Enabled {
@@ -614,7 +615,7 @@ func (a *App) contractRuntime(ctx context.Context, cat *introspect.Catalog, name
 // cat, each under its contract's base path, and mounts them on a
 // server.Group; watch mode rebuilds every contract.
 func (a *App) buildContractServer(ctx context.Context, cat *introspect.Catalog, bootHash string, authn *auth.Authenticator) (*server.Group, error) {
-	group := server.NewGroup(a.Config.Server, a.Log)
+	group := server.NewGroup(server.ConfigOf(a.Config), a.Log)
 	group.SetMetrics(a.metrics, a.Config.Metrics)
 	group.SetReadiness(a.pool.Ping)
 	servers := make([]*server.Server, len(a.Config.Contracts))
@@ -623,7 +624,7 @@ func (a *App) buildContractServer(ctx context.Context, cat *introspect.Catalog, 
 		if err != nil {
 			return nil, err
 		}
-		cfg := a.Config.Server
+		cfg := server.ConfigOf(a.Config)
 		cfg.BasePath = a.Config.ContractBase(ct)
 		srv := server.New(cfg, authn, rt, a.Log)
 		srv.SetMetrics(a.instrumentsFor(ct.Name).metrics, confx.Metrics{})

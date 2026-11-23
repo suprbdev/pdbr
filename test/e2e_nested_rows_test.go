@@ -132,7 +132,7 @@ func nestedSetup(t *testing.T) string {
 func nestedMutate(c *config.Config) {
 	c.Schema.Schemas = []string{nestedSchema}
 	c.Filters.IndexedOnly = false
-	c.Server.Aggregates = true
+	c.Aggregates.Enabled = true
 	c.Contracts = []confx.Contract{{Name: "internal"}, {Name: "public"}}
 }
 

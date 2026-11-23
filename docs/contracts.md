@@ -65,7 +65,7 @@ Each contract with base path `B` serves exactly what a single-API pdbr with
 | Path | |
 |---|---|
 | `B/{resource}`, `B/{resource}/{pk}`, `B/{resource}/by/…`, `B/rpc/{fn}` | the contract's routes |
-| `B/openapi.json` | the contract's OpenAPI document (`servers[0].url` is `B`), when `server.openapi` |
+| `B/openapi.json` | the contract's OpenAPI document (`servers[0].url` is `B`, after `openapi.server_url`), when `openapi.enabled` |
 
 `/healthz`, `/readyz` and the metrics endpoint stay at the root; any other
 path is a `404` problem. Every `server.*` setting (limits, CORS, timeouts,

@@ -209,7 +209,7 @@ func bulkRange() map[string]*Header {
 		Description: "0-<n-1>/<n> of the written rows (* range under return=minimal or when nothing matched); the total is * unless Prefer: count= is given."}}
 }
 
-const bulkProse = "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless server.allow_unfiltered_mutations is on."
+const bulkProse = "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless mutations.allow_unfiltered is on."
 
 // bulkParams are the row-selecting parameters of a bulk PATCH / DELETE: the
 // logic params and one filter param per filterable column.
@@ -365,7 +365,7 @@ func (b *Builder) listParams(r *Resource, rpc bool) []*Parameter {
 		b.listSelectParam(r, "Columns and embeds to return."),
 		b.orderParam(r),
 		{Name: "limit", In: "query", Schema: &Schema{Type: "integer", Minimum: intPtr(1), Maximum: intPtr(b.maxPageSize())},
-			Description: "Page size (default and maximum server.max_page_size)."},
+			Description: "Page size (default and maximum limits.max_page_size)."},
 		{Name: "offset", In: "query", Schema: &Schema{Type: "integer", Minimum: intPtr(0)}, Description: "Rows to skip."},
 	}
 	if r.Keyset && !rpc {
@@ -415,7 +415,7 @@ func (b *Builder) rpcListParams(rpc *RPC, shadow map[string]bool) []*Parameter {
 			b.listSelectParam(r, "Columns and embeds of the returned rows."),
 			b.orderParam(r),
 			{Name: "limit", In: "query", Schema: &Schema{Type: "integer", Minimum: intPtr(1), Maximum: intPtr(b.maxPageSize())},
-				Description: "Page size (default and maximum server.max_page_size)."},
+				Description: "Page size (default and maximum limits.max_page_size)."},
 			{Name: "offset", In: "query", Schema: &Schema{Type: "integer", Minimum: intPtr(0)}, Description: "Rows to skip (functions page by offset only)."},
 			{Name: "count", In: "query", Schema: &Schema{Type: "boolean"}, Description: "count=true adds X-Total-Count."},
 		}
@@ -424,7 +424,7 @@ func (b *Builder) rpcListParams(rpc *RPC, shadow map[string]bool) []*Parameter {
 	case ReturnSetOfScalar, ReturnSetOfComposite:
 		return []*Parameter{
 			{Name: "limit", In: "query", Schema: &Schema{Type: "integer", Minimum: intPtr(1), Maximum: intPtr(b.maxPageSize())},
-				Description: "Page size (default and maximum server.max_page_size)."},
+				Description: "Page size (default and maximum limits.max_page_size)."},
 			{Name: "offset", In: "query", Schema: &Schema{Type: "integer", Minimum: intPtr(0)}, Description: "Rows to skip."},
 		}
 	}
@@ -479,7 +479,7 @@ func (b *Builder) selectParam(r *Resource, lead string) *Parameter {
 }
 
 // listSelectParam is selectParam for a collection read: with
-// server.aggregates it also documents the aggregate functions.
+// aggregates.enabled it also documents the aggregate functions.
 func (b *Builder) listSelectParam(r *Resource, lead string) *Parameter {
 	p := b.selectParam(r, lead)
 	if !b.Options.Aggregates {
@@ -487,7 +487,7 @@ func (b *Builder) listSelectParam(r *Resource, lead string) *Parameter {
 	}
 	var sb strings.Builder
 	sb.WriteString(p.Description)
-	sb.WriteString(" Aggregate functions (server.aggregates): count(), <col>.count(), <col>.sum(), <col>.avg(), <col>.max(), <col>.min()")
+	sb.WriteString(" Aggregate functions (aggregates.enabled): count(), <col>.count(), <col>.sum(), <col>.avg(), <col>.max(), <col>.min()")
 	if b.Surface.SpatialAggregates && hasSpatial(r) {
 		sb.WriteString(", and on spatial columns <col>.extent(), <col>.union(), <col>.collect(), <col>.centroid() (GeoJSON)")
 	}
@@ -860,7 +860,7 @@ func (b *Builder) ifMatchParam(r *Resource) []*Parameter {
 // preferParam documents the Prefer header of a write; maxAffected adds the
 // PATCH / DELETE row cap, count the bulk-write count= token.
 func preferParam(maxAffected, count bool) *Parameter {
-	desc := "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. tx=commit | rollback ends the transaction accordingly (rollback still answers with the result; honoured only when server.tx_end is commit-allow-override or rollback-allow-override). timezone=<IANA name> sets the transaction's timezone (names from pg_timezone_names; unknown names are ignored)."
+	desc := "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. tx=commit | rollback ends the transaction accordingly (rollback still answers with the result; honoured only when transactions.end is commit-allow-override or rollback-allow-override). timezone=<IANA name> sets the transaction's timezone (names from pg_timezone_names; unknown names are ignored)."
 	if maxAffected {
 		desc += " max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing."
 	}
@@ -879,14 +879,14 @@ func columnsParam() *Parameter {
 // createPreferParam documents the Prefer header of a POST.
 func createPreferParam() *Parameter {
 	p := preferParam(false, false)
-	p.Description += " partial=items (bulk body; honoured only when server.partial_bulk_writes is on) runs each element in its own savepoint: a failing element is reported without rolling back the others, and the response is the per-element report (207 when one failed). resolution=merge-duplicates upserts on the conflict target (the primary key or ?on_conflict=; needs the PUT method), resolution=ignore-duplicates skips conflicting rows (only inserted rows are returned; a skipped single object answers 204). missing=default is accepted and changes nothing: keys absent from a bulk element always take the column DEFAULT."
+	p.Description += " partial=items (bulk body; honoured only when transactions.partial.enabled is on) runs each element in its own savepoint: a failing element is reported without rolling back the others, and the response is the per-element report (207 when one failed). resolution=merge-duplicates upserts on the conflict target (the primary key or ?on_conflict=; needs the PUT method), resolution=ignore-duplicates skips conflicting rows (only inserted rows are returned; a skipped single object answers 204). missing=default is accepted and changes nothing: keys absent from a bulk element always take the column DEFAULT."
 	return p
 }
 
 // putPreferParam documents the Prefer header of a PUT on the collection path.
 func putPreferParam() *Parameter {
 	p := preferParam(false, false)
-	p.Description += " partial=items (bulk body; honoured only when server.partial_bulk_writes is on) runs each element in its own savepoint and answers the per-element report."
+	p.Description += " partial=items (bulk body; honoured only when transactions.partial.enabled is on) runs each element in its own savepoint and answers the per-element report."
 	return p
 }
 
@@ -936,14 +936,14 @@ func (b *Builder) keyedPutSchema(r *Resource, key []string) *Schema {
 // countPreferParam documents Prefer: count= on list reads.
 func countPreferParam() *Parameter {
 	return &Parameter{Name: "Prefer", In: "header", Schema: &Schema{Type: "string"},
-		Description: "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences."}
+		Description: "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to limits.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences."}
 }
 
 // rangeParams documents the Range / Range-Unit request headers of list reads.
 func rangeParams() []*Parameter {
 	return []*Parameter{
 		{Name: "Range", In: "header", Schema: &Schema{Type: "string"},
-			Description: "Row window as <first>-<last> (inclusive, zero-based) or <first>- (PostgREST Range-Unit items): an alternative to offset/limit, intersected with them when both are given. The size is clamped to server.max_page_size. Answers 206 when a known total (count=) exceeds the returned rows and 416 when <first> is past it; an empty window is 400 invalid_range; not combinable with after/before."},
+			Description: "Row window as <first>-<last> (inclusive, zero-based) or <first>- (PostgREST Range-Unit items): an alternative to offset/limit, intersected with them when both are given. The size is clamped to limits.max_page_size. Answers 206 when a known total (count=) exceeds the returned rows and 416 when <first> is past it; an empty window is 400 invalid_range; not combinable with after/before."},
 		{Name: "Range-Unit", In: "header", Schema: &Schema{Type: "string", Enum: []string{"items"}},
 			Description: "Unit of the Range header; the Range header is ignored when this is present and not items."},
 	}

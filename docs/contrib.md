@@ -55,10 +55,10 @@ Each takes an optional text search configuration in parentheses. It is a
 bind parameter cast to `regconfig`, and may be schema-qualified:
 
 ```http
-GET /api/articles?search=fts(english).fat%20%26%20cat:*
-GET /api/articles?body=wfts(pg_catalog.english).%22fat%20cat%22%20-rat
-GET /api/articles?search=not.phfts.fat%20cat
-GET /api/articles?or=(search.plfts.fat%20cat,body.fts(simple).rat)
+GET /articles?search=fts(english).fat%20%26%20cat:*
+GET /articles?body=wfts(pg_catalog.english).%22fat%20cat%22%20-rat
+GET /articles?search=not.phfts.fat%20cat
+GET /articles?or=(search.plfts.fat%20cat,body.fts(simple).rat)
 ```
 
 On a text column the column is converted with `to_tsvector` in the same
@@ -71,7 +71,7 @@ ignores its keys, numbers and booleans, so `meta=fts.summary` does not
 match `{"summary": "…"}`:
 
 ```http
-GET /api/articles?meta=wfts(english).cat%20story&order=meta.rank.desc
+GET /articles?meta=wfts(english).cat%20story&order=meta.rank.desc
 ```
 
 The jsonb operators (`cs`, `cd`, `hk`, JSON paths, …) keep working on the
@@ -112,10 +112,10 @@ object is element containment, a pdbr extension: in PostgREST `cs.5`
 fails to parse as a range.
 
 ```http
-GET /api/bookings?seats=cs.2
-GET /api/bookings?stay_days=ov.[2026-01-10,2026-01-12)
-GET /api/bookings?pages=cs.{"start":11,"end":13}
-GET /api/bookings?blackout=sl.[2099-01-01,2099-01-02)
+GET /bookings?seats=cs.2
+GET /bookings?stay_days=ov.[2026-01-10,2026-01-12)
+GET /bookings?pages=cs.{"start":11,"end":13}
+GET /bookings?blackout=sl.[2099-01-01,2099-01-02)
 ```
 
 Arrays keep their own `cs`/`cd`/`ov` (array containment and overlap with an
@@ -153,9 +153,9 @@ Comparisons ignore both accents and case (`Crème` matches `creme`,
 and work inside `and=`/`or=`:
 
 ```http
-GET /api/cities?name=unaccent_eq.Sao%20Paulo
-GET /api/recipes?title=unaccent_ilike.*creme*brulee
-GET /api/people?or=(last_name.unaccent_sw.Mull,first_name.not.unaccent_includes.zoe)
+GET /cities?name=unaccent_eq.Sao%20Paulo
+GET /recipes?title=unaccent_ilike.*creme*brulee
+GET /people?or=(last_name.unaccent_sw.Mull,first_name.not.unaccent_includes.zoe)
 ```
 
 `unaccent_ilike` translates `*` to `%` exactly as `like`/`ilike` do.
@@ -187,8 +187,8 @@ when the `fuzzystrmatch` extension is installed, take `not.` and work in
 `or=`/`and=` and embed filters:
 
 ```http
-GET /api/people?name=levenshtein_lt.3&levenshtein=Jon&order=name.levenshtein&limit=10
-GET /api/people?or=(name.soundex.Robert,name.dmetaphone.Smith)
+GET /people?name=levenshtein_lt.3&levenshtein=Jon&order=name.levenshtein&limit=10
+GET /people?or=(name.soundex.Robert,name.dmetaphone.Smith)
 ```
 
 `levenshtein_lt` measures from the request-wide `levenshtein=` text, like
@@ -331,9 +331,9 @@ hstore these are its B-tree class operators `#<#`/`#>#`, since it has no
 | `<col>_nlevel`, `<col>_icount` | `nlevel(col)`, `icount(col)` (allowlisted columns under the policy) | either |
 
 ```http
-GET /api/articles?search=wfts(english).fat%20cat&order=search.rank.desc&limit=10
-GET /api/articles?order=title.trgm_dist&trgm=postgres&limit=10
-GET /api/articles?title=trgm_sim.postgres&order=title.trgm_dist,id&trgm=postgres
+GET /articles?search=wfts(english).fat%20cat&order=search.rank.desc&limit=10
+GET /articles?order=title.trgm_dist&trgm=postgres&limit=10
+GET /articles?title=trgm_sim.postgres&order=title.trgm_dist,id&trgm=postgres
 ```
 
 - **rank / rank_cd** rank against the request's own full-text filter on the
@@ -400,9 +400,9 @@ Columns of pgvector's `vector`, `halfvec` and `sparsevec` types (extension
 - **Ordering**: only by distance to `vec=`, nearest first under `asc`:
 
 ```http
-GET /api/items?order=embedding.vec_cos&vec=%5B0.1%2C0.2%2C0.3%5D&limit=10
-GET /api/items?order=embedding.vec_l2&vec=[0.1,0.2,0.3]&limit=10
-GET /api/docs?select=id,chunks(id,text)&chunks.order=embedding.vec_ip&chunks.limit=3&vec=%5B1%2C0%2C0%5D
+GET /items?order=embedding.vec_cos&vec=%5B0.1%2C0.2%2C0.3%5D&limit=10
+GET /items?order=embedding.vec_l2&vec=[0.1,0.2,0.3]&limit=10
+GET /docs?select=id,chunks(id,text)&chunks.order=embedding.vec_ip&chunks.limit=3&vec=%5B1%2C0%2C0%5D
 ```
 
   `vec=` is a JSON array of numbers (URL-encoded, or raw where the client
@@ -439,7 +439,7 @@ GET /api/docs?select=id,chunks(id,text)&chunks.order=embedding.vec_ip&chunks.lim
 | `<col>=vec_l1_lt.<d>` | `(col <+> $vec::vector) < $d` (pgvector 0.7+) |
 
 ```http
-GET /api/items?select=id,embedding_cosine_distance&embedding=vec_cos_lt.0.2&order=embedding.vec_cos&vec=%5B0.1%2C0.2%2C0.3%5D&limit=10
+GET /items?select=id,embedding_cosine_distance&embedding=vec_cos_lt.0.2&order=embedding.vec_cos&vec=%5B0.1%2C0.2%2C0.3%5D&limit=10
 ```
 
   The operand is the exclusive bound, a finite number (`400 invalid_filter`
@@ -472,7 +472,7 @@ GET /api/items?select=id,embedding_cosine_distance&embedding=vec_cos_lt.0.2&orde
 ALTER TABLE items ADD COLUMN code bit(1536)
   GENERATED ALWAYS AS (binary_quantize(embedding)::bit(1536)) STORED;
 CREATE INDEX ON items USING hnsw (code bit_hamming_ops);
--- one-statement re-ranking, exposed as GET /api/rpc/search_items?q=...&n=10
+-- one-statement re-ranking, exposed as GET /rpc/search_items?q=...&n=10
 CREATE FUNCTION search_items(q vector(1536), n int DEFAULT 10) RETURNS SETOF items
   STABLE LANGUAGE sql AS $$
   SELECT * FROM (
@@ -544,8 +544,8 @@ n-dimensional points and boxes when the extension is installed.
   parameter is documented wherever a cube term, score or threshold is.
 
 ```http
-GET /api/shapes?box=ov.%5B%5B0%2C0%5D%2C%5B5%2C5%5D%5D&select=id,box
-GET /api/shapes?select=id,box_chebyshev_distance&box=vec_chebyshev_lt.2&order=box.vec_chebyshev&vec=%5B1%2C2%5D&limit=10
+GET /shapes?box=ov.%5B%5B0%2C0%5D%2C%5B5%2C5%5D%5D&select=id,box
+GET /shapes?select=id,box_chebyshev_distance&box=vec_chebyshev_lt.2&order=box.vec_chebyshev&vec=%5B1%2C2%5D&limit=10
 ```
 
 ## earthdistance (pdbr)
@@ -593,9 +593,9 @@ OpenAPI document unchanged. Store an `earth` column (or index
 `ll_to_earth` of the coordinates) for index-assisted radius search.
 
 ```http
-GET /api/sites?select=id,name,loc_earth_distance&loc=earth_lt.5000&order=loc.earth_dist&latlon=51.508,-0.128&limit=20
-GET /api/sites?order=ll.earth_miles&ll=earth_miles_lt.10&latlon=51.508,-0.128
-POST /api/sites
+GET /sites?select=id,name,loc_earth_distance&loc=earth_lt.5000&order=loc.earth_dist&latlon=51.508,-0.128&limit=20
+GET /sites?order=ll.earth_miles&ll=earth_miles_lt.10&latlon=51.508,-0.128
+POST /sites
 {"name": "Trafalgar Square", "loc": {"lat": 51.508, "lon": -0.128}}
 ```
 
@@ -624,9 +624,9 @@ score fields:
 | `<col>_earth_distance_miles` (point columns) | `col <@> point($lon, $lat)`, statute miles | `latlon=` |
 
 ```http
-GET /api/articles?select=id,title,title_similarity&title=trgm_sim.postgres&trgm=postgres&order=title.trgm_dist&limit=10
-GET /api/items?select=id,embedding_cosine_distance&order=embedding.vec_cos&vec=%5B0.1%2C0.2%2C0.3%5D&limit=10
-GET /api/docs?select=id,chunks(id,embedding_cosine_distance)&chunks.order=embedding.vec_cos&chunks.limit=3&vec=%5B1%2C0%2C0%5D
+GET /articles?select=id,title,title_similarity&title=trgm_sim.postgres&trgm=postgres&order=title.trgm_dist&limit=10
+GET /items?select=id,embedding_cosine_distance&order=embedding.vec_cos&vec=%5B0.1%2C0.2%2C0.3%5D&limit=10
+GET /docs?select=id,chunks(id,embedding_cosine_distance)&chunks.order=embedding.vec_cos&chunks.limit=3&vec=%5B1%2C0%2C0%5D
 ```
 
 - They are selected explicitly (never part of `*`), aliasable
@@ -651,7 +651,7 @@ GET /api/docs?select=id,chunks(id,embedding_cosine_distance)&chunks.order=embedd
   embed under a root where the parameter is a filter is `400
   invalid_select`. A real, computed or derived column owning a score's key
   keeps it (with a warning).
-- Each costs 1 per row in `server.max_cost`, like a column. OpenAPI lists
+- Each costs 1 per row in `limits.max_cost`, like a column. OpenAPI lists
   them as read-only nullable `number` properties of the resource schema and
   in the `select` description.
 
@@ -671,10 +671,10 @@ full-text filter under the filter policy:
   exists only on resources with such a column.
 
 ```http
-GET /api/articles?select=id,title,search_headline(document=body,max_words=20,min_words=5,start_sel="<mark>",stop_sel="</mark>")&search=wfts(english).fat%20cat&order=search.rank.desc&limit=10
-GET /api/articles?select=id,body_headline(max_fragments=2,fragment_delimiter="%20…%20")&body=plfts.cheese
-GET /api/articles?select=id,meta_headline&meta=fts(english).story
-GET /api/authors?select=name,articles(id,search_headline(document=title))&articles.search=fts.cat&articles.limit=3
+GET /articles?select=id,title,search_headline(document=body,max_words=20,min_words=5,start_sel="<mark>",stop_sel="</mark>")&search=wfts(english).fat%20cat&order=search.rank.desc&limit=10
+GET /articles?select=id,body_headline(max_fragments=2,fragment_delimiter="%20…%20")&body=plfts.cheese
+GET /articles?select=id,meta_headline&meta=fts(english).story
+GET /authors?select=name,articles(id,search_headline(document=title))&articles.search=fts.cat&articles.limit=3
 ```
 
 - **The query** is the scope's single non-negated `fts`/`plfts`/`phfts`/`wfts`
@@ -709,13 +709,13 @@ GET /api/authors?select=name,articles(id,search_headline(document=title))&articl
   computed or other pseudo-column owning the key keeps it (with a warning).
 - **Bounding.** `ts_headline` re-parses the whole document on every call,
   so its work grows with the document's length. It reads at most
-  `server.max_headline_document` characters (default 65536): a text
+  `limits.max_headline_document` characters (default 65536): a text
   document is cut to its first that many characters (`left(doc, $n)`, a
   bound parameter), so a match further in is not highlighted and the
   headline shows the opening words, and a json or jsonb document whose
   text is longer gives a `null` headline (it cannot be cut). A headline
   costs `pdbcore/contrib.HeadlineDocumentCost` of that bound per row in
-  `server.max_cost`: 10 per started 8192 characters, so 80 by default. It
+  `limits.max_cost`: 10 per started 8192 characters, so 80 by default. It
   runs only on the rows the response returns: the filter and the
   ordering run first, and PostgreSQL evaluates the projection after the
   `LIMIT` (the page plus its one look-ahead row; `EXPLAIN ANALYZE` shows it
@@ -739,9 +739,9 @@ aliasable, and usable in embeds, spreads, row paths and mutation responses:
 | `<col>_icount` (int4[] with intarray) | `icount(col)`, the number of elements | integer | yes |
 
 ```http
-GET /api/categories?select=id,path_nlevel,path_parent,top:path_subpath(offset=0,length=1)&path_nlevel=lte.2&order=path_nlevel.desc
-GET /api/categories?select=id,common:path_lca(path=top.science.physics)
-GET /api/items?select=id,tags_icount&tags=query_int.1%26(2%7C3)&order=tags_icount.desc
+GET /categories?select=id,path_nlevel,path_parent,top:path_subpath(offset=0,length=1)&path_nlevel=lte.2&order=path_nlevel.desc
+GET /categories?select=id,common:path_lca(path=top.science.physics)
+GET /items?select=id,tags_icount&tags=query_int.1%26(2%7C3)&order=tags_icount.desc
 ```
 
 The select arguments are bind parameters (the SQL text does not depend on
@@ -756,7 +756,7 @@ filterable / orderable itself): `400 column_not_filterable` /
 `column_not_orderable` otherwise; selecting them is always allowed. A real
 or computed column owning the key keeps it (with a warning). `@omit read`
 removes them with the column, `@omit filter` / `@omit order` their filter
-and order surface. Each costs 1 per row in `server.max_cost`. OpenAPI lists
+and order surface. Each costs 1 per row in `limits.max_cost`. OpenAPI lists
 them as read-only properties (with their select syntax) and in the `select`
 description, documents the filterable ones as filter parameters and the
 orderable ones in the `order` description. The other vocabularies'

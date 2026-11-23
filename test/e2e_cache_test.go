@@ -20,6 +20,7 @@ func dumpCache(t *testing.T, dbURL string) (string, string) {
 	t.Helper()
 	cfg := config.DefaultConfig()
 	cfg.Database.URL = dbURL
+	cfg.Server.BasePath = "/api"
 	cfg.UseConnectionIdentity()
 	app := pdbr.New(cfg)
 	defer app.Close()

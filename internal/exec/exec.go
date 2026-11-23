@@ -109,17 +109,15 @@ type DB interface {
 
 // Options are the config bits the executor consults per request.
 type Options struct {
-	// TxMutations wraps every mutation in a transaction (transactions.mutations).
-	TxMutations bool
-	Isolation   pgx.TxIsoLevel
-	MaxRetries  int
+	Isolation  pgx.TxIsoLevel
+	MaxRetries int
 	// ClaimsPrefix and ClaimsJSONSetting are claims.prefix and
 	// claims.json_setting: where the request claims are set for SQL.
 	ClaimsPrefix      string
 	ClaimsJSONSetting string
 	// Detail is the errors.detail policy.
 	Detail pgexec.Detail
-	// MaxCost / MaxEmbedDepth / MaxPageSize are the server.* limits.
+	// MaxCost / MaxEmbedDepth / MaxPageSize are limits.max_cost, max_depth and max_page_size.
 	MaxCost       int
 	MaxEmbedDepth int
 	MaxPageSize   int
@@ -224,7 +222,7 @@ func (e *Executor) prepare(ctx context.Context, op *Operation) (context.Context,
 	if cost := compile.Cost(op.Plan, e.Opts.MaxPageSize); cost > e.Opts.MaxCost {
 		e.Opts.CostRejections.Inc()
 		return ctx, nil, &Error{Status: http.StatusBadRequest, Code: compile.CodeCostExceeded,
-			Detail: fmt.Sprintf("request cost %d exceeds server.max_cost %d", cost, e.Opts.MaxCost)}
+			Detail: fmt.Sprintf("request cost %d exceeds limits.max_cost %d", cost, e.Opts.MaxCost)}
 	}
 	start := time.Now()
 	stmt, err := e.Compile(ctx, &compile.Request{
@@ -297,7 +295,7 @@ func (e *Executor) errResult(err error) *Result {
 // needsTx is the transaction decision table (docs/architecture.md).
 func (e *Executor) needsTx(op *Operation, stmt *compile.Statement, tz bool) bool {
 	return op.ForceTx ||
-		((op.Mutation || stmt.Mutation) && e.Opts.TxMutations) ||
+		op.Mutation || stmt.Mutation ||
 		maxAffected(op) != nil ||
 		rollsBack(op) ||
 		tz ||
@@ -410,7 +408,7 @@ func (e *Executor) run(ctx context.Context, op *Operation, stmt *compile.Stateme
 }
 
 // rollsBack reports that the operation runs in a transaction that is rolled
-// back (server.tx_end or Prefer: tx=rollback).
+// back (transactions.end or Prefer: tx=rollback).
 func rollsBack(op *Operation) bool {
 	return op != nil && op.Plan != nil && op.Plan.Prefer.Rollback
 }

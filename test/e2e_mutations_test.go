@@ -196,7 +196,7 @@ func TestCreateBulk(t *testing.T) {
 
 func TestBodyValidation(t *testing.T) {
 	sweep(t)
-	srv := testServer(t, func(c *config.Config) { c.Server.MaxBodyBytes = 200 })
+	srv := testServer(t, func(c *config.Config) { c.Limits.MaxBodyBytes = 200 })
 	cases := []struct {
 		name, method, url, body, ct string
 		status                      int
@@ -560,12 +560,4 @@ func TestMutationPrivilegesAndRLS(t *testing.T) {
 	if res.StatusCode != 200 {
 		t.Fatalf("cleanup = %d %s", res.StatusCode, body)
 	}
-}
-
-func TestMutationTransactionsOff(t *testing.T) {
-	sweep(t)
-	srv := testServer(t, func(c *config.Config) { c.TX.Mutations = false })
-	var u row
-	sendJSON(t, "POST", srv.URL+"/api/users", `{"email":"`+uniqueEmail(t)+`"}`, 201, &u)
-	sendJSON(t, "DELETE", fmt.Sprintf("%s/api/users/%d", srv.URL, rowID(t, u)), "", 200, nil)
 }

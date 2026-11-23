@@ -202,7 +202,7 @@ generates, in `openapi.json`:
 }
 ```
 
-and `GET /api/events?type_code=eq.meetup`, `POST /api/events {"name": "…",
+and `GET /events?type_code=eq.meetup`, `POST /events {"name": "…",
 "type_code": "meetup"}` validate against the labels.
 
 - The **value column** is the table's single-column primary key, or the column
@@ -247,9 +247,9 @@ plugins:
 ## Cost estimation for recursive relations
 
 The compiler rejects a request whose estimated cost exceeds
-`server.max_cost` (default 100000) with `400 cost_exceeded`. The estimate is
+`limits.max_cost` (default 100000) with `400 cost_exceeded`. The estimate is
 `1 + Σ(mult × child)` over the embed tree, where `mult` is the embed's
-explicit `limit` clamped to `server.max_page_size`, or `server.max_page_size`
+explicit `limit` clamped to `limits.max_page_size`, or `limits.max_page_size`
 (**100**) for a backward embed without one — the rows its SQL can fetch. That is right for an unrelated fan-out, but badly
 pessimistic for self-referential trees — a Reddit-style comment thread —
 where the fan-out at each level is far below the page.
@@ -257,7 +257,7 @@ where the fan-out at each level is far below the page.
 A four-level thread,
 
 ```
-GET /api/comments?select=*,comments(*,comments(*,comments(*)))
+GET /comments?select=*,comments(*,comments(*,comments(*)))
 ```
 
 estimates `1 + 100·(1 + 100·(1 + 100·(1 + 100))) = 101 010 101`, far over
@@ -291,7 +291,7 @@ Details worth knowing:
 - **It is parsed straight from the catalog**, so it works with the
   `smart_comments` plugin disabled.
 - **It changes the estimate, not the query.** Rows actually returned are still
-  bounded by `limit` and `server.max_page_size`. Setting the multiplier far
+  bounded by `limit` and `limits.max_page_size`. Setting the multiplier far
   below real fan-out weakens the cost limit as a guard — pick a value near
   the true average, not the smallest one that makes a request pass.
 

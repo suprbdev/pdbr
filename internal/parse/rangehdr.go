@@ -28,7 +28,7 @@ func (p *parser) readRange(r *http.Request) {
 // optional) with the limit/offset window of the query and writes the result
 // back into Page. A header that does not match first-last is ignored; an
 // empty intersection is 400 invalid_range. The page size is clamped to
-// server.max_page_size without an error, unlike an explicit limit. Cursors
+// limits.max_page_size without an error, unlike an explicit limit. Cursors
 // cannot be combined with a Range.
 func (p *parser) applyRange() error {
 	if p.rangeHdr == "" || !p.isList() {

@@ -13,7 +13,7 @@ e2e*).
 HTTP/1.1 409 Conflict
 Content-Type: application/problem+json
 
-{"type":"about:blank","title":"Conflict","status":409,"detail":"duplicate key value violates unique constraint \"users_email_key\"","instance":"/api/users","code":"pg:23505"}
+{"type":"about:blank","title":"Conflict","status":409,"detail":"duplicate key value violates unique constraint \"users_email_key\"","instance":"/users","code":"pg:23505"}
 ```
 
 | Member | Value |
@@ -22,14 +22,14 @@ Content-Type: application/problem+json
 | `title` | the HTTP reason phrase (`Bad Request`, `Conflict`, …) |
 | `status` | the HTTP status, repeated |
 | `detail` | human-readable message, subject to [`errors.detail`](#errorsdetail) sanitization |
-| `instance` | request path without query string (`/api/users/1`) |
+| `instance` | request path without query string (`/users/1`) |
 | `code` | extension: stable string — `pg:<SQLSTATE>` for database errors, a pdbr code otherwise ([vocabulary](#code-vocabulary)) |
 | `pg` | extension, **`errors.detail: dev` only**: `{"sqlstate","message","detail","hint","table","constraint"}` (absent members omitted) |
 
 A grammar error rendered by pdbr itself:
 
 ```json
-{"type":"about:blank","title":"Bad Request","status":400,"detail":"unknown column \"emial\" on \"users\"","instance":"/api/users","code":"unknown_column"}
+{"type":"about:blank","title":"Bad Request","status":400,"detail":"unknown column \"emial\" on \"users\"","instance":"/users","code":"unknown_column"}
 ```
 
 `HEAD` errors carry the same status/headers and no body. Problem bodies are
@@ -47,25 +47,25 @@ has a `code`, see the note below the table):
 | `not_found` | 404 | no such route/resource/function, or single-row path matched zero rows (incl. rows hidden by RLS), or a nested `connect` / `update` / `delete` matched no row (detail `nested "<path>": matched 0 rows`; the whole statement is rolled back) |
 | `invalid_filter` | 400 | filter grammar: bad `op`, unparsable value, bad `and=`/`or=` nesting, missing `near=` / `trgm=` / `vec=` / `latlon=` with a distance order term, score column (raster `<col>_value` included) or `vec_*_lt` / `earth_lt` threshold (or one of them without any), a non-numeric threshold, a `vec=` that is not a vector or cube, a `latlon=` that is not `<lat>,<lon>` in range, a comparison on a pgvector, cube or earth column, an operator other than `intersects`/`is` on a raster column, bad `in.(…)` list, uncoercible RPC GET arg |
 | `invalid_select` | 400 | `select=` grammar: unbalanced parens, empty item, bad alias, unknown hint, `col(k=v)` args on a non-spatial column, an explicit select of a raster column (never readable), a bad `band=` on a raster pseudo-column; aggregates ([aggregates.md](aggregates.md#errors)): a cast outside an aggregate or to a type outside the allowlist (`::regclass`), an aggregate without the input type (`text.sum()`), an embed or ungroupable column as a grouping key, duplicate response keys, aggregates on single-row paths, mutations or in to-one embeds, `distinct=` with aggregates |
-| `aggregates_disabled` | 400 | an aggregate function in `select=` while `server.aggregates` is off (PostgREST `PGRST123`) |
+| `aggregates_disabled` | 400 | an aggregate function in `select=` while `aggregates.enabled` is off (PostgREST `PGRST123`) |
 | `unknown_column` | 400 | column / computed name not on the resource — in `select=`, filters, `order=`, `distinct=`, `on_conflict=` |
 | `column_not_filterable` | 400 | column exists but is outside the filter policy (`filters.indexed_only`, `@omit filter`) |
 | `column_not_orderable` | 400 | column exists but is outside the order policy; with aggregates, an `order=` term that is not a grouping column |
-| `page_size_exceeded` | 400 | `limit` > `server.max_page_size` (also on embeds and RPC lists) |
+| `page_size_exceeded` | 400 | `limit` > `limits.max_page_size` (also on embeds and RPC lists) |
 | `keyset_unsupported` | 400 | `after`/`before` on a resource without a PK, `before` combined with `offset`, any cursor combined with a `Range` header, `distinct=` or aggregate functions with keyset |
 | `invalid_range` | 400 | `Range` header with the last item before the first, or no overlap with `offset`/`limit` ([pagination.md](pagination.md#range-request-header)) |
 | `range_not_satisfiable` | 416 | counted list whose `offset` / `Range` start is past the total; carries `Content-Range: */<total>` (PostgREST `PGRST103`) |
-| `cost_exceeded` | 400 | estimated cost > `server.max_cost` |
-| `embed_depth_exceeded` | 400 | `select=` nesting deeper than `server.max_embed_depth`; nested-mutation depth > `max_depth` |
+| `cost_exceeded` | 400 | estimated cost > `limits.max_cost` |
+| `embed_depth_exceeded` | 400 | `select=` nesting deeper than `limits.max_depth`; nested-mutation depth > `max_depth` |
 | `ambiguous_relation` | 400 | relation key matches ≥ 2 FKs and no `!hint`; detail lists the candidates |
 | `invalid_body` | 400 | body not an object/array as required, unknown key, empty patch, missing required columns, missing conflict-target columns, both `create` and `connect`, malformed nested operation, more than `max_operations` nested operations, uncoercible value, empty `[]` bulk, single-row `PUT` body key ≠ path key (PostgREST `PGRST115`) |
 | `temporal_conflict_target` | 400 | `PUT` or `POST` with `Prefer: resolution=merge-duplicates` whose conflict target is a temporal (`WITHOUT OVERLAPS`, PostgreSQL 18) key — `?on_conflict=` naming one, or the default target on a table whose primary key is temporal (`ignore-duplicates` accepts them); `ON CONFLICT` cannot infer the exclusion constraint behind it (PostgreSQL would fail with `42P10`) |
 | `column_readonly` | 400 | generated / identity-`ALWAYS` column in a write body |
 | `read_only` | 405 | write attempted while `server.read_only` (config or `App.SetReadOnly`) |
 | `etag_mismatch` | 412 | `If-Match` did not match the current row hash |
-| (`unfiltered_mutation`) | 400 | bulk `PATCH`/`DELETE` on a collection path without a root filter or `!inner` embed while `server.allow_unfiltered_mutations` is off |
+| (`unfiltered_mutation`) | 400 | bulk `PATCH`/`DELETE` on a collection path without a root filter or `!inner` embed while `mutations.allow_unfiltered` is off |
 | (`if_match_unsupported`) | 400 | `If-Match` on a write that cannot honour it (bulk `PATCH`/`DELETE` on a collection path, `PUT` on a single-row path, a `PATCH` carrying nested-mutation keys) while `server.etags` is on |
-| (`invalid_preference`) | 400 | `Prefer: handling=strict` with an unknown token or a malformed value (PostgREST `PGRST122`); `resolution=merge-duplicates` on a resource without `PUT`; `tx=` while `server.tx_end` has no override; `partial=` while `server.partial_bulk_writes` is off or with a value other than `items`; an unknown `timezone=` |
+| (`invalid_preference`) | 400 | `Prefer: handling=strict` with an unknown token or a malformed value (PostgREST `PGRST122`); `resolution=merge-duplicates` on a resource without `PUT`; `tx=` while `transactions.end` has no override; `partial=` while `transactions.partial.enabled` is off or with a value other than `items`; an unknown `timezone=` |
 | (`max_affected_exceeded`) | 400 | `Prefer: handling=strict, max-affected=N` and the write touched more than `N` rows; rolled back (PostgREST `PGRST124`) |
 | `not_acceptable` | 406 | `Accept` unsatisfiable (incl. `text/csv` with embeds or on non-list responses, `application/geo+json` without a spatial column in the selection) |
 | `unsupported_media_type` | 415 | request body `Content-Type` is not `application/json` |
@@ -77,7 +77,7 @@ has a `code`, see the note below the table):
 | (`method_not_allowed`) | 405 | method not registered on the path (view, missing privilege, `@omit`, volatile GET) |
 | (`unknown_argument`) | 400 | RPC argument name not declared by the function |
 | (`missing_argument`) | 400 | RPC call omits an argument that has no `DEFAULT` (or, on a variadic function, one before a passed argument); detail lists them |
-| (`body_too_large`) | 413 | body > `server.max_body_bytes` |
+| (`body_too_large`) | 413 | body > `limits.max_body_bytes` |
 | (`timeout`) | 504 | `server.request_timeout` elapsed (context deadline) |
 | (`unavailable`) | 503 | no database connection (pool acquire failed, connection refused/reset/dropped, `net.Error`, unexpected EOF) with no SQLSTATE; `detail` "database unavailable" (full error in `dev`) |
 | (`internal`) | 500 | anything else pdbr-side (hook error, unexpected compile failure, panic) |
@@ -123,7 +123,7 @@ returns `{Class, SQLState, Message(detail)}`):
 | `23505` unique violation, `23503` FK violation, `23001` restrict violation (PostgreSQL 18+ reports `ON DELETE/UPDATE RESTRICT` as `23001`, older servers as `23503`), `23P01` exclusion violation (also a temporal `WITHOUT OVERLAPS` key duplicate) | 409 | `pg:235…` / `pg:23001` / `pg:23P01` |
 | `40001` serialization failure / `40P01` deadlock **after** `transactions.max_retries` re-runs | 409 | `pg:40001` / `pg:40P01` |
 | `If-Match` mismatch | 412 | `etag_mismatch` |
-| body larger than `server.max_body_bytes` | 413 | `body_too_large` |
+| body larger than `limits.max_body_bytes` | 413 | `body_too_large` |
 | body `Content-Type` not JSON | 415 | `unsupported_media_type` |
 | any other PG SQLSTATE (`2D000`, `P0001` `RAISE EXCEPTION` other than the raster SRID mismatch above, `XX000` other than the PostGIS input errors above, …) | 500 | `pg:<SQLSTATE>` |
 | hook / plugin / internal error that is not a `UserError` | 500 | `internal` |
@@ -183,7 +183,7 @@ The same unique-violation error at the three levels:
 // errors.detail: dev
 {"type":"about:blank","title":"Conflict","status":409,
  "detail":"duplicate key value violates unique constraint \"users_email_key\"",
- "instance":"/api/users","code":"pg:23505",
+ "instance":"/users","code":"pg:23505",
  "pg":{"sqlstate":"23505","message":"duplicate key value violates unique constraint \"users_email_key\"",
        "detail":"Key (email)=(a@b.c) already exists.","table":"users","constraint":"users_email_key"}}
 ```
@@ -192,14 +192,14 @@ The same unique-violation error at the three levels:
 // errors.detail: prod
 {"type":"about:blank","title":"Conflict","status":409,
  "detail":"duplicate key value violates unique constraint \"users_email_key\"",
- "instance":"/api/users","code":"pg:23505"}
+ "instance":"/users","code":"pg:23505"}
 ```
 
 ```json
 // errors.detail: strict
 {"type":"about:blank","title":"Conflict","status":409,
  "detail":"constraint violation",
- "instance":"/api/users","code":"pg:23505"}
+ "instance":"/users","code":"pg:23505"}
 ```
 
 And a `RAISE EXCEPTION 'nope'` from a function (`P0001`):
@@ -276,7 +276,7 @@ match → `304` (no body, not a problem document).
 ## `413`
 
 Request bodies are read through a `MaxBytesReader` at
-`server.max_body_bytes` (1 MiB); overflow → `413 body_too_large` before JSON
+`limits.max_body_bytes` (1 MiB); overflow → `413 body_too_large` before JSON
 decoding, connection closed after the response. `Content-Length` larger than
 the limit short-circuits without reading.
 

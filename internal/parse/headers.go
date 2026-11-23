@@ -197,7 +197,7 @@ func (p *parser) resolvePartial() error {
 		return nil
 	}
 	if limit := p.opts.PartialBulkMaxItems; limit > 0 && len(p.req.Body.Objects) > limit {
-		return errf(CodeBodyTooLarge, "Prefer: partial=items accepts at most %d elements, got %d (server.partial_bulk_max_items)", limit, len(p.req.Body.Objects))
+		return errf(CodeBodyTooLarge, "Prefer: partial=items accepts at most %d elements, got %d (transactions.partial.max_items)", limit, len(p.req.Body.Objects))
 	}
 	p.req.Prefer.Partial = true
 	p.req.Prefer.Applied = append(p.req.Prefer.Applied, "partial=items")

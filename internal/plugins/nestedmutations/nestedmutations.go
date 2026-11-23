@@ -39,15 +39,14 @@ const DefaultMaxOperations = 50
 
 // Settings is the plugins.settings.nested_mutations section.
 type Settings struct {
-	ForceTransactions bool `koanf:"force_transactions" doc:"Run every request carrying nested keys in a transaction, even with transactions.mutations off."`
-	MaxDepth          int  `koanf:"max_depth" doc:"Deepest nesting of create/update operations (the root row is depth 1; connect, delete and disconnect add no level); deeper answers 400 embed_depth_exceeded."`
-	MaxOperations     int  `koanf:"max_operations" doc:"Most nested operations per request (every list item and forward operation counts once); more answers 400 invalid_body."`
+	MaxDepth      int `koanf:"max_depth" doc:"Deepest nesting of create/update operations (the root row is depth 1; connect, delete and disconnect add no level); deeper answers 400 embed_depth_exceeded."`
+	MaxOperations int `koanf:"max_operations" doc:"Most nested operations per request (every list item and forward operation counts once); more answers 400 invalid_body."`
 }
 
-// DefaultSettings returns the defaults: force_transactions on, max_depth
-// DefaultMaxDepth, max_operations DefaultMaxOperations.
+// DefaultSettings returns the defaults: max_depth DefaultMaxDepth,
+// max_operations DefaultMaxOperations.
 func DefaultSettings() Settings {
-	return Settings{ForceTransactions: true, MaxDepth: DefaultMaxDepth, MaxOperations: DefaultMaxOperations}
+	return Settings{MaxDepth: DefaultMaxDepth, MaxOperations: DefaultMaxOperations}
 }
 
 // Validate reports settings out of range, keyed by their config path.
@@ -64,7 +63,6 @@ func (s Settings) Validate() []string {
 
 // Plugin is the nested_mutations plugin.
 type Plugin struct {
-	forceTx  bool
 	maxDepth int
 	maxOps   int
 }
@@ -72,7 +70,7 @@ type Plugin struct {
 // New builds the plugin from its settings; a max_depth or max_operations
 // below 1 (which Validate rejects) falls back to the default.
 func New(s Settings) *Plugin {
-	p := &Plugin{forceTx: s.ForceTransactions, maxDepth: s.MaxDepth, maxOps: s.MaxOperations}
+	p := &Plugin{maxDepth: s.MaxDepth, maxOps: s.MaxOperations}
 	if p.maxDepth < 1 {
 		p.maxDepth = DefaultMaxDepth
 	}
@@ -93,9 +91,6 @@ func (p *Plugin) MaxDepth() int { return p.maxDepth }
 
 // MaxOperations is the effective max_operations setting.
 func (p *Plugin) MaxOperations() int { return p.maxOps }
-
-// ForceTransactions is the effective force_transactions setting.
-func (p *Plugin) ForceTransactions() bool { return p.forceTx }
 
 // NestedKeys lists the body keys a resource accepts for nested input: every
 // unambiguous relation key. Ambiguous keys need @fieldName /
@@ -423,11 +418,11 @@ func (p *Plugin) compileNested(req *compile.Request) (*compile.Statement, error)
 	return c.MutationChain(req, ch)
 }
 
-// BeforeRequest forces a transaction for a request carrying nested keys
-// (force_transactions), so the chain is atomic even with
-// transactions.mutations off.
+// BeforeRequest marks a request carrying nested keys as transactional
+// (op.ForceTx), so the chain is atomic whatever else decides the
+// transaction.
 func (p *Plugin) BeforeRequest(ctx context.Context, op *exec.Operation) (context.Context, error) {
-	if p.forceTx && op != nil && op.Plan != nil && op.Plan.Body != nil && len(op.Plan.Body.Nested) > 0 {
+	if op != nil && op.Plan != nil && op.Plan.Body != nil && len(op.Plan.Body.Nested) > 0 {
 		op.ForceTx = true
 	}
 	return ctx, nil

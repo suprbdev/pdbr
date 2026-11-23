@@ -1,7 +1,7 @@
 # OpenAPI
 
 pdbr describes the whole generated surface as an **OpenAPI 3.1** document.
-It is served at `GET {base}/openapi.json` (`server.openapi`, on by default)
+It is served at `GET {base}/openapi.json` (`openapi.enabled`, on by default)
 and printed by `pdbr schema print` (`--yaml` for YAML), which needs no
 database when combined with `--schema.cache_path`.
 
@@ -21,7 +21,7 @@ the document is the deliverable; bring your own tooling (see
   do exactly that). Only `info.version` changes between binary versions.
 - **Unauthenticated**: the endpoint ignores credentials and describes the
   full surface the connection role can see, not the caller's RLS view. In
-  production, weigh `server.openapi: false` + shipping the document
+  production, weigh `openapi.enabled: false` + shipping the document
   out-of-band ([deployment.md](deployment.md#production-checklist)).
 - **Rebuilt on hot swap**: watch mode regenerates it with the routes.
 
@@ -32,9 +32,9 @@ the document is the deliverable; bring your own tooling (see
 | Field | Value |
 |---|---|
 | `openapi` | `"3.1.0"` |
-| `info.title` | `pdbr` |
+| `info.title` | `openapi.title` (default `pdbr`) |
 | `info.version` | binary version (`-ldflags -X main.version`; `dev` when unset) |
-| `servers` | `[{"url": "<server.base_path>"}]` (`[{"url": "/"}]` when empty) — relative, so it works behind any host/proxy |
+| `servers` | `[{"url": "<openapi.server_url><server.base_path>"}]`: by default relative (`[{"url": "/"}]` at the root, `[{"url": "/api"}]` with `server.base_path: /api`), so it works behind any host or proxy. Set `openapi.server_url` (e.g. `https://api.example.com`) when clients need an absolute URL; a contract's document uses its own base path |
 | `tags` | one per resource, named after the resource key (`users`, `audit.users`) with the table comment as description, plus `rpc` (`<schema>.rpc` outside `schema.schemas[0]`) for functions; resources first in path order, so a single-schema API groups by table (`comments`, `events`, `places`, ..., `rpc`) instead of one `public` bucket |
 | `components.securitySchemes.bearerAuth` | `{"type":"http","scheme":"bearer","bearerFormat":"JWT"}` — only in `auth.mode: jwt` |
 | `security` | in jwt mode, `[{"bearerAuth": []}]` (authentication required: requests without credentials are `401`), or `[{}, {"bearerAuth": []}]` with `roles.anonymous` set (authentication optional: anonymous requests run as that role) |
@@ -58,7 +58,7 @@ there are no credentials, so neither the scheme nor `401` appears.
 | enum types | each pg enum | `{"type":"string","enum":[labels verbatim]}` (table-backed `@enum` tables too; per-value descriptions folded into the description) |
 | composite types | each pg composite | object with one property per attribute (nested composites/arrays reference their schemas) |
 | `<name>.row` | resources whose row type some function takes as an argument | object; one optional, nullable property per readable column, `additionalProperties: false` — the value of a row-typed RPC argument ([rpc.md](rpc.md#table-valued-row-arguments)) |
-| domains | each domain over a built-in type, while `server.openapi_domains` is on (default) | the base type's schema plus `pattern` / bounds derived from simple `CHECK`s, described by the domain's comment and constraints — see [Domains](#domains) |
+| domains | each domain over a built-in type, while `schema.domains` is on (default) | the base type's schema plus `pattern` / bounds derived from simple `CHECK`s, described by the domain's comment and constraints — see [Domains](#domains) |
 | `GeoJSON` | `postgis` plugin enabled and a spatial column exists | GeoJSON geometry object (`type` + `coordinates`, or `GeometryCollection`); used by geometry/geography columns; request-body properties are `oneOf [GeoJSON, string]` (WKT/EWKT) via `Builder.Extra.InputTypes` |
 | `Problem` | always | RFC 9457 problem details ([errors.md](errors.md)): `type`, `title`, `status` (required), `detail`, `instance`, `code`, and `pg` (object, present only under `errors.detail: dev`) |
 
@@ -109,7 +109,7 @@ Per-property details:
 | enum | `$ref` to the enum schema |
 | composite | `$ref` to the composite schema (`raster` attributes left out) |
 | row type of an exposed table (a nested row: composite attribute, `RETURNS TABLE` column, array of rows) | `$ref` to the resource's read schema, the readable columns it renders |
-| domain | `$ref` to the domain schema (an array of a domain: `array` of the `$ref`); with `server.openapi_domains` off, or for a domain over a range, PostGIS or extension type, its base type's mapping |
+| domain | `$ref` to the domain schema (an array of a domain: `array` of the `$ref`); with `schema.domains` off, or for a domain over a range, PostGIS or extension type, its base type's mapping |
 | `geometry`, `geography` (postgis plugin) | `$ref: #/components/schemas/GeoJSON` (input: `oneOf [GeoJSON, string]`) |
 | anything else | `string` |
 
@@ -123,7 +123,7 @@ either a JSON number or a string for these types; the document declares
 
 ### Domains
 
-With `server.openapi_domains` on (the default), every domain (`CREATE
+With `schema.domains` on (the default), every domain (`CREATE
 DOMAIN`) over a built-in type gets a component schema, and columns, array
 columns (`email[]` → `array` of the `$ref`), request bodies, path keys and
 RPC arguments and results reference it:
@@ -165,7 +165,7 @@ CREATE DOMAIN percent AS int CHECK (VALUE >= 0 AND VALUE <= 100);
   shapes differ.
 - Filters are unchanged: a domain column takes its base type's operators.
 
-With `server.openapi_domains: false` every domain is inlined as its base
+With `schema.domains: false` every domain is inlined as its base
 type's mapping.
 
 ### `paths`
@@ -207,9 +207,9 @@ stay at their defaults):
 
 | Param | Where | Schema / description |
 |---|---|---|
-| `select` | every operation with a body response | `string`; grammar summarised in the description, columns, computed and derived fields and embeddable relation keys listed (with the per-embed `rel.order=`/`rel.limit=`/`rel.offset=`/`rel.<col>=` forms and `!inner`); projection args `col(transform=,simplify=,buffer=,precision=)` mentioned when the postgis plugin enables them; on list `GET`s (and `SETOF <table>` RPCs) the aggregate grammar when `server.aggregates` is on, with the spatial aggregates where the resource has a spatial column |
+| `select` | every operation with a body response | `string`; grammar summarised in the description, columns, computed and derived fields and embeddable relation keys listed (with the per-embed `rel.order=`/`rel.limit=`/`rel.offset=`/`rel.<col>=` forms and `!inner`); projection args `col(transform=,simplify=,buffer=,precision=)` mentioned when the postgis plugin enables them; on list `GET`s (and `SETOF <table>` RPCs) the aggregate grammar when `aggregates.enabled` is on, with the spatial aggregates where the resource has a spatial column |
 | `order` | list, `SETOF` rpc | `string`; orderable columns listed; computed / related (`rel(col)`) / distance (`<col>.dist`, needs `near=`) forms mentioned only when the corresponding plugin surface is on; full-text relevance (`<col>.rank`, `<col>.rank_cd`), trigram distance (`<col>.trgm_dist`, … needs `trgm=`) and vector distance (`<col>.vec_l2`, … needs `vec=`) terms listed where the column admits them, pgvector columns themselves not listed as plainly orderable ([contrib.md](contrib.md#ordering)) |
-| `limit`, `offset` | list, `SETOF` rpc | `integer`, `limit` `minimum: 1`, `maximum: server.max_page_size`, `offset` `minimum: 0` |
+| `limit`, `offset` | list, `SETOF` rpc | `integer`, `limit` `minimum: 1`, `maximum: limits.max_page_size`, `offset` `minimum: 0` |
 | `after`, `before` | list (resources with a PK) | `string` (opaque cursor) |
 | `count` | list, `SETOF <table>` rpc | `boolean` |
 | `distinct` | list | `string` (comma list) |
@@ -401,7 +401,7 @@ For the demo `users` table (JSON, abbreviated; the real thing is the golden
 Fetch it live or generate it at build time:
 
 ```console
-$ curl -s https://api.example.com/api/openapi.json > openapi.json
+$ curl -s https://api.example.com/openapi.json > openapi.json
 $ pdbr schema print --schema.cache_path schema.cache > openapi.json   # no DB needed
 $ pdbr schema print --yaml > openapi.yaml
 ```
@@ -437,7 +437,7 @@ If you want interactive docs:
 
 - **Static page + live document.** Host a Swagger UI / Redoc / Scalar /
   Elements page anywhere (your reverse proxy, a static bucket, your frontend
-  app) and point it at `https://api.example.com/api/openapi.json`. When the
+  app) and point it at `https://api.example.com/openapi.json`. When the
   page's origin differs from the API's, add that origin to
   `server.cors_origins` so the browser can fetch the document and try
   requests.
@@ -446,11 +446,11 @@ If you want interactive docs:
   you deploy with your docs site. No CORS involved; regenerate whenever the
   drift gate fires.
 - **Same host via the proxy.** Serve the viewer at `/docs` from nginx/your
-  gateway and proxy `/api/*` to pdbr; the document is then same-origin.
+  gateway and proxy `/*` to pdbr; the document is then same-origin.
 - **Embedded as a library.** `pdbr.New(cfg, ...)` and `App.Handler(ctx)`
   give you an `http.Handler`; mount it in your own mux next to whatever
   handler serves your UI.
 
-Whatever you choose, keep `server.openapi` on only if the surface is meant
+Whatever you choose, keep `openapi.enabled` on only if the surface is meant
 to be public; otherwise serve the built-time document from behind your own
 authentication.

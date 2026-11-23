@@ -68,10 +68,4 @@ $$`); err != nil {
 			}
 		}
 	}
-
-	off := testServer(t, func(c *config.Config) { c.TX.Mutations = false })
-	_, body, got := rpcCall(t, "POST", off.URL+"/api/rpc/e2e_tx_probe", "{}", map[string]string{"X-Pdbr-Claim-Role": "app_user"})
-	if m, _ := got.(map[string]any); m["user"] != login || m["uid"] != nil {
-		t.Errorf("no tx, rls off = %s, want the login role %s", body, login)
-	}
 }

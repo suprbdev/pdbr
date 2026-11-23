@@ -421,7 +421,7 @@ func TestSchemaPrintMatchesServed(t *testing.T) {
 	run := func(args ...string) []byte {
 		t.Helper()
 		cmd := exec.Command("go", append([]string{"run", "-ldflags", "-X main.version=e2e", "./cmd/pdbr", "schema", "print",
-			"--database.url", url, "--auth.mode=none", "--roles.switch=false"}, args...)...)
+			"--database.url", url, "--server.base_path=/api", "--auth.mode=none", "--roles.switch=false"}, args...)...)
 		cmd.Dir = ".."
 		cmd.Env = append(os.Environ(), "PDBR_LOG_LEVEL=error")
 		var stderr bytes.Buffer
@@ -477,4 +477,29 @@ func normalizeYAML(v any) any {
 		return float64(x)
 	}
 	return v
+}
+
+func TestOpenAPITitleServerURLAndRootBase(t *testing.T) {
+	srv := testServer(t, func(c *config.Config) {
+		c.Server.BasePath = config.DefaultConfig().Server.BasePath
+		c.OpenAPI.Title = "Orders API"
+		c.OpenAPI.ServerURL = "https://api.example.com"
+	})
+	var doc struct {
+		Info    struct{ Title string } `json:"info"`
+		Servers []struct{ URL string } `json:"servers"`
+	}
+	getJSON(t, srv.URL+"/openapi.json", &doc)
+	if doc.Info.Title != "Orders API" || len(doc.Servers) != 1 || doc.Servers[0].URL != "https://api.example.com" {
+		t.Fatalf("info/servers = %+v", doc)
+	}
+	var rows []row
+	getJSON(t, srv.URL+"/users?select=id&limit=1", &rows)
+	if len(rows) != 1 {
+		t.Fatalf("root base path rows = %v", rows)
+	}
+	off := testServer(t, func(c *config.Config) { c.OpenAPI.Enabled = false })
+	if res, _ := get(t, off.URL+"/api/openapi.json"); res.StatusCode != 404 {
+		t.Fatalf("openapi.enabled false = %d", res.StatusCode)
+	}
 }

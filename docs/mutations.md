@@ -21,7 +21,7 @@ Routes (per table with the matching privilege; see [Method availability](#method
 | `PATCH {base}/{table}?<filters>` | `UPDATE … WHERE <filters>` | `200` + array of updated rows (`[]` when nothing matched) |
 | `DELETE {base}/{table}?<filters>` | `DELETE … WHERE <filters>` | `200` + array of deleted rows (`204` with `Prefer: return=minimal`) |
 
-Request bodies must be `application/json` (else `415`) and ≤ `server.max_body_bytes`
+Request bodies must be `application/json` (else `415`) and ≤ `limits.max_body_bytes`
 (1 MiB, else `413`). Responses are `application/json; charset=utf-8`; errors are
 [Problem Details](errors.md).
 
@@ -33,7 +33,7 @@ Single object → `201`, the inserted row, and `Location` when the table has a
 single-column primary key:
 
 ```http
-POST /api/users
+POST /users
 Content-Type: application/json
 
 {"email": "a@b.c", "full_name": "Ada", "mood": "happy"}
@@ -41,7 +41,7 @@ Content-Type: application/json
 
 ```http
 HTTP/1.1 201 Created
-Location: /api/users/42
+Location: /users/42
 Content-Type: application/json; charset=utf-8
 
 {"id":42,"email":"a@b.c","full_name":"Ada","mood":"happy","settings":null,"tags":null,"balance":"0","created_at":"2026-08-17T10:00:00+00:00","address":null,"prev_addresses":null,"moods":null}
@@ -75,7 +75,7 @@ summary](#sql-shape-summary)).
   statement still runs `RETURNING <pk>` only.
 
 ```sql
--- POST /api/users  body: [{"email":"a@b.c","full_name":"Ada"},{"email":"d@e.f"}]
+-- POST /users  body: [{"email":"a@b.c","full_name":"Ada"},{"email":"d@e.f"}]
 WITH __mut AS (
   INSERT INTO "public"."users" ("email", "full_name")
   VALUES ($1, $2), ($3, DEFAULT)
@@ -102,7 +102,7 @@ column set order-insensitive). Every body key is optional; an empty body
 (`{}`) → `400 invalid_body`.
 
 ```http
-PATCH /api/users/1
+PATCH /users/1
 Content-Type: application/json
 
 {"full_name": "Grace"}
@@ -121,7 +121,7 @@ FROM __mut t0
 ```
 
 ```sql
--- PATCH /api/memberships/by/org_id,slug/7,eng
+-- PATCH /memberships/by/org_id,slug/7,eng
 UPDATE "public"."memberships" SET … WHERE "public"."memberships"."org_id" = $2 AND "public"."memberships"."slug" = $3
 ```
 
@@ -138,7 +138,7 @@ the row is matched by its pre-update key.
 ## DELETE
 
 ```http
-DELETE /api/posts/2
+DELETE /posts/2
 ```
 
 ```sql
@@ -166,7 +166,7 @@ the same filter policy (`filters.indexed_only` → `400 column_not_filterable`)
 — compiled by the same filter compiler against the DML target:
 
 ```http
-PATCH /api/users?mood=eq.sad&id=gt.1
+PATCH /users?mood=eq.sad&id=gt.1
 Content-Type: application/json
 
 {"full_name": "Grace"}
@@ -190,7 +190,7 @@ FROM (
 | Rule | Behaviour |
 |---|---|
 | row set | exactly the rows the same `GET` would list: the root filters plus one `EXISTS` per `!inner` embed in `select=` (`DELETE /posts?select=id,users!inner(id)&users.email=eq.x` deletes only that author's posts) |
-| no restriction | neither a root filter nor an `!inner` embed → `400 unfiltered_mutation` before any SQL runs, unless `server.allow_unfiltered_mutations: true` (then the DML has no `WHERE`; RLS still applies). The guard checks that a restriction is **present**, not how selective it is: a match-all filter (`id=gt.0`, `or=(id.is.null,id.not.is.null)`) passes, as with PostgREST's `pg-safeupdate`. Cap the blast radius with `Prefer: handling=strict, max-affected=N`. Per-embed filters on a plain embed (`users.email=…` with `users(...)` in `select=`) shape the response only and do not count — use `users!inner(...)`, or alias the embed (`author:users(email)`) so `users.email=` becomes a relation filter |
+| no restriction | neither a root filter nor an `!inner` embed → `400 unfiltered_mutation` before any SQL runs, unless `mutations.allow_unfiltered: true` (then the DML has no `WHERE`; RLS still applies). The guard checks that a restriction is **present**, not how selective it is: a match-all filter (`id=gt.0`, `or=(id.is.null,id.not.is.null)`) passes, as with PostgREST's `pg-safeupdate`. Cap the blast radius with `Prefer: handling=strict, max-affected=N`. Per-embed filters on a plain embed (`users.email=…` with `users(...)` in `select=`) shape the response only and do not count — use `users!inner(...)`, or alias the embed (`author:users(email)`) so `users.email=` becomes a relation filter |
 | body | `PATCH`: one JSON object (arrays → `400 invalid_body`), set on every matching row; `{}` → `400 invalid_body`. `DELETE` never reads a body |
 | response | `200` + JSON array of the written rows (`select=` and embeds apply, compiled against `__mut`); `[]` when nothing matched — never `404`. `Prefer: return=minimal` / `headers-only` → `204` |
 | `limit`, `offset`, `order`, `count`, `distinct`, `after`/`before`, `on_conflict` | `400 invalid_filter` (PostgREST's ordered "limited update/delete" is not supported) |
@@ -223,22 +223,21 @@ return=minimal, handling=strict, max-affected=10`).
 | `resolution=merge-duplicates\|ignore-duplicates` | `POST` | upsert / skip conflicting rows ([above](#post-with-prefer-resolution)) |
 | `missing=default` | `POST`, `PUT` | accepted and echoed; pdbr always defaults omitted keys |
 | `count=exact\|planned\|estimated` | bulk `PATCH`, `DELETE` | `Content-Range: 0-<n-1>/<n>` (the written-row count is always exact, so `Preference-Applied` says `count=exact`); lists: [pagination.md](pagination.md#prefer-count-and-content-range) |
-| `tx=commit\|rollback` | writes (incl. volatile RPCs) | only with `server.tx_end: commit-allow-override` or `rollback-allow-override`: the request runs in a transaction that is committed or rolled back; a rollback still answers with the normal result (status, body, `Location`) and writes nothing. Otherwise ignored, or `400 invalid_preference` under `handling=strict`. Echoed as `tx=<value>` |
-| `partial=items` | bulk `POST`, `PUT` | only with `server.partial_bulk_writes: true`: every element runs in its own savepoint and the response is a per-element report ([below](#partial-success-for-bulk-writes)). Ignored (not echoed) for a single object, `PATCH` and `DELETE`; ignored while the config is off, or `400 invalid_preference` under `handling=strict`. Echoed as `partial=items` |
+| `tx=commit\|rollback` | writes (incl. volatile RPCs) | only with `transactions.end: commit-allow-override` or `rollback-allow-override`: the request runs in a transaction that is committed or rolled back; a rollback still answers with the normal result (status, body, `Location`) and writes nothing. Otherwise ignored, or `400 invalid_preference` under `handling=strict`. Echoed as `tx=<value>` |
+| `partial=items` | bulk `POST`, `PUT` | only with `transactions.partial.enabled: true`: every element runs in its own savepoint and the response is a per-element report ([below](#partial-success-for-bulk-writes)). Ignored (not echoed) for a single object, `PATCH` and `DELETE`; ignored while the config is off, or `400 invalid_preference` under `handling=strict`. Echoed as `partial=items` |
 | `timezone=<name>` | any request | sets the transaction's `timezone` (`set_config('timezone', $1, true)`, bound) so `timestamptz` output and `now()` use it. Names are matched case-insensitively against `pg_timezone_names` (loaded once, cached); unknown → ignored, or `400 invalid_preference` under `handling=strict`. Echoed as `timezone=<canonical name>` |
 | `max-affected=N` | `PATCH`, `DELETE` (bulk and keyed) | with `handling=strict` only (ignored and not echoed under lenient handling, as in PostgREST): writing more than `N` rows → `400 max_affected_exceeded`, nothing written (PostgREST `PGRST124`). A keyed write counts as one row |
 
 `max-affected` keeps the single-statement invariant: the statement is
 unchanged (the bulk shape already returns `n`, keyed shapes imply 0 or 1),
 and exec compares the count inside the transaction right after the
-statement and returns an error, which rolls the transaction back. A
-request carrying the cap always runs in a transaction, even with
-`transactions.mutations: false`. Raising from inside the statement was
+statement and returns an error, which rolls the transaction back (every
+write runs in a transaction). Raising from inside the statement was
 rejected: SQL has no `RAISE` outside PL/pgSQL, and the usual tricks
 (`1/0`, a failing cast in a `CASE`) surface as indistinguishable `22012` /
 `22P02` user errors.
 
-`tx=rollback` (or `server.tx_end: rollback`) is also a single-statement
+`tx=rollback` (or `transactions.end: rollback`) is also a single-statement
 request: the batch is sent as `BEGIN`, the statement, and the transaction is
 rolled back once its result has been read (a second round trip, like
 `max-affected`). A statement that fails still answers with its error.
@@ -250,11 +249,11 @@ same transaction batch.
 ### Partial success for bulk writes
 
 A bulk `POST` or `PUT` (a body array) is one `INSERT` and all-or-nothing:
-one bad element rolls the whole body back. With `server.partial_bulk_writes:
+one bad element rolls the whole body back. With `transactions.partial.enabled:
 true` (default `false`) a request can opt in per request:
 
 ```
-POST /api/users
+POST /users
 Prefer: partial=items
 
 [{"email":"a@x.io"},{"email":"a@x.io"},{"email":"c@x.io"}]
@@ -296,7 +295,7 @@ in header order.
   "everything is one statement per request": it uses `pgexec.RunTx` and costs
   a round trip for the `SAVEPOINT`, one for the element's statement and one
   for `RELEASE` per element (plus `ROLLBACK TO` for a failed one), instead of
-  one pipelined batch. The body is bounded by `server.max_body_bytes` and the
+  one pipelined batch. The body is bounded by `limits.max_body_bytes` and the
   request by `server.request_timeout`.
 - **Retries.** A serialization failure or deadlock is never an element
   failure: the transaction aborts and the whole request re-runs, up to
@@ -307,14 +306,12 @@ in header order.
   transaction and hold for every element; a savepoint rollback does not
   undo them. An RLS violation in one element is that element's `403`
   (`pg:42501`) and the others commit.
-- **`tx=rollback`.** Under `server.tx_end: rollback*` or an honoured
+- **`tx=rollback`.** Under `transactions.end: rollback*` or an honoured
   `Prefer: tx=rollback`, every element runs and is reported as usual, then
   the transaction is rolled back: the report is a dry run and nothing is
   written.
 - **`max-affected`.** Applies to `PATCH` and `DELETE` only, so it never
   combines with `partial=items`.
-- **`transactions.mutations: false`** does not matter: a partial request
-  always runs in a transaction.
 - `--print-sql` and `Prepare` show the compiled statement of the whole body,
   not the per-element statements.
 
@@ -337,7 +334,7 @@ to the filtered body. `columns=` is not reserved on `GET`, `DELETE` or RPCs.
 provided column that is not part of the conflict target.
 
 ```http
-PUT /api/users?on_conflict=email
+PUT /users?on_conflict=email
 Content-Type: application/json
 
 {"email": "a@b.c", "full_name": "Ada"}
@@ -393,7 +390,7 @@ unique constraint) is the conflict target, and the key values come from the
 path.
 
 ```http
-PUT /api/users/by/email/a%40b.c?select=id,full_name
+PUT /users/by/email/a%40b.c?select=id,full_name
 Content-Type: application/json
 
 {"full_name": "Ada"}
@@ -432,7 +429,7 @@ Golden files: `put_by_pk`, `put_by_unique`, `put_by_pk_mismatch`,
 (a unique constraint's columns) or the primary key:
 
 ```sql
--- POST /api/users?on_conflict=email
+-- POST /users?on_conflict=email
 -- Prefer: resolution=ignore-duplicates, return=minimal
 -- [{"email": "a@b.c"}, {"email": "d@e.f", "mood": "ok"}]
 WITH __mut AS (
@@ -474,7 +471,7 @@ columns (against the real tables, except for the mutated table itself, see
 [embeds back to the mutated table](#embeds-back-to-the-mutated-table)):
 
 ```http
-POST /api/posts?select=id,title,users(id,email)
+POST /posts?select=id,title,users(id,email)
 ```
 
 ```sql
@@ -532,7 +529,7 @@ __vis AS NOT MATERIALIZED (
 | bulk `PATCH`/`DELETE` by filter | `NOT EXISTS (…)` over the first `NOT NULL` row key (PK, then unique constraints) the patch leaves alone: exact even when an `UPDATE`/`DELETE` policy skips rows the filter matched. Only when every such key is patched (or there is none) does it fall back to `(<filter>) IS NOT TRUE`, which hides such skipped rows from the embed |
 
 ```http
-PATCH /api/posts/1?select=id,title,users(posts(id,title))
+PATCH /posts/1?select=id,title,users(posts(id,title))
 ```
 
 ```sql
@@ -626,7 +623,7 @@ exposed columns ([api.md](api.md#etag--conditional-requests), `server.etags`). `
 honour `If-Match` in the same statement — no read-then-write race:
 
 ```http
-PATCH /api/users/1
+PATCH /users/1
 If-Match: W/"5d41402abc4b2a76b9719d911017c592"
 
 {"full_name": "Grace"}
@@ -703,25 +700,24 @@ commits, having written nothing.
 
 ## Transactions
 
-- `transactions.mutations` (default `true`): every write (POST/PATCH/DELETE/PUT
-  and volatile RPC) runs in a transaction with `transactions.isolation`
+- Every write (POST/PATCH/DELETE/PUT and volatile RPC) runs in a
+  transaction with `transactions.isolation`
   (`read_committed` default; `repeatable_read`, `serializable`), plus
   `SET LOCAL ROLE` / `set_config` when RLS claims are present. The
   transaction is one pipelined batch: under `read_committed` it is
   PostgreSQL's implicit pipeline transaction (no `BEGIN`/`COMMIT` sent, the
   server's `default_transaction_isolation` applies), the stricter levels
   send `BEGIN ISOLATION LEVEL …` and `COMMIT` in the same batch, and a
-  `Prefer: max-affected` write commits only after its row-count check. `false` → the
-  statement autocommits (still one statement, still atomic per PG semantics;
-  RLS claims force a tx anyway because `SET LOCAL` needs one).
+  `Prefer: max-affected` write commits only after its row-count check. There
+  is no switch to run writes outside a transaction: `transactions.end:
+  rollback`, `Prefer: tx=`, `max-affected` and partial success all need one.
 - `transactions.max_retries` (default `0`): on SQLSTATE `40001`
   (serialization_failure) or `40P01` (deadlock_detected) the whole request is
   re-run — new tx, same statement, same params — up to N more times, no
   backoff. Exhausted → `409` with `code: pg:40001`/`pg:40P01`
   ([errors.md](errors.md#retries)).
 - There is **no** `transactions.per_request`: a request is exactly one
-  operation, so the flag would be meaningless. Nested mutations set `ForceTx`
-  regardless of `transactions.mutations`.
+  operation, so the flag would be meaningless.
 - Hook errors from `RequestHook.BeforeRequest` abort before `BEGIN`.
 
 ## Method availability (`405` + `Allow`)
@@ -814,7 +810,7 @@ columns (and, over a `PERIOD` FK, the referenced entity: see
 `@omit read` cannot form a key.
 
 ```http
-PATCH /api/users/1?select=id,full_name,places(id,name)
+PATCH /users/1?select=id,full_name,places(id,name)
 Content-Type: application/json
 
 {"full_name": "Ada",
@@ -824,14 +820,14 @@ Content-Type: application/json
 ```
 
 ```http
-PATCH /api/places/4
+PATCH /places/4
 Content-Type: application/json
 
 {"name": "Opera House", "users": {"disconnect": true}}
 ```
 
 ```http
-POST /api/users?select=id,posts(id,title)
+POST /users?select=id,posts(id,title)
 Content-Type: application/json
 
 {"email": "a@b.c", "posts": {"connect": [{"id": 3}], "create": [{"title": "New"}]}}
@@ -898,12 +894,10 @@ contract's bodies and schemas.
   CASCADE` / `SET NULL` / `SET DEFAULT` and `ON UPDATE CASCADE` run after
   the statement's last query, so rows they change still show as they were.
   The database is right; read again to see it.
-- The request is forced into a transaction
-  (`plugins.settings.nested_mutations.force_transactions`, default `true`,
-  sets `exec.Operation.ForceTx` in `BeforeRequest`), even with
-  `transactions.mutations: false`. The chain is one statement either way, so
-  a failure never leaves partial rows; the transaction matters for the role
-  / claim settings around it.
+- The request runs in a transaction, as every write does (the plugin also
+  sets `exec.Operation.ForceTx` in `BeforeRequest`). The chain is one
+  statement either way, so a failure never leaves partial rows; the
+  transaction matters for the role / claim settings around it.
 - Every operation runs as the request's role: `UPDATE` / `DELETE` policies
   narrow what `connect`, `update`, `delete` and `disconnect` can match (a
   filtered row is `404`, as above), `WITH CHECK` failures and `RETURNING`
@@ -930,7 +924,7 @@ operation must match a row. Children are inserted from `SELECT … FROM
 <parent cte>` so FK values come from the parent's `RETURNING`:
 
 ```http
-POST /api/users?select=id,email,posts(id,title)
+POST /users?select=id,email,posts(id,title)
 Content-Type: application/json
 
 {"email": "a@b.c", "posts": {"create": [{"title": "One"}, {"title": "Two"}]}}
@@ -989,7 +983,7 @@ per-process secret, masked in `--print-sql` and goldens, so a `22P02`
 quoting a client or stored value can never pass for a failed guard):
 
 ```http
-PATCH /api/users/1?select=id,full_name,places(id,name)
+PATCH /users/1?select=id,full_name,places(id,name)
 
 {"full_name": "Ada", "places": {"connect": [{"id": 3}], "delete": [{"id": 2}], "update": [{"where": {"id": 1}, "data": {"name": "Trafalgar"}}]}}
 ```
@@ -1113,7 +1107,7 @@ otherwise).
 Atomicity — a child failure rolls back the parent:
 
 ```http
-POST /api/users
+POST /users
 {"email": "a@b.c", "posts": {"create": [{"title": "ok"}, {"title": null}]}}
 ```
 
@@ -1121,12 +1115,12 @@ POST /api/users
 HTTP/1.1 400 Bad Request
 Content-Type: application/problem+json
 
-{"type":"about:blank","title":"Bad Request","status":400,"detail":"null value in column \"title\" of relation \"posts\" violates not-null constraint","instance":"/api/users","code":"pg:23502"}
+{"type":"about:blank","title":"Bad Request","status":400,"detail":"null value in column \"title\" of relation \"posts\" violates not-null constraint","instance":"/users","code":"pg:23502"}
 ```
 
 No `users` row exists afterwards: one statement, one transaction
-(`test/e2e_nestedmutations_test.go` checks it with and without
-`force_transactions`; `test/e2e_nested_writes_test.go` checks a `PATCH`
+(`test/e2e_nestedmutations_test.go` checks it;
+`test/e2e_nested_writes_test.go` checks a `PATCH`
 whose nested operation fails, by a database error or a guard).
 
 ## RLS caveats for `RETURNING`
