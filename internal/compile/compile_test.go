@@ -1117,6 +1117,14 @@ func TestCost(t *testing.T) {
 	if got := compile.Cost(cp, 100); got != 1+10*(1+1+3*1) {
 		t.Errorf("cost multiplier = %d", got)
 	}
+	sp := list(posts)
+	sp.Count = true
+	sp.Select = &plan.Node{Resource: posts, Fields: []plan.FieldSel{{Agg: &plan.Aggregate{Func: plan.AggCount}}}, Embeds: []plan.Embed{{
+		Key: "users", Spread: true, Relation: f.rel("posts", "users", ""), Node: fields(users, "mood", "email"),
+	}}}
+	if got := compile.Cost(sp, 100); got != 1+100*(1+1+2)+100*2 {
+		t.Errorf("spread grouping cost = %d", got)
+	}
 	// Row: multiplier 1; nil select → all columns.
 	rp := &plan.Request{Method: plan.GET, Resource: users, Key: &plan.Key{Constraint: users.Table.PrimaryKey, Values: []any{1}}}
 	if got := compile.Cost(rp, 100); got != 1+len(users.Columns) {

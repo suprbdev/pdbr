@@ -17,7 +17,8 @@ const ContentTypeCSV = "text/csv; charset=utf-8"
 
 // csvColumns returns the CSV header of a list response in select= order:
 // `*` expands to the resource's columns in catalog order (explicit items
-// follow, unaliased duplicates dropped, exactly like the compiled projection),
+// follow, unaliased duplicates dropped, exactly like the compiled projection;
+// spread embeds add their items after the node's own, a key once),
 // composite sets take the type's attributes, scalar sets a single "value"
 // column, aggregate functions their alias or function name. It never
 // returns nil.
@@ -53,22 +54,39 @@ func csvColumns(op *exec.Operation) []string {
 		seen[k] = true
 		cols = append(cols, k)
 	}
-	if node == nil || node.Star {
+	if node == nil {
 		for _, f := range res.Columns {
 			add(f.Key)
 		}
-	}
-	if node == nil {
 		return cols
 	}
-	for i := range node.Fields {
-		f := &node.Fields[i]
-		key := f.Key(res)
-		if node.Star && f.Alias == "" && f.Column != nil && f.Agg == nil && len(f.Path) == 0 && f.Cast == nil && seen[key] {
-			continue
+	var walk func(n *plan.Node, res *api.Resource)
+	walk = func(n *plan.Node, res *api.Resource) {
+		if n.Star {
+			for _, f := range res.Columns {
+				if !seen[f.Key] {
+					add(f.Key)
+				}
+			}
 		}
-		add(key)
+		for i := range n.Fields {
+			f := &n.Fields[i]
+			key := f.Key(res)
+			if n.Star && f.Alias == "" && f.Column != nil && f.Agg == nil && len(f.Path) == 0 && f.Cast == nil && seen[key] {
+				continue
+			}
+			if !seen[key] {
+				add(key)
+			}
+		}
+		for i := range n.Embeds {
+			e := &n.Embeds[i]
+			if e.Spread && e.Node != nil && e.Relation != nil {
+				walk(e.Node, e.Relation.To)
+			}
+		}
 	}
+	walk(node, res)
 	return cols
 }
 

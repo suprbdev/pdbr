@@ -18,7 +18,9 @@ const defaultEmbedFanout = 10
 //	cost(column) = 1; `*` costs the number of columns it expands to; an
 //	               aggregate function costs 1 like a column
 //
-// An aggregated list (a node selecting an aggregate function) is costed as
+// Spread embeds cost like embeds (a to-one spread joins one row, a to-many
+// spread aggregates its related rows). An aggregated list (a node selecting
+// an aggregate function, directly or through a to-one spread) is costed as
 // if it had no limit: limit bounds the groups it returns, not the rows the
 // aggregate reads (root: maxPageSize, embed: 10). A total on an aggregated
 // root scans again: it adds maxPageSize × its grouping keys.
@@ -58,7 +60,8 @@ func Cost(req *plan.Request, maxPageSize int) int {
 	return cost
 }
 
-// groupKeys counts the grouping keys of an aggregated node.
+// groupKeys counts the grouping keys of an aggregated node, those of its
+// to-one spreads included.
 func groupKeys(node *plan.Node) int {
 	n := 0
 	if node.Star && node.Resource != nil {
@@ -67,6 +70,11 @@ func groupKeys(node *plan.Node) int {
 	for i := range node.Fields {
 		if node.Fields[i].Agg == nil {
 			n++
+		}
+	}
+	for i := range node.Embeds {
+		if e := &node.Embeds[i]; e.SpreadOne() && e.Node != nil {
+			n += groupKeys(e.Node)
 		}
 	}
 	return n

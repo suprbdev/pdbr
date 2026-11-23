@@ -119,7 +119,7 @@ Absent `select` means all columns (`*`). Grammar:
 
 ```
 select    := item ("," item)*
-item      := field | alias ":" field | embed | "*" | [ alias ":" ] aggregate
+item      := field | alias ":" field | embed | "..." embed | "*" | [ alias ":" ] aggregate
 field     := name [ "(" k "=" v ("," k "=" v)* ")" ]      -- args only for spatial projection (transform=<srid>, simplify=<tol>)
            | column [ jsonpath ] [ "::" type ]             -- JSON path and/or cast
 embed     := relkey [ "!" hint ]* "(" select ")"           -- hint := fk_name | column | "inner"
@@ -233,6 +233,45 @@ GET /api/users?select=id,posts(id,title,comments(id))   -- backward, nested
 Nesting depth is bounded by `server.max_embed_depth` (default 5); deeper →
 `400 embed_depth_exceeded`. Cost is bounded by `server.max_cost` — see
 [pagination.md](pagination.md#cost-limit).
+
+### Spread embeds
+
+`...rel(cols)` hoists the embed's items into the parent object instead of
+nesting them under a key (PostgREST 12):
+
+```http
+GET /api/posts?select=id,...users(author:email,mood)
+GET /api/users?select=id,...posts(titles:title,ids:id)&posts.order=id.desc
+```
+
+```json
+[{"id": 1, "author": "ada@example.com", "mood": "happy"}]
+[{"id": 1, "titles": ["Unpublished draft", "Notes on the Analytical Engine"], "ids": [2, 1]}]
+```
+
+- A **to-one** spread contributes its values; without a related row (or
+  when an embed filter excludes it) they are `null`. `!inner` drops such
+  parents, as for any embed.
+- A **to-many** spread contributes one array per item, aggregated in one
+  pass over the related rows so the arrays are correlated (same order: the
+  embed's `order=`, then its primary key; `[]` without related rows). Per-
+  embed parameters address the spread by its relation key
+  (`posts.order=`, `posts.limit=`, `posts.title=…`).
+- Spreads nest (`...posts(title,...users(email))`) and may contain plain
+  embeds (an embed inside a to-many spread becomes an array of objects); a
+  to-many spread inside another becomes an array of arrays.
+- The spread itself takes no alias (`x:...rel(…)` is `400 invalid_select`);
+  alias its items. Items answering under a key the parent already has
+  replace the parent's value in its position, like any repeated key —
+  alias them (`author:email`).
+- In an aggregate select, a to-one spread's items are the parent's own:
+  its columns group, its aggregates aggregate over the joined rows
+  ([aggregates.md](aggregates.md#spread-embeds)). Aggregates inside a
+  to-many spread are `400 invalid_select`.
+- CSV accepts spreads (their items are columns of the row) unless they nest
+  a plain embed.
+- Cost: a spread costs what the same embed costs
+  ([pagination.md](pagination.md#cost-limit)).
 
 ### Hints
 

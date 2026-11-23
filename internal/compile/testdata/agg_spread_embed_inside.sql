@@ -1,0 +1,2 @@
+-- request: GET /api/posts?select=count(),...users(mood,places(id))
+-- error: 400 invalid_select: embeds cannot be grouping keys of an aggregate select ("places"); spread a to-one relation (...places(col)), aggregate inside the embed (rel(count())) or filter on the relation

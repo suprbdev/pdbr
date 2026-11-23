@@ -1,0 +1,1 @@
+GET /api/posts?select=id,...users!inner(email)&users.mood=eq.happy

@@ -207,3 +207,46 @@ func TestMatchAndModifiers(t *testing.T) {
 		wantCode(t, err, CodeInvalidFilter)
 	}
 }
+
+func TestSpreadSelect(t *testing.T) {
+	b := buildFixture(t, false)
+	p := mustParse(t, b, "/api/posts?select=id,...users!inner(a:email,...places(name))&users.mood=eq.ok&users.places.order=id")
+	e := p.Select.Embeds[0]
+	if !e.Spread || !e.Inner || !e.SpreadOne() || e.Filter == nil || e.Alias != "" {
+		t.Fatalf("spread = %+v", e)
+	}
+	inner := e.Node.Embeds[0]
+	if !inner.Spread || inner.SpreadOne() || len(inner.Order) != 1 {
+		t.Fatalf("nested spread = %+v", inner)
+	}
+	p, err := doParse(t, b, req{url: "/api/posts?select=n:count(),...users(mood,newest:created_at.max())&order=published"}, aggOn)
+	if err == nil {
+		t.Fatalf("order by a non-key: %+v", p)
+	}
+	p, err = doParse(t, b, req{url: "/api/posts?select=published,n:count(),...users(mood,newest:created_at.max())&order=published.desc"}, aggOn)
+	if err != nil || !p.Select.Aggregated() || p.Select.Embeds[0].Node.Fields[1].Agg == nil {
+		t.Fatalf("spread grouping: %v", err)
+	}
+	if _, err := doParse(t, b, req{url: "/api/posts?select=id,...users(count())"}, aggOn); err != nil {
+		t.Fatalf("hoisted aggregate: %v", err)
+	}
+	for _, c := range []struct{ url, code string }{
+		{"/api/posts?select=x:...users(email)", CodeInvalidSelect},
+		{"/api/posts?select=...nope(id)", CodeUnknownRelation},
+		{"/api/posts?select=...users", CodeInvalidSelect},
+		{"/api/posts?select=...users(email)::text", CodeInvalidSelect},
+		{"/api/users?select=mood,count(),...posts(title)", CodeInvalidSelect},
+		{"/api/users?select=...posts(id.count())", CodeInvalidSelect},
+		{"/api/posts?select=count(),...users(mood,places(id))", CodeInvalidSelect},
+		{"/api/posts?select=id,count(),...users(id)", CodeInvalidSelect},
+		{"/api/posts?select=*,count(),...users(*)", CodeInvalidSelect},
+	} {
+		_, err := doParse(t, b, req{url: c.url}, aggOn)
+		wantCode(t, err, c.code)
+	}
+	if _, err := doParse(t, b, req{url: "/api/posts?select=id,...users(email)", header: map[string]string{"Accept": "text/csv"}}, allOn); err != nil {
+		t.Fatalf("csv with a to-one spread: %v", err)
+	}
+	_, err = doParse(t, b, req{url: "/api/posts?select=id,...users(email,places(id))", header: map[string]string{"Accept": "text/csv"}}, allOn)
+	wantCode(t, err, CodeNotAcceptable)
+}

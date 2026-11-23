@@ -1,0 +1,1 @@
+GET /api/users?select=id,...posts(id.count())

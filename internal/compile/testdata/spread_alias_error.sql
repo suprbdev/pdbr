@@ -1,0 +1,2 @@
+-- request: GET /api/posts?select=id,u:...users(email)
+-- error: 400 invalid_select: a spread embed takes no alias (u:...users); alias its items instead

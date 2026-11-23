@@ -1,0 +1,1 @@
+GET /api/users?select=id,posts(count(),...users(mood))

@@ -1,0 +1,1 @@
+GET /api/posts?select=excerpt(max_chars=5),...users(excerpt:email)

@@ -1,0 +1,1 @@
+GET /api/posts?select=id::text,excerpt(max_chars=5),...users(email,theme:settings->>theme,n:post_count)&title=imatch(any).{^n,^c}&order=id

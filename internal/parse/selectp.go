@@ -20,6 +20,7 @@ type selectItem struct {
 	inner    string // contents of the trailing (...)
 	hasInner bool
 	outCast  string // type after a closing parenthesis: fn()::type
+	spread   bool   // ...rel(...)
 }
 
 // splitTop splits s on commas at nesting depth 0 (parentheses, braces and
@@ -81,6 +82,9 @@ func scanSelectItem(raw string) (selectItem, bool) {
 				return it, false
 			}
 		}
+	}
+	if rest, ok := strings.CutPrefix(s, "..."); ok {
+		it.spread, s = true, rest
 	}
 	if j := lastIndexOutsideQuotes(s, ")"); j >= 0 && strings.HasPrefix(s[j+1:], "::") {
 		it.outCast = s[j+3:]
@@ -144,6 +148,17 @@ func (p *parser) parseSelect(s string, res *api.Resource, depth int) (*plan.Node
 
 func (p *parser) resolveSelectItem(node *plan.Node, it selectItem, depth int) error {
 	res := node.Resource
+	if it.spread {
+		switch {
+		case it.alias != "":
+			return errf(CodeInvalidSelect, "a spread embed takes no alias (%s:...%s); alias its items instead", it.alias, it.name)
+		case it.outCast != "":
+			return errf(CodeInvalidSelect, "a spread embed cannot be cast")
+		case len(res.Relations[it.name]) == 0:
+			return errf(CodeUnknownRelation, "unknown relation %q on %q (spread ... applies to embeds)", it.name, res.Path)
+		}
+		return p.resolveEmbed(node, it, depth)
+	}
 	if fn, col, ok := aggregateItem(it, res); ok {
 		return p.resolveAggregate(node, it, fn, col)
 	}
@@ -367,6 +382,7 @@ func (p *parser) resolveEmbed(node *plan.Node, it selectItem, depth int) error {
 		Alias:    it.alias,
 		Relation: rel,
 		Inner:    inner,
+		Spread:   it.spread,
 		Node:     sub,
 		Page:     plan.Page{Limit: p.opts.maxPageSize()},
 	})
@@ -430,14 +446,17 @@ func parseSpatialArgs(s string) (map[string]any, error) {
 	return out, nil
 }
 
-// hasEmbeds reports whether the select tree embeds any relation (CSV
-// negotiation).
+// hasEmbeds reports whether the select tree nests any object (CSV
+// negotiation): an embed or a set-returning computed selection. Spread
+// embeds hoist their items into the row, so only what they nest counts.
 func hasEmbeds(n *plan.Node) bool {
 	if n == nil {
 		return false
 	}
-	if len(n.Embeds) > 0 {
-		return true
+	for i := range n.Embeds {
+		if !n.Embeds[i].Spread || hasEmbeds(n.Embeds[i].Node) {
+			return true
+		}
 	}
 	for _, f := range n.Fields {
 		if f.Node != nil {

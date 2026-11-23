@@ -1,0 +1,2 @@
+-- request: GET /api/posts?select=id,count(),...users(id)
+-- error: 400 invalid_select: two select items answer under "id"; alias one of them (total:amount.sum())

@@ -145,3 +145,59 @@ func TestMatchAndModifiers(t *testing.T) {
 		t.Fatalf("bad regex: %d %s", res.StatusCode, body)
 	}
 }
+
+func TestSpreadEmbeds(t *testing.T) {
+	srv := testServer(t, func(c *config.Config) { c.Server.Aggregates = true })
+	base := srv.URL + "/api"
+	want := func(t *testing.T, path, body string) {
+		t.Helper()
+		res, got := get(t, base+path)
+		if res.StatusCode != 200 || !sameJSON(got, body) {
+			t.Fatalf("GET %s = %d %s", path, res.StatusCode, got)
+		}
+	}
+	t.Run("to-one", func(t *testing.T) {
+		want(t, "/posts?select=id,...users(author:email,mood)&order=id", `[
+			{"id":1,"author":"ada@example.com","mood":"happy"},{"id":2,"author":"ada@example.com","mood":"happy"},
+			{"id":3,"author":"grace@example.com","mood":"ok"},{"id":4,"author":"alan@example.com","mood":"happy"}]`)
+		want(t, "/posts?select=id,...users(email)&users.mood=eq.ok&order=id&id=lt.4", `[{"id":1,"email":null},{"id":2,"email":null},{"id":3,"email":"grace@example.com"}]`)
+		want(t, "/posts?select=id,...users!inner(email)&users.mood=eq.ok", `[{"id":3,"email":"grace@example.com"}]`)
+	})
+	t.Run("to-many", func(t *testing.T) {
+		want(t, "/users?select=id,...posts(titles:title,ids:id)&posts.order=id.desc&order=id", `[
+			{"id":1,"titles":["Unpublished draft","Notes on the Analytical Engine"],"ids":[2,1]},
+			{"id":2,"titles":["Compilers 101"],"ids":[3]},
+			{"id":3,"titles":["On Computable Numbers"],"ids":[4]}]`)
+		want(t, "/users?select=id,...posts(ids:id)&posts.title=eq.none&id=eq.1", `[{"id":1,"ids":[]}]`)
+	})
+	t.Run("nested", func(t *testing.T) {
+		want(t, "/places?select=name,...users(email,...posts(post_titles:title))&id=eq.3", `[{"name":"Greenwich","email":"grace@example.com","post_titles":["Compilers 101"]}]`)
+		want(t, "/users?select=id,...places(place:name,...users(owner:email))&places.order=id&id=eq.2", `[{"id":2,"place":["Greenwich"],"owner":["grace@example.com"]}]`)
+	})
+	t.Run("aggregates", func(t *testing.T) {
+		res, body := get(t, base+"/posts?select=n:count(),...users(mood)&count=true")
+		if res.StatusCode != 200 || !sameJSON(body, `[{"n":1,"mood":"ok"},{"n":3,"mood":"happy"}]`) || res.Header.Get("X-Total-Count") != "2" {
+			t.Fatalf("spread grouping = %d %s total=%q", res.StatusCode, body, res.Header.Get("X-Total-Count"))
+		}
+		want(t, "/posts?select=published,...users(newest:id.max(),n:count())", `[{"published":false,"newest":1,"n":1},{"published":true,"newest":3,"n":3}]`)
+		want(t, "/users?select=id,posts(published,n:count(),...users(mood))&id=eq.1", `[{"id":1,"posts":[{"published":false,"n":1,"mood":"happy"},{"published":true,"n":1,"mood":"happy"}]}]`)
+		for _, q := range []string{"/users?select=mood,count(),...posts(title)", "/users?select=id,...posts(id.count())", "/posts?select=count(),users(mood)", "/posts?select=id,u:...users(email)"} {
+			res, body := get(t, base+q)
+			wantProblem(t, res, body, 400, "invalid_select")
+		}
+	})
+	t.Run("with computed arguments, paths, casts and modifiers", func(t *testing.T) {
+		want(t, "/posts?select=id::text,excerpt(max_chars=5),...users(email,theme:settings->>theme)&title=imatch(any).{^notes,^x}",
+			`[{"id":"1","excerpt":"First","email":"ada@example.com","theme":"dark"}]`)
+	})
+	t.Run("csv", func(t *testing.T) {
+		res, body := do(t, "GET", base+"/posts?select=id,...users(email)&id=lt.3&order=id", map[string]string{"Accept": "text/csv"})
+		if res.StatusCode != 200 || string(body) != "id,email\r\n1,ada@example.com\r\n2,ada@example.com\r\n" {
+			t.Fatalf("csv = %d %q", res.StatusCode, body)
+		}
+		res, _ = do(t, "GET", base+"/posts?select=id,...users(email,places(id))", map[string]string{"Accept": "text/csv"})
+		if res.StatusCode != 406 {
+			t.Fatalf("csv with a nested embed = %d", res.StatusCode)
+		}
+	})
+}

@@ -1,0 +1,2 @@
+-- request: GET /api/posts?select=id,...title
+-- error: 400 unknown_relation: unknown relation "title" on "posts" (spread ... applies to embeds)
