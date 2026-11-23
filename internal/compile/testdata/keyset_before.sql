@@ -1,5 +1,5 @@
 -- request: GET /api/posts?order=title.asc&limit=2&before=WyJwdWJsaWMucG9zdHMiLDEzXQ
-SELECT json_build_object('rows', coalesce(json_agg(s1.data ORDER BY s1.__rn DESC) FILTER (WHERE s1.__rn <= $4), '[]'::json), 'has_next', true, 'has_prev', coalesce(bool_or(s1.__rn > $4), false), 'first', (json_agg(s1.__key ORDER BY s1.__rn DESC) FILTER (WHERE s1.__rn <= $4))->0, 'last', (json_agg(s1.__key ORDER BY s1.__rn DESC) FILTER (WHERE s1.__rn <= $4))->-1) AS data
+SELECT json_build_object('has_next', true, 'has_prev', coalesce(bool_or(s1.__rn > $4), false), 'first', (json_agg(s1.__key ORDER BY s1.__rn DESC) FILTER (WHERE s1.__rn <= $4))->0, 'last', (json_agg(s1.__key ORDER BY s1.__rn DESC) FILTER (WHERE s1.__rn <= $4))->-1, 'n', count(*) FILTER (WHERE s1.__rn <= $4), 'rows', coalesce(json_agg(s1.data ORDER BY s1.__rn DESC) FILTER (WHERE s1.__rn <= $4), '[]'::json)) AS data
 FROM (
   SELECT json_build_object('id', t0."id", 'author_id', t0."author_id", 'title', t0."title", 'body', t0."body", 'published', t0."published") AS data, jsonb_build_array(t0."id") AS __key, row_number() OVER (ORDER BY t0."title" DESC, t0."id" DESC) AS __rn
   FROM "public"."posts" t0

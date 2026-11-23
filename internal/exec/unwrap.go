@@ -19,6 +19,7 @@ type pageWrapper struct {
 	First   []any           `json:"first"`
 	Last    []any           `json:"last"`
 	Total   *int64          `json:"total"`
+	N       *int            `json:"n"`
 }
 
 type etagWrapper struct {
@@ -46,7 +47,7 @@ func Unwrap(op *Operation, stmt *compile.Statement, raw []byte, found bool, base
 			return nil, notFound(op)
 		}
 		var w etagWrapper
-		if err := json.Unmarshal(raw, &w); err != nil {
+		if err := decodeEnvelope(raw, "row", &w, &w.Row); err != nil {
 			return nil, &Error{Status: http.StatusInternalServerError, Code: CodeInternal, Detail: "malformed etag wrapper"}
 		}
 		etag := `W/"` + w.Etag + `"`
@@ -61,10 +62,8 @@ func Unwrap(op *Operation, stmt *compile.Statement, raw []byte, found bool, base
 			res.Data = json.RawMessage("[]")
 			return res, nil
 		}
-		dec := json.NewDecoder(bytes.NewReader(raw))
-		dec.UseNumber()
 		var w pageWrapper
-		if err := dec.Decode(&w); err != nil {
+		if err := decodeEnvelope(raw, "rows", &w, &w.Rows); err != nil {
 			return nil, &Error{Status: http.StatusInternalServerError, Code: CodeInternal, Detail: "malformed page wrapper"}
 		}
 		res.Data = w.Rows
@@ -77,15 +76,21 @@ func Unwrap(op *Operation, stmt *compile.Statement, raw []byte, found bool, base
 			res.Headers.Set("X-Total-Count", strconv.FormatInt(*w.Total, 10))
 		}
 		if op.Plan == nil || op.Plan.Page.After == nil && op.Plan.Page.Before == nil {
-			var rows []json.RawMessage
-			if err := json.Unmarshal(res.Data, &rows); err != nil {
-				return nil, &Error{Status: http.StatusInternalServerError, Code: CodeInternal, Detail: "malformed page wrapper"}
+			n := 0
+			if w.N != nil {
+				n = *w.N
+			} else {
+				var rows []json.RawMessage
+				if err := json.Unmarshal(res.Data, &rows); err != nil {
+					return nil, &Error{Status: http.StatusInternalServerError, Code: CodeInternal, Detail: "malformed page wrapper"}
+				}
+				n = len(rows)
 			}
 			offset := 0
 			if op.Plan != nil {
 				offset = op.Plan.Page.Offset
 			}
-			res.Headers.Set("Content-Range", contentRange(offset, len(rows), total))
+			res.Headers.Set("Content-Range", contentRange(offset, n, total))
 		}
 		pageHeaders(res.Headers, op, stmt, &w, basePath)
 	case compile.ShapeVoid, compile.ShapeScalar, compile.ShapeJWT, compile.ShapeJWTSet:
@@ -215,4 +220,24 @@ func withParam(rawQuery, key, value string, drop ...string) string {
 		kept = append(kept, key+"="+value)
 	}
 	return "?" + strings.Join(kept, "&")
+}
+
+// decodeEnvelope decodes a wrapper object into w (numbers as json.Number).
+// The member key, which the compiler emits last, is split off unread and
+// stored in *payload; a wrapper that lacks it or starts with it is decoded
+// in full.
+func decodeEnvelope(raw []byte, key string, w any, payload *json.RawMessage) error {
+	meta, value, split := splitEnvelope(raw, key)
+	if !split {
+		meta = raw
+	}
+	dec := json.NewDecoder(bytes.NewReader(meta))
+	dec.UseNumber()
+	if err := dec.Decode(w); err != nil {
+		return err
+	}
+	if split {
+		*payload = value
+	}
+	return nil
 }

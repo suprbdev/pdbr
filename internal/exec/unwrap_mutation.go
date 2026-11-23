@@ -35,13 +35,13 @@ func affectedRows(stmt *compile.Statement, raw []byte, found bool) (int64, error
 	switch stmt.Shape {
 	case compile.ShapeMutBulk:
 		var w bulkWrapper
-		if err := json.Unmarshal(raw, &w); err != nil {
+		if err := decodeEnvelope(raw, "rows", &w, &w.Rows); err != nil {
 			return 0, err
 		}
 		return w.N, nil
 	case compile.ShapeMutWrap:
 		var w mutationWrapper
-		if err := json.Unmarshal(raw, &w); err != nil {
+		if err := decodeEnvelope(raw, "row", &w, &w.Row); err != nil {
 			return 0, err
 		}
 		if w.N != nil {
@@ -82,7 +82,7 @@ func unwrapMutation(op *Operation, stmt *compile.Statement, raw []byte, found bo
 	case compile.ShapeMutBulk:
 		var w bulkWrapper
 		if found && raw != nil {
-			if err := json.Unmarshal(raw, &w); err != nil {
+			if err := decodeEnvelope(raw, "rows", &w, &w.Rows); err != nil {
 				return nil, &Error{Status: http.StatusInternalServerError, Code: CodeInternal, Detail: "malformed bulk mutation wrapper"}
 			}
 		}
@@ -118,10 +118,8 @@ func unwrapMutation(op *Operation, stmt *compile.Statement, raw []byte, found bo
 		}
 		return nil, notFound(op)
 	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
 	var w mutationWrapper
-	if err := dec.Decode(&w); err != nil {
+	if err := decodeEnvelope(raw, "row", &w, &w.Row); err != nil {
 		return nil, &Error{Status: http.StatusInternalServerError, Code: CodeInternal, Detail: "malformed mutation wrapper"}
 	}
 	if w.Found != nil && !*w.Found {

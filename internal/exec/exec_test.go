@@ -399,7 +399,7 @@ func TestUnwrapPageKeyset(t *testing.T) {
 	op := listOp(b, "/posts")
 	op.RawQuery = "order=title.asc&limit=2&count=true"
 	stmt := &compile.Statement{Shape: compile.ShapePage, Cursors: true, Total: true}
-	raw := []byte(`{"rows":[{"id":7},{"id":2}],"has_next":true,"has_prev":false,"first":[7],"last":[2],"total":5}`)
+	raw := []byte(`{"has_next":true,"has_prev":false,"first":[7],"last":[2],"total":5,"n":2,"rows":[{"id":7},{"id":2}]}`)
 	res, err := Unwrap(op, stmt, raw, true, "/api")
 	if err != nil {
 		t.Fatal(err)
@@ -418,7 +418,7 @@ func TestUnwrapPageKeyset(t *testing.T) {
 	// Page 2: both directions; the after= param is replaced in place, an
 	// offset is dropped from cursor links.
 	op.RawQuery = "order=title.asc&limit=2&count=true&after=WyJwdWJsaWMucG9zdHMiLDJd&offset=0"
-	raw = []byte(`{"rows":[{"id":13},{"id":21}],"has_next":true,"has_prev":true,"first":[13],"last":[21],"total":5}`)
+	raw = []byte(`{"has_next" : true, "has_prev" : true, "first" : [13], "last" : [21], "total" : 5, "n" : 2, "rows" : [{"id" : 13}, {"id" : 21}]}`)
 	res, _ = Unwrap(op, stmt, raw, true, "/api")
 	if got, want := res.Headers.Get("Link"),
 		`</api/posts?order=title.asc&limit=2&count=true&after=WyJwdWJsaWMucG9zdHMiLDIxXQ>; rel="next", </api/posts?order=title.asc&limit=2&count=true&before=WyJwdWJsaWMucG9zdHMiLDEzXQ>; rel="prev"`; got != want {
@@ -428,7 +428,7 @@ func TestUnwrapPageKeyset(t *testing.T) {
 		t.Fatalf("cursors: %v", res.Headers)
 	}
 	// Empty page: no cursors, no Link, [] body.
-	raw = []byte(`{"rows":[],"has_next":false,"has_prev":true,"first":null,"last":null,"total":5}`)
+	raw = []byte(`{"has_next":false,"has_prev":true,"first":null,"last":null,"total":5,"n":0,"rows":[]}`)
 	res, _ = Unwrap(op, stmt, raw, true, "/api")
 	if string(res.Data) != `[]` || res.Headers.Get("Link") != "" || res.Headers.Get("X-Prev-Cursor") != "" {
 		t.Fatalf("empty page: %s %v", res.Data, res.Headers)
@@ -441,7 +441,7 @@ func TestUnwrapPageOffset(t *testing.T) {
 	op.Plan.Page = plan.Page{Limit: 20, Offset: 40}
 	op.RawQuery = "limit=20&offset=40"
 	stmt := &compile.Statement{Shape: compile.ShapePage}
-	raw := []byte(`{"rows":[{"name":"x"}],"has_next":true,"has_prev":true}`)
+	raw := []byte(`{"has_next":true,"has_prev":true,"n":1,"rows":[{"name":"x"}]}`)
 	res, err := Unwrap(op, stmt, raw, true, "")
 	if err != nil {
 		t.Fatal(err)

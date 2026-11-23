@@ -26,17 +26,20 @@ type Shape string
 const (
 	// ShapeRow: data is the client JSON object verbatim; zero rows means 404.
 	ShapeRow Shape = "row"
-	// ShapeRowEtag: data is {"etag": "<md5 hex>", "row": {...}}; zero rows
-	// means 404. exec sets `ETag: W/"<etag>"`, answers 304 when
+	// ShapeRowEtag: data is {"etag": "<md5 hex>", "row": {...}}, row last;
+	// zero rows means 404. exec sets `ETag: W/"<etag>"`, answers 304 when
 	// If-None-Match matches, and writes row as the body.
 	ShapeRowEtag Shape = "row_etag"
 	// ShapePage: data is
 	//
-	//	{"rows": [...], "has_next": bool, "has_prev": bool,
+	//	{"has_next": bool, "has_prev": bool,
 	//	 "first": [pk...] | null, "last": [pk...] | null,   -- only when Statement.Cursors
-	//	 "total": n}                                          -- only when Statement.Total
+	//	 "total": n,                                          -- only when Statement.Total
+	//	 "n": count, "rows": [...]}
 	//
-	// rows is the client body (already in the requested order). has_next /
+	// rows is the client body (already in the requested order) and always
+	// the last member, so exec can hand its bytes to the response without
+	// decoding them; n is the number of rows (Content-Range). has_next /
 	// has_prev say whether a page exists after / before this one under the
 	// current paging mode. first / last are the primary-key values of the
 	// first / last row in rows (JSON arrays, decode with UseNumber): pass
@@ -65,13 +68,14 @@ const (
 	// (always emitted, '[]' when nothing was written). exec answers 201 for
 	// POST and 200 for PUT.
 	ShapeMutList Shape = "mut_list"
-	// ShapeMutWrap: data is a wrapper whose members depend on the request:
+	// ShapeMutWrap: data is a wrapper whose members depend on the request,
+	// row (when present) last:
 	//
-	//	{"row": obj | null,      -- the client JSON (or true under return=minimal with If-Match)
-	//	 "found": bool,          -- If-Match: the row exists (cur CTE); absent otherwise
+	//	{"found": bool,          -- If-Match: the row exists (cur CTE); absent otherwise
 	//	 "inserted": bool,       -- single-object PUT: xmax = 0 (fresh insert)
 	//	 "key": [pk],            -- single POST/PUT on a single-column-PK table (Location)
-	//	 "n": int}               -- return=minimal without If-Match: rows written
+	//	 "n": int,               -- return=minimal without If-Match: rows written
+	//	 "row": obj | null}      -- the client JSON (or true under return=minimal with If-Match)
 	//
 	// exec: found == false -> 404; row null with found == true -> 412
 	// etag_mismatch; row null otherwise (or n == 0) -> 404; status 201 for
@@ -449,7 +453,6 @@ func (s *stmt) pageEnvelope(inner string, pp pagePlan, count func() (string, err
 		hasNext, hasPrev = "true", exact
 	}
 	pairs := []string{
-		"'rows'", "coalesce(" + agg(sub+".data") + ", '[]'::json)",
 		"'has_next'", hasNext,
 		"'has_prev'", hasPrev,
 	}
@@ -465,6 +468,9 @@ func (s *stmt) pageEnvelope(inner string, pp pagePlan, count func() (string, err
 		}
 		pairs = append(pairs, "'total'", countSQL)
 	}
+	pairs = append(pairs,
+		"'n'", "count(*)"+aggFilter,
+		"'rows'", "coalesce("+agg(sub+".data")+", '[]'::json)")
 	sql := fmt.Sprintf("SELECT %s AS data\nFROM (\n%s\n) %s", buildJSONObject(pairs), indent(inner), sub)
 	return &Statement{SQL: sql, Args: s.ps.Args(), Shape: ShapePage, Cursors: pp.keyset, Total: s.plan.Count}, nil
 }

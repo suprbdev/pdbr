@@ -135,7 +135,7 @@ func (h *Handler) ServeRoute(w http.ResponseWriter, r *http.Request, m *api.Matc
 	if r.Method == http.MethodHead {
 		return
 	}
-	if _, err := w.Write(res.Data); err != nil {
+	if _, err := writeBody(w, res.Data); err != nil {
 		h.Log.Debug("write response", "err", err)
 	}
 }
@@ -213,4 +213,20 @@ func toExecError(err error) error {
 		return &exec.Error{Status: status, Code: ue.Code, Detail: ue.Detail}
 	}
 	return err
+}
+
+// bodyWriter is implemented by response writers that can take over a
+// complete body without copying it (the timeout buffer).
+type bodyWriter interface {
+	WriteBody(b []byte) (int, error)
+}
+
+// writeBody writes b, handing it over without a copy when w supports that;
+// b must not be modified afterwards. Behind the gzip middleware w is the
+// compressor and b is copied as usual.
+func writeBody(w http.ResponseWriter, b []byte) (int, error) {
+	if bw, ok := w.(bodyWriter); ok {
+		return bw.WriteBody(b)
+	}
+	return w.Write(b)
 }

@@ -127,13 +127,14 @@ func (s *stmt) mutationResponse(ctes string) (*Statement, error) {
 			shape = ShapeMutRow
 			body = fmt.Sprintf("SELECT %s AS data\n%s", jsonExpr, from)
 		default:
-			pairs := []string{"'row'", jsonExpr}
+			var pairs []string
 			if insertedExpr != "" {
 				pairs = append(pairs, "'inserted'", insertedExpr)
 			}
 			if keyExpr != "" {
 				pairs = append(pairs, "'key'", keyExpr)
 			}
+			pairs = append(pairs, "'row'", jsonExpr)
 			body = fmt.Sprintf("SELECT %s AS data\n%s", buildJSONObject(pairs), from)
 		}
 	}

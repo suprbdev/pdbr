@@ -526,7 +526,7 @@ unwraps `row`. As built there are four mutation shapes
 |---|---|---|
 | `mut_row` | the row JSON verbatim; zero rows → `404` | keyed `PATCH`/`DELETE` with `return=representation` and no `If-Match` |
 | `mut_list` | the JSON array verbatim (`[]` when empty) | bulk `POST` (`201`) / bulk `PUT` (`200`) |
-| `mut_wrap` | `{"row": obj\|null, "key": [pk], "inserted": bool, "found": bool, "n": int}` — members present per request | single `POST` (`row`,`key`), single `PUT` (`row`,`inserted`,`key`), `If-Match` (`found`,`row`), `return=minimal` (`n` [+`key`] [+`inserted`]) |
+| `mut_wrap` | `{"found": bool, "inserted": bool, "key": [pk], "n": int, "row": obj\|null}` — members present per request, `row` last | single `POST` (`key`,`row`), single `PUT` (`inserted`,`key`,`row`), `If-Match` (`found`,`row`), `return=minimal` (`n` [+`key`] [+`inserted`]) |
 | `mut_bulk` | `{"n": int, "rows": [...]}` (`rows` absent under `return=minimal`) | bulk `PATCH`/`DELETE` by filter: `200` + `rows` (`[]` when `n = 0`), `204` under `return=minimal`; `n` feeds `max-affected` |
 
 `found == false` → `404`; `row` null with `found == true` → `412`; `row` null

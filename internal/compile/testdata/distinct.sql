@@ -1,5 +1,5 @@
 -- request: GET /api/users?distinct=mood&order=mood.asc&select=mood&limit=10
-SELECT json_build_object('rows', coalesce(json_agg(s2.data ORDER BY s2.__rn ASC) FILTER (WHERE s2.__rn <= $2), '[]'::json), 'has_next', coalesce(bool_or(s2.__rn > $2), false), 'has_prev', false) AS data
+SELECT json_build_object('has_next', coalesce(bool_or(s2.__rn > $2), false), 'has_prev', false, 'n', count(*) FILTER (WHERE s2.__rn <= $2), 'rows', coalesce(json_agg(s2.data ORDER BY s2.__rn ASC) FILTER (WHERE s2.__rn <= $2), '[]'::json)) AS data
 FROM (
   SELECT d1.*, row_number() OVER (ORDER BY d1.__rn0) AS __rn
   FROM (

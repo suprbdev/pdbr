@@ -5,6 +5,6 @@ WITH __mut AS (
   ON CONFLICT ("id") DO NOTHING
   RETURNING "id"
 )
-SELECT json_build_object('row', json_build_object('id', t0."id"), 'key', jsonb_build_array(t0."id")) AS data
+SELECT json_build_object('key', jsonb_build_array(t0."id"), 'row', json_build_object('id', t0."id")) AS data
 FROM __mut t0
 -- args: [1,"t"]

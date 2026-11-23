@@ -20,7 +20,7 @@ jobs:
       - name: Unit + golden tests (race)
         run: go test -race ./...
       - name: Benchmarks compile
-        run: go test -bench=. -benchtime=1x -run=^$ ./internal/api/ ./internal/compile/
+        run: go test -bench=. -benchtime=1x -run=^$ ./internal/api/ ./internal/compile/ ./internal/exec/ ./internal/server/
       - name: Example config is current
         run: |
           go run ./cmd/pdbr config example > /tmp/pdbr.example.yaml

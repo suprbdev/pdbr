@@ -177,7 +177,7 @@ func TestRPCVoidRowSetOf(t *testing.T) {
 	req.Count = true
 	req.Filter = cond(posts.Table.Column("author_id"), plan.OpEq, int64(1))
 	st = f.compile(req)
-	want := `SELECT json_build_object('rows', coalesce(json_agg(s1.data ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $5), '[]'::json), 'has_next', coalesce(bool_or(s1.__rn > $5), false), 'has_prev', true, 'total', (SELECT count(*) FROM "public"."search_posts"("term" => $1::"text") c2 WHERE c2."author_id" = $6)) AS data
+	want := `SELECT json_build_object('has_next', coalesce(bool_or(s1.__rn > $5), false), 'has_prev', true, 'total', (SELECT count(*) FROM "public"."search_posts"("term" => $1::"text") c2 WHERE c2."author_id" = $6), 'n', count(*) FILTER (WHERE s1.__rn <= $5), 'rows', coalesce(json_agg(s1.data ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $5), '[]'::json)) AS data
 FROM (
   SELECT json_build_object('id', t0."id") AS data, row_number() OVER (ORDER BY t0."id" ASC) AS __rn
   FROM "public"."search_posts"("term" => $1::"text") t0

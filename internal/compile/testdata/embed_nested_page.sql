@@ -1,5 +1,5 @@
 -- request: GET /api/users?select=id,posts(id,title,comments(id,body))&posts.limit=3&posts.comments.limit=2&posts.comments.order=id.desc
-SELECT json_build_object('rows', coalesce(json_agg(s7.data ORDER BY s7.__rn ASC) FILTER (WHERE s7.__rn <= $4), '[]'::json), 'has_next', coalesce(bool_or(s7.__rn > $4), false), 'has_prev', false, 'first', (json_agg(s7.__key ORDER BY s7.__rn ASC) FILTER (WHERE s7.__rn <= $4))->0, 'last', (json_agg(s7.__key ORDER BY s7.__rn ASC) FILTER (WHERE s7.__rn <= $4))->-1) AS data
+SELECT json_build_object('has_next', coalesce(bool_or(s7.__rn > $4), false), 'has_prev', false, 'first', (json_agg(s7.__key ORDER BY s7.__rn ASC) FILTER (WHERE s7.__rn <= $4))->0, 'last', (json_agg(s7.__key ORDER BY s7.__rn ASC) FILTER (WHERE s7.__rn <= $4))->-1, 'n', count(*) FILTER (WHERE s7.__rn <= $4), 'rows', coalesce(json_agg(s7.data ORDER BY s7.__rn ASC) FILTER (WHERE s7.__rn <= $4), '[]'::json)) AS data
 FROM (
   SELECT json_build_object('id', t0."id", 'posts', l6.data) AS data, jsonb_build_array(t0."id") AS __key, row_number() OVER (ORDER BY t0."id" ASC) AS __rn
   FROM "public"."users" t0

@@ -1,5 +1,5 @@
 -- request: GET /api/kb/authors?select=email&meta=eq.a%3D%3E1&order=meta.desc&after=WyJrYi5hdXRob3JzIiwiQWRhQEV4YW1wbGUuY29tIl0&limit=2
-SELECT json_build_object('rows', coalesce(json_agg(s1.data ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $5), '[]'::json), 'has_next', coalesce(bool_or(s1.__rn > $5), false), 'has_prev', true, 'first', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $5))->0, 'last', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $5))->-1) AS data
+SELECT json_build_object('has_next', coalesce(bool_or(s1.__rn > $5), false), 'has_prev', true, 'first', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $5))->0, 'last', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $5))->-1, 'n', count(*) FILTER (WHERE s1.__rn <= $5), 'rows', coalesce(json_agg(s1.data ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $5), '[]'::json)) AS data
 FROM (
   SELECT json_build_object('email', t0."email") AS data, jsonb_build_array(t0."email") AS __key, row_number() OVER (ORDER BY t0."meta" DESC NULLS LAST, t0."email" ASC) AS __rn
   FROM "kb"."authors" t0
