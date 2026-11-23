@@ -1,0 +1,1 @@
+GET /api/kb/embeddings?select=id,code_hamming_distance,code_jaccard_distance&code=vec_hamming_lt.2&order=code.vec_hamming,id&vec=101&limit=5

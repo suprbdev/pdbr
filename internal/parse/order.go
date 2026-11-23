@@ -291,11 +291,22 @@ func (p *parser) resolveContribOrders(trgm string, hasTrgm bool, vec string, has
 	if err := walk(p.req.Select); err != nil {
 		return err
 	}
+	if needTrgm != "" {
+		needTrgm = "order by " + needTrgm
+	} else {
+		score, err := p.scoreUse("trgm")
+		if err != nil {
+			return err
+		}
+		if score != nil {
+			needTrgm = score.Key
+		}
+	}
 	if needTrgm != "" && !hasTrgm {
-		return errf(CodeInvalidFilter, "order by %s requires trgm=<text>", needTrgm)
+		return errf(CodeInvalidFilter, "%s requires trgm=<text>", needTrgm)
 	}
 	if hasTrgm && needTrgm == "" {
-		return errf(CodeInvalidFilter, "trgm= applies to order=<col>.trgm_dist|trgm_wdist|trgm_swdist only, and no such term is present")
+		return errf(CodeInvalidFilter, "trgm= applies to order=<col>.trgm_dist|trgm_wdist|trgm_swdist and the trigram score columns only, and none is present")
 	}
 	if hasTrgm {
 		p.req.Trgm = trgm
@@ -303,24 +314,36 @@ func (p *parser) resolveContribOrders(trgm string, hasTrgm bool, vec string, has
 	return p.bindVec(vecTerms, vec, hasVec)
 }
 
-// bindVec parses vec= for the vector distance terms collected over the
-// root and every embed, checking it against each term's column type.
+// bindVec parses vec= for the vector and bit distance terms collected over
+// the root and every embed, the score pseudo-columns measured against it
+// and the distance-threshold filters, checking it against each one's
+// column type.
 func (p *parser) bindVec(terms []*plan.ContribOrder, vec string, hasVec bool) error {
-	if len(terms) == 0 {
+	score, err := p.scoreUse("vec")
+	if err != nil {
+		return err
+	}
+	if len(terms) == 0 && score == nil && len(p.vecFilters) == 0 {
 		if hasVec {
-			return errf(CodeInvalidFilter, "vec= applies to order=<col>.vec_l2|vec_ip|vec_cos|vec_l1 only, and no such term is present")
+			return errf(CodeInvalidFilter, "vec= applies to order=<col>.vec_*, the vector score columns and vec_*_lt filters only, and none is present")
 		}
 		return nil
 	}
 	if !hasVec {
-		return errf(CodeInvalidFilter, "order by %s.%s requires vec=<vector>", terms[0].Column.Name, terms[0].Name)
+		switch {
+		case len(terms) > 0:
+			return errf(CodeInvalidFilter, "order by %s.%s requires vec=<vector>", terms[0].Column.Name, terms[0].Name)
+		case score != nil:
+			return errf(CodeInvalidFilter, "%s requires vec=<vector>", score.Key)
+		}
+		return errf(CodeInvalidFilter, "filter %s on %s requires vec=<vector>", p.vecFilters[0].Name, p.vecFilters[0].Column.Name)
 	}
 	v, err := api.VectorOperand(vec)
 	if err != nil {
 		return errf(CodeInvalidFilter, "vec: %s", err.Error())
 	}
 	for _, co := range terms {
-		voc, _ := api.VectorVocabulary(p.built.Catalog, co.Column)
+		voc, _ := api.DistanceVocabulary(p.built.Catalog, co.Column)
 		e, ok := voc.Expr(co.Expr)
 		if !ok {
 			return errf(CodeColumnNotOrderable, "%s.%s is not available on this column", co.Column.Name, co.Name)
@@ -329,8 +352,37 @@ func (p *parser) bindVec(terms []*plan.ContribOrder, vec string, hasVec bool) er
 			return errf(CodeInvalidFilter, "vec: %s", err.Error())
 		}
 	}
+	for _, pc := range p.scores {
+		if pc.Score.Param != "vec" {
+			continue
+		}
+		if _, err := pc.Score.Expr.Params(v); err != nil {
+			return errf(CodeInvalidFilter, "vec: %s", err.Error())
+		}
+	}
+	for _, f := range p.vecFilters {
+		if _, err := f.Op.Params(map[string]any{"vector": v, "distance": 0}); err != nil {
+			return errf(CodeInvalidFilter, "vec: %s", err.Error())
+		}
+	}
 	p.req.Vec = v
 	return nil
+}
+
+// scoreUse returns the first selected score pseudo-column measured against
+// param (nil when none is), failing when param is not a reserved
+// parameter of the route (a root column or argument takes its name).
+func (p *parser) scoreUse(param string) (*api.PseudoColumn, error) {
+	for _, pc := range p.scores {
+		if pc.Score.Param != param {
+			continue
+		}
+		if !p.isReserved(param, p.rootResource()) {
+			return nil, errf(CodeInvalidSelect, "%s needs %s=, which is a column or argument filter on this route", pc.Key, param)
+		}
+		return pc, nil
+	}
+	return nil, nil
 }
 
 // fullTextFilter finds the single non-negated full-text condition on col
@@ -421,14 +473,24 @@ func (p *parser) resolveNear(near string, hasNear bool) error {
 		}
 	}
 	walkNode(p.req.Select)
-	if dist == nil {
+	score, err := p.scoreUse("near")
+	if err != nil {
+		return err
+	}
+	if dist == nil && score == nil {
 		if hasNear {
-			return errf(CodeInvalidFilter, "near= applies to order=<col>.dist only, and no such term is present")
+			return errf(CodeInvalidFilter, "near= applies to order=<col>.dist and <col>_distance only, and neither is present")
 		}
 		return nil
 	}
 	if !hasNear {
+		if dist == nil {
+			return errf(CodeInvalidFilter, "%s requires near=<GeoJSON or WKT>", score.Key)
+		}
 		return errf(CodeInvalidFilter, "order by %s.dist requires near=<GeoJSON or WKT>", dist.Name)
+	}
+	if dist == nil {
+		dist = score.Column
 	}
 	if _, err := p.coerceSpatial(p.typeOf(dist), near); err != nil {
 		return errf(CodeInvalidFilter, "near: %s", err.Detail)

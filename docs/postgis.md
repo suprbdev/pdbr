@@ -412,6 +412,35 @@ so; there `near=` is that filter or argument and `.dist` ordering is
 `order=location.asc` on a spatial column is `400 column_not_orderable`;
 `.dist` on a non-spatial column is `400 invalid_filter`.
 
+### Selecting the distance
+
+Each spatial column also has a `<col>_distance` score pseudo-column: the
+distance of the row's geometry from `near=`, selected explicitly like the
+other pseudo-columns. "Places near me, with the distance" is one request:
+
+```
+GET /api/places?select=name,location_distance,metres:location_distance(spheroid=true),area_distance&order=location.dist&near=SRID%3D4326%3BPOINT(-0.1281%2051.508)&limit=10
+```
+
+It compiles to `ST_Distance(column, <near>)` in the same statement, with
+`near=` bound again as its own parameter. Units follow the column: metres
+(on the spheroid) on a `geography` column, SRID units on a `geometry`
+column. A geometry column takes `(spheroid=true)` to measure in metres
+instead (`ST_Distance(col::geography, <near>::geography)`, lon/lat SRIDs
+only); the argument picks the SQL form, so it is part of the request shape,
+and other score columns take no arguments (`400 invalid_select`).
+
+`near=` is required whenever a distance column is selected, in the root, an
+embed or a spread (`400 invalid_filter` without it), and serves them and
+every `.dist` term alike; it also works on row paths and in mutation
+responses (`select=` on `POST`/`PATCH`). Where `near` is a column or
+argument filter the distance columns are not registered. They are
+projections of the returned rows: they need no GiST index and ignore
+`@omit order` and `filters.indexed_only`; `@omit read` removes them with
+the column, and `ordering: false` removes them with `.dist`. Like every
+pseudo-column they are not part of `*`, take no casts, filters or ordering,
+and cost 1 per row in `server.max_cost`.
+
 ## Indexing
 
 Spatial filters and ordering respect `filters.indexed_only` exactly like
@@ -453,7 +482,7 @@ plugins:
     postgis:
       filters: true      # st_* / bbox_* operators on spatial columns
       derived: true      # <col>_area, <col>_centroid, ...
-      ordering: true     # order=<col>.dist.asc|desc + near=
+      ordering: true     # order=<col>.dist.asc|desc, <col>_distance + near=
       projection: true   # select=col(transform=…,simplify=…)
       aggregates: true   # select=col.extent(), union(), collect(), centroid() (with server.aggregates)
 ```

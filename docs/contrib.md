@@ -15,7 +15,7 @@ vocabulary needs is read from the catalog:
   operators, order terms and type handling are simply absent. The extension
   version matters too: `pg_trgm` older than 1.2 has no word-similarity
   operators and older than 1.4 no strict ones, and pgvector older than 0.7
-  has no L1 distance (`vec_l1`).
+  has no L1 distance (`vec_l1`) and no bit distances.
 - **Extension schemas.** An extension may live in a schema that is not on the
   `search_path`. Every extension type, operator and function is then rendered
   schema-qualified, for example `(t0."attrs") OPERATOR("ext".?) $1::text`,
@@ -300,8 +300,9 @@ Columns of pgvector's `vector`, `halfvec` and `sparsevec` types (extension
   invalid_body`; a malformed text form or a wrong dimension count is
   rejected by PostgreSQL (`400 pg:22P02` / `pg:22000`). `GET` RPC arguments
   take the text form.
-- **Filters**: only `is.null` / `not.is.null`. Comparisons (`eq`, `lt`,
-  `in`, …) are `400 invalid_filter`, as on spatial columns.
+- **Filters**: `is.null` / `not.is.null`, and distance thresholds against
+  `vec=` (below). Comparisons (`eq`, `lt`, `in`, …) are `400
+  invalid_filter`, as on spatial columns.
 - **Ordering**: only by distance to `vec=`, nearest first under `asc`:
 
 ```http
@@ -333,11 +334,114 @@ GET /api/docs?select=id,chunks(id,text)&chunks.order=embedding.vec_ip&chunks.lim
   tiebreaker is applied by an incremental sort on top), rows whose vector is
   NULL are not returned, where a sequential scan would list them last. Add
   `<col>=not.is.null` to make that explicit.
+- **Distance thresholds**: "similar enough" cut-offs, measured from the
+  same `vec=` as the order terms and scores:
+
+| filter | SQL |
+|---|---|
+| `<col>=vec_l2_lt.<d>` | `(col <-> $vec::vector) < $d` |
+| `<col>=vec_ip_lt.<d>` | `(col <#> $vec::vector) < $d` (negative inner product) |
+| `<col>=vec_cos_lt.<d>` | `(col <=> $vec::vector) < $d` |
+| `<col>=vec_l1_lt.<d>` | `(col <+> $vec::vector) < $d` (pgvector 0.7+) |
+
+```http
+GET /api/items?select=id,embedding_cosine_distance&embedding=vec_cos_lt.0.2&order=embedding.vec_cos&vec=%5B0.1%2C0.2%2C0.3%5D&limit=10
+```
+
+  The operand is the exclusive bound, a finite number (`400 invalid_filter`
+  otherwise); `not.`, `or=(…)`, `and=(…)` and embed filters take them like
+  any operator, and a threshold without `vec=` is `400 invalid_filter`.
+  pgvector indexes serve ordering, not these predicates, so under
+  `filters.indexed_only` they are accepted only on columns listed in
+  `filters.allow_columns` (`400 column_not_filterable` otherwise); combined
+  with nearest-first ordering by the same distance and `limit=`, an
+  approximate index scan feeds the filter.
+- **Distance columns**: `<col>_l2_distance`, `<col>_negative_inner_product`,
+  `<col>_cosine_distance` and `<col>_l1_distance` select the distances from
+  `vec=` (see [Scores](#scores)).
+- **Bit vectors**: with pgvector 0.7 or later, `bit` and `varbit` columns
+  (binary embeddings; still plain comparable columns) take pgvector's
+  Hamming (`<~>`) and Jaccard (`<%>`) distances: order terms `vec_hamming`
+  and `vec_jaccard`, thresholds `vec_hamming_lt` and `vec_jaccard_lt`, and
+  the `<col>_hamming_distance` / `<col>_jaccard_distance` columns, all
+  against `vec=` given as a bit string (`vec=1010`, cast to `varbit`; a
+  length mismatch is rejected by pgvector). A bit column gets this only where
+  an HNSW (`bit_hamming_ops`, `bit_jaccard_ops`) or IVFFlat
+  (`bit_hamming_ops`) index covers it, or the policy admits it
+  (`filters.allow_columns`, or `indexed_only: false`), so installing pgvector
+  leaves other bit columns alone. One `vec=` serves the whole request, so a
+  request mixes bit and vector distances only when the value parses for
+  both. Binary quantization keeps such a column next to the full vector and
+  re-ranks the coarse Hamming candidates by the exact distance:
+
+```sql
+ALTER TABLE items ADD COLUMN code bit(1536)
+  GENERATED ALWAYS AS (binary_quantize(embedding)::bit(1536)) STORED;
+CREATE INDEX ON items USING hnsw (code bit_hamming_ops);
+-- one-statement re-ranking, exposed as GET /api/rpc/search_items?q=...&n=10
+CREATE FUNCTION search_items(q vector(1536), n int DEFAULT 10) RETURNS SETOF items
+  STABLE LANGUAGE sql AS $$
+  SELECT * FROM (
+    SELECT * FROM items ORDER BY code <~> binary_quantize(q)::bit(1536) LIMIT n * 10
+  ) AS candidates
+  ORDER BY embedding <=> q LIMIT n
+$$;
+```
+
+  Without the function, `order=code.vec_hamming&limit=100&vec=<sign bits>`
+  fetches the coarse candidates (with `select=id,embedding`) and the client
+  re-ranks them: one `vec=` cannot hold both the bit string and the vector.
 - **OpenAPI**: `vector`/`halfvec` are `type: array, items: {type: number}`
   in responses and `oneOf [array, string]` in request bodies; `sparsevec` is
   `string` (`oneOf [string, array]` in bodies). The `order` description
-  lists the vector terms per column and the `vec` parameter is documented on
-  resources that have one.
+  lists the vector terms per column, `x-pdbr-filter-ops` the thresholds the
+  policy admits, and the `vec` parameter is documented on resources that
+  have a vector term, score column or threshold.
+
+## Scores
+
+Score pseudo-columns select the similarity or distance a reference
+parameter measures, the way `<col>_distance` selects the spatial distance
+from `near=` ([postgis.md](postgis.md#selecting-the-distance)). They are
+named after pdbcore's expressions in snake_case, the names pdbq gives its
+score fields:
+
+| pseudo-column | value | reference |
+|---|---|---|
+| `<col>_similarity` | `similarity(col, $trgm)`, 0 to 1 | `trgm=` |
+| `<col>_word_similarity` | `word_similarity($trgm, col)` (pg_trgm 1.2+) | `trgm=` |
+| `<col>_strict_word_similarity` | `strict_word_similarity($trgm, col)` (1.4+) | `trgm=` |
+| `<col>_l2_distance`, `_negative_inner_product`, `_cosine_distance`, `_l1_distance` | `col <-> $vec`, `<#>`, `<=>`, `<+>` | `vec=` |
+| `<col>_hamming_distance`, `<col>_jaccard_distance` (bit columns) | `col <~> $vec::varbit`, `<%>` | `vec=` |
+
+```http
+GET /api/articles?select=id,title,title_similarity&title=trgm_sim.postgres&trgm=postgres&order=title.trgm_dist&limit=10
+GET /api/items?select=id,embedding_cosine_distance&order=embedding.vec_cos&vec=%5B0.1%2C0.2%2C0.3%5D&limit=10
+GET /api/docs?select=id,chunks(id,embedding_cosine_distance)&chunks.order=embedding.vec_cos&chunks.limit=3&vec=%5B1%2C0%2C0%5D
+```
+
+- They are selected explicitly (never part of `*`), aliasable
+  (`score:title_similarity`), and work in embeds, spreads, row paths and
+  mutation responses. The reference parameter is required whenever one is
+  selected (`400 invalid_filter`), serves every score, order term and
+  threshold of the request, and is bound again for each score, so the SQL
+  text depends only on which scores are selected. They take no arguments,
+  casts, filters or ordering (order by the matching `.trgm_*`/`.vec_*`
+  term instead; a trigram distance is 1 − its similarity).
+- Trigram scores exist on text columns that take the trigram operators
+  (a GIN or GiST trigram index, or `filters.allow_columns`, under
+  `filters.indexed_only`), so a GIN-indexed column has scores without
+  distance ordering. Vector scores exist on every vector column. Being
+  projections of the returned rows, neither depends on the ordering index
+  or `@omit order`; `@omit read` removes them with the column.
+- A resource with a column or computed column named `trgm` (`vec`) has no
+  such parameter and no trigram (vector) scores; a score selected in an
+  embed under a root where the parameter is a filter is `400
+  invalid_select`. A real, computed or derived column owning a score's key
+  keeps it (with a warning).
+- Each costs 1 per row in `server.max_cost`, like a column. OpenAPI lists
+  them as read-only nullable `number` properties of the resource schema and
+  in the `select` description.
 
 ## Output
 
@@ -398,11 +502,14 @@ distance ordering an HNSW index (or IVFFlat, which serves `vec_l2`,
 column that accepts a full-text filter. A rejected operator is `400
 column_not_filterable` (`column_not_orderable` for order terms).
 
+The vector and bit distance thresholds, which no index serves, need the
+column in `filters.allow_columns` under the policy.
+
 OpenAPI lists exactly the accepted operators per column in
 `x-pdbr-filter-ops` (pinned to the parser by `TestFilterOpsMatchParser`,
 under both policies), the rank and distance terms in the `order`
 description, and the `trgm` / `vec` parameter on resources that have a
-trigram / vector distance term.
+trigram / vector distance term, score column or threshold.
 
 ## Differences from PostgREST
 
@@ -413,8 +520,9 @@ trigram / vector distance term.
   `*_any`, `lquery`, `lquery_any`, `ltxtquery`), inet
   `cs_strict`/`cd_strict`, the unaccent ops (`unaccent_*`), element
   containment `cs.5` on ranges, JSON-object range and hstore operands, and
-  the `rank`/`rank_cd`/`trgm_*`/`vec_*` order terms with `trgm=`/`vec=` are
-  pdbr extensions.
+  the `rank`/`rank_cd`/`trgm_*`/`vec_*` order terms, the `vec_*_lt`
+  thresholds and the score pseudo-columns with `trgm=`/`vec=` are pdbr
+  extensions.
 - **pgvector output.** `vector` and `halfvec` values are JSON arrays of
   numbers. PostgREST returns their text form as a JSON string
   (`"[0.1,0.2,0.3]"`); pdbr parses it, so clients get numbers without a
@@ -445,6 +553,13 @@ unaccent `unaccentEqualTo`, `unaccentLike`, `unaccentStartsWith`,
 `unaccentIncludes` → `unaccent_eq`, `unaccent_ilike`, `unaccent_sw`,
 `unaccent_includes`; the vector distances `l2Distance`,
 `negativeInnerProduct`, `cosineDistance`, `l1Distance` → the order terms
-`vec_l2`, `vec_ip`, `vec_cos`, `vec_l1`. The vocabulary's derived accessors
+`vec_l2`, `vec_ip`, `vec_cos`, `vec_l1` (bit `hammingDistance`,
+`jaccardDistance` → `vec_hamming`, `vec_jaccard`), and their `LessThan`
+thresholds → `vec_l2_lt`, … `vec_jaccard_lt`. pdbq's score fields
+(`<field>Similarity`, `<field>CosineDistance`, …) are pdbr's score
+pseudo-columns (`<col>_similarity`, `<col>_cosine_distance`, …); pdbq reads
+each list's own `similarTo:`/`nearVector:` and its threshold operators carry
+their own vector, where pdbr has one request-wide `trgm=`/`vec=`, and a
+pdbq score without its reference is `null` where pdbr answers `400`. The vocabulary's derived accessors
 (ltree `nlevel`, inet `family`, range bounds, vector `dims`/`norm`) are not
 exposed by pdbr.

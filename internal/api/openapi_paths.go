@@ -442,8 +442,11 @@ func (b *Builder) selectParam(r *Resource, lead string) *Parameter {
 		}
 		sb.WriteString(". Computed (select explicitly): " + strings.Join(keys, ", "))
 	}
-	if len(r.Pseudo) > 0 {
-		sb.WriteString(". Derived (postgis, select explicitly): " + strings.Join(sortedKeys(r.Pseudo), ", "))
+	if derived := pseudoKeys(r, false); len(derived) > 0 {
+		sb.WriteString(". Derived (postgis, select explicitly): " + strings.Join(derived, ", "))
+	}
+	if scores := pseudoKeys(r, true); len(scores) > 0 {
+		sb.WriteString(". Scores against near=, trgm= or vec= (select explicitly; the parameter is required): " + strings.Join(scores, ", "))
 	}
 	if embeds := b.embedKeys(r); len(embeds) > 0 {
 		sb.WriteString(". Embeds: " + strings.Join(embeds, ", ") + " (rel(...) with a nested select; rel!inner(...) drops parents without a match; ...rel(...) spreads the embed's items into the row: values for a to-one relation, one array per item for a to-many one; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>)")
@@ -519,34 +522,73 @@ func (b *Builder) logicParams() []*Parameter {
 	}
 }
 
+// pseudoKeys lists r's pseudo-columns, sorted: the score pseudo-columns
+// (scores true) or the derived accessors.
+func pseudoKeys(r *Resource, scores bool) []string {
+	var out []string
+	for _, k := range sortedKeys(r.Pseudo) {
+		if (r.Pseudo[k].Score != nil) == scores {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// hasScore reports whether r has a score pseudo-column measured against
+// param.
+func hasScore(r *Resource, param string) bool {
+	for _, pc := range r.Pseudo {
+		if pc.Score != nil && pc.Score.Param == param {
+			return true
+		}
+	}
+	return false
+}
+
 // nearParam documents near= when distance ordering is on and the resource
-// has an orderable spatial column.
+// has an orderable spatial column or a distance pseudo-column.
 func (b *Builder) nearParam(r *Resource) *Parameter {
-	if !b.Surface.SpatialOrder || len(spatialOrderKeys(r)) == 0 {
+	if !b.Surface.SpatialOrder || len(spatialOrderKeys(r)) == 0 && !hasScore(r, "near") {
 		return nil
 	}
 	return &Parameter{Name: "near", In: "query", Schema: &Schema{Type: "string"},
-		Description: "Reference point (GeoJSON or WKT/EWKT) for order=<col>.dist; required whenever a .dist term is present."}
+		Description: "Reference point (GeoJSON or WKT/EWKT) for order=<col>.dist and the <col>_distance columns; required whenever one is present."}
 }
 
 // trgmParam documents trgm= when the resource has a column orderable by
 // trigram distance.
 func (b *Builder) trgmParam(r *Resource) *Parameter {
-	if _, dists := b.contribOrderKeys(r); len(dists["trgm"]) == 0 {
+	if _, dists := b.contribOrderKeys(r); len(dists["trgm"]) == 0 && !hasScore(r, "trgm") {
 		return nil
 	}
 	return &Parameter{Name: "trgm", In: "query", Schema: &Schema{Type: "string"},
-		Description: "Reference text for order=<col>.trgm_dist|trgm_wdist|trgm_swdist (pg_trgm); required whenever such a term is present."}
+		Description: "Reference text for order=<col>.trgm_dist|trgm_wdist|trgm_swdist and the <col>_similarity, <col>_word_similarity and <col>_strict_word_similarity columns (pg_trgm); required whenever one is present."}
 }
 
 // vecParam documents vec= when the resource has a column orderable by
 // vector distance.
 func (b *Builder) vecParam(r *Resource) *Parameter {
-	if _, dists := b.contribOrderKeys(r); len(dists["vec"]) == 0 {
+	if _, dists := b.contribOrderKeys(r); len(dists["vec"]) == 0 && !hasScore(r, "vec") && !b.hasVectorThreshold(r) {
 		return nil
 	}
 	return &Parameter{Name: "vec", In: "query", Schema: &Schema{Type: "string"},
-		Description: "Reference vector for order=<col>.vec_l2|vec_ip|vec_cos|vec_l1 (pgvector): a JSON array of numbers ([0.1,0.2,0.3]) or the column type's text form; required whenever such a term is present."}
+		Description: "Reference vector for order=<col>.vec_l2|vec_ip|vec_cos|vec_l1|vec_hamming|vec_jaccard, the vector distance columns (<col>_cosine_distance, ...) and the vec_*_lt threshold filters (pgvector): a JSON array of numbers ([0.1,0.2,0.3]) or the column type's text form (a bit string such as 1010 for bit columns); required whenever one is present."}
+}
+
+// hasVectorThreshold reports whether a filterable column of r takes a
+// vec_*_lt threshold filter.
+func (b *Builder) hasVectorThreshold(r *Resource) bool {
+	for _, f := range r.Columns {
+		if !r.FilterColumns[f.Key] {
+			continue
+		}
+		for _, cf := range contribFilters(b.Catalog, b.Options, r, f.Column) {
+			if IsVectorThreshold(cf.Name) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // contribOrderKeys lists the contrib order terms of r's orderable columns:

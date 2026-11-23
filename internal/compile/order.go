@@ -218,7 +218,7 @@ func (s *stmt) contribOrderSQL(co *plan.ContribOrder, alias string) string {
 			continue
 		}
 		param, val := "trgm", s.plan.Trgm
-		if v.Name == contrib.VocabVector {
+		if v.Name == contrib.VocabVector || v.Name == contrib.VocabBit {
 			param, val = "vec", s.plan.Vec
 		}
 		if val == nil {

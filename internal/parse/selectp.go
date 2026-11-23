@@ -207,8 +207,17 @@ func (p *parser) resolveSelectItem(node *plan.Node, it selectItem, depth int) er
 			return errf(CodeInvalidSelect, "computed column %q takes only arguments (k=v), got %q", it.name, strings.TrimSpace(rest))
 		}
 	}
+	if fs.Pseudo != nil && fs.Pseudo.Score != nil {
+		p.scores = append(p.scores, fs.Pseudo)
+	}
 	if it.hasInner && (fs.Computed == nil || fs.Computed.SetOf != nil && inner != "") {
 		switch {
+		case fs.Pseudo != nil && fs.Pseudo.Score != nil:
+			args, err := parseScoreArgs(fs.Pseudo, it.inner)
+			if err != nil {
+				return err
+			}
+			fs.Args = args
 		case fs.Computed != nil && fs.Computed.SetOf != nil:
 			if depth+1 > p.opts.maxEmbedDepth() {
 				return errf(CodeEmbedDepthExceeded, "select nesting exceeds max_embed_depth %d", p.opts.maxEmbedDepth())
@@ -444,6 +453,24 @@ func parseSpatialArgs(s string) (map[string]any, error) {
 		}
 	}
 	return out, nil
+}
+
+// parseScoreArgs parses the arguments of a score pseudo-column: only the
+// spatial distance of a geometry column takes one, spheroid=true|false.
+func parseScoreArgs(pc *api.PseudoColumn, s string) (map[string]any, error) {
+	if pc.Score.Param != "near" || postgis.FlavourOf(pc.Column.PGType) != postgis.Geometry {
+		return nil, errf(CodeInvalidSelect, "%q takes no arguments", pc.Key)
+	}
+	k, v, ok := strings.Cut(s, "=")
+	k, v = strings.TrimSpace(k), strings.TrimSpace(v)
+	if !ok || k != "spheroid" || strings.Contains(v, ",") {
+		return nil, errf(CodeInvalidSelect, "%q takes one argument, spheroid=true|false", pc.Key)
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return nil, errf(CodeInvalidSelect, "spheroid must be true or false, got %q", v)
+	}
+	return map[string]any{"spheroid": b}, nil
 }
 
 // hasEmbeds reports whether the select tree nests any object (CSV

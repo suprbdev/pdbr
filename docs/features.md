@@ -116,6 +116,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Spatial values parsed for their column's typmod SRID (`pdbcore/postgis.ParseFor`): bare WKT tagged with it, GeoJSON reprojected to it on geometry columns, EWKT kept — filters, `near=`, bodies — see [PostGIS](postgis.md) (parity)
 - [x] Directional/equality bounding-box ops (`bbox_leftof`, `bbox_rightof`, `bbox_below`, `bbox_above`, `bbox_overlapsor{leftof,rightof,below,above}`, `bbox_equals`, `bbox_intersectsnd`, `bbox_intersects2d`) and `st_exactlyequals`, `st_orderingequals`, `st_intersects3d`, geometry operand — `postgis` plugin (parity)
 - [x] Distance ordering `order=location.dist.asc&near=…`; missing `near` → 400 (parity)
+- [x] Selectable distance `select=<col>_distance[(spheroid=true)]` against `near=` (metres on geography and with `spheroid=true`, SRID units otherwise) — see [PostGIS](postgis.md#selecting-the-distance) (new)
 - [x] `distinct=col1,col2` → `SELECT DISTINCT ON`; distinct-aware `X-Total-Count`; limit/offset only (parity)
 - [x] Reserved param names (`select`, `order`, …) filterable only inside `and=(...)` — documented limitation (new)
 - [x] Range operators `ov cs cd sl sr nxr nxl adj` (range literal or JSON object operand; `cs.<element>`) on ranges and multiranges (parity)
@@ -124,6 +125,8 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Trigram similarity `trgm_sim trgm_wsim trgm_swsim` (pg_trgm) (new)
 - [x] Accent- and case-insensitive `unaccent_eq unaccent_ilike unaccent_sw unaccent_includes` on text-like columns (unaccent; never index-served, `filters.allow_columns` under the policy) (new)
 - [x] Vector distance ordering `order=<col>.vec_l2|vec_ip|vec_cos|vec_l1&vec=<vector>` (pgvector; HNSW/IVFFlat under the policy), keyset-capable (new)
+- [x] Selectable trigram similarities (`<col>_similarity`, `_word_similarity`, `_strict_word_similarity` against `trgm=`) and vector distances (`<col>_cosine_distance`, … from `vec=`) — see [Contrib](contrib.md#scores) (new)
+- [x] pgvector distance thresholds `<col>=vec_l2_lt|vec_ip_lt|vec_cos_lt|vec_l1_lt.<distance>` against `vec=` (allowlisted columns under `filters.indexed_only`) and `bit`/`varbit` Hamming/Jaccard distances (`vec_hamming`, `vec_jaccard`, `vec_hamming_lt`, `vec_jaccard_lt`, `_hamming_distance`, `_jaccard_distance`) — see [Contrib](contrib.md#pgvector-pdbr) (new)
 - [x] inet/cidr containment `cs cd cs_strict cd_strict ov` (new)
 - [x] Full-text relevance ordering `order=<col>.rank|rank_cd` against the column's fts filter; trigram distance ordering `order=<col>.trgm_dist|trgm_wdist|trgm_swdist&trgm=<text>` (new)
 - [x] Indexed-only policy per contrib operator from pdbcore index hints (new)
@@ -300,7 +303,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Collision detection with warnings at API build (parity)
 - [x] Built-in: `smart-comments` (50) — catalog via pdbcore + inflection + APIHook (route/method/param removal, deprecation, description stripping) — see [smart-comments.md](smart-comments.md) (parity)
 - [x] Built-in: `advanced-filters` (150) — relation filters/existence, related order, computed filter/order; settings `relations`, `computed`, `relation_order`, `relations_opt_in`, `computed_opt_in`; `@omit filter|order` / `@filterable` read from the catalog (parity)
-- [x] Built-in: `postgis` (160) — spatial filter params, pseudo-columns, projection args, distance order + `near`; settings `filters`, `derived`, `ordering`, `projection` (parity) — OpenAPI query params (`near`, spatial `x-pdbr-filter-ops` from `Built.Extra.FilterOps`, `oneOf [GeoJSON, string]` inputs from `Extra.InputTypes`) rendered by the core generator
+- [x] Built-in: `postgis` (160) — spatial filter params, pseudo-columns, projection args, distance order and `<col>_distance` + `near`; settings `filters`, `derived`, `ordering`, `projection` (parity) — OpenAPI query params (`near`, spatial `x-pdbr-filter-ops` from `Built.Extra.FilterOps`, `oneOf [GeoJSON, string]` inputs from `Extra.InputTypes`) rendered by the core generator
 - [x] Built-in: `nested-mutations` (200) — APIHook input schemas, CompileHook multi-CTE, RequestHook `ForceTx`; settings `force_transactions`, `max_depth`, `max_operations` (parity)
 - [ ] Out-of-process plugins (go-plugin gRPC or wasm) (parity)
 

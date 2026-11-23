@@ -27,7 +27,8 @@ const (
 // and kb.notes (citext foreign key to it) cover keys, joins and ordering on
 // extension-owned types. kb.embeddings has a pgvector column of each type:
 // emb (vector, HNSW index), half (halfvec, IVFFlat index) and sparse
-// (sparsevec, no index), and kb.chunks a vector column embedded under it.
+// (sparsevec, no index), plus code (bit, HNSW index) for pgvector's bit
+// distances, and kb.chunks a vector column embedded under it.
 func Contrib(cat *introspect.Catalog) *introspect.Catalog {
 	cat.Schemas = append(cat.Schemas, ContribSchema)
 	cat.Extensions = append(cat.Extensions,
@@ -115,9 +116,10 @@ func Contrib(cat *introspect.Catalog) *introspect.Catalog {
 		&introspect.Table{
 			Schema: ContribSchema, Name: "embeddings", Kind: introspect.RelTable,
 			Columns: []*introspect.Column{embID, core("title", 2, "text"),
-				ext("emb", 3, "vector"), ext("half", 4, "halfvec"), ext("sparse", 5, "sparsevec")},
+				ext("emb", 3, "vector"), ext("half", 4, "halfvec"), ext("sparse", 5, "sparsevec"), core("code", 6, "bit")},
 			PrimaryKey: &introspect.Constraint{Name: "embeddings_pkey", Columns: []string{"id"}},
 			Indexes: []*introspect.Index{
+				idx("embeddings_code_idx", "hnsw", "code"),
 				idx("embeddings_emb_idx", "hnsw", "emb"),
 				idx("embeddings_half_idx", "ivfflat", "half"),
 			},

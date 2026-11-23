@@ -411,6 +411,12 @@ func (s *stmt) contribFilterSQL(cf api.ContribFilter, ref string, v any) (string
 		}
 		return "(" + ref + ") " + cf.Vocabulary.Operator(op) + " " + s.ownerParam(cf.Vocabulary, s.param(lit)), nil
 	}
+	if cf.Op.Arg == contrib.ArgVectorDistance {
+		if s.plan.Vec == nil {
+			return "", errUser(CodeInvalidFilter, "filter %s requires vec=", cf.Name)
+		}
+		v = map[string]any{"vector": s.plan.Vec, "distance": v}
+	}
 	params, err := cf.Op.Params(v)
 	if err != nil {
 		return "", errUser(CodeInvalidFilter, "%s: %s", cf.Name, err.Error())

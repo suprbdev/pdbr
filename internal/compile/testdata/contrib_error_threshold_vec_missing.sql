@@ -1,0 +1,2 @@
+-- request: GET /api/kb/embeddings?select=id&emb=vec_cos_lt.0.3
+-- error: 400 invalid_filter: filter vec_cos_lt on emb requires vec=<vector>

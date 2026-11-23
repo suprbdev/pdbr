@@ -6,6 +6,7 @@
 package api
 
 import (
+	"github.com/suprbdev/pdbcore/contrib"
 	"github.com/suprbdev/pdbcore/introspect"
 	"github.com/suprbdev/pdbcore/postgis"
 )
@@ -194,15 +195,31 @@ type Computed struct {
 	DeprecationReason string
 }
 
-// PseudoColumn is a derived accessor over a real column (postgis plugin:
-// <col>_area, <col>_centroid, ...).
+// PseudoColumn is a derived value over a real column: a PostGIS accessor
+// (postgis plugin: <col>_area, <col>_centroid, ...) or a score measured
+// against the request's reference parameter (Score set: <col>_distance from
+// near=, <col>_similarity from trgm=, <col>_cosine_distance from vec=, ...).
 type PseudoColumn struct {
 	Key      string
 	Column   *introspect.Column
 	Accessor string
+	// Score is set on a score pseudo-column; Accessor is then empty.
+	Score *Score
 	// Schema is the OpenAPI schema of the value (nil renders as {}).
 	Schema      *Schema
 	Description string
+}
+
+// Score binds a score pseudo-column to its reference parameter and
+// expression.
+type Score struct {
+	// Param is the query parameter holding the reference: "near", "trgm"
+	// or "vec".
+	Param string
+	// Expr is the pdbcore/contrib expression measured (similarity,
+	// cosineDistance, hammingDistance, ...); the zero Expr for the spatial
+	// distance (ST_Distance).
+	Expr contrib.Expr
 }
 
 // ReturnKind classifies an RPC's result shape.

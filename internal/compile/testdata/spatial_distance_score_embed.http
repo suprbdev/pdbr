@@ -1,0 +1,1 @@
+GET /api/users?select=id,places(name,location_distance)&places.order=location.dist&places.limit=2&near=POINT(0%200)&limit=2

@@ -2,7 +2,8 @@
 // geometry/geography columns into a query surface: spatial filter operators
 // (st_*, bbox_*), derived pseudo-columns (<col>_area, <col>_centroid, ...),
 // select= projection arguments (transform=, simplify=), distance ordering
-// (order=<col>.dist with near=) and the spatial aggregate functions
+// (order=<col>.dist with near=) and the <col>_distance score from near=,
+// and the spatial aggregate functions
 // (col.extent(), col.union(), col.collect(), col.centroid(); with
 // server.aggregates). Reading and writing GeoJSON is core; the
 // plugin only switches the grammar on (api.Surface), registers the
@@ -85,6 +86,9 @@ func (p *Plugin) TransformAPI(_ context.Context, b *api.Builder) error {
 			p.applyOmits(b, r, f)
 			if p.derived {
 				p.addPseudoColumns(b, r, f)
+			}
+			if p.ordering && !r.NameTaken("near") {
+				addDistanceColumn(b, r, f)
 			}
 		}
 	}
@@ -192,6 +196,35 @@ func (p *Plugin) addPseudoColumns(b *api.Builder, r *api.Resource, f *api.Field)
 			Schema:      derivedSchema(d),
 			Description: d.Description,
 		}
+	}
+}
+
+// addDistanceColumn registers the <key>_distance score pseudo-column: the
+// distance of the column from near= (ST_Distance; metres on geography, SRID
+// units on geometry, metres with (spheroid=true) on geometry). It is a
+// projection of the returned rows, so @omit order and the filter policy
+// leave it alone; a real, computed or derived column owning the key keeps
+// it.
+func addDistanceColumn(b *api.Builder, r *api.Resource, f *api.Field) {
+	key := f.Key + "_distance"
+	if r.Field(key) != nil || r.Computed[key] != nil || r.Pseudo[key] != nil {
+		b.Warn("postgis: distance pseudo-column skipped: the key is taken", "resource", r.Path, "column", f.Column.Name, "key", key)
+		return
+	}
+	desc := "Distance from near=, required to select it: "
+	if postgis.FlavourOf(f.Column.PGType) == postgis.Geography {
+		desc += "metres."
+	} else {
+		desc += "in the units of the column's SRID, or metres on the spheroid with (spheroid=true) (lon/lat SRIDs only)."
+	}
+	if r.Pseudo == nil {
+		r.Pseudo = map[string]*api.PseudoColumn{}
+	}
+	r.Pseudo[key] = &api.PseudoColumn{
+		Key: key, Column: f.Column,
+		Score:       &api.Score{Param: "near"},
+		Schema:      &api.Schema{Type: "number"},
+		Description: desc,
 	}
 }
 

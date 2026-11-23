@@ -1,0 +1,1 @@
+GET /api/kb/embeddings?select=id,emb_cosine_distance,emb_l2_distance,emb_negative_inner_product,sparse_l1_distance&order=emb.vec_cos&vec=%5B1%2C0.5%2C-2%5D&limit=3

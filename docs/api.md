@@ -93,6 +93,15 @@ prefixed:
   `_is_simple`, `_xmin`, `_ymin`, `_xmax`, `_ymax` (the type-specific ones only
   where the column's typmod allows them — [postgis.md](postgis.md); a real
   column of that name wins).
+- **Score pseudo-columns**: `<col>_distance` (spatial, from `near=`),
+  `<col>_similarity`, `_word_similarity`, `_strict_word_similarity`
+  (pg_trgm, against `trgm=`) and `<col>_l2_distance`,
+  `_negative_inner_product`, `_cosine_distance`, `_l1_distance`,
+  `_hamming_distance`, `_jaccard_distance` (pgvector, from `vec=`): the
+  pdbcore expression names in snake_case, the same names pdbq gives its
+  `<field>Distance` / `<field>Similarity` / `<field>CosineDistance` fields
+  ([postgis.md](postgis.md#selecting-the-distance),
+  [contrib.md](contrib.md#scores)).
 - Overloaded functions and duplicate route names: keep-first + warning.
 
 Route precedence between `/{schema}/{table}` and `/{table}/{pk}` (decided
@@ -120,10 +129,10 @@ Absent `select` means all columns (`*`). Grammar:
 ```
 select    := item ("," item)*
 item      := field | alias ":" field | embed | "..." embed | "*" | [ alias ":" ] aggregate
-field     := name [ "(" k "=" v ("," k "=" v)* ")" ]      -- args only for spatial projection (transform=<srid>, simplify=<tol>)
+field     := name [ "(" k "=" v ("," k "=" v)* ")" ]      -- args only for spatial projection (transform=<srid>, simplify=<tol>) and geometry distance (spheroid=true)
            | column [ jsonpath ] [ "::" type ]             -- JSON path and/or cast
 embed     := relkey [ "!" hint ]* "(" select ")"           -- hint := fk_name | column | "inner"
-name      := column | computed column | postgis pseudo-column
+name      := column | computed column | postgis or score pseudo-column
 aggregate := "count()" | column [ jsonpath ] [ "::" type ] "." fn "()" [ "::" type ]   -- server.aggregates
 fn        := count | sum | avg | max | min | extent | union | collect | centroid
 jsonpath  := ( "->" step )* [ "->>" step ]                 -- at least one arrow

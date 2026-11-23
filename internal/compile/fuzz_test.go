@@ -80,6 +80,7 @@ func FuzzFilter(f *testing.F) {
 		rng := contrib.RangeValue{Start: &e, End: &tag, StartInclusive: true}
 		p := list(docs)
 		p.Select = fields(docs, "id")
+		p.Select.Fields = append(p.Select.Fields, plan.FieldSel{Pseudo: docs.Pseudo["title_similarity"]}, plan.FieldSel{Pseudo: docs.Pseudo["title_strict_word_similarity"]})
 		p.Filter = plan.And{Terms: []plan.Expr{
 			ftsFilter,
 			cond(dc("body"), plan.OpFts, contrib.FullTextQuery{Query: tag}),
@@ -349,7 +350,12 @@ func FuzzFilter(f *testing.F) {
 		}
 		p := list(emb)
 		p.Select = fields(emb, "id", "emb", "half", "sparse")
-		p.Filter = plan.And{Terms: []plan.Expr{cond(ec("title"), plan.OpEq, e), plan.Not{Term: cond(ec("emb"), plan.OpIs, nil)}}}
+		p.Select.Fields = append(p.Select.Fields, plan.FieldSel{Pseudo: emb.Pseudo["emb_cosine_distance"]}, plan.FieldSel{Pseudo: emb.Pseudo["sparse_l1_distance"]})
+		p.Filter = plan.And{Terms: []plan.Expr{
+			cond(ec("title"), plan.OpEq, e), plan.Not{Term: cond(ec("emb"), plan.OpIs, nil)},
+			cond(ec("emb"), "vec_cos_lt", float64(n)/3),
+			plan.Not{Term: cond(ec("emb"), "vec_ip_lt", float64(len(tag)))},
+		}}
 		p.Order = []plan.OrderTerm{vo("emb", "vec_l2", "l2Distance"), vo("half", "vec_cos", "cosineDistance"), vo("sparse", "vec_ip", "negativeInnerProduct")}
 		p.Order[1].Desc = true
 		p.Vec = []any{float64(n), 1.5, float64(len(tag))}
@@ -411,7 +417,8 @@ func FuzzFilter(f *testing.F) {
 // encodings (bare WKT is tagged with the column's SRID), so each has its own
 // baseline.
 func FuzzSpatial(f *testing.F) {
-	fx := newFixture(f)
+	fx := &fixture{t: f, built: goldenBuilt(f)}
+	fx.c = compile.New(fx.built)
 	places := fx.res("places")
 	loc := fx.col("places", "location")
 
@@ -419,6 +426,9 @@ func FuzzSpatial(f *testing.F) {
 		t.Helper()
 		p := list(places)
 		p.Select = fields(places, "id")
+		p.Select.Fields = append(p.Select.Fields,
+			plan.FieldSel{Pseudo: places.Pseudo["location_distance"], Args: map[string]any{"spheroid": true}},
+			plan.FieldSel{Pseudo: places.Pseudo["area_distance"]})
 		p.Filter = plan.And{Terms: []plan.Expr{
 			cond(loc, "st_intersects", wkt),
 			cond(loc, "bbox_intersects", []any{x, x, x, x}),

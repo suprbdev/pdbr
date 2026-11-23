@@ -1,0 +1,1 @@
+GET /api/kb/embeddings?select=id&emb=vec_cos_lt.near&vec=%5B1%2C0%2C0%5D

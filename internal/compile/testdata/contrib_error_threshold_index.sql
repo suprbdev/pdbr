@@ -1,0 +1,2 @@
+-- request: GET /api/kb/embeddings?select=id&half=vec_cos_lt.0.3&vec=%5B1%2C0%2C0%5D
+-- error: 400 column_not_filterable: operator "vec_cos_lt" on column "half" of "kb.embeddings" needs an index that serves it (filters.indexed_only) or the column in filters.allow_columns

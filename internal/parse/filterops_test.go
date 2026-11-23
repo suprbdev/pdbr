@@ -39,6 +39,9 @@ func TestFilterOpsMatchParser(t *testing.T) {
 				for _, op := range all {
 					val := sampleValue(op, f.Column)
 					u := "/api/" + strings.ReplaceAll(path, ".", "/") + "?" + f.Key + "=" + op + "." + url.QueryEscape(val)
+					if api.IsVectorThreshold(op) {
+						u = "/api/" + strings.ReplaceAll(path, ".", "/") + "?" + f.Key + "=" + op + ".0.5&vec=" + url.QueryEscape(sampleVector(f.Column))
+					}
 					_, err := doParse(t, built, req{url: u}, allOn)
 					if (err == nil) != documented[op] {
 						t.Errorf("indexed_only=%v %s.%s %s: parse err=%v, documented=%v (url %s)", indexedOnly, path, f.Key, op, err, documented[op], u)
@@ -53,7 +56,7 @@ func TestFilterOpsMatchParser(t *testing.T) {
 // (api.Built.ContribOrders, rendered into the order parameter) to the
 // parser.
 func TestContribOrdersMatchParser(t *testing.T) {
-	mods := []string{"rank", "rank_cd", "trgm_dist", "trgm_wdist", "trgm_swdist", "vec_l2", "vec_ip", "vec_cos", "vec_l1"}
+	mods := []string{"rank", "rank_cd", "trgm_dist", "trgm_wdist", "trgm_swdist", "vec_l2", "vec_ip", "vec_cos", "vec_l1", "vec_hamming", "vec_jaccard"}
 	for _, indexedOnly := range []bool{false, true} {
 		built := buildContrib(t, indexedOnly)
 		for _, path := range []string{"kb.docs", "kb.embeddings"} {
@@ -69,7 +72,7 @@ func TestContribOrdersMatchParser(t *testing.T) {
 					q := "order=" + f.Key + "." + mod + ".desc"
 					switch {
 					case strings.HasPrefix(mod, "vec_"):
-						q += "&vec=" + url.QueryEscape("[1,2,3]")
+						q += "&vec=" + url.QueryEscape(sampleVector(f.Column))
 					case !strings.HasPrefix(mod, "rank"):
 						q += "&trgm=x"
 					case res.FilterColumns[f.Key]:
@@ -83,6 +86,15 @@ func TestContribOrdersMatchParser(t *testing.T) {
 			}
 		}
 	}
+}
+
+// sampleVector is a vec= reference for column c: a bit string for bit
+// columns, a JSON array otherwise.
+func sampleVector(c *introspect.Column) string {
+	if c.PGType == "bit" || c.PGType == "varbit" {
+		return "101"
+	}
+	return "[1,2,3]"
 }
 
 func sampleValue(op string, c *introspect.Column) string {
