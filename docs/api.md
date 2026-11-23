@@ -303,6 +303,7 @@ drops the `text/csv` content and the `Accept` header parameter.
 | `Prefer: return=minimal` / `return=headers-only` | `204` and no body; a single-object `POST` (or a `PUT` that inserted) returns `201` + `Location` and no body |
 | `Prefer: handling=strict` | unknown or malformed tokens → `400 invalid_preference` (default `handling=lenient` ignores them) |
 | `Prefer: handling=strict, max-affected=N` | `PATCH`/`DELETE` writing more than `N` rows → `400 max_affected_exceeded`, rolled back |
+| `Prefer: count=exact\|planned\|estimated` | list `GET`/`HEAD`: total in `Content-Range` and `X-Total-Count` ([pagination.md](pagination.md#prefer-count-and-content-range)); bulk `PATCH`/`DELETE`: exact written-row total in `Content-Range` |
 
 Honoured tokens are echoed in `Preference-Applied`. Details and the
 transaction semantics: [mutations.md](mutations.md#prefer).
@@ -335,7 +336,8 @@ List responses carry no `ETag`.
 
 | Header | When | Meaning |
 |---|---|---|
-| `X-Total-Count` | `count=true` on lists / `SETOF` RPC | total rows after filters (distinct-aware); computed by a `count(*)` subquery in the same statement |
+| `Content-Range` | offset-addressed list pages and bulk `PATCH`/`DELETE` | `<first>-<last>/<total>` (`*` when empty or without a count) |
+| `X-Total-Count` | `count=true` or `Prefer: count=` on lists / `SETOF` RPC | total rows after filters (distinct-aware); computed by a `count(*)` subquery in the same statement |
 | `X-Next-Cursor` | keyset-capable list, next page exists | opaque cursor for `after=` |
 | `X-Prev-Cursor` | keyset-capable list, previous page exists | opaque cursor for `before=` |
 | `Link` | lists | `<url?after=…>; rel="next", <url?before=…>; rel="prev"` built from the request URL (relative: `{base}{path}?{query}`, other params kept verbatim and in place); offset-only resources get `offset=` links and no cursors |

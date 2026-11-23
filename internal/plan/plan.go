@@ -40,7 +40,10 @@ type Request struct {
 	Filter Expr // nil = no filter
 	Order  []OrderTerm
 	Page   Page
-	Count  bool
+	// Count asks for the total row count of a list (count=true or Prefer:
+	// count=); CountMode says how it is computed.
+	Count     bool
+	CountMode CountMode
 	// Distinct lists DISTINCT ON columns in request order (nil = none).
 	Distinct []*introspect.Column
 	// OnConflict is the upsert target (nil = primary key).
@@ -334,6 +337,9 @@ type Prefer struct {
 	// may touch; nil when absent, ignored (lenient handling) or not
 	// applicable to the request.
 	MaxAffected *int64
+	// Count is the requested count= mode ("" = none) as written; the
+	// effective mode is Request.CountMode.
+	Count CountMode
 	// Applied lists the honoured preferences in canonical token=value form,
 	// in header order, for the Preference-Applied response header.
 	Applied []string
@@ -341,6 +347,19 @@ type Prefer struct {
 
 // Minimal reports return=minimal or return=headers-only.
 func (p Prefer) Minimal() bool { return p.Return == "minimal" || p.Return == "headers-only" }
+
+// CountMode is how a list total is computed (Prefer: count=). The parser
+// resolves it: a mode the request cannot honour falls back to CountExact.
+type CountMode string
+
+const (
+	// CountExact is a count(*) over the filtered scan ("" means the same).
+	CountExact CountMode = "exact"
+	// CountPlanned is the table's pg_class.reltuples statistic.
+	CountPlanned CountMode = "planned"
+	// CountEstimated is exact up to server.max_page_size rows, planned above.
+	CountEstimated CountMode = "estimated"
+)
 
 // Accept is the negotiated response format.
 type Accept string

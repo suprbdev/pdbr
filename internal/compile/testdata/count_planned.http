@@ -1,0 +1,2 @@
+GET /api/users?limit=2
+Prefer: count=planned

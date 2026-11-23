@@ -29,7 +29,7 @@ type etagWrapper struct {
 // Unwrap maps the statement's data column (raw; found reports whether the
 // statement returned a row) to the client response per stmt.Shape: the 404
 // for missed single-row lookups, ETag / 304, the page headers
-// (X-Total-Count, X-Next-Cursor, X-Prev-Cursor, Link), the RPC shapes
+// (X-Total-Count, Content-Range, X-Next-Cursor, X-Prev-Cursor, Link), the RPC shapes
 // (unwrap_rpc.go) and the mutation statuses (201/200/204/404/412, Location;
 // unwrap_mutation.go). basePath prefixes Link and Location URLs. Pure: no
 // database, no HTTP.
@@ -71,8 +71,21 @@ func Unwrap(op *Operation, stmt *compile.Statement, raw []byte, found bool, base
 		if res.Data == nil {
 			res.Data = json.RawMessage("[]")
 		}
+		var total *int64
 		if stmt.Total && w.Total != nil {
+			total = w.Total
 			res.Headers.Set("X-Total-Count", strconv.FormatInt(*w.Total, 10))
+		}
+		if op.Plan == nil || op.Plan.Page.After == nil && op.Plan.Page.Before == nil {
+			var rows []json.RawMessage
+			if err := json.Unmarshal(res.Data, &rows); err != nil {
+				return nil, &Error{Status: http.StatusInternalServerError, Code: CodeInternal, Detail: "malformed page wrapper"}
+			}
+			offset := 0
+			if op.Plan != nil {
+				offset = op.Plan.Page.Offset
+			}
+			res.Headers.Set("Content-Range", contentRange(offset, len(rows), total))
 		}
 		pageHeaders(res.Headers, op, stmt, &w, basePath)
 	case compile.ShapeVoid, compile.ShapeScalar, compile.ShapeJWT, compile.ShapeJWTSet:
@@ -87,6 +100,21 @@ func Unwrap(op *Operation, stmt *compile.Statement, raw []byte, found bool, base
 		}
 	}
 	return res, nil
+}
+
+// contentRange renders the PostgREST-style Content-Range of n rows starting
+// at offset: "<first>-<last>/<total>", "*" for an empty range or an unknown
+// total.
+func contentRange(offset, n int, total *int64) string {
+	r := "*"
+	if n > 0 {
+		r = strconv.Itoa(offset) + "-" + strconv.Itoa(offset+n-1)
+	}
+	t := "*"
+	if total != nil {
+		t = strconv.FormatInt(*total, 10)
+	}
+	return r + "/" + t
 }
 
 func notFound(op *Operation) *Error {

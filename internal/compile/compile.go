@@ -41,7 +41,8 @@ const (
 	// current paging mode. first / last are the primary-key values of the
 	// first / last row in rows (JSON arrays, decode with UseNumber): pass
 	// them to plan.EncodeCursor for X-Prev-Cursor (when has_prev) and
-	// X-Next-Cursor (when has_next). total feeds X-Total-Count.
+	// X-Next-Cursor (when has_next). total feeds X-Total-Count and the
+	// Content-Range total.
 	ShapePage Shape = "page"
 	// ShapeScalar: data is the client JSON value verbatim — an RPC scalar,
 	// composite object, single table row (object or null) or a SETOF
@@ -447,7 +448,7 @@ func (s *stmt) list() (*Statement, error) {
 			"'last'", "("+agg(sub+".__key")+")->-1")
 	}
 	if s.plan.Count {
-		countSQL, err := s.countSQL(node, dcols)
+		countSQL, err := s.totalSQL(node, dcols)
 		if err != nil {
 			return nil, err
 		}
@@ -455,6 +456,66 @@ func (s *stmt) list() (*Statement, error) {
 	}
 	sql := fmt.Sprintf("SELECT %s AS data\nFROM (\n%s\n) %s", buildJSONObject(pairs), indent(inner), sub)
 	return &Statement{SQL: sql, Args: s.ps.Args(), Shape: ShapePage, Cursors: pp.keyset, Total: s.plan.Count}, nil
+}
+
+// CountPlannable reports whether a list request's total can come from the
+// planner statistics (Prefer: count=planned|estimated): an unfiltered scan of
+// a table or materialized view without row-level security (the statistic
+// would reveal how many rows the policies hide), distinct= or !inner embeds.
+// Anything else is counted exactly.
+func CountPlannable(p *plan.Request) bool {
+	if p == nil || p.RPC != nil || p.Resource == nil || p.Filter != nil || len(p.Distinct) > 0 || p.Resource.Table.RLSEnabled {
+		return false
+	}
+	switch p.Resource.Table.Kind {
+	case introspect.RelTable, introspect.RelMaterializedView:
+	default:
+		return false
+	}
+	return p.Select == nil || !hasInner(p.Select)
+}
+
+func hasInner(n *plan.Node) bool {
+	for i := range n.Embeds {
+		if n.Embeds[i].Inner {
+			return true
+		}
+	}
+	return false
+}
+
+// totalSQL renders the list total per Request.CountMode: planned reads
+// pg_class.reltuples — summed over the leaf partitions of a partitioned
+// table — and falls back to the exact count while any of them has never been
+// analysed (reltuples = -1), for a leaf that is not a plain table, and for a
+// legacy inheritance parent (its statistic excludes the children a scan
+// returns); estimated counts exactly up to max_page_size rows and switches
+// to the statistic above. The exact branches are uncorrelated subqueries,
+// which PostgreSQL only evaluates when the CASE reaches them.
+func (s *stmt) totalSQL(node *plan.Node, dcols []*introspect.Column) (string, error) {
+	mode := s.plan.CountMode
+	if mode != plan.CountPlanned && mode != plan.CountEstimated || !CountPlannable(s.plan) {
+		return s.countSQL(node, dcols)
+	}
+	exact, err := s.countSQL(node, dcols)
+	if err != nil {
+		return "", err
+	}
+	t := s.plan.Resource.Table
+	cls := s.alias("pc")
+	leaf, tree := s.alias("pl"), s.alias("pt")
+	leaves := fmt.Sprintf("(SELECT CASE WHEN bool_and(%s.relkind = 'r' AND %s.reltuples >= 0) THEN sum(%s.reltuples)::bigint END FROM pg_catalog.pg_partition_tree(%s.oid) %s JOIN pg_catalog.pg_class %s ON %s.oid = %s.relid WHERE %s.isleaf)",
+		leaf, leaf, leaf, cls, tree, leaf, leaf, tree, tree)
+	planned := fmt.Sprintf("(SELECT CASE WHEN %s.relkind = 'p' THEN coalesce(%s, %s) WHEN %s.relhassubclass OR %s.reltuples < 0 THEN %s ELSE %s.reltuples::bigint END FROM pg_catalog.pg_class %s WHERE %s.oid = %s::regclass)",
+		cls, leaves, exact, cls, cls, exact, cls, cls, cls, quoteLiteral(tableRef(t)))
+	if mode == plan.CountPlanned {
+		return planned, nil
+	}
+	threshold := s.param(s.maxPageSize)
+	bounded := fmt.Sprintf("(SELECT count(*) FROM (SELECT 1 FROM %s %s LIMIT %s + 1) %s)", s.rootRef(t), s.alias("c"), threshold, s.alias("b"))
+	est := s.alias("e")
+	return fmt.Sprintf("(SELECT CASE WHEN %s.n <= %s THEN %s.n ELSE greatest(%s, %s + 1) END FROM (SELECT %s AS n) %s)",
+		est, threshold, est, planned, threshold, bounded, est), nil
 }
 
 // countSQL renders the total-count subquery over the same FROM/WHERE (the

@@ -118,7 +118,7 @@ func (b *Builder) listItem(item *PathItem, rt *Route) {
 	r := rt.Resource
 	if rt.Allows(MethodGet) {
 		get := b.operation(rt, r.Path+".list", "List "+r.Path, readStatuses)
-		get.Parameters = append(b.listParams(r, false), b.acceptParam()...)
+		get.Parameters = append(append(b.listParams(r, false), b.acceptParam()...), countPreferParam())
 		appendDescription(get, b.filterProse(r))
 		ok := &Response{Description: "OK", Headers: b.listHeaders(r.Keyset), Content: map[string]*MediaType{
 			mediaJSON: {Schema: &Schema{Type: "array", Items: SchemaRef(r.Path)}},
@@ -132,7 +132,7 @@ func (b *Builder) listItem(item *PathItem, rt *Route) {
 	}
 	if rt.Allows(MethodPost) {
 		post := b.operation(rt, r.Path+".create", "Create "+r.Path, createStatuses)
-		post.Parameters = []*Parameter{b.selectParam(r, "Columns and embeds of the created row(s) to return."), preferParam(false)}
+		post.Parameters = []*Parameter{b.selectParam(r, "Columns and embeds of the created row(s) to return."), preferParam(false, false)}
 		post.RequestBody = jsonBody(objectOrArray(r.Path+".insert"), true, "One row, or an array of rows for a bulk insert (one INSERT, columns = union, missing keys take DEFAULT).")
 		post.Responses["201"] = &Response{Description: "Created (Prefer: return=minimal omits the body).",
 			Headers: writeHeaders(map[string]*Header{"Location": {Schema: &Schema{Type: "string"}, Description: "URL of the new row for a single-object body on a resource with a single-column primary key."}}),
@@ -146,7 +146,7 @@ func (b *Builder) listItem(item *PathItem, rt *Route) {
 			b.selectParam(r, "Columns and embeds of the affected row(s) to return."),
 			{Name: "on_conflict", In: "query", Schema: &Schema{Type: "string"},
 				Description: "Conflict target: comma list equal to a unique constraint's columns (default: the primary key). " + b.uniqueProse(r)},
-			preferParam(false),
+			preferParam(false, false),
 		}
 		put.RequestBody = jsonBody(objectOrArray(r.Path+".upsert"), true, "One row, or an array of rows; the conflict-target columns must be present in every element.")
 		put.Responses["200"] = &Response{Description: "Updated (single object that hit an existing row, or any array).", Headers: writeHeaders(nil),
@@ -159,25 +159,30 @@ func (b *Builder) listItem(item *PathItem, rt *Route) {
 	}
 	if rt.Allows(MethodPatch) {
 		patch := b.operation(rt, r.Path+".bulk_update", "Update the "+r.Path+" rows matching the filters", createStatuses)
-		patch.Parameters = append([]*Parameter{b.selectParam(r, "Columns and embeds of the updated rows to return."), preferParam(true)}, b.bulkParams(r)...)
+		patch.Parameters = append([]*Parameter{b.selectParam(r, "Columns and embeds of the updated rows to return."), preferParam(true, true)}, b.bulkParams(r)...)
 		appendDescription(patch, bulkProse)
 		appendDescription(patch, b.filterProse(r))
 		patch.RequestBody = jsonBody(SchemaRef(r.Path+".update"), true, "Columns to set on every matching row.")
-		patch.Responses["200"] = &Response{Description: "Updated (the changed rows; an empty array when nothing matched).", Headers: writeHeaders(nil),
+		patch.Responses["200"] = &Response{Description: "Updated (the changed rows; an empty array when nothing matched).", Headers: writeHeaders(bulkRange()),
 			Content: map[string]*MediaType{mediaJSON: {Schema: &Schema{Type: "array", Items: SchemaRef(r.Path)}}}}
-		patch.Responses["204"] = &Response{Description: "Updated with Prefer: return=minimal.", Headers: writeHeaders(nil)}
+		patch.Responses["204"] = &Response{Description: "Updated with Prefer: return=minimal.", Headers: writeHeaders(bulkRange())}
 		item.Patch = patch
 	}
 	if rt.Allows(MethodDelete) {
 		del := b.operation(rt, r.Path+".bulk_delete", "Delete the "+r.Path+" rows matching the filters", bulkDeleteStatuses)
-		del.Parameters = append([]*Parameter{b.selectParam(r, "Columns and embeds of the deleted rows to return."), preferParam(true)}, b.bulkParams(r)...)
+		del.Parameters = append([]*Parameter{b.selectParam(r, "Columns and embeds of the deleted rows to return."), preferParam(true, true)}, b.bulkParams(r)...)
 		appendDescription(del, bulkProse)
 		appendDescription(del, b.filterProse(r))
-		del.Responses["200"] = &Response{Description: "Deleted (the removed rows; an empty array when nothing matched).", Headers: writeHeaders(nil),
+		del.Responses["200"] = &Response{Description: "Deleted (the removed rows; an empty array when nothing matched).", Headers: writeHeaders(bulkRange()),
 			Content: map[string]*MediaType{mediaJSON: {Schema: &Schema{Type: "array", Items: SchemaRef(r.Path)}}}}
-		del.Responses["204"] = &Response{Description: "Deleted with Prefer: return=minimal.", Headers: writeHeaders(nil)}
+		del.Responses["204"] = &Response{Description: "Deleted with Prefer: return=minimal.", Headers: writeHeaders(bulkRange())}
 		item.Delete = del
 	}
+}
+
+func bulkRange() map[string]*Header {
+	return map[string]*Header{"Content-Range": {Schema: &Schema{Type: "string"},
+		Description: "0-<n-1>/<n> of the written rows (* range under return=minimal or when nothing matched); the total is * unless Prefer: count= is given."}}
 }
 
 const bulkProse = "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless server.allow_unfiltered_mutations is on."
@@ -190,7 +195,7 @@ func (b *Builder) bulkParams(r *Resource) []*Parameter {
 
 // writeHeaders adds Preference-Applied to a write response's headers.
 func writeHeaders(h map[string]*Header) map[string]*Header {
-	out := map[string]*Header{"Preference-Applied": {Schema: &Schema{Type: "string"}, Description: "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated."}}
+	out := map[string]*Header{"Preference-Applied": {Schema: &Schema{Type: "string"}, Description: "The Prefer tokens that were honoured, comma-separated."}}
 	for k, v := range h {
 		out[k] = v
 	}
@@ -232,7 +237,7 @@ func (b *Builder) rowItem(item *PathItem, rt *Route) {
 	if rt.Allows(MethodPatch) {
 		patch := b.operation(rt, id+".update", "Update one "+r.Path+" "+what, updateStatuses)
 		patch.Parameters = append([]*Parameter{b.selectParam(r, "Columns and embeds of the updated row to return.")}, b.ifMatchParam(r)...)
-		patch.Parameters = append(patch.Parameters, preferParam(true))
+		patch.Parameters = append(patch.Parameters, preferParam(true, false))
 		patch.RequestBody = jsonBody(SchemaRef(r.Path+".update"), true, "Columns to change (partial update).")
 		patch.Responses["200"] = &Response{Description: "Updated", Headers: writeHeaders(nil), Content: map[string]*MediaType{mediaJSON: {Schema: SchemaRef(r.Path)}}}
 		patch.Responses["204"] = &Response{Description: "Updated with Prefer: return=minimal.", Headers: writeHeaders(nil)}
@@ -241,7 +246,7 @@ func (b *Builder) rowItem(item *PathItem, rt *Route) {
 	if rt.Allows(MethodDelete) {
 		del := b.operation(rt, id+".delete", "Delete one "+r.Path+" "+what, deleteStatuses)
 		del.Parameters = append([]*Parameter{b.selectParam(r, "Columns and embeds of the deleted row to return.")}, b.ifMatchParam(r)...)
-		del.Parameters = append(del.Parameters, preferParam(true))
+		del.Parameters = append(del.Parameters, preferParam(true, false))
 		del.Responses["200"] = &Response{Description: "Deleted (the removed row)", Headers: writeHeaders(nil), Content: map[string]*MediaType{mediaJSON: {Schema: SchemaRef(r.Path)}}}
 		del.Responses["204"] = &Response{Description: "Deleted with Prefer: return=minimal.", Headers: writeHeaders(nil)}
 		item.Delete = del
@@ -263,6 +268,9 @@ func (b *Builder) rpcItem(item *PathItem, rt *Route) {
 		get.Parameters = append(get.Parameters, b.rpcListParams(rpc, argNames)...)
 		if setOf {
 			get.Parameters = append(get.Parameters, b.acceptParam()...)
+		}
+		if setOfRows {
+			get.Parameters = append(get.Parameters, countPreferParam())
 		}
 		if setOfRows {
 			appendDescription(get, b.filterProse(rpc.Resource))
@@ -498,19 +506,35 @@ func (b *Builder) ifMatchParam(r *Resource) []*Parameter {
 }
 
 // preferParam documents the Prefer header of a write; maxAffected adds the
-// PATCH / DELETE row cap.
-func preferParam(maxAffected bool) *Parameter {
+// PATCH / DELETE row cap, count the bulk-write count= token.
+func preferParam(maxAffected, count bool) *Parameter {
 	desc := "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference."
 	if maxAffected {
 		desc += " max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing."
 	}
+	if count {
+		desc += " count=exact|planned|estimated puts the number of written rows into the Content-Range total."
+	}
 	return &Parameter{Name: "Prefer", In: "header", Schema: &Schema{Type: "string"}, Description: desc}
+}
+
+// countPreferParam documents Prefer: count= on list reads.
+func countPreferParam() *Parameter {
+	return &Parameter{Name: "Prefer", In: "header", Schema: &Schema{Type: "string"},
+		Description: "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences."}
+}
+
+// contentRangeHeader documents Content-Range on list responses.
+func contentRangeHeader() *Header {
+	return &Header{Schema: &Schema{Type: "string"}, Description: "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested)."}
 }
 
 func (b *Builder) listHeaders(keyset bool) map[string]*Header {
 	h := map[string]*Header{
-		"X-Total-Count": {Schema: &Schema{Type: "integer"}, Description: "Total rows after filters; present with count=true."},
-		"Link":          {Schema: &Schema{Type: "string"}, Description: `<url>; rel="next", <url>; rel="prev" — the request URL with after=/before= (or offset=) replaced.`},
+		"X-Total-Count":      {Schema: &Schema{Type: "integer"}, Description: "Total rows after filters; present with count=true or Prefer: count=."},
+		"Content-Range":      contentRangeHeader(),
+		"Link":               {Schema: &Schema{Type: "string"}, Description: `<url>; rel="next", <url>; rel="prev" — the request URL with after=/before= (or offset=) replaced.`},
+		"Preference-Applied": {Schema: &Schema{Type: "string"}, Description: "The Prefer tokens that were honoured (count=<mode used>, handling=)."},
 	}
 	if keyset {
 		h["X-Next-Cursor"] = &Header{Schema: &Schema{Type: "string"}, Description: "Cursor of the last row when a next page exists (after=)."}
@@ -642,7 +666,8 @@ func (b *Builder) rpcResponses(rpc *RPC, get bool) map[string]*Response {
 		return ok(Nullable(SchemaRef(rpc.Resource.Path)))
 	case ReturnSetOfRows:
 		return list(SchemaRef(rpc.Resource.Path), map[string]*Header{
-			"X-Total-Count": {Schema: &Schema{Type: "integer"}, Description: "Total rows after filters; present with count=true."},
+			"X-Total-Count": {Schema: &Schema{Type: "integer"}, Description: "Total rows after filters; present with count=true or Prefer: count=."},
+			"Content-Range": contentRangeHeader(),
 			"Link":          {Schema: &Schema{Type: "string"}, Description: `offset= links: <url>; rel="next", <url>; rel="prev".`},
 		})
 	case ReturnComposite:

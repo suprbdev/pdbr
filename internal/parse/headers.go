@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/suprbdev/pdbr/internal/api"
+	"github.com/suprbdev/pdbr/internal/compile"
 	"github.com/suprbdev/pdbr/internal/plan"
 )
 
@@ -108,6 +110,13 @@ func (p *parser) parsePrefer(headers []string) error {
 			default:
 				ok = false
 			}
+		case "count":
+			switch m := plan.CountMode(pr.val); m {
+			case plan.CountExact, plan.CountPlanned, plan.CountEstimated:
+				pf.Count = m
+			default:
+				ok = false
+			}
 		case "max-affected":
 			n, err := strconv.ParseInt(pr.val, 10, 64)
 			if err != nil || n < 0 {
@@ -127,6 +136,30 @@ func (p *parser) parsePrefer(headers []string) error {
 	}
 	pf.Applied = applied
 	return nil
+}
+
+// resolveCount applies Prefer: count= once the query is parsed: lists
+// (GET/HEAD list routes and SETOF <table> RPCs) get a total in the mode the
+// request can honour, bulk PATCH/DELETE report their exact row count. The
+// honoured mode replaces the requested one in Preference-Applied.
+func (p *parser) resolveCount() {
+	pf := &p.req.Prefer
+	if pf.Count == "" {
+		return
+	}
+	mode := pf.Count
+	switch {
+	case p.isBulkWrite():
+		mode = plan.CountExact
+	case (p.method == plan.GET || p.method == plan.HEAD) && p.isList() && (p.match.RPC == nil || p.match.RPC.Returns == api.ReturnSetOfRows):
+		if mode != plan.CountExact && !compile.CountPlannable(p.req) {
+			mode = plan.CountExact
+		}
+	default:
+		return
+	}
+	p.req.Count, p.req.CountMode = true, mode
+	pf.Applied = append(pf.Applied, "count="+string(mode))
 }
 
 type mediaRange struct {

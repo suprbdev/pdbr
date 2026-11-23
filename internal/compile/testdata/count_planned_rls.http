@@ -1,0 +1,2 @@
+GET /api/posts?select=id
+Prefer: count=planned

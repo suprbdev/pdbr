@@ -47,7 +47,7 @@ type Operation struct {
 // Result is what execution produced.
 type Result struct {
 	Status  int
-	Headers http.Header     // ETag, X-Total-Count, X-Next-Cursor, X-Prev-Cursor, Link, Location, Allow, Preference-Applied
+	Headers http.Header     // ETag, X-Total-Count, Content-Range, X-Next-Cursor, X-Prev-Cursor, Link, Location, Allow, Preference-Applied
 	Data    json.RawMessage // the client JSON (already unwrapped); nil for 204/304/HEAD or on error
 	Err     error           // *Error; the server renders problem+json
 }

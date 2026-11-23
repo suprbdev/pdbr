@@ -1,0 +1,2 @@
+GET /api/users?mood=eq.happy&select=id
+Prefer: count=planned

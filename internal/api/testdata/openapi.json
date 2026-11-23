@@ -193,14 +193,34 @@
               "in",
               "is"
             ]
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "OK",
             "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Link": {
                 "description": "<url>; rel=\"next\", <url>; rel=\"prev\" — the request URL with after=/before= (or offset=) replaced.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (count=<mode used>, handling=).",
                 "schema": {
                   "type": "string"
                 }
@@ -218,7 +238,7 @@
                 }
               },
               "X-Total-Count": {
-                "description": "Total rows after filters; present with count=true.",
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
                 "schema": {
                   "type": "integer"
                 }
@@ -417,14 +437,34 @@
               "in",
               "is"
             ]
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "OK (same headers as GET, no body)",
             "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Link": {
                 "description": "<url>; rel=\"next\", <url>; rel=\"prev\" — the request URL with after=/before= (or offset=) replaced.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (count=<mode used>, handling=).",
                 "schema": {
                   "type": "string"
                 }
@@ -442,7 +482,7 @@
                 }
               },
               "X-Total-Count": {
-                "description": "Total rows after filters; present with count=true.",
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
                 "schema": {
                   "type": "integer"
                 }
@@ -529,7 +569,7 @@
                 }
               },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -647,7 +687,7 @@
             "description": "Updated (single object that hit an existing row, or any array).",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -681,7 +721,7 @@
                 }
               },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -699,7 +739,7 @@
             "description": "Updated with Prefer: return=minimal.",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -760,7 +800,7 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing. count=exact|planned|estimated puts the number of written rows into the Content-Range total.",
             "schema": {
               "type": "string"
             }
@@ -867,8 +907,14 @@
           "200": {
             "description": "Updated (the changed rows; an empty array when nothing matched).",
             "headers": {
+              "Content-Range": {
+                "description": "0-<n-1>/<n> of the written rows (* range under return=minimal or when nothing matched); the total is * unless Prefer: count= is given.",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -888,8 +934,14 @@
           "204": {
             "description": "Updated with Prefer: return=minimal.",
             "headers": {
+              "Content-Range": {
+                "description": "0-<n-1>/<n> of the written rows (* range under return=minimal or when nothing matched); the total is * unless Prefer: count= is given.",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -950,7 +1002,7 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing. count=exact|planned|estimated puts the number of written rows into the Content-Range total.",
             "schema": {
               "type": "string"
             }
@@ -1046,8 +1098,14 @@
           "200": {
             "description": "Deleted (the removed rows; an empty array when nothing matched).",
             "headers": {
+              "Content-Range": {
+                "description": "0-<n-1>/<n> of the written rows (* range under return=minimal or when nothing matched); the total is * unless Prefer: count= is given.",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -1067,8 +1125,14 @@
           "204": {
             "description": "Deleted with Prefer: return=minimal.",
             "headers": {
+              "Content-Range": {
+                "description": "0-<n-1>/<n> of the written rows (* range under return=minimal or when nothing matched); the total is * unless Prefer: count= is given.",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -1291,7 +1355,7 @@
             "description": "Updated",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -1309,7 +1373,7 @@
             "description": "Updated with Prefer: return=minimal.",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -1394,7 +1458,7 @@
             "description": "Deleted (the removed row)",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -1412,7 +1476,7 @@
             "description": "Deleted with Prefer: return=minimal.",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -1609,14 +1673,34 @@
               "in",
               "is"
             ]
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "OK",
             "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Link": {
                 "description": "<url>; rel=\"next\", <url>; rel=\"prev\" — the request URL with after=/before= (or offset=) replaced.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (count=<mode used>, handling=).",
                 "schema": {
                   "type": "string"
                 }
@@ -1634,7 +1718,7 @@
                 }
               },
               "X-Total-Count": {
-                "description": "Total rows after filters; present with count=true.",
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
                 "schema": {
                   "type": "integer"
                 }
@@ -1815,14 +1899,34 @@
               "in",
               "is"
             ]
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "OK (same headers as GET, no body)",
             "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Link": {
                 "description": "<url>; rel=\"next\", <url>; rel=\"prev\" — the request URL with after=/before= (or offset=) replaced.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (count=<mode used>, handling=).",
                 "schema": {
                   "type": "string"
                 }
@@ -1840,7 +1944,7 @@
                 }
               },
               "X-Total-Count": {
-                "description": "Total rows after filters; present with count=true.",
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
                 "schema": {
                   "type": "integer"
                 }
@@ -1927,7 +2031,7 @@
                 }
               },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -2045,7 +2149,7 @@
             "description": "Updated (single object that hit an existing row, or any array).",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -2079,7 +2183,7 @@
                 }
               },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -2097,7 +2201,7 @@
             "description": "Updated with Prefer: return=minimal.",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -2158,7 +2262,7 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing. count=exact|planned|estimated puts the number of written rows into the Content-Range total.",
             "schema": {
               "type": "string"
             }
@@ -2247,8 +2351,14 @@
           "200": {
             "description": "Updated (the changed rows; an empty array when nothing matched).",
             "headers": {
+              "Content-Range": {
+                "description": "0-<n-1>/<n> of the written rows (* range under return=minimal or when nothing matched); the total is * unless Prefer: count= is given.",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -2268,8 +2378,14 @@
           "204": {
             "description": "Updated with Prefer: return=minimal.",
             "headers": {
+              "Content-Range": {
+                "description": "0-<n-1>/<n> of the written rows (* range under return=minimal or when nothing matched); the total is * unless Prefer: count= is given.",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -2330,7 +2446,7 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing. count=exact|planned|estimated puts the number of written rows into the Content-Range total.",
             "schema": {
               "type": "string"
             }
@@ -2408,8 +2524,14 @@
           "200": {
             "description": "Deleted (the removed rows; an empty array when nothing matched).",
             "headers": {
+              "Content-Range": {
+                "description": "0-<n-1>/<n> of the written rows (* range under return=minimal or when nothing matched); the total is * unless Prefer: count= is given.",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -2429,8 +2551,14 @@
           "204": {
             "description": "Deleted with Prefer: return=minimal.",
             "headers": {
+              "Content-Range": {
+                "description": "0-<n-1>/<n> of the written rows (* range under return=minimal or when nothing matched); the total is * unless Prefer: count= is given.",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -2653,7 +2781,7 @@
             "description": "Updated",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -2671,7 +2799,7 @@
             "description": "Updated with Prefer: return=minimal.",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -2756,7 +2884,7 @@
             "description": "Deleted (the removed row)",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -2774,7 +2902,7 @@
             "description": "Deleted with Prefer: return=minimal.",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -2919,20 +3047,40 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "OK",
             "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Link": {
                 "description": "<url>; rel=\"next\", <url>; rel=\"prev\" — the request URL with after=/before= (or offset=) replaced.",
                 "schema": {
                   "type": "string"
                 }
               },
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (count=<mode used>, handling=).",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "X-Total-Count": {
-                "description": "Total rows after filters; present with count=true.",
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
                 "schema": {
                   "type": "integer"
                 }
@@ -3061,20 +3209,40 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "OK (same headers as GET, no body)",
             "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Link": {
                 "description": "<url>; rel=\"next\", <url>; rel=\"prev\" — the request URL with after=/before= (or offset=) replaced.",
                 "schema": {
                   "type": "string"
                 }
               },
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (count=<mode used>, handling=).",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "X-Total-Count": {
-                "description": "Total rows after filters; present with count=true.",
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
                 "schema": {
                   "type": "integer"
                 }
@@ -3269,14 +3437,34 @@
             "x-pdbr-filter-ops": [
               "is"
             ]
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "OK",
             "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Link": {
                 "description": "<url>; rel=\"next\", <url>; rel=\"prev\" — the request URL with after=/before= (or offset=) replaced.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (count=<mode used>, handling=).",
                 "schema": {
                   "type": "string"
                 }
@@ -3294,7 +3482,7 @@
                 }
               },
               "X-Total-Count": {
-                "description": "Total rows after filters; present with count=true.",
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
                 "schema": {
                   "type": "integer"
                 }
@@ -3497,14 +3685,34 @@
             "x-pdbr-filter-ops": [
               "is"
             ]
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "OK (same headers as GET, no body)",
             "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Link": {
                 "description": "<url>; rel=\"next\", <url>; rel=\"prev\" — the request URL with after=/before= (or offset=) replaced.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (count=<mode used>, handling=).",
                 "schema": {
                   "type": "string"
                 }
@@ -3522,7 +3730,7 @@
                 }
               },
               "X-Total-Count": {
-                "description": "Total rows after filters; present with count=true.",
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
                 "schema": {
                   "type": "integer"
                 }
@@ -3609,7 +3817,7 @@
                 }
               },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -3727,7 +3935,7 @@
             "description": "Updated (single object that hit an existing row, or any array).",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -3761,7 +3969,7 @@
                 }
               },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -3779,7 +3987,7 @@
             "description": "Updated with Prefer: return=minimal.",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -3840,7 +4048,7 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing. count=exact|planned|estimated puts the number of written rows into the Content-Range total.",
             "schema": {
               "type": "string"
             }
@@ -3951,8 +4159,14 @@
           "200": {
             "description": "Updated (the changed rows; an empty array when nothing matched).",
             "headers": {
+              "Content-Range": {
+                "description": "0-<n-1>/<n> of the written rows (* range under return=minimal or when nothing matched); the total is * unless Prefer: count= is given.",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -3972,8 +4186,14 @@
           "204": {
             "description": "Updated with Prefer: return=minimal.",
             "headers": {
+              "Content-Range": {
+                "description": "0-<n-1>/<n> of the written rows (* range under return=minimal or when nothing matched); the total is * unless Prefer: count= is given.",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -4034,7 +4254,7 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing. count=exact|planned|estimated puts the number of written rows into the Content-Range total.",
             "schema": {
               "type": "string"
             }
@@ -4134,8 +4354,14 @@
           "200": {
             "description": "Deleted (the removed rows; an empty array when nothing matched).",
             "headers": {
+              "Content-Range": {
+                "description": "0-<n-1>/<n> of the written rows (* range under return=minimal or when nothing matched); the total is * unless Prefer: count= is given.",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -4155,8 +4381,14 @@
           "204": {
             "description": "Deleted with Prefer: return=minimal.",
             "headers": {
+              "Content-Range": {
+                "description": "0-<n-1>/<n> of the written rows (* range under return=minimal or when nothing matched); the total is * unless Prefer: count= is given.",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -4379,7 +4611,7 @@
             "description": "Updated",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -4397,7 +4629,7 @@
             "description": "Updated with Prefer: return=minimal.",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -4482,7 +4714,7 @@
             "description": "Deleted (the removed row)",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -4500,7 +4732,7 @@
             "description": "Deleted with Prefer: return=minimal.",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -4719,14 +4951,34 @@
               "sw",
               "ew"
             ]
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "OK",
             "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Link": {
                 "description": "<url>; rel=\"next\", <url>; rel=\"prev\" — the request URL with after=/before= (or offset=) replaced.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (count=<mode used>, handling=).",
                 "schema": {
                   "type": "string"
                 }
@@ -4744,7 +4996,7 @@
                 }
               },
               "X-Total-Count": {
-                "description": "Total rows after filters; present with count=true.",
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
                 "schema": {
                   "type": "integer"
                 }
@@ -4947,14 +5199,34 @@
               "sw",
               "ew"
             ]
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "OK (same headers as GET, no body)",
             "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Link": {
                 "description": "<url>; rel=\"next\", <url>; rel=\"prev\" — the request URL with after=/before= (or offset=) replaced.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (count=<mode used>, handling=).",
                 "schema": {
                   "type": "string"
                 }
@@ -4972,7 +5244,7 @@
                 }
               },
               "X-Total-Count": {
-                "description": "Total rows after filters; present with count=true.",
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
                 "schema": {
                   "type": "integer"
                 }
@@ -5059,7 +5331,7 @@
                 }
               },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -5177,7 +5449,7 @@
             "description": "Updated (single object that hit an existing row, or any array).",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -5211,7 +5483,7 @@
                 }
               },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -5229,7 +5501,7 @@
             "description": "Updated with Prefer: return=minimal.",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -5290,7 +5562,7 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing. count=exact|planned|estimated puts the number of written rows into the Content-Range total.",
             "schema": {
               "type": "string"
             }
@@ -5401,8 +5673,14 @@
           "200": {
             "description": "Updated (the changed rows; an empty array when nothing matched).",
             "headers": {
+              "Content-Range": {
+                "description": "0-<n-1>/<n> of the written rows (* range under return=minimal or when nothing matched); the total is * unless Prefer: count= is given.",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -5422,8 +5700,14 @@
           "204": {
             "description": "Updated with Prefer: return=minimal.",
             "headers": {
+              "Content-Range": {
+                "description": "0-<n-1>/<n> of the written rows (* range under return=minimal or when nothing matched); the total is * unless Prefer: count= is given.",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -5484,7 +5768,7 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing. count=exact|planned|estimated puts the number of written rows into the Content-Range total.",
             "schema": {
               "type": "string"
             }
@@ -5584,8 +5868,14 @@
           "200": {
             "description": "Deleted (the removed rows; an empty array when nothing matched).",
             "headers": {
+              "Content-Range": {
+                "description": "0-<n-1>/<n> of the written rows (* range under return=minimal or when nothing matched); the total is * unless Prefer: count= is given.",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -5605,8 +5895,14 @@
           "204": {
             "description": "Deleted with Prefer: return=minimal.",
             "headers": {
+              "Content-Range": {
+                "description": "0-<n-1>/<n> of the written rows (* range under return=minimal or when nothing matched); the total is * unless Prefer: count= is given.",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -5829,7 +6125,7 @@
             "description": "Updated",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -5847,7 +6143,7 @@
             "description": "Updated with Prefer: return=minimal.",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -5932,7 +6228,7 @@
             "description": "Deleted (the removed row)",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -5950,7 +6246,7 @@
             "description": "Deleted with Prefer: return=minimal.",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -7198,12 +7494,26 @@
               "sw",
               "ew"
             ]
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "OK",
             "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Link": {
                 "description": "offset= links: <url>; rel=\"next\", <url>; rel=\"prev\".",
                 "schema": {
@@ -7211,7 +7521,7 @@
                 }
               },
               "X-Total-Count": {
-                "description": "Total rows after filters; present with count=true.",
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
                 "schema": {
                   "type": "integer"
                 }
@@ -7399,12 +7709,26 @@
               "sw",
               "ew"
             ]
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "OK (same headers as GET, no body)",
             "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Link": {
                 "description": "offset= links: <url>; rel=\"next\", <url>; rel=\"prev\".",
                 "schema": {
@@ -7412,7 +7736,7 @@
                 }
               },
               "X-Total-Count": {
-                "description": "Total rows after filters; present with count=true.",
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
                 "schema": {
                   "type": "integer"
                 }
@@ -7610,6 +7934,12 @@
           "200": {
             "description": "OK",
             "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Link": {
                 "description": "offset= links: <url>; rel=\"next\", <url>; rel=\"prev\".",
                 "schema": {
@@ -7617,7 +7947,7 @@
                 }
               },
               "X-Total-Count": {
-                "description": "Total rows after filters; present with count=true.",
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
                 "schema": {
                   "type": "integer"
                 }
@@ -8047,14 +8377,34 @@
               "cd",
               "ov"
             ]
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "OK",
             "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Link": {
                 "description": "<url>; rel=\"next\", <url>; rel=\"prev\" — the request URL with after=/before= (or offset=) replaced.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (count=<mode used>, handling=).",
                 "schema": {
                   "type": "string"
                 }
@@ -8072,7 +8422,7 @@
                 }
               },
               "X-Total-Count": {
-                "description": "Total rows after filters; present with count=true.",
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
                 "schema": {
                   "type": "integer"
                 }
@@ -8337,14 +8687,34 @@
               "cd",
               "ov"
             ]
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "OK (same headers as GET, no body)",
             "headers": {
+              "Content-Range": {
+                "description": "<first>-<last>/<total> of the returned rows by position (offset-based; omitted on after=/before= pages); * for an empty page or an unknown total (no count requested).",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Link": {
                 "description": "<url>; rel=\"next\", <url>; rel=\"prev\" — the request URL with after=/before= (or offset=) replaced.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured (count=<mode used>, handling=).",
                 "schema": {
                   "type": "string"
                 }
@@ -8362,7 +8732,7 @@
                 }
               },
               "X-Total-Count": {
-                "description": "Total rows after filters; present with count=true.",
+                "description": "Total rows after filters; present with count=true or Prefer: count=.",
                 "schema": {
                   "type": "integer"
                 }
@@ -8449,7 +8819,7 @@
                 }
               },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -8567,7 +8937,7 @@
             "description": "Updated (single object that hit an existing row, or any array).",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -8601,7 +8971,7 @@
                 }
               },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -8619,7 +8989,7 @@
             "description": "Updated with Prefer: return=minimal.",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -8680,7 +9050,7 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing. count=exact|planned|estimated puts the number of written rows into the Content-Range total.",
             "schema": {
               "type": "string"
             }
@@ -8853,8 +9223,14 @@
           "200": {
             "description": "Updated (the changed rows; an empty array when nothing matched).",
             "headers": {
+              "Content-Range": {
+                "description": "0-<n-1>/<n> of the written rows (* range under return=minimal or when nothing matched); the total is * unless Prefer: count= is given.",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -8874,8 +9250,14 @@
           "204": {
             "description": "Updated with Prefer: return=minimal.",
             "headers": {
+              "Content-Range": {
+                "description": "0-<n-1>/<n> of the written rows (* range under return=minimal or when nothing matched); the total is * unless Prefer: count= is given.",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -8936,7 +9318,7 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing. count=exact|planned|estimated puts the number of written rows into the Content-Range total.",
             "schema": {
               "type": "string"
             }
@@ -9098,8 +9480,14 @@
           "200": {
             "description": "Deleted (the removed rows; an empty array when nothing matched).",
             "headers": {
+              "Content-Range": {
+                "description": "0-<n-1>/<n> of the written rows (* range under return=minimal or when nothing matched); the total is * unless Prefer: count= is given.",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -9119,8 +9507,14 @@
           "204": {
             "description": "Deleted with Prefer: return=minimal.",
             "headers": {
+              "Content-Range": {
+                "description": "0-<n-1>/<n> of the written rows (* range under return=minimal or when nothing matched); the total is * unless Prefer: count= is given.",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -9343,7 +9737,7 @@
             "description": "Updated",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -9361,7 +9755,7 @@
             "description": "Updated with Prefer: return=minimal.",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -9446,7 +9840,7 @@
             "description": "Deleted (the removed row)",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -9464,7 +9858,7 @@
             "description": "Deleted with Prefer: return=minimal.",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -9704,7 +10098,7 @@
             "description": "Updated",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -9722,7 +10116,7 @@
             "description": "Updated with Prefer: return=minimal.",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -9807,7 +10201,7 @@
             "description": "Deleted (the removed row)",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
@@ -9825,7 +10219,7 @@
             "description": "Deleted with Prefer: return=minimal.",
             "headers": {
               "Preference-Applied": {
-                "description": "The Prefer tokens that were honoured (return=, handling=, max-affected=), comma-separated.",
+                "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
                 }
