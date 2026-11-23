@@ -1,0 +1,1 @@
+GET /api/posts?select=id,title&order=title.desc,author_id.asc&limit=2&before=WyJwdWJsaWMucG9zdHMiLDJd

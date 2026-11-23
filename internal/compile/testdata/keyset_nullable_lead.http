@@ -1,0 +1,1 @@
+GET /api/users?select=id,email&order=mood.asc,email.desc&limit=2&after=WyJwdWJsaWMudXNlcnMiLDJd

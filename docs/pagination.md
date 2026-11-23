@@ -47,9 +47,16 @@ else is `400 invalid_cursor`.
   unless a `@primaryKey` smart comment gives the view one.
 - Cursors are index-friendly: they compile to lexicographic predicates on
   the `ORDER BY` columns plus the PK tiebreaker (`(title, id) > ($1, $2)` for a
-  uniform direction, expanded comparisons for mixed directions), never to
-  `OFFSET`. The anchor's non-PK order values are read by a correlated subquery
-  on the PK inside the same statement.
+  uniform direction, expanded comparisons for mixed directions or nullable
+  terms), never to `OFFSET`. The expanded form is a top-level `OR` that no
+  index can bound, so when the first order term is a `NOT NULL` column it is
+  preceded by the redundant bound `title >= $1` (`<=` for a descending scan,
+  the extension's qualified operator for citext/ltree/hstore): the index on
+  that column then starts the scan at the anchor. A nullable first term gets
+  no bound, since one that also admits NULLs is again an `OR`; such orders
+  still scan from the start of the index up to the anchor. The anchor's
+  non-PK order values are read by a correlated subquery on the PK inside the
+  same statement.
 - A cursor stays decodable if `order=` changes; the page is then relative to
   the anchor row under the *new* order.
 - If the anchor row has been deleted: an ordering entirely on primary-key

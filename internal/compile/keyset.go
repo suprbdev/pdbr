@@ -103,8 +103,10 @@ func (s *stmt) anchorVals(t *introspect.Table, terms []orderTerm, keys []any) ([
 // flip selects the "strictly before" form. A uniform direction over
 // non-nullable terms compiles to a row comparison the planner turns into an
 // index range scan; mixed directions or nullable terms nest as
-// s1 OR (e1 AND (s2 OR (e2 AND ...))). NULL ordering matches renderOrder:
-// NULLs sort last in both directions unless nullsfirst was given.
+// s1 OR (e1 AND (s2 OR (e2 AND ...))), preceded by the redundant bound
+// from leadingBound so the leading column's index still bounds the scan.
+// NULL ordering matches renderOrder: NULLs sort last in both directions
+// unless nullsfirst was given.
 func (s *stmt) keysetPredicate(alias string, vals []string, terms []orderTerm, flip bool) string {
 	uniform := len(terms) > 0
 	for _, term := range terms {
@@ -162,5 +164,29 @@ func (s *stmt) keysetPredicate(alias string, vals []string, terms []orderTerm, f
 		}
 		pred = fmt.Sprintf("(%s OR (%s AND %s))", strict, eq, pred)
 	}
+	if bound := s.leadingBound(alias, vals, terms, flip); bound != "" {
+		return bound + " AND " + pred
+	}
 	return pred
+}
+
+// leadingBound renders `c1 >= k1` (`<=` when the scan runs descending) for
+// the first of several order terms: implied by the nested predicate, but
+// unlike its top-level OR usable as an index condition. It is empty when
+// the first term is not a plain column or is nullable, because a bound that
+// also admits NULLs (`c1 >= k1 OR c1 IS NULL`) is again an OR the planner
+// cannot turn into an index condition.
+func (s *stmt) leadingBound(alias string, vals []string, terms []orderTerm, flip bool) string {
+	if len(terms) < 2 {
+		return ""
+	}
+	term := terms[0]
+	if !term.plain() || term.nullable {
+		return ""
+	}
+	op := term.cmp(">=")
+	if term.desc != flip {
+		op = term.cmp("<=")
+	}
+	return fmt.Sprintf("%s %s %s", s.orderExprSQL(term, alias), op, vals[0])
 }

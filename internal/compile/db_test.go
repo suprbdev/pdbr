@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -243,4 +245,92 @@ func TestAgainstDatabase(t *testing.T) {
 	})
 	rp2 := &plan.Request{Method: plan.GET, Resource: places, Key: &plan.Key{Constraint: places.Table.PrimaryKey, Values: []any{int64(1)}}}
 	run("row_pk_spatial_star", rp2, nil)
+}
+
+// TestKeysetIndexBoundAgainstDatabase EXPLAINs a deep keyset page under a
+// mixed-direction order on a few thousand posts (inserted and analysed in a
+// rolled-back transaction) and requires the leading order column to be an
+// index condition rather than a filter over every row before the cursor.
+func TestKeysetIndexBoundAgainstDatabase(t *testing.T) {
+	url := os.Getenv("PDBR_TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("PDBR_TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer conn.Close(ctx)
+	cat, err := introspect.Introspect(ctx, conn, []string{"public"})
+	if err != nil {
+		t.Fatalf("introspect: %v", err)
+	}
+	built := buildCatalog(t, cat, false)
+	c := compile.New(built)
+	f := &fixture{t: t, built: built, c: c}
+	posts := f.res("posts")
+
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var anchor int64
+	err = tx.QueryRow(ctx, `WITH ins AS (
+		INSERT INTO posts (author_id, title, published)
+		SELECT 1 + g % 3, 'KB ' || lpad(g::text, 5, '0'), g % 2 = 0 FROM generate_series(1, 5000) g
+		RETURNING id, title)
+		SELECT id FROM ins WHERE title = 'KB 04900'`).Scan(&anchor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `ANALYZE posts`); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name  string
+		order []plan.OrderTerm
+		page  plan.Page
+		cond  string
+	}{
+		{"after asc,desc", []plan.OrderTerm{{Column: f.col("posts", "title")}, {Column: f.col("posts", "author_id"), Desc: true}}, plan.Page{Limit: 20, After: []any{anchor}}, `title >= `},
+		{"before desc,asc", []plan.OrderTerm{{Column: f.col("posts", "title"), Desc: true}, {Column: f.col("posts", "author_id")}}, plan.Page{Limit: 20, Before: []any{anchor}}, `title >= `},
+		{"after desc,asc", []plan.OrderTerm{{Column: f.col("posts", "title"), Desc: true}, {Column: f.col("posts", "author_id")}}, plan.Page{Limit: 20, After: []any{anchor}}, `title <= `},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := list(posts)
+			p.Select = fields(posts, "id", "title")
+			p.Order = tc.order
+			p.Page = tc.page
+			stmt, err := c.Compile(ctx, &compile.Request{Plan: p, Built: built})
+			if err != nil {
+				t.Fatalf("compile: %v", err)
+			}
+			rows, err := tx.Query(ctx, "EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF) "+stmt.SQL, stmt.Args...)
+			if err != nil {
+				t.Fatalf("explain: %v\n%s", err, stmt.SQL)
+			}
+			var lines []string
+			for rows.Next() {
+				var l string
+				if err := rows.Scan(&l); err != nil {
+					t.Fatal(err)
+				}
+				lines = append(lines, l)
+			}
+			if err := rows.Err(); err != nil {
+				t.Fatal(err)
+			}
+			out := strings.Join(lines, "\n")
+			if !strings.Contains(out, "Index Cond: ("+tc.cond) {
+				t.Errorf("leading order column is not an index condition:\n%s", out)
+			}
+			for _, m := range regexp.MustCompile(`Rows Removed by Filter: (\d+)`).FindAllStringSubmatch(out, -1) {
+				if len(m[1]) > 2 {
+					t.Errorf("deep page filtered %s rows:\n%s", m[1], out)
+				}
+			}
+		})
+	}
 }
