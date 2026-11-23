@@ -67,7 +67,7 @@ has a `code`, see the note below the table):
 | (`max_affected_exceeded`) | 400 | `Prefer: handling=strict, max-affected=N` and the write touched more than `N` rows; rolled back (PostgREST `PGRST124`) |
 | `not_acceptable` | 406 | `Accept` unsatisfiable (incl. `text/csv` with embeds or on non-list responses) |
 | `unsupported_media_type` | 415 | request body `Content-Type` is not `application/json` |
-| `role_not_allowed` | 403 | credential valid, but the resolved role is not in `rls.allowed_roles` |
+| `role_not_allowed` | 403 | credential valid, but the resolved role is not in `rls.allowed_roles`, or is `none`, `public`, a `pg_*` role or not `[A-Za-z0-9_]+` |
 | `invalid_token` | 401 | JWT/headers present but invalid (signature, exp, iss/aud, JWKS miss, malformed) |
 | (`unknown_relation`) | 400 | relation key in `select=`, a filter/order path, a per-embed param, or a nested-mutation body that matches no FK of the resource |
 | (`invalid_cursor`) | 400 | `after`/`before` cursor undecodable or minted for a different resource |
@@ -110,7 +110,7 @@ returns `{Class, SQLState, Message(detail)}`):
 | PostGIS input error (`XX000` with `Operation on mixed SRID geometries`, `parse error - invalid geometry` or an `lwgeom_*` message): an operand or body value PostGIS rejects | 400 | `pg:XX000` |
 | missing or invalid credentials when the request cannot be served anonymously; invalid token | 401 | `invalid_token` |
 | `42501` insufficient privilege (incl. RLS `RETURNING` filtering) | 403 | `pg:42501` |
-| resolved role not in `rls.allowed_roles` | 403 | `role_not_allowed` |
+| resolved role not in `rls.allowed_roles`, or not assumable (`none`, `public`, `pg_*`) | 403 | `role_not_allowed` |
 | no route; single-row path or keyed mutation matched nothing | 404 | `not_found` |
 | method not on resource / read-only / volatile via GET | 405 + `Allow` | `method_not_allowed` / `read_only` |
 | `Accept` unsatisfiable | 406 | `not_acceptable` |

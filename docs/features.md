@@ -107,6 +107,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **As built (v0.1.0): ev
 - [x] `distinct=col1,col2` → `SELECT DISTINCT ON`; distinct-aware `X-Total-Count`; limit/offset only (v1) (parity)
 - [x] Reserved param names (`select`, `order`, …) filterable only inside `and=(...)` — documented limitation (v1) (new)
 - [x] Range operators `ov cs cd sl sr nxr nxl adj` (range literal or JSON object operand; `cs.<element>`) on ranges and multiranges (v1.x) (parity)
+- [x] Custom range types (`CREATE TYPE … AS RANGE`) and their multiranges: range operators, structured input and `oneOf` input schema, schema-qualified constructors (v1.x)
 - [x] `isdistinct` (`IS DISTINCT FROM`) on every comparable column (v1.x) (parity)
 - [x] Trigram similarity `trgm_sim trgm_wsim trgm_swsim` (pg_trgm) (v1.x) (new)
 - [x] inet/cidr containment `cs cd cs_strict cd_strict ov` (v1.x) (new)

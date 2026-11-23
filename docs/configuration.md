@@ -124,6 +124,13 @@ together.
 14. `log.level` is one of `debug`, `info`, `warn`, `error`.
 15. `server.base_path` is empty or starts with `/` and does not end with `/`.
 16. `server.max_embed_depth >= 1`.
+17. `rls.anonymous_role`, `rls.default_role` and every `rls.allowed_roles`
+    entry, when set, match `[A-Za-z0-9_]+` and are not `none`, `public` or a
+    `pg_*` role, in any letter case (`set_config('role', 'none', true)` is
+    `RESET ROLE`, which would run the request as the connection role).
+18. `rls.claims_prefix` is dot-separated identifiers whose first component
+    is not a server or extension settings namespace (`pg_*`, `plpgsql`,
+    `auto_explain`, `postgis`, …).
 
 ## Removed vs pdbq
 

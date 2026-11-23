@@ -1,7 +1,7 @@
 -- request: POST /api/places?select=id,name,location,area,location_srid
 WITH __mut AS (
   INSERT INTO "public"."places" ("owner_id", "name", "location", "area")
-  VALUES ($1, $2, ST_SetSRID(ST_GeomFromGeoJSON($3), 4326), (ST_GeomFromEWKT($4))::geography)
+  VALUES ($1, $2, CASE WHEN left($3, 1) = '{' THEN ST_Transform(ST_GeomFromGeoJSON($3), 4326) ELSE ST_GeomFromEWKT($3) END, (CASE WHEN left($4, 1) = '{' THEN ST_GeomFromGeoJSON($4) ELSE ST_GeomFromEWKT($4) END)::geography)
   RETURNING "id", "name", "location", "area"
 )
 SELECT jsonb_build_object('row', jsonb_build_object('id', t0."id", 'name', t0."name", 'location', ST_AsGeoJSON(t0."location")::jsonb, 'area', ST_AsGeoJSON(t0."area")::jsonb, 'location_srid', ST_SRID(t0."location")), 'key', jsonb_build_array(t0."id")) AS data

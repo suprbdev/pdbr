@@ -128,3 +128,49 @@ func TestContribFilterOps(t *testing.T) {
 		t.Errorf("slots input schema = %+v", s)
 	}
 }
+
+// TestContribCustomRanges: a range type recorded in Catalog.Ranges (CREATE
+// TYPE ... AS RANGE) and its multirange get the range operators and the
+// structured input schema, like the built-in ranges; a same-named type the
+// catalog does not record as a range gets neither.
+func TestContribCustomRanges(t *testing.T) {
+	cat := testcatalog.Contrib(testutil.FixtureCatalog())
+	cat.Ranges = append(cat.Ranges, &introspect.RangeType{
+		Schema: testcatalog.ContribSchema, Name: "floatrange", Subtype: "float8", SubtypeSchema: "pg_catalog",
+		Multirange: "floatmultirange", MultirangeSchema: testcatalog.ContribSchema,
+	})
+	docs := cat.Table(testcatalog.ContribSchema, "docs")
+	custom := func(name string, pos int, typ, schema string) *introspect.Column {
+		return &introspect.Column{Name: name, Position: pos, PGType: typ, TypeSchema: schema, BaseTypeSchema: schema}
+	}
+	docs.Columns = append(docs.Columns,
+		custom("score", 13, "floatrange", testcatalog.ContribSchema),
+		custom("scores", 14, "floatmultirange", testcatalog.ContribSchema),
+		custom("fake", 15, "floatrange", "public"),
+	)
+	opts := contribOptions(false)
+	b := build(t, cat, opts)
+	res := b.ByPath["kb.docs"]
+	rangeOps := []string{"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "ov", "cs", "cd", "sl", "sr", "nxr", "nxl", "adj"}
+	for _, col := range []string{"score", "scores"} {
+		if got := b.FilterOps(res, res.Table.Column(col)); !reflect.DeepEqual(got, rangeOps) {
+			t.Errorf("%s ops = %v\nwant %v", col, got, rangeOps)
+		}
+		if p := paramByName(b.OpenAPI.Paths["/kb/docs"].Get.Parameters, col); p == nil || !reflect.DeepEqual(p.XFilterOps, rangeOps) {
+			t.Errorf("%s param = %+v", col, p)
+		}
+	}
+	if got := b.FilterOps(res, res.Table.Column("fake")); slices.Contains(got, "ov") {
+		t.Errorf("public.floatrange is not a recorded range but got %v", got)
+	}
+	schemas := b.OpenAPI.Components.Schemas
+	if s := schemas["kb.docs.insert"].Properties["score"]; len(s.AnyOf) != 2 || len(s.AnyOf[0].OneOf) != 2 || s.AnyOf[0].OneOf[1].Properties["startInclusive"] == nil {
+		t.Errorf("score input schema = %+v", s)
+	}
+	if s := schemas["kb.docs.insert"].Properties["scores"]; len(s.AnyOf) != 2 || s.AnyOf[0].OneOf[1].Type != "array" {
+		t.Errorf("scores input schema = %+v", s)
+	}
+	if s := schemas["kb.docs.insert"].Properties["fake"]; len(s.AnyOf) == 2 && len(s.AnyOf[0].OneOf) == 2 {
+		t.Errorf("fake input schema = %+v, want the plain literal", s)
+	}
+}

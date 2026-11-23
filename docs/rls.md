@@ -13,8 +13,11 @@ transaction that:
 1. `SET LOCAL ROLE "<role>"` — the role from the request's claims
    (`rls.role_claim`, default claim `role`), falling back to
    `rls.default_role`, then `rls.anonymous_role` for unauthenticated
-   requests. Role names are validated against `[A-Za-z0-9_]+` before being
-   quoted.
+   requests. A role must match `[A-Za-z0-9_]+` and must not be `none`,
+   `public` or a `pg_*` role, in any letter case: the configured roles are
+   checked at startup, and a credential naming such a role is rejected with
+   `403 role_not_allowed` before any SQL runs (`none` would otherwise reset
+   the role to the connection role and bypass RLS).
 2. `SELECT set_config('<rls.claims_prefix>.<key>', $n, true)` for every
    claim whose key matches `[A-Za-z0-9_]+` (others are skipped). String
    claims are set verbatim; any other JSON value is set as its JSON text.

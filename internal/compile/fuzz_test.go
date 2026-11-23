@@ -216,9 +216,10 @@ func FuzzSpatial(f *testing.F) {
 	if !ok {
 		f.Fatal("baseline spatial query failed to compile")
 	}
-	ewktBaseline, ok := compileWith(f, "SRID=4326;POINT(1 2)", 1.5, 100)
-	if !ok {
-		f.Fatal("EWKT baseline spatial query failed to compile")
+	for _, form := range []string{"SRID=4326;POINT(1 2)", "SRID=3857;POINT(1 2)"} {
+		if stmt, ok := compileWith(f, form, 1.5, 100); !ok || stmt.SQL != baseline.SQL {
+			f.Fatalf("%s compiled to different SQL than bare WKT", form)
+		}
 	}
 	f.Add("POINT(1 2)", 1.5, 100.0)
 	f.Add("SRID=4326;POLYGON((0 0,1 0,1 1,0 0))", -0.5, 0.0)
@@ -231,7 +232,7 @@ func FuzzSpatial(f *testing.F) {
 		if !ok {
 			return
 		}
-		if stmt.SQL != baseline.SQL && stmt.SQL != ewktBaseline.SQL {
+		if stmt.SQL != baseline.SQL {
 			t.Fatalf("spatial SQL text varied with input values:\n--- baseline ---\n%s\n--- got ---\n%s", baseline.SQL, stmt.SQL)
 		}
 		if len(stmt.Args) != len(baseline.Args) {

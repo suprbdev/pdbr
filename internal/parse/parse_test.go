@@ -502,7 +502,7 @@ func TestSpatialFilters(t *testing.T) {
 	}
 	p = mustParse(t, b, `/api/places?location=st_dwithin.("POINT(1 2)",100,true)`)
 	d := p.Filter.(plan.Cond).Value.(plan.DWithin)
-	if d.Distance != 100 || d.Spheroid == nil || !*d.Spheroid || d.Geom.(postgis.Value).Param != "POINT(1 2)" {
+	if d.Distance != 100 || d.Spheroid == nil || !*d.Spheroid || d.Geom.(postgis.Value).Param != "SRID=4326;POINT(1 2)" {
 		t.Fatalf("dwithin = %+v", d)
 	}
 	p = mustParse(t, b, `/api/places?location=not.bbox_intersects.(-1,-2,3,4,4326)`)

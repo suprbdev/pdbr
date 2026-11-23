@@ -7,7 +7,8 @@ vocabulary needs is read from the catalog:
 
 - **Core types** (`tsvector`, text columns for full-text search, the six
   built-in range types and their multiranges, `inet`/`cidr`) always get their
-  operators.
+  operators, and so do range types created with `CREATE TYPE … AS RANGE`
+  (and their multiranges), which the catalog records with their subtype.
 - **Extension types and operators** (`pg_trgm`, `hstore`, `ltree`, `citext`)
   only appear when the extension is installed (`pg_extension`). The extension
   version matters too: `pg_trgm` older than 1.2 has no word-similarity
@@ -76,8 +77,13 @@ a 500.
 | `adj` | `-\|-` | adjacent to |
 
 Columns of type `int4range`, `int8range`, `numrange`, `tsrange`,
-`tstzrange`, `daterange` and the matching multiranges (PostgreSQL 14+) take
-these. The operand is a range literal (`[1,5)`, `(,10]`, `empty`) or, as a
+`tstzrange`, `daterange`, the matching multiranges (PostgreSQL 14+) and any
+custom range type (`CREATE TYPE s.floatrange AS RANGE (subtype = float8)`)
+or its multirange take these. A custom type's constructor and element casts
+are schema-qualified (`"s"."floatrange"($1::float8, $2::float8, $3::text)`),
+so the type works off the `search_path`; a domain over a range resolves to
+the range. A type that merely shares a range's name in another schema gets
+no range operators. The operand is a range literal (`[1,5)`, `(,10]`, `empty`) or, as a
 pdbr extension, a JSON object
 `{"start":…,"end":…,"startInclusive":…,"endInclusive":…,"isEmpty":…}`
 (start/end null or absent means unbounded, inclusivity defaults to `[)`).

@@ -140,7 +140,7 @@ FROM (SELECT "public"."home"("a" => jsonb_populate_record(NULL::"public"."addres
 		t.Fatal(err)
 	}
 	st = f.compile(rpcReq(f, "near_me", map[string]any{"p": pt, "opts": `{"k":1}`, "moods": []any{"sad", "ok"}}))
-	if !strings.Contains(st.SQL, `"public"."near_me"("p" => ST_GeomFromEWKT($1), "opts" => $2::"jsonb", "moods" => $3::text[]::"public"."mood"[])`) {
+	if !strings.Contains(st.SQL, `"public"."near_me"("p" => CASE WHEN left($1, 1) = '{' THEN ST_GeomFromGeoJSON($1) ELSE ST_GeomFromEWKT($1) END, "opts" => $2::"jsonb", "moods" => $3::text[]::"public"."mood"[])`) {
 		t.Errorf("typed args: %s", st.SQL)
 	}
 	if !strings.HasPrefix(st.SQL, "SELECT ST_AsGeoJSON(__fn.v)::jsonb AS data") {

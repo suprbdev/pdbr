@@ -101,6 +101,8 @@ pdbr installs an event trigger named `pdbr_watch` (function
 from pdbq's `pdbq_watch`/`pdbq_ddl`, so both servers can watch one database.
 When the connection role may not create event triggers (not a superuser),
 the watcher logs a warning and falls back to polling the catalog hash every
-`watch.poll_interval` (5s). The poller seeds its baseline on its first tick,
-so DDL that happens between boot and that first tick is only noticed together
-with the next change. Both paths are exercised by `test/e2e_watch_test.go`.
+`watch.poll_interval` (5s). The watcher starts from the hash of the catalog
+the boot API was built from and re-introspects once as soon as it is
+listening, so DDL that lands between boot introspection and the watcher
+starting is picked up too. Both paths are exercised by
+`test/e2e_watch_test.go`.
