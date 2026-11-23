@@ -119,7 +119,7 @@ func (h *Handler) ServeRoute(w http.ResponseWriter, r *http.Request, m *api.Matc
 	}
 	if op.Plan != nil && op.Plan.Accept == plan.AcceptCSV {
 		// The parser only negotiates CSV for list shapes without embeds; the
-		// SQL is unchanged and the jsonb array is re-encoded on the way out.
+		// SQL is unchanged and the json array is re-encoded on the way out.
 		w.Header().Set("Content-Type", ContentTypeCSV)
 		w.WriteHeader(status)
 		if r.Method == http.MethodHead {

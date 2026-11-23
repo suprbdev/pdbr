@@ -2,7 +2,7 @@
 
 pdbr introspects `pg_catalog` and serves a PostgREST-style REST API. Every
 request — however many embeds, filters or nested writes it carries — compiles
-to **one** parameterized SQL statement whose single `jsonb` column is the
+to **one** parameterized SQL statement whose single `json` column is the
 response body; Go only maps status codes and headers.
 
 This document is the URL and header reference. Filters live in
@@ -296,6 +296,12 @@ POST /api/rpc/search_posts            {"q": "hello"}
   precision loss); on input a JSON number or string is accepted.
 - `bytea` is base64. Timestamps are ISO 8601. Composite-typed columns are
   nested objects (arrays of composites too). Enum labels verbatim.
+- Objects are built with `json_build_object` / `json_agg` (as PostgREST
+  does), so keys follow the `select=` order (embeds after the columns,
+  composite attributes in declaration order), a key selected twice appears
+  once with its last value, `json` columns come back as stored, `float8`
+  uses PostgreSQL's float output (`1e+20`), and the text has PostgreSQL's spacing
+  (`{"id" : 1}`): compare bodies as JSON, never byte for byte.
 - Body validation: unknown key → `400 invalid_body`; generated/identity
   columns → `400 column_readonly`; on create, `NOT NULL` columns without a
   default are required; on `PATCH` everything is optional.

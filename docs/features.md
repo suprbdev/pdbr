@@ -161,7 +161,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] `RETURNS TABLE` / `OUT`-parameter functions: objects keyed by the result columns; `SETOF record` paged like `SETOF <table>` with `select=`, filters, `order=`, `count`, CSV; OpenAPI `rpc.<fn>` schema (v1.x) (parity)
 - [x] `VARIADIC` arguments: repeated query params on GET, JSON array in the body, called with `VARIADIC` (v1.x) (parity)
 - [x] Computed columns whose extra arguments all have defaults (v1.x) (parity)
-- [x] Scalar returns → JSON value `200` (via `to_jsonb`) (v1) (parity)
+- [x] Scalar returns → JSON value `200` (via `to_json`) (v1) (parity)
 - [x] `void` → `204` (v1) (new)
 - [x] Single row (table/composite) → object `200` (`null` when the function returns NULL) (v1) (parity)
 - [x] `SETOF <table>` → array with full `select=` / filters / `order=` / `limit` / `offset` / `count=true` (offset paging only; `Accept: text/csv` supported) (v1) (parity — filters/order/count are a superset)

@@ -39,7 +39,7 @@ func (s *stmt) rpc() (*Statement, error) {
 	var st *Statement
 	switch rpc.Returns {
 	case api.ReturnVoid:
-		st = &Statement{SQL: fmt.Sprintf("SELECT 'null'::jsonb AS data FROM (SELECT %s) AS __v", call), Shape: ShapeVoid}
+		st = &Statement{SQL: fmt.Sprintf("SELECT 'null'::json AS data FROM (SELECT %s) AS __v", call), Shape: ShapeVoid}
 	case api.ReturnRow:
 		st, err = s.rpcRow(rpc, call)
 	case api.ReturnSetOfRows:
@@ -157,7 +157,7 @@ func jsonArrayText(v any) string {
 }
 
 // valueJSON renders an already-materialized function result (a stable
-// reference such as __fn.v) as jsonb with the column representation rules
+// reference such as __fn.v) as json with the column representation rules
 // (int8 as text, composites expanded, spatial as GeoJSON).
 func (s *stmt) valueJSON(ref string, fn *introspect.Function, depth int) (string, error) {
 	ret := fnReturnColumn(fn)
@@ -168,12 +168,12 @@ func (s *stmt) valueJSON(ref string, fn *introspect.Function, depth int) (string
 		if postgis.IsSpatial(ret.PGType) {
 			return s.spatialArrayJSON(ref), nil
 		}
-		return "to_jsonb(" + ref + ")", nil
+		return "to_json(" + ref + ")", nil
 	}
 	if postgis.IsSpatial(ret.PGType) {
 		return postgis.OutputSQL(ref), nil
 	}
-	return "to_jsonb(" + exprJSON(ref, ret) + ")", nil
+	return "to_json(" + exprJSON(ref, ret) + ")", nil
 }
 
 // rpcValue compiles scalar and composite returns.
@@ -225,7 +225,7 @@ func (s *stmt) rpcSetOfValues(rpc *api.RPC, call string) (*Statement, error) {
 			return nil, err
 		}
 	}
-	return &Statement{SQL: fmt.Sprintf("SELECT coalesce(jsonb_agg(%s), '[]'::jsonb) AS data\nFROM %s", expr, from), Shape: shape}, nil
+	return &Statement{SQL: fmt.Sprintf("SELECT coalesce(json_agg(%s), '[]'::json) AS data\nFROM %s", expr, from), Shape: shape}, nil
 }
 
 // rpcNode returns the projection node for a table-returning function.

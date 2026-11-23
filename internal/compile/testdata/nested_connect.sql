@@ -9,5 +9,5 @@ __mut AS (
   FROM __p_1
   RETURNING "id"
 )
-SELECT jsonb_build_object('n', (SELECT count(*) FROM __mut), 'key', (SELECT jsonb_build_array(t0."id") FROM __mut t0)) AS data
+SELECT json_build_object('n', (SELECT count(*) FROM __mut), 'key', (SELECT jsonb_build_array(t0."id") FROM __mut t0)) AS data
 -- args: [1,"Hello",false]

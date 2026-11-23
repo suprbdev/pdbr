@@ -4,6 +4,6 @@ WITH __mut AS (
   WHERE "public"."posts"."id" = $1
   RETURNING "id", "author_id", "title", "body", "published"
 )
-SELECT jsonb_build_object('id', t0."id", 'author_id', t0."author_id", 'title', t0."title", 'body', t0."body", 'published', t0."published") AS data
+SELECT json_build_object('id', t0."id", 'author_id', t0."author_id", 'title', t0."title", 'body', t0."body", 'published', t0."published") AS data
 FROM __mut t0
 -- args: [2]

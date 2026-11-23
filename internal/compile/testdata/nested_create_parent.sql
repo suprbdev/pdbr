@@ -13,10 +13,10 @@ __mut AS (
 __vis_2 AS (
   SELECT * FROM __p_1
 )
-SELECT jsonb_build_object('row', jsonb_build_object('id', t0."id", 'title', t0."title", 'users', l2.data), 'key', jsonb_build_array(t0."id")) AS data
+SELECT json_build_object('row', json_build_object('id', t0."id", 'title', t0."title", 'users', l2.data), 'key', jsonb_build_array(t0."id")) AS data
 FROM __mut t0
 LEFT JOIN LATERAL (
-  SELECT jsonb_build_object('id', t1."id", 'email', t1."email") AS data
+  SELECT json_build_object('id', t1."id", 'email', t1."email") AS data
   FROM __vis_2 t1
   WHERE t1."id" = t0."author_id"
   LIMIT 1

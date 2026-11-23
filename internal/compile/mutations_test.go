@@ -66,7 +66,7 @@ func TestMutationShapes(t *testing.T) {
 	if st.Shape != compile.ShapeMutWrap || !st.Mutation {
 		t.Errorf("shape %s mutation %v", st.Shape, st.Mutation)
 	}
-	has(t, st.SQL, `INSERT INTO "public"."users" ("email", "full_name")`, "VALUES ($1, $2)", `RETURNING "id", "email"`, "'key', jsonb_build_array(t0.\"id\")", "'row', jsonb_build_object(")
+	has(t, st.SQL, `INSERT INTO "public"."users" ("email", "full_name")`, "VALUES ($1, $2)", `RETURNING "id", "email"`, "'key', jsonb_build_array(t0.\"id\")", "'row', json_build_object(")
 	lacks(t, st.SQL, `"full_name", "mood"`)
 
 	// PATCH plain: verbatim row, key by table-qualified column
@@ -94,7 +94,7 @@ func TestMutationShapes(t *testing.T) {
 	if st.Shape != compile.ShapeMutList {
 		t.Errorf("shape %s", st.Shape)
 	}
-	has(t, st.SQL, "VALUES ($1, $2), ($3, DEFAULT)", "coalesce(jsonb_agg(", `RETURNING "id"`)
+	has(t, st.SQL, "VALUES ($1, $2), ($3, DEFAULT)", "coalesce(json_agg(", `RETURNING "id"`)
 
 	// {} -> DEFAULT VALUES
 	st = f.compile(&plan.Request{Method: plan.POST, Resource: users, Body: &plan.Body{Object: map[string]any{}}, Select: fields(users, "id")})
@@ -154,7 +154,7 @@ func TestMutationIfMatch(t *testing.T) {
 	has(t, st.SQL, "WITH cur AS (")
 	lacks(t, st.SQL, "(SELECT h FROM cur) =")
 	st = f.compile(req(`W/"abc"`, true))
-	has(t, st.SQL, "'row', (SELECT to_jsonb(true) FROM __mut t0)", "RETURNING 1")
+	has(t, st.SQL, "'row', (SELECT to_json(true) FROM __mut t0)", "RETURNING 1")
 	// GET-side ETag off -> If-Match ignored
 	off := buildCatalog(t, f.built.Catalog, false)
 	st2, err := compile.New(off).Compile(t.Context(), &compile.Request{Plan: &plan.Request{Method: plan.PATCH, Resource: off.ByPath["users"], Key: pkKey(off.ByPath["users"], int64(1)), Body: body(off.ByPath["users"], map[string]any{"full_name": "x"}), IfMatch: `W/"abc"`}, Built: off})

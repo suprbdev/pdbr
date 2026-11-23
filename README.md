@@ -24,7 +24,7 @@ $ curl 'localhost:8080/api/users?select=id,email,posts(title)&mood=eq.happy&limi
 ## Highlights
 
 - **Single-statement compilation** — embeds become `LEFT JOIN LATERAL`,
-  lists become `jsonb_agg`, rows become `jsonb_build_object`; PostgreSQL
+  lists become `json_agg`, rows become `json_build_object`; PostgreSQL
   returns the response JSON directly. Mutations are `WITH __mut AS (DML
   RETURNING …) SELECT …`, nested mutations one multi-CTE statement.
 - **PostgREST-style URL grammar** — `select=` with embeds and aliases,

@@ -13,6 +13,6 @@ __c_1 AS (
 __vis_2 AS (
   SELECT * FROM __c_1
 )
-SELECT jsonb_build_object('room_id', t0."room_id", 'valid_at', t0."valid_at", 'guest', t0."guest") AS data
+SELECT json_build_object('room_id', t0."room_id", 'valid_at', t0."valid_at", 'guest', t0."guest") AS data
 FROM __mut t0
 -- args: [1,"[2026-02-01,2026-02-05)","bo","[2026-02-01,2026-02-02)","allergies"]

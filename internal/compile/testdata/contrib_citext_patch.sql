@@ -11,8 +11,8 @@ __mut AS (
     AND (SELECT h FROM cur) = $3
   RETURNING "email"
 )
-SELECT jsonb_build_object('found', EXISTS (SELECT 1 FROM cur), 'row', (
-  SELECT jsonb_build_object('email', t0."email")
+SELECT json_build_object('found', EXISTS (SELECT 1 FROM cur), 'row', (
+  SELECT json_build_object('email', t0."email")
   FROM __mut t0
 )) AS data
 -- args: ["Ada","Ada@Example.com","abc"]

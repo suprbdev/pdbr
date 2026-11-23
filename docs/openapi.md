@@ -105,7 +105,7 @@ Per-property details:
 | anything else | `string` |
 
 **Why `int8`/`numeric`/`money` are strings.** PostgreSQL builds the response
-JSON (`to_jsonb`), and pdbr serializes 64-bit integers and arbitrary-precision
+JSON (`json_build_object`), and pdbr serializes 64-bit integers and arbitrary-precision
 numerics as JSON **strings** so no client loses precision (JavaScript numbers
 are IEEE-754 doubles; many generators map `number` to `double`). This mirrors
 pdbq's `BigInt`/`BigFloat` scalars. Request bodies and filter values accept

@@ -109,7 +109,7 @@ func TestRPCScalarAndEnums(t *testing.T) {
 	}
 	for path, want := range cases {
 		res, body, _ := rpcCall(t, "GET", srv.URL+path, "", nil)
-		if res.StatusCode != 200 || string(body) != want {
+		if res.StatusCode != 200 || !sameJSON(body, want) {
 			t.Errorf("GET %s = %d %s, want %s", path, res.StatusCode, body, want)
 		}
 		if res.Header.Get("Content-Type") != "application/json; charset=utf-8" {
@@ -636,7 +636,7 @@ func TestRPCRecordReturning(t *testing.T) {
 		"/api/rpc/user_stats?uid=1&select=posts":           `{"posts": "2"}`,
 	} {
 		res, body, _ := rpcCall(t, "GET", srv.URL+path, "", nil)
-		if res.StatusCode != 200 || string(body) != want {
+		if res.StatusCode != 200 || !sameJSON(body, want) {
 			t.Errorf("GET %s = %d %s, want %s", path, res.StatusCode, body, want)
 		}
 	}

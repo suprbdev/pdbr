@@ -11,12 +11,14 @@ import (
 	"github.com/suprbdev/pdbr/internal/plan"
 )
 
-// jsonbBuildObjectChunk keeps each jsonb_build_object call under PostgreSQL's
-// 100-argument limit; wider selections are concatenated with ||.
-const jsonbBuildObjectChunk = 40 // pairs (80 args)
+// jsonBuildObjectChunk keeps each json_build_object call under PostgreSQL's
+// 100-argument limit; wider selections splice the chunks' text together.
+const jsonBuildObjectChunk = 40 // pairs (80 args)
 
-// rowJSON compiles a projection node over its resource into a jsonb
+// rowJSON compiles a projection node over its resource into a json
 // expression plus the LEFT JOIN LATERAL clauses it needs against alias.
+// A key selected twice keeps its first position and its last value, as a
+// jsonb object would.
 func (s *stmt) rowJSON(node *plan.Node, alias string, depth int) (string, []string, error) {
 	if depth > s.maxDepth {
 		return "", nil, errUser(CodeEmbedDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)
@@ -28,8 +30,14 @@ func (s *stmt) rowJSON(node *plan.Node, alias string, depth int) (string, []stri
 	var pairs []string
 	var laterals []string
 	seen := map[string]bool{}
+	pos := map[string]int{}
 	add := func(key, expr string) {
 		seen[key] = true
+		if i, ok := pos[key]; ok {
+			pairs[i+1] = expr
+			return
+		}
+		pos[key] = len(pairs)
 		pairs = append(pairs, quoteLiteral(key), expr)
 	}
 	if node.Star {
@@ -111,17 +119,34 @@ func (s *stmt) fieldJSON(r *api.Resource, f *plan.FieldSel, alias string, depth 
 	return "", "", fmt.Errorf("compile: empty field selection")
 }
 
-// buildJSONObject renders pairs into chunked jsonb_build_object calls.
+// buildJSONObject renders pairs (key literal, value expression, …) as a
+// json object in pair order. json has no || operator, so an object wider
+// than one json_build_object call is spliced from its chunks' text: every
+// chunk but the first loses its opening brace, every chunk but the last its
+// closing one.
 func buildJSONObject(pairs []string) string {
 	if len(pairs) == 0 {
-		return "'{}'::jsonb"
+		return "'{}'::json"
 	}
 	var chunks []string
-	for i := 0; i < len(pairs); i += jsonbBuildObjectChunk * 2 {
-		end := min(i+jsonbBuildObjectChunk*2, len(pairs))
-		chunks = append(chunks, "jsonb_build_object("+strings.Join(pairs[i:end], ", ")+")")
+	for i := 0; i < len(pairs); i += jsonBuildObjectChunk * 2 {
+		end := min(i+jsonBuildObjectChunk*2, len(pairs))
+		chunks = append(chunks, "json_build_object("+strings.Join(pairs[i:end], ", ")+")")
 	}
-	return strings.Join(chunks, " || ")
+	if len(chunks) == 1 {
+		return chunks[0]
+	}
+	for i, c := range chunks {
+		switch i {
+		case 0:
+			chunks[i] = "left(" + c + "::text, -1)"
+		case len(chunks) - 1:
+			chunks[i] = "substr(" + c + "::text, 2)"
+		default:
+			chunks[i] = "substr(left(" + c + "::text, -1), 2)"
+		}
+	}
+	return "(" + strings.Join(chunks, " || ', ' || ") + ")::json"
 }
 
 // columnJSON renders a column value for inclusion in the JSON response.
@@ -135,11 +160,11 @@ func (s *stmt) columnJSON(alias string, c *introspect.Column, args map[string]an
 	}
 	if c.IsArray {
 		if postgis.IsSpatial(c.PGType) {
-			// to_jsonb on a geometry[] would emit WKB hex strings; map each
+			// to_json on a geometry[] would emit WKB hex strings; map each
 			// element through ST_AsGeoJSON instead.
 			return s.spatialArrayJSON(ref), nil
 		}
-		return "to_jsonb(" + ref + ")", nil
+		return "to_json(" + ref + ")", nil
 	}
 	return exprJSON(ref, c), nil
 }
@@ -164,7 +189,7 @@ func exprJSON(ref string, c *introspect.Column) string {
 // GeoJSON objects, preserving element order and NULL-ness of the array itself.
 func (s *stmt) spatialArrayJSON(ref string) string {
 	elem := s.alias("g")
-	return fmt.Sprintf("CASE WHEN %s IS NULL THEN NULL ELSE (SELECT coalesce(jsonb_agg(%s ORDER BY %s.o), '[]'::jsonb) FROM (SELECT generate_subscripts(%s, 1) AS o) %s) END",
+	return fmt.Sprintf("CASE WHEN %s IS NULL THEN NULL ELSE (SELECT coalesce(json_agg(%s ORDER BY %s.o), '[]'::json) FROM (SELECT generate_subscripts(%s, 1) AS o) %s) END",
 		ref, postgis.OutputSQL("("+ref+")["+elem+".o]"), elem, ref, elem)
 }
 
@@ -262,13 +287,13 @@ func (s *stmt) computedJSON(c *api.Computed, node *plan.Node, alias string, dept
 				return "", err
 			}
 			sub := s.alias("s")
-			return fmt.Sprintf("(SELECT coalesce(jsonb_agg(%s.data), '[]'::jsonb) FROM (\n%s\n) %s)",
+			return fmt.Sprintf("(SELECT coalesce(json_agg(%s.data), '[]'::json) FROM (\n%s\n) %s)",
 				sub,
 				indent(fmt.Sprintf("SELECT %s AS data\nFROM %s %s%s", jsonExpr, call, rowAlias, joinLaterals(laterals))),
 				sub), nil
 		}
 		elem := s.alias("v")
-		return fmt.Sprintf("(SELECT coalesce(jsonb_agg(%s), '[]'::jsonb) FROM %s %s(v))",
+		return fmt.Sprintf("(SELECT coalesce(json_agg(%s), '[]'::json) FROM %s %s(v))",
 			exprJSON(elem+".v", ret), call, elem), nil
 	}
 	if comp := s.compositeFor(ret); comp != nil {
@@ -279,7 +304,7 @@ func (s *stmt) computedJSON(c *api.Computed, node *plan.Node, alias string, dept
 			sub := s.alias("a")
 			return fmt.Sprintf("(SELECT %s FROM (SELECT %s AS v) %s)", s.spatialArrayJSON(sub+".v"), call, sub), nil
 		}
-		return "to_jsonb(" + call + ")", nil
+		return "to_json(" + call + ")", nil
 	}
 	return exprJSON(call, ret), nil
 }
@@ -344,7 +369,7 @@ func (s *stmt) compositeJSON(ref string, comp *introspect.Composite, isArray boo
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("CASE WHEN %s IS NULL THEN NULL ELSE (SELECT coalesce(jsonb_agg(%s ORDER BY %s.o), '[]'::jsonb) FROM (SELECT generate_subscripts(%s, 1) AS o) %s) END",
+		return fmt.Sprintf("CASE WHEN %s IS NULL THEN NULL ELSE (SELECT coalesce(json_agg(%s ORDER BY %s.o), '[]'::json) FROM (SELECT generate_subscripts(%s, 1) AS o) %s) END",
 			ref, inner, elem, ref, elem), nil
 	}
 	var pairs []string
@@ -361,7 +386,7 @@ func (s *stmt) compositeJSON(ref string, comp *introspect.Composite, isArray boo
 			if postgis.IsSpatial(f.PGType) {
 				expr = s.spatialArrayJSON(attr)
 			} else {
-				expr = "to_jsonb(" + attr + ")"
+				expr = "to_json(" + attr + ")"
 			}
 		} else {
 			expr = exprJSON(attr, f)
@@ -424,7 +449,7 @@ func (s *stmt) manyEmbed(e *plan.Embed, parentAlias string, depth int) (string, 
 	}
 	sub := s.alias("s")
 	latAlias := s.alias("l")
-	body := fmt.Sprintf("SELECT coalesce(jsonb_agg(%s.data), '[]'::jsonb) AS data\nFROM (\n%s\n) %s", sub, indent(inner), sub)
+	body := fmt.Sprintf("SELECT coalesce(json_agg(%s.data), '[]'::json) AS data\nFROM (\n%s\n) %s", sub, indent(inner), sub)
 	lat := fmt.Sprintf("LEFT JOIN LATERAL (\n%s\n) %s ON true", indent(body), latAlias)
 	return latAlias + ".data", lat, nil
 }

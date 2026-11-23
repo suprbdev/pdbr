@@ -1,8 +1,8 @@
 // Package compile turns a plan.Request into exactly one parameterized SQL
-// statement whose single jsonb column `data` is the response body (or a
+// statement whose single json column `data` is the response body (or a
 // small wrapper object around it, see Shape). Selections become
-// jsonb_build_object trees, embeds LEFT JOIN LATERAL subqueries, lists
-// jsonb_agg — the database returns the response JSON directly and there is
+// json_build_object trees, embeds LEFT JOIN LATERAL subqueries, lists
+// json_agg — the database returns the response JSON directly and there is
 // no N+1 to paper over. Values only ever travel as parameters: the SQL text
 // is a pure function of the request shape (FuzzFilter).
 package compile
@@ -86,7 +86,7 @@ const (
 )
 
 // Statement is one compiled SQL statement. It always returns one row with
-// one jsonb column named `data` (zero rows for missed single-row lookups).
+// one json column named `data` (zero rows for missed single-row lookups).
 type Statement struct {
 	SQL  string
 	Args []any
@@ -301,7 +301,7 @@ func (s *stmt) rowByKey() (*Statement, error) {
 		shape = ShapeRowEtag
 		// Hash over the whole row regardless of select=, so the ETag is a
 		// property of the row rather than of the projection.
-		sel = fmt.Sprintf("jsonb_build_object('etag', md5(to_jsonb(%s)::text), 'row', %s)", alias, jsonExpr)
+		sel = fmt.Sprintf("json_build_object('etag', md5(to_jsonb(%s)::text), 'row', %s)", alias, jsonExpr)
 	}
 	sql := fmt.Sprintf("SELECT %s AS data\nFROM %s %s%s\nWHERE %s\nLIMIT 1",
 		sel, s.sourceRef(r.Table), alias, joinLaterals(laterals), strings.Join(conds, " AND "))
@@ -439,7 +439,7 @@ func (s *stmt) pageEnvelope(inner string, pp pagePlan, count func() (string, err
 	trim := s.param(pp.offset + pp.limit)
 	aggFilter := " FILTER (WHERE " + sub + ".__rn <= " + trim + ")"
 	agg := func(expr string) string {
-		return "jsonb_agg(" + expr + aggOrder + ")" + aggFilter
+		return "json_agg(" + expr + aggOrder + ")" + aggFilter
 	}
 	exact := "coalesce(bool_or(" + sub + ".__rn > " + trim + "), false)"
 	hasNext, hasPrev := exact, boolLit(pp.hasAfter || pp.offset > 0)
@@ -449,7 +449,7 @@ func (s *stmt) pageEnvelope(inner string, pp pagePlan, count func() (string, err
 		hasNext, hasPrev = "true", exact
 	}
 	pairs := []string{
-		"'rows'", "coalesce(" + agg(sub+".data") + ", '[]'::jsonb)",
+		"'rows'", "coalesce(" + agg(sub+".data") + ", '[]'::json)",
 		"'has_next'", hasNext,
 		"'has_prev'", hasPrev,
 	}

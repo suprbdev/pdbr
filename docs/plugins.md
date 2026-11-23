@@ -101,7 +101,7 @@ verified claims, role, and operation metadata:
 As built, `exec.Result` is `{Status int, Headers http.Header, Data
 json.RawMessage, Err error}` (`internal/exec/exec.go`; `Err` is an
 `*exec.Error{Status, Code, Detail, PG, Allow}`): `Data` is the client JSON
-already unwrapped from the jsonb `data` column (nil for 204/304/HEAD or on
+already unwrapped from the json `data` column (nil for 204/304/HEAD or on
 error) — enough for logging and metrics; hooks observe but cannot rewrite it.
 
 ### Ordering

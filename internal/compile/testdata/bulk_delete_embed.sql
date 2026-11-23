@@ -4,12 +4,12 @@ WITH __mut AS (
   WHERE (m0."author_id" = $1 OR m0."title" LIKE $2)
   RETURNING "id", "author_id", "title"
 )
-SELECT jsonb_build_object('n', count(*), 'rows', coalesce(jsonb_agg(s4.data), '[]'::jsonb)) AS data
+SELECT json_build_object('n', count(*), 'rows', coalesce(json_agg(s4.data), '[]'::json)) AS data
 FROM (
-  SELECT jsonb_build_object('id', t1."id", 'title', t1."title", 'users', l3.data) AS data
+  SELECT json_build_object('id', t1."id", 'title', t1."title", 'users', l3.data) AS data
   FROM __mut t1
   LEFT JOIN LATERAL (
-    SELECT jsonb_build_object('email', t2."email") AS data
+    SELECT json_build_object('email', t2."email") AS data
     FROM "public"."users" t2
     WHERE t2."id" = t1."author_id"
     LIMIT 1

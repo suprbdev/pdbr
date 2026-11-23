@@ -1,0 +1,1 @@
+GET /api/users?select=id,email,email:full_name,posts(id),posts:mood&limit=2
