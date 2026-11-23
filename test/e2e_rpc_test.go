@@ -460,7 +460,7 @@ func TestComputedColumns(t *testing.T) {
 		"/api/posts/1?select=excerpt(len=1)":       "unknown_argument",
 		"/api/posts/1?select=excerpt(max_chars=x)": "invalid_filter",
 		"/api/users/1?select=post_count(len=1)":    "unknown_argument",
-		"/api/posts?select=excerpt&excerpt=eq.a":   "invalid_filter",
+		"/api/posts?select=excerpt&excerpt=eq.a":   "column_not_filterable",
 	} {
 		res, body, _ := rpcCall(t, "GET", srv.URL+path, "", nil)
 		wantProblem(t, res, body, 400, code)
