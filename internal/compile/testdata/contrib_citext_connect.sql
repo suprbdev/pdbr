@@ -9,6 +9,6 @@ __mut AS (
   FROM __p_1
   RETURNING "id", "author", "body"
 )
-SELECT json_build_object('row', json_build_object('id', t0."id", 'author', t0."author", 'body', t0."body"), 'key', jsonb_build_array(t0."id")) AS data
+SELECT json_build_object('key', jsonb_build_array(t0."id"), 'row', json_build_object('id', t0."id", 'author', t0."author", 'body', t0."body")) AS data
 FROM __mut t0
 -- args: ["ADA@example.com",1,"x"]

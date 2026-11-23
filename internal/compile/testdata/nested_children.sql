@@ -19,7 +19,7 @@ __c_2 AS (
 __vis_3 AS (
   SELECT * FROM __c_1 UNION ALL SELECT * FROM __c_2
 )
-SELECT json_build_object('row', json_build_object('id', t0."id", 'email', t0."email", 'posts', l3.data), 'key', jsonb_build_array(t0."id")) AS data
+SELECT json_build_object('key', jsonb_build_array(t0."id"), 'row', json_build_object('id', t0."id", 'email', t0."email", 'posts', l3.data)) AS data
 FROM __mut t0
 LEFT JOIN LATERAL (
   SELECT coalesce(json_agg(s2.data), '[]'::json) AS data

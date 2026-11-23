@@ -1,5 +1,5 @@
 -- request: GET /api/tk_notes?select=id,tk_bookings!inner(guest)&tk_bookings.guest=eq.ada&tk_bookings.order=guest.desc&tk_bookings.limit=1
-SELECT json_build_object('rows', coalesce(json_agg(s5.data ORDER BY s5.__rn ASC) FILTER (WHERE s5.__rn <= $5), '[]'::json), 'has_next', coalesce(bool_or(s5.__rn > $5), false), 'has_prev', false, 'first', (json_agg(s5.__key ORDER BY s5.__rn ASC) FILTER (WHERE s5.__rn <= $5))->0, 'last', (json_agg(s5.__key ORDER BY s5.__rn ASC) FILTER (WHERE s5.__rn <= $5))->-1) AS data
+SELECT json_build_object('has_next', coalesce(bool_or(s5.__rn > $5), false), 'has_prev', false, 'first', (json_agg(s5.__key ORDER BY s5.__rn ASC) FILTER (WHERE s5.__rn <= $5))->0, 'last', (json_agg(s5.__key ORDER BY s5.__rn ASC) FILTER (WHERE s5.__rn <= $5))->-1, 'n', count(*) FILTER (WHERE s5.__rn <= $5), 'rows', coalesce(json_agg(s5.data ORDER BY s5.__rn ASC) FILTER (WHERE s5.__rn <= $5), '[]'::json)) AS data
 FROM (
   SELECT json_build_object('id', t0."id", 'tk_bookings', l3.data) AS data, jsonb_build_array(t0."id") AS __key, row_number() OVER (ORDER BY t0."id" ASC) AS __rn
   FROM "public"."tk_notes" t0

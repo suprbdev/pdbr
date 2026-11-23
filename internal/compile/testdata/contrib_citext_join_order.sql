@@ -1,5 +1,5 @@
 -- request: GET /api/kb/notes?select=id,authors(name)&order=authors(email).desc&after=WyJrYi5ub3RlcyIsN10&limit=2
-SELECT json_build_object('rows', coalesce(json_agg(s3.data ORDER BY s3.__rn ASC) FILTER (WHERE s3.__rn <= $4), '[]'::json), 'has_next', coalesce(bool_or(s3.__rn > $4), false), 'has_prev', true, 'first', (json_agg(s3.__key ORDER BY s3.__rn ASC) FILTER (WHERE s3.__rn <= $4))->0, 'last', (json_agg(s3.__key ORDER BY s3.__rn ASC) FILTER (WHERE s3.__rn <= $4))->-1) AS data
+SELECT json_build_object('has_next', coalesce(bool_or(s3.__rn > $4), false), 'has_prev', true, 'first', (json_agg(s3.__key ORDER BY s3.__rn ASC) FILTER (WHERE s3.__rn <= $4))->0, 'last', (json_agg(s3.__key ORDER BY s3.__rn ASC) FILTER (WHERE s3.__rn <= $4))->-1, 'n', count(*) FILTER (WHERE s3.__rn <= $4), 'rows', coalesce(json_agg(s3.data ORDER BY s3.__rn ASC) FILTER (WHERE s3.__rn <= $4), '[]'::json)) AS data
 FROM (
   SELECT json_build_object('id', t0."id", 'authors', l2.data) AS data, jsonb_build_array(t0."id") AS __key, row_number() OVER (ORDER BY (SELECT __ro."email" FROM "kb"."authors" __ro WHERE __ro."email" OPERATOR("ext".=) t0."author") DESC NULLS LAST, t0."id" ASC) AS __rn
   FROM "kb"."notes" t0

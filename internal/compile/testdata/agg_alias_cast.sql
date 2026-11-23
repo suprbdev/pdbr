@@ -1,5 +1,5 @@
 -- request: GET /api/users?select=mood,total:balance.sum(),mean:id::float8.avg(),newest:created_at.max()::text,id.min()&mood=in.(happy,ok)
-SELECT json_build_object('rows', coalesce(json_agg(s2.data ORDER BY s2.__rn ASC) FILTER (WHERE s2.__rn <= $3), '[]'::json), 'has_next', coalesce(bool_or(s2.__rn > $3), false), 'has_prev', false) AS data
+SELECT json_build_object('has_next', coalesce(bool_or(s2.__rn > $3), false), 'has_prev', false, 'n', count(*) FILTER (WHERE s2.__rn <= $3), 'rows', coalesce(json_agg(s2.data ORDER BY s2.__rn ASC) FILTER (WHERE s2.__rn <= $3), '[]'::json)) AS data
 FROM (
   SELECT json_build_object('mood', g1."__k0", 'total', to_json(g1."__a0"), 'mean', to_json(g1."__a1"), 'newest', to_json((g1."__a2")::"pg_catalog"."text"), 'min', to_json(g1."__a3")) AS data, row_number() OVER (ORDER BY g1."__k0" ASC) AS __rn
   FROM (

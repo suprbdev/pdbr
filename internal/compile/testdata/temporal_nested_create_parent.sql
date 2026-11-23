@@ -13,7 +13,7 @@ __mut AS (
 __vis_2 AS (
   SELECT * FROM "public"."tk_bookings" UNION ALL SELECT * FROM __p_1
 )
-SELECT json_build_object('row', json_build_object('id', t0."id", 'tk_bookings', l3.data), 'key', jsonb_build_array(t0."id")) AS data
+SELECT json_build_object('key', jsonb_build_array(t0."id"), 'row', json_build_object('id', t0."id", 'tk_bookings', l3.data)) AS data
 FROM __mut t0
 LEFT JOIN LATERAL (
   SELECT coalesce(json_agg(s2.data), '[]'::json) AS data

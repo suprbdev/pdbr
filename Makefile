@@ -28,15 +28,16 @@ test-e2e: ## End-to-end suite against a disposable Postgres
 	PDBR_TEST_DATABASE_URL="$(TEST_DB)" $(GO) test -race -count=1 -p 1 ./test/ ./cmd/pdbr/; \
 	status=$$?; docker compose -p pdbr-test -f compose.test.yaml down -v; exit $$status
 
-bench: ## Run api-build and compile benchmarks
-	$(GO) test -bench=. -benchmem -run=^$$ ./internal/api/ ./internal/compile/
+bench: ## Run api-build, compile, unwrap and handler benchmarks
+	$(GO) test -bench=. -benchmem -run=^$$ ./internal/api/ ./internal/compile/ ./internal/exec/ ./internal/server/
 
 FUZZTIME ?= 30s
 
-fuzz: ## Fuzz the filter and spatial compilers and the URL parser ($(FUZZTIME) each)
+fuzz: ## Fuzz the filter and spatial compilers, the URL parser and the envelope splitter ($(FUZZTIME) each)
 	$(GO) test -run=^$$ -fuzz=^FuzzFilter$$ -fuzztime=$(FUZZTIME) ./internal/compile/
 	$(GO) test -run=^$$ -fuzz=^FuzzSpatial$$ -fuzztime=$(FUZZTIME) ./internal/compile/
 	$(GO) test -run=^$$ -fuzz=^FuzzParse$$ -fuzztime=$(FUZZTIME) ./internal/parse/
+	$(GO) test -run=^$$ -fuzz=^FuzzSplitEnvelope$$ -fuzztime=$(FUZZTIME) ./internal/exec/
 
 lint: ## Run golangci-lint (falls back to go vet)
 	golangci-lint run ./... || $(GO) vet ./...

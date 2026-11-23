@@ -39,7 +39,11 @@ func withTimeout(next http.Handler, d time.Duration) http.Handler {
 				dst[k] = v
 			}
 			w.WriteHeader(tw.code)
-			w.Write(tw.buf.Bytes()) //nolint:errcheck
+			if tw.body != nil {
+				w.Write(tw.body) //nolint:errcheck
+			} else {
+				w.Write(tw.buf.Bytes()) //nolint:errcheck
+			}
 		case <-ctx.Done():
 			tw.mu.Lock()
 			defer tw.mu.Unlock()
@@ -53,6 +57,7 @@ type timeoutWriter struct {
 	mu          sync.Mutex
 	h           http.Header
 	buf         bytes.Buffer
+	body        []byte
 	code        int
 	wroteHeader bool
 	timedOut    bool
@@ -77,5 +82,24 @@ func (tw *timeoutWriter) Write(p []byte) (int, error) {
 		return 0, http.ErrHandlerTimeout
 	}
 	tw.wroteHeader = true
+	if tw.body != nil {
+		tw.buf.Write(tw.body)
+		tw.body = nil
+	}
 	return tw.buf.Write(p)
+}
+
+// WriteBody writes a complete response body that the caller hands over:
+// the first such body is kept without being copied into the buffer, so the
+// caller must not modify b afterwards. Later writes fall back to buffering.
+func (tw *timeoutWriter) WriteBody(b []byte) (int, error) {
+	tw.mu.Lock()
+	if tw.timedOut || tw.body != nil || tw.buf.Len() > 0 || len(b) == 0 {
+		tw.mu.Unlock()
+		return tw.Write(b)
+	}
+	defer tw.mu.Unlock()
+	tw.wroteHeader = true
+	tw.body = b
+	return len(b), nil
 }

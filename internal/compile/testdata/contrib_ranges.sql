@@ -1,5 +1,5 @@
 -- request: GET /api/kb/docs?select=id,pages,valid,slots&pages=ov.[1,5)&pages=cs.3&pages=cd.%7B%22start%22%3A0%2C%22end%22%3Anull%7D&valid=sl.[2020-01-01,2020-02-01)&pages=sr.(,0]&pages=nxr.(,100]&pages=nxl.[0,)&valid=not.adj.empty&slots=ov.[1,3)&slots=cs.2
-SELECT json_build_object('rows', coalesce(json_agg(s1.data ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $28), '[]'::json), 'has_next', coalesce(bool_or(s1.__rn > $28), false), 'has_prev', false, 'first', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $28))->0, 'last', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $28))->-1) AS data
+SELECT json_build_object('has_next', coalesce(bool_or(s1.__rn > $28), false), 'has_prev', false, 'first', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $28))->0, 'last', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $28))->-1, 'n', count(*) FILTER (WHERE s1.__rn <= $28), 'rows', coalesce(json_agg(s1.data ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $28), '[]'::json)) AS data
 FROM (
   SELECT json_build_object('id', t0."id", 'pages', t0."pages", 'valid', t0."valid", 'slots', t0."slots") AS data, jsonb_build_array(t0."id") AS __key, row_number() OVER (ORDER BY t0."id" ASC) AS __rn
   FROM "kb"."docs" t0

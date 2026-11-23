@@ -1,5 +1,5 @@
 -- request: GET /api/users?select=post_count,count()&limit=3
-SELECT json_build_object('rows', coalesce(json_agg(s2.data ORDER BY s2.__rn ASC) FILTER (WHERE s2.__rn <= $2), '[]'::json), 'has_next', coalesce(bool_or(s2.__rn > $2), false), 'has_prev', false) AS data
+SELECT json_build_object('has_next', coalesce(bool_or(s2.__rn > $2), false), 'has_prev', false, 'n', count(*) FILTER (WHERE s2.__rn <= $2), 'rows', coalesce(json_agg(s2.data ORDER BY s2.__rn ASC) FILTER (WHERE s2.__rn <= $2), '[]'::json)) AS data
 FROM (
   SELECT json_build_object('post_count', g1."__k0", 'count', to_json(g1."__a0")) AS data, row_number() OVER (ORDER BY g1."__k0" ASC) AS __rn
   FROM (
