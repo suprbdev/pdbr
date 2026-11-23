@@ -1,0 +1,2 @@
+-- request: POST /api/users?on_conflict=email
+-- error: 400 invalid_filter: on_conflict on POST needs Prefer: resolution=merge-duplicates or resolution=ignore-duplicates

@@ -1,0 +1,4 @@
+POST /api/users
+Prefer: resolution=merge-duplicates
+
+{"email": "a@b.c"}

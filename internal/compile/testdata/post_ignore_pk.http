@@ -1,0 +1,4 @@
+POST /api/posts?select=id
+Prefer: resolution=ignore-duplicates
+
+{"author_id": 1, "title": "t"}

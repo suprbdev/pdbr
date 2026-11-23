@@ -1,0 +1,2 @@
+-- request: PUT /api/memberships/7,eng
+-- error: 400 invalid_body: PUT on a single-row path takes one JSON object

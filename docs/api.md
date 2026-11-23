@@ -22,6 +22,7 @@ Everything except the health endpoints is mounted under `server.base_path`
 | `GET {base}/{table}/by/{cols}/{vals}` | one row by unique constraint; `cols` = comma list equal (order-insensitive) to a unique constraint's column set, `vals` positional to `cols` | `200` / `404` |
 | `POST {base}/{table}` | insert object → row; insert array → bulk (single `INSERT … VALUES (…),(…)`, columns = union, missing → `DEFAULT`); `{}` → `DEFAULT VALUES` | `201` |
 | `PUT {base}/{table}` | upsert on the PK, or on `?on_conflict=col1,col2` (a unique constraint); conflict columns must be in the body | `201` inserted (`xmax = 0`) / `200` updated; arrays always `200` |
+| `PUT {base}/{table}/{pk}`, `…/by/{cols}/{vals}` | upsert of the row the path names (key from the path; body key columns optional, must match); only where every key column is writable | `201` inserted / `200` updated |
 | `PATCH {base}/{table}/{pk}`, `…/by/{cols}/{vals}` | partial update → row | `200` / `404` / `412` |
 | `DELETE {base}/{table}/{pk}`, `…/by/{cols}/{vals}` | delete → deleted row | `200` (`204` with `Prefer: return=minimal`) / `404` / `412` |
 | `PATCH`, `DELETE {base}/{table}?<filters>` | bulk write of every row the filters select → array of written rows; no filter → `400 unfiltered_mutation` unless `server.allow_unfiltered_mutations` ([mutations.md](mutations.md#bulk-patch--delete-by-filter)) | `200` (`204` with `Prefer: return=minimal`) |
@@ -303,6 +304,8 @@ drops the `text/csv` content and the `Accept` header parameter.
 | `Prefer: return=minimal` / `return=headers-only` | `204` and no body; a single-object `POST` (or a `PUT` that inserted) returns `201` + `Location` and no body |
 | `Prefer: handling=strict` | unknown or malformed tokens → `400 invalid_preference` (default `handling=lenient` ignores them) |
 | `Prefer: handling=strict, max-affected=N` | `PATCH`/`DELETE` writing more than `N` rows → `400 max_affected_exceeded`, rolled back |
+| `Prefer: resolution=merge-duplicates\|ignore-duplicates` | `POST` upserts / skips conflicting rows on `?on_conflict=` or the PK ([mutations.md](mutations.md#post-with-prefer-resolution)) |
+| `Prefer: missing=default` | accepted on `POST`/`PUT`; omitted keys always take their default in pdbr |
 | `Prefer: count=exact\|planned\|estimated` | list `GET`/`HEAD`: total in `Content-Range` and `X-Total-Count` ([pagination.md](pagination.md#prefer-count-and-content-range)); bulk `PATCH`/`DELETE`: exact written-row total in `Content-Range` |
 
 Honoured tokens are echoed in `Preference-Applied`. Details and the

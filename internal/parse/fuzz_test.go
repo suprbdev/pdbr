@@ -31,6 +31,8 @@ func FuzzParse(f *testing.F) {
 		{"HEAD", "/metrics", "limit=5&offset=5", "", ""},
 		{"PATCH", "/users", "id=gt.1&select=id", "handling=strict, max-affected=2", `{"mood":"ok"}`},
 		{"DELETE", "/posts", "or=(id.eq.1,title.like.x*)", "return=headers-only, tx=rollback", ""},
+		{"POST", "/users", "on_conflict=email", "resolution=ignore-duplicates, missing=default", `[{"email":"x"},{}]`},
+		{"PUT", "/users/by/email/a%40b.c", "select=id", "count=exact", `{"email":"a@b.c","mood":"ok"}`},
 	}
 	for _, s := range seeds {
 		f.Add(s.method, s.path, s.query, s.accept, s.body)

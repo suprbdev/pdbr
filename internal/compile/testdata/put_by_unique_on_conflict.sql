@@ -1,0 +1,2 @@
+-- request: PUT /api/users/by/email/a%40b.c?on_conflict=email
+-- error: 400 invalid_filter: on_conflict is only valid on the collection path (PUT, or POST with Prefer: resolution=)

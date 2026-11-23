@@ -67,6 +67,9 @@ func (p *parser) parseBody(r *http.Request) error {
 		if p.method == plan.PATCH {
 			return errf(CodeInvalidBody, "PATCH body must be a JSON object")
 		}
+		if p.req.Key != nil {
+			return errf(CodeInvalidBody, "%s on a single-row path takes one JSON object", p.method)
+		}
 		if len(v) == 0 {
 			return errf(CodeInvalidBody, "request body is an empty array; provide at least one object")
 		}
@@ -86,6 +89,11 @@ func (p *parser) parseBody(r *http.Request) error {
 	default:
 		return errf(CodeInvalidBody, "request body must be a JSON object%s", orArray(p.method))
 	}
+	if p.method == plan.PUT && p.req.Key != nil {
+		if err := p.keyIntoBody(res, body); err != nil {
+			return err
+		}
+	}
 	if err := p.checkBody(res, body); err != nil {
 		return err
 	}
@@ -98,6 +106,25 @@ func orArray(m plan.Method) string {
 		return ""
 	}
 	return " or a non-empty array of objects"
+}
+
+// keyIntoBody completes the body of PUT {table}/{pk} (or /by/{cols}/{vals}):
+// key columns the body omits take the path values, key columns it sets must
+// equal them, and the path's constraint becomes the conflict target.
+func (p *parser) keyIntoBody(res *api.Resource, body *plan.Body) error {
+	key := p.req.Key
+	for i, c := range key.Constraint.Columns {
+		if v, ok := body.Object[c]; ok {
+			if fmt.Sprint(v) != fmt.Sprint(key.Values[i]) {
+				return errf(CodeInvalidBody, "body %q = %v does not match the path key %v", keyFor(res, c), v, key.Values[i])
+			}
+			continue
+		}
+		body.Object[c] = key.Values[i]
+	}
+	body.Columns = unionColumns(res.Table, body.Object)
+	p.req.OnConflict = key.Constraint
+	return nil
 }
 
 // elementErr prefixes a bulk element's error with its index, keeping the code.
@@ -135,7 +162,11 @@ func (p *parser) bodyObject(res *api.Resource, obj map[string]any, allowNested b
 	}
 	out := make(map[string]any, len(obj))
 	var nested map[string]*plan.Nested
-	inputCols := res.InputColumnsFor(api.Method(p.method))
+	writeAs := api.Method(p.method)
+	if p.method == plan.POST && p.req != nil && p.req.Prefer.Resolution == plan.MergeDuplicates {
+		writeAs = api.MethodPut
+	}
+	inputCols := res.InputColumnsFor(writeAs)
 	for _, key := range sortedKeys(obj) {
 		v := obj[key]
 		if col, ok := inputCols[key]; ok {
@@ -189,6 +220,24 @@ func (p *parser) checkBody(res *api.Resource, body *plan.Body) error {
 		}
 		if p.req.OnConflict == nil {
 			return errf(CodeInvalidBody, "resource %q has no primary key; PUT needs ?on_conflict= naming a unique constraint", resName(res))
+		}
+	case plan.POST:
+		if p.req.Prefer.Resolution != "" && len(body.Nested) > 0 {
+			return errf(CodeInvalidBody, "nested mutations cannot be combined with Prefer: resolution=")
+		}
+		switch p.req.Prefer.Resolution {
+		case plan.MergeDuplicates:
+			if !res.Methods[api.MethodPut] {
+				return errf(CodeInvalidPreference, "resolution=merge-duplicates needs UPDATE on %q and a primary key or unique constraint (the PUT method)", resName(res))
+			}
+			fallthrough
+		case plan.IgnoreDuplicates:
+			if p.req.OnConflict == nil {
+				p.req.OnConflict = res.Table.PrimaryKey
+			}
+			if p.req.OnConflict == nil && p.req.Prefer.Resolution == plan.MergeDuplicates {
+				return errf(CodeInvalidBody, "resource %q has no primary key; resolution=merge-duplicates needs ?on_conflict= naming a unique constraint", resName(res))
+			}
 		}
 	}
 	each := func(check func(obj map[string]any) error) error {

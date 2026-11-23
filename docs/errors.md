@@ -55,13 +55,13 @@ has a `code`, see the note below the table):
 | `cost_exceeded` | 400 | estimated cost > `server.max_cost` |
 | `embed_depth_exceeded` | 400 | `select=` nesting deeper than `server.max_embed_depth`; nested-mutation depth > `max_depth` |
 | `ambiguous_relation` | 400 | relation key matches ≥ 2 FKs and no `!hint`; detail lists the candidates |
-| `invalid_body` | 400 | body not an object/array as required, unknown key, empty patch, missing required columns, missing conflict-target columns, both `create` and `connect`, uncoercible value, empty `[]` bulk |
+| `invalid_body` | 400 | body not an object/array as required, unknown key, empty patch, missing required columns, missing conflict-target columns, both `create` and `connect`, uncoercible value, empty `[]` bulk, single-row `PUT` body key ≠ path key (PostgREST `PGRST115`) |
 | `column_readonly` | 400 | generated / identity-`ALWAYS` column in a write body |
 | `read_only` | 405 | write attempted while `server.read_only` (config or `App.SetReadOnly`) |
 | `etag_mismatch` | 412 | `If-Match` did not match the current row hash |
 | (`unfiltered_mutation`) | 400 | bulk `PATCH`/`DELETE` on a collection path without a root filter or `!inner` embed while `server.allow_unfiltered_mutations` is off |
-| (`if_match_unsupported`) | 400 | `If-Match` on a write that cannot honour it (bulk `PATCH`/`DELETE` on a collection path) while `server.etags` is on |
-| (`invalid_preference`) | 400 | `Prefer: handling=strict` with an unknown token or a malformed value (PostgREST `PGRST122`) |
+| (`if_match_unsupported`) | 400 | `If-Match` on a write that cannot honour it (bulk `PATCH`/`DELETE` on a collection path, `PUT` on a single-row path) while `server.etags` is on |
+| (`invalid_preference`) | 400 | `Prefer: handling=strict` with an unknown token or a malformed value (PostgREST `PGRST122`); `resolution=merge-duplicates` on a resource without `PUT` |
 | (`max_affected_exceeded`) | 400 | `Prefer: handling=strict, max-affected=N` and the write touched more than `N` rows; rolled back (PostgREST `PGRST124`) |
 | `not_acceptable` | 406 | `Accept` unsatisfiable (incl. `text/csv` with embeds or on non-list responses) |
 | `unsupported_media_type` | 415 | request body `Content-Type` is not `application/json` |
@@ -212,7 +212,8 @@ static per path until a hot swap):
 |---|---|
 | `/{table}` (full privileges) | `GET, HEAD, POST, PUT, PATCH, DELETE` (+ `OPTIONS` when `server.cors_origins` set) |
 | `/{table}` (view) | `GET, HEAD` |
-| `/{table}/{pk}` | `GET, HEAD, PATCH, DELETE` |
+| `/{table}/{pk}` (identity / generated key) | `GET, HEAD, PATCH, DELETE` |
+| `/{table}/{pk}`, `/{table}/by/{cols}/…` (writable key) | `GET, HEAD, PUT, PATCH, DELETE` |
 | `/{table}/{pk}` on a table without UPDATE grant (*unreachable in e2e*: the fixture's connection role owns everything) | `GET, HEAD, DELETE` |
 | `/rpc/{stable_fn}` | `GET, HEAD, POST` |
 | `/rpc/{volatile_fn}` | `POST` |
@@ -240,8 +241,8 @@ static per path until a hot swap):
 `If-Match` on `PATCH`/`DELETE` single-row paths ([mutations.md](mutations.md#if-match-on-patch--delete)):
 row exists and hash differs → `412 etag_mismatch`, transaction rolled back,
 no body change. Row missing → `404` (takes precedence over `412`).
-`If-Match` on bulk `PATCH`/`DELETE` is `400 if_match_unsupported`; on other
-routes it is ignored. `If-None-Match` on single-row `GET`
+`If-Match` on bulk `PATCH`/`DELETE` and on a single-row `PUT` is
+`400 if_match_unsupported`; on other routes it is ignored. `If-None-Match` on single-row `GET`
 match → `304` (no body, not a problem document).
 
 ## `413`

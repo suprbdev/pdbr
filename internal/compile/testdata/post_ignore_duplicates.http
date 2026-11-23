@@ -1,0 +1,4 @@
+POST /api/users?on_conflict=email
+Prefer: resolution=ignore-duplicates, return=minimal
+
+[{"email": "a@b.c"}, {"email": "d@e.f", "mood": "ok"}]

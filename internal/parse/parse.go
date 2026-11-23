@@ -189,6 +189,9 @@ func Parse(built *api.Built, m *api.Match, r *http.Request, opts Options) (*plan
 				return nil, errf(CodeIfMatchUnsupported, "If-Match applies to single-row paths only; %s on the collection path cannot honour it", method)
 			}
 		}
+		if method == plan.PUT && req.Key != nil && req.IfMatch != "" {
+			return nil, errf(CodeIfMatchUnsupported, "If-Match is not supported on PUT; use PATCH on this path for a conditional update")
+		}
 	}
 	p.resolveCount()
 	if err := p.negotiateAccept(r); err != nil {
