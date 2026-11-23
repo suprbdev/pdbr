@@ -16,10 +16,45 @@ import (
 // 100-argument limit; wider selections splice the chunks' text together.
 const jsonBuildObjectChunk = 40 // pairs (80 args)
 
+// pairList collects the members of a response object in order. Two
+// members answering under the same key are a user error unless they are
+// the same expression (a column selected twice, or named again after *):
+// replacing one would silently drop its value, and with it any bind
+// parameter its SQL holds.
+type pairList struct {
+	keySQL []string // rendered keys: literals, or bind parameters for path-derived keys
+	vals   []string
+	pos    map[string]int
+}
+
+func newPairList() *pairList { return &pairList{pos: map[string]int{}} }
+
+// add appends a member under key, rendered as keySQL.
+func (l *pairList) add(key, keySQL, val string) error {
+	if i, ok := l.pos[key]; ok {
+		if l.vals[i] == val {
+			return nil
+		}
+		return errUser(CodeInvalidSelect, "two select items answer under %q; alias one of them", key)
+	}
+	l.pos[key] = len(l.vals)
+	l.keySQL = append(l.keySQL, keySQL)
+	l.vals = append(l.vals, val)
+	return nil
+}
+
+// object renders the members as one json object.
+func (l *pairList) object() string {
+	pairs := make([]string, 0, 2*len(l.vals))
+	for i := range l.vals {
+		pairs = append(pairs, l.keySQL[i], l.vals[i])
+	}
+	return buildJSONObject(pairs)
+}
+
 // rowJSON compiles a projection node over its resource into a json
-// expression plus the LEFT JOIN LATERAL clauses it needs against alias.
-// A key selected twice keeps its first position and its last value, as a
-// jsonb object would.
+// expression plus the LEFT JOIN LATERAL clauses it needs against alias
+// (pairList states the duplicate-key rule).
 func (s *stmt) rowJSON(node *plan.Node, alias string, depth int) (string, []string, error) {
 	if depth > s.maxDepth {
 		return "", nil, errUser(CodeEmbedDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)
@@ -28,26 +63,17 @@ func (s *stmt) rowJSON(node *plan.Node, alias string, depth int) (string, []stri
 	if r == nil {
 		return "", nil, fmt.Errorf("compile: projection node without resource")
 	}
-	var pairs []string
+	pl := newPairList()
 	var laterals []string
-	seen := map[string]bool{}
-	pos := map[string]int{}
-	add := func(key, expr string) {
-		seen[key] = true
-		if i, ok := pos[key]; ok {
-			pairs[i+1] = expr
-			return
-		}
-		pos[key] = len(pairs)
-		pairs = append(pairs, quoteLiteral(key), expr)
-	}
 	if node.Star {
 		for _, f := range r.Columns {
 			expr, err := s.columnJSON(alias, f.Column, nil, depth)
 			if err != nil {
 				return "", nil, err
 			}
-			add(f.Key, expr)
+			if err := pl.add(f.Key, quoteLiteral(f.Key), expr); err != nil {
+				return "", nil, err
+			}
 		}
 	}
 	for i := range node.Fields {
@@ -59,10 +85,9 @@ func (s *stmt) rowJSON(node *plan.Node, alias string, depth int) (string, []stri
 		if err != nil {
 			return "", nil, err
 		}
-		if node.Star && f.Alias == "" && f.Column != nil && seen[key] {
-			continue
+		if err := pl.add(key, s.pairKey(f, key), expr); err != nil {
+			return "", nil, err
 		}
-		add(key, expr)
 	}
 	for i := range node.Embeds {
 		e := &node.Embeds[i]
@@ -83,15 +108,19 @@ func (s *stmt) rowJSON(node *plan.Node, alias string, depth int) (string, []stri
 		if err != nil {
 			return "", nil, err
 		}
-		add(key, expr)
+		if err := pl.add(key, quoteLiteral(key), expr); err != nil {
+			return "", nil, err
+		}
 		laterals = append(laterals, lat)
 	}
-	return buildJSONObject(pairs), laterals, nil
+	return pl.object(), laterals, nil
 }
 
 // fieldJSON renders one selected field: its response key and value expression.
 func (s *stmt) fieldJSON(r *api.Resource, f *plan.FieldSel, alias string, depth int) (string, string, error) {
 	switch {
+	case f.Column != nil && (len(f.Path) > 0 || f.Cast != nil):
+		return f.Key(r), s.fieldValueJSON(alias, f), nil
 	case f.Column != nil:
 		key := f.Alias
 		if key == "" {

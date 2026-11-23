@@ -43,10 +43,18 @@ func (p *parser) parseOrderTerm(raw string, res *api.Resource) (plan.OrderTerm, 
 	// parentheses so we split the tail only after the closing paren.
 	path := raw
 	tail := ""
-	if i := strings.IndexByte(raw, ')'); i >= 0 {
+	jsonPath := hasJSONPath(raw) && indexOutsideQuotes(raw, "(") < 0
+	switch i := strings.IndexByte(raw, ')'); {
+	case jsonPath:
+		if j := indexOutsideQuotes(raw, "."); j >= 0 {
+			path, tail = raw[:j], raw[j:]
+		}
+	case i >= 0:
 		path, tail = raw[:i+1], raw[i+1:]
-	} else if i := strings.IndexByte(raw, '.'); i >= 0 {
-		path, tail = raw[:i], raw[i:]
+	default:
+		if i := strings.IndexByte(raw, '.'); i >= 0 {
+			path, tail = raw[:i], raw[i:]
+		}
 	}
 	mods := []string{}
 	if tail != "" {
@@ -57,7 +65,7 @@ func (p *parser) parseOrderTerm(raw string, res *api.Resource) (plan.OrderTerm, 
 	}
 	// A leading ".dist" (or a contrib modifier such as ".rank") belongs to
 	// the path.
-	if len(mods) > 0 && (mods[0] == "dist" || api.IsContribOrder(mods[0])) && !strings.Contains(path, "(") {
+	if len(mods) > 0 && (mods[0] == "dist" || api.IsContribOrder(mods[0])) && !strings.Contains(path, "(") && !jsonPath {
 		path += "." + mods[0]
 		mods = mods[1:]
 	}
@@ -87,6 +95,21 @@ func (p *parser) parseOrderTerm(raw string, res *api.Resource) (plan.OrderTerm, 
 }
 
 func (p *parser) resolveOrderPath(t *plan.OrderTerm, path string, res *api.Resource) error {
+	if hasJSONPath(path) && indexOutsideQuotes(path, "(") < 0 {
+		name, jp, _, uerr := splitJSONPath(path)
+		if uerr != nil {
+			return uerr
+		}
+		f, err := p.resolvePathField(res, name, jp, CodeInvalidFilter)
+		if err != nil {
+			return err
+		}
+		if !res.OrderColumns[f.Key] {
+			return errf(CodeColumnNotOrderable, "column %q on %q is not orderable", f.Key, res.Path)
+		}
+		t.Column, t.Path = f.Column, jp
+		return nil
+	}
 	if i := strings.IndexByte(path, '('); i >= 0 {
 		if !strings.HasSuffix(path, ")") {
 			return errf(CodeInvalidFilter, "malformed order path %q", path)

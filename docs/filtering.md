@@ -8,12 +8,15 @@ statement, and every operand travels as a bind parameter — the SQL text never
 varies with input values (an invariant enforced by fuzz tests).
 
 ```
-filter := column "=" [ "not." ] op [ "(" config ")" ] "." value
+filter := column [ jsonpath ] "=" [ "not." ] op [ "(" config ")" ] "." value
        |  relkey [ "!" quantifier ] "." column "=" [ "not." ] op "." value
        |  relkey "=" "exists." ( "true" | "false" )
        |  ( "and" | "or" | "not.and" | "not.or" ) "=" "(" item ("," item)* ")"
-item   := column "." [ "not." ] op "." value | logic "(" item ("," item)* ")"
+item   := column [ jsonpath ] "." [ "not." ] op "." value | logic "(" item ("," item)* ")"
 ```
+
+`jsonpath` is the `select=` grammar (`->key`, `->0`, `->>key`;
+[api.md](api.md#json-paths)) — see [JSON paths](#json-paths).
 
 ```http
 GET /api/users?mood=eq.happy&email=ilike.*@example.com
@@ -97,6 +100,36 @@ JSON literal. `json` columns are cast to `jsonb` for `hk`/`jpe`/`jpm`.
 (no injection), but an expensive path can burn CPU until
 `database.statement_timeout` stops it — remove the ops with `@omit filter` on
 the column or keep the timeout tight when serving untrusted callers.
+
+### JSON paths
+
+A filter key may continue a `json`/`jsonb` or array column with a JSON path
+(as in `select=`): `->>` compares the value as **text** (every text operator:
+`eq`, `neq`, `gt`…`lte`, `in`, `is`, `isdistinct`, `like`, `ilike`, `sw`,
+`ew`), `->` compares it as **jsonb** (`eq`, `neq`, `gt`…`lte`, `isdistinct`
+and `in` with JSON operands, `cs`/`cd` with a JSON literal, `hk`, `jpe`,
+`jpm`, `is.null`):
+
+```http
+GET /api/users?settings->>theme=eq.dark                 -- (settings ->> $1::text) = $2
+GET /api/users?settings->age=gt.20                      -- (settings -> $1::text) > $2  (jsonb 20)
+GET /api/users?settings->theme=in.("dark","light")      -- = ANY($2::jsonb[]); quoted items are JSON strings
+GET /api/users?settings->prefs=cs.{"mail":true}
+GET /api/users?tags->>0=eq.admin                        -- arrays go through to_jsonb(tags)
+GET /api/users?or=(settings->>theme.eq.dark,settings->"a.b".is.null)
+GET /api/posts?users.settings->>theme=eq.dark           -- relation / embed filters too
+```
+
+A `->` operand is JSON: `settings->theme=eq.dark` is `400 invalid_filter`;
+write the JSON string (`settings->theme=eq."dark"`) or compare as text
+(`settings->>theme=eq.dark`).
+Keys and indexes are bind parameters, like the operand. The column must be
+filterable under the filter policy (`filters.indexed_only`: an expression
+index is not detected, so list the column in `filters.allow_columns` or
+index the column itself); `order=` takes the same paths under the order
+policy. Contrib and spatial operators do not apply to paths
+(`400 invalid_filter`); composite columns take paths in `select=` only
+(they are never filterable or orderable, `400 column_not_filterable`).
 
 Enums:
 
@@ -276,6 +309,11 @@ Errors are RFC 9457 problem documents; see [api.md](api.md#limits-and-errors).
 - Relation filters have quantifiers (`rel!none.`, `rel!every.`) and an
   existence op (`rel=exists.true|false`); PostgREST only filters through
   `!inner` embeds.
+- JSON path filters and `order=` terms need a filterable / orderable
+  column; composite columns are neither, so `address->>city=eq.x` is
+  `400 column_not_filterable` (PostgREST filters `to_jsonb(address)`).
+  A `->` operand must be valid JSON (`400 invalid_filter`, not a database
+  error), and `in.()` on a `->` path takes JSON items.
 - Computed columns are addressed by the function name minus the `<table>_`
   prefix, not the full function name.
 - Non-indexed columns are rejected by default (`filters.indexed_only`).

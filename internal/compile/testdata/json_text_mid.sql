@@ -1,0 +1,2 @@
+-- request: GET /api/users?select=settings->>a->b
+-- error: 400 invalid_select: JSON path "settings->>a->b": ->> must be the last step (it yields text)

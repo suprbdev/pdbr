@@ -1,0 +1,1 @@
+GET /api/users?select=id&settings->>theme=eq.dark&settings->n=gt.20&settings->tags=cs.["a"]&settings->n=in.(1,2)&settings->>theme=not.in.(a,b)&settings->x=is.null&tags->>0=like.ad*

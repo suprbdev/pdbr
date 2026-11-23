@@ -1,0 +1,1 @@
+GET /api/users?select=settings->>theme,count()&order=settings->>mode

@@ -121,10 +121,14 @@ Absent `select` means all columns (`*`). Grammar:
 select    := item ("," item)*
 item      := field | alias ":" field | embed | "*" | [ alias ":" ] aggregate
 field     := name [ "(" k "=" v ("," k "=" v)* ")" ]      -- args only for spatial projection (transform=<srid>, simplify=<tol>)
+           | column [ jsonpath ] [ "::" type ]             -- JSON path and/or cast
 embed     := relkey [ "!" hint ]* "(" select ")"           -- hint := fk_name | column | "inner"
 name      := column | computed column | postgis pseudo-column
-aggregate := "count()" | column [ "::" type ] "." fn "()" [ "::" type ]   -- server.aggregates; type: allowlisted built-in or enum
+aggregate := "count()" | column [ jsonpath ] [ "::" type ] "." fn "()" [ "::" type ]   -- server.aggregates
 fn        := count | sum | avg | max | min | extent | union | collect | centroid
+jsonpath  := ( "->" step )* [ "->>" step ]                 -- at least one arrow
+step      := key | '"' any-but-quote '"' | [ "-" ] digits  -- object key or array index
+type      := allowlisted built-in scalar type | enum of the API
 ```
 
 Aggregate functions (off by default, `server.aggregates`) group the result
@@ -143,12 +147,69 @@ GET /api/users?select=id,n:email            -- alias: {"id": 1, "n": "a@b.c"}
 GET /api/users?select=*,post_count          -- all columns + a computed column
 ```
 
-Unknown names → `400 unknown_column`.
+Unknown names → `400 unknown_column`. Two items answering under the same
+response key are `400 invalid_select` (alias one of them), unless they are
+the same column selected again (`select=*,email` or `select=id,id` answer
+once): `select=id,email,email:full_name`, `select=*,mood::text` and
+`select=excerpt(max_chars=5),excerpt:title` are rejected. PostgREST would
+return both keys.
 
 `*` expands to real columns only (PostgREST behaviour, as built in
 `compile.rowJSON`); computed columns and PostGIS pseudo-columns must be named
 explicitly (`select=*,post_count`). The OpenAPI resource schema still lists
 them (`readOnly`, "Select explicitly: select=<key>").
+
+### JSON paths
+
+`->` and `->>` reach into `json`/`jsonb` columns, and into array and
+composite columns through `to_jsonb(col)` (PostgREST's form, so an
+expression index on `to_jsonb(col)->'k'` serves it): `->` yields JSON,
+`->>` text, an integer step indexes an array (negative from the end).
+
+```http
+GET /api/users?select=id,settings->theme,mode:settings->>theme,tags->0,address->>city
+```
+
+```json
+[{"id": 1, "theme": "dark", "mode": "dark", "tags": "admin", "city": "London"}]
+```
+
+- The response key is the alias, else the **last key** of the path
+  (`settings->a->>b` → `b`), else the column (`tags->0` → `tags`).
+- Bare keys are letters, digits, `_`, `$` and `-`; anything else
+  (`.`, `,`, `:`, parentheses, `!`, spaces, an empty key) is double-quoted:
+  `settings->"a.b"`. `->>` may only be the last step.
+- Keys and indexes travel as bind parameters (`t."settings" -> $1::text`);
+  the SQL text depends only on the number of steps and their kinds.
+- Missing keys and out-of-range indexes are `null`. A path on any other
+  column type is `400 invalid_select`.
+- Filters (`settings->>theme=eq.dark`, [filtering.md](filtering.md#json-paths))
+  and `order=` (`order=settings->>theme.desc`) take the same paths.
+
+### Casts
+
+`column::type` and `column->path::type` cast the selected value; the
+response key stays the column's (or the path's last key):
+
+```http
+GET /api/users?select=id::text,balance::int8,n:settings->n::int
+```
+
+```json
+[{"id": "1", "balance": 0, "n": 20}]
+```
+
+The target is a built-in scalar type (`smallint`/`int2`, `int`/`integer`/
+`int4`, `bigint`/`int8`, `numeric`/`decimal`, `real`/`float4`, `float`/
+`float8`, `text`, `varchar`, `char`/`bpchar`, `boolean`/`bool`, `date`,
+`time`, `timetz`, `timestamp`, `timestamptz`, `interval`, `uuid`, `json`,
+`jsonb`, `money`) or an enum of an exposed schema; the `reg*` types,
+pseudo-types and composites are `400 invalid_select`. The cast is rendered
+schema-qualified (`::"pg_catalog"."text"`) and the result through
+`to_json`, so cast numbers (`bigint` included) are JSON numbers. A failing
+conversion is a database error (`400 pg:22P02`, …). Casts apply to columns
+and JSON paths only (not computed columns or embeds), and not to filters
+(as in PostgREST: a cast would defeat the column's indexes).
 
 ### Embeds
 
@@ -304,8 +365,7 @@ POST /api/rpc/search_posts            {"q": "hello"}
   nested objects (arrays of composites too). Enum labels verbatim.
 - Objects are built with `json_build_object` / `json_agg` (as PostgREST
   does), so keys follow the `select=` order (embeds after the columns,
-  composite attributes in declaration order), a key selected twice appears
-  once with its last value, `json` columns come back as stored, `float8`
+  composite attributes in declaration order), `json` columns come back as stored, `float8`
   uses PostgreSQL's float output (`1e+20`), and the text has PostgreSQL's spacing
   (`{"id" : 1}`): compare bodies as JSON, never byte for byte.
 - Body validation: unknown key → `400 invalid_body`; generated/identity

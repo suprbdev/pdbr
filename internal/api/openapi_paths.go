@@ -398,7 +398,7 @@ func (b *Builder) maxPageSize() int {
 func (b *Builder) selectParam(r *Resource, lead string) *Parameter {
 	var sb strings.Builder
 	sb.WriteString(lead)
-	sb.WriteString(" Comma list of items; item = column | alias:column | embed | *. Columns: ")
+	sb.WriteString(" Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: ")
 	sb.WriteString(strings.Join(fieldKeys(r.Columns), ", "))
 	if len(r.Computed) > 0 {
 		keys := sortedKeys(r.Computed)
@@ -433,14 +433,14 @@ func (b *Builder) listSelectParam(r *Resource, lead string) *Parameter {
 	if b.Surface.SpatialAggregates && hasSpatial(r) {
 		sb.WriteString(", and on spatial columns <col>.extent(), <col>.union(), <col>.collect(), <col>.centroid() (GeoJSON)")
 	}
-	sb.WriteString("; alias:<col>.sum(), input cast <col>::<type>.sum(), output cast <col>.sum()::<type>. The other items of the same select (columns, computed fields; not embeds) group the rows; aggregates also apply inside to-many embeds. Casts: built-in scalar types (int, bigint, numeric, float8, text, date, timestamptz, interval, ...) and the API's enums. order= takes only grouping columns; no after/before or distinct.")
+	sb.WriteString("; alias:<col>.sum(), input cast <col>::<type>.sum() (also over a JSON path: <col>->key::numeric.sum()), output cast <col>.sum()::<type>. The other items of the same select (columns, computed fields; not embeds) group the rows; aggregates also apply inside to-many embeds. Casts: built-in scalar types (int, bigint, numeric, float8, text, date, timestamptz, interval, ...) and the API's enums. order= takes only grouping columns; no after/before or distinct.")
 	p.Description = sb.String()
 	return p
 }
 
 func (b *Builder) orderParam(r *Resource) *Parameter {
 	var sb strings.Builder
-	sb.WriteString("Comma list of <col>[.asc|.desc][.nullsfirst|.nullslast] (default asc, nulls last). Orderable columns: ")
+	sb.WriteString("Comma list of <col>[.asc|.desc][.nullsfirst|.nullslast] (default asc, nulls last); json, jsonb and array columns also order by a JSON path (<col>->key, <col>->>key). Orderable columns: ")
 	sb.WriteString(strings.Join(orderableKeys(r), ", "))
 	if b.Surface.ComputedOrder {
 		if keys := computedKeys(r, func(c *Computed) bool { return c.Orderable && !c.Function.ReturnsSet }); len(keys) > 0 {
@@ -534,6 +534,9 @@ func (b *Builder) filterParams(r *Resource, shadow map[string]bool) []*Parameter
 			Name: f.Key, In: "query", Schema: &Schema{Type: "string"}, XFilterOps: ops,
 			Description: "Filter: " + f.Key + "=<op>.<value> (" + typeLabel(f.Column) + "). Ops: " + strings.Join(ops, ", ") + ". Prefix not. to negate (" + f.Key + "=not." + ops[0] + ".<value>).",
 			Deprecated:  f.Deprecated, XDeprecationReason: f.DeprecationReason,
+		}
+		if jsonPathFilterable(f.Column) {
+			p.Description += " JSON paths: " + f.Key + "->key=<op>.<value> compares jsonb (eq, neq, gt, gte, lt, lte, in, is, isdistinct, cs, cd, hk, jpe, jpm; JSON operands), " + f.Key + "->>key=<op>.<value> text (the text operators)."
 		}
 		if f.Description != "" {
 			p.Description = f.Description + " " + p.Description
@@ -909,4 +912,14 @@ func spatialOrderKeys(r *Resource) []string {
 		}
 	}
 	return out
+}
+
+// jsonPathFilterable reports whether filters and order terms take JSON
+// paths on c: json, jsonb and (non-spatial) array columns.
+func jsonPathFilterable(c *introspect.Column) bool {
+	base := strings.TrimPrefix(c.PGType, "_")
+	if c.IsArray || strings.HasPrefix(c.PGType, "_") {
+		return !postgis.FlavourOf(base).Spatial()
+	}
+	return base == "json" || base == "jsonb"
 }

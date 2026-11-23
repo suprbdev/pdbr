@@ -42,10 +42,10 @@
         "operationId": "comments.list",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.b7ce512b"
+            "$ref": "#/components/parameters/query.select.e0d903a2"
           },
           {
-            "$ref": "#/components/parameters/query.order.7fd27a93"
+            "$ref": "#/components/parameters/query.order.c783fd31"
           },
           {
             "$ref": "#/components/parameters/query.limit"
@@ -209,10 +209,10 @@
         "operationId": "comments.list.head",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.b7ce512b"
+            "$ref": "#/components/parameters/query.select.e0d903a2"
           },
           {
-            "$ref": "#/components/parameters/query.order.7fd27a93"
+            "$ref": "#/components/parameters/query.order.c783fd31"
           },
           {
             "$ref": "#/components/parameters/query.limit"
@@ -358,7 +358,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the created row(s) to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, post_id, parent_id, body. Embeds: comments, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the created row(s) to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, post_id, parent_id, body. Embeds: comments, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -483,7 +483,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the affected row(s) to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, post_id, parent_id, body. Embeds: comments, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the affected row(s) to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, post_id, parent_id, body. Embeds: comments, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -627,7 +627,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the updated rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, post_id, parent_id, body. Embeds: comments, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the updated rows to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, post_id, parent_id, body. Embeds: comments, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -759,7 +759,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the deleted rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, post_id, parent_id, body. Embeds: comments, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the deleted rows to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, post_id, parent_id, body. Embeds: comments, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -873,7 +873,7 @@
         "operationId": "comments.get",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.b7ce512b"
+            "$ref": "#/components/parameters/query.select.e0d903a2"
           },
           {
             "$ref": "#/components/parameters/header.If-None-Match"
@@ -935,7 +935,7 @@
         "operationId": "comments.get.head",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.b7ce512b"
+            "$ref": "#/components/parameters/query.select.e0d903a2"
           },
           {
             "$ref": "#/components/parameters/header.If-None-Match"
@@ -992,7 +992,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the updated row to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, post_id, parent_id, body. Embeds: comments, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the updated row to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, post_id, parent_id, body. Embeds: comments, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -1096,7 +1096,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the deleted row to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, post_id, parent_id, body. Embeds: comments, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the deleted row to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, post_id, parent_id, body. Embeds: comments, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -1195,10 +1195,10 @@
         "operationId": "events.list",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.7ccd4f7f"
+            "$ref": "#/components/parameters/query.select.6dca0b1b"
           },
           {
-            "$ref": "#/components/parameters/query.order.526fe16a"
+            "$ref": "#/components/parameters/query.order.e6a55ba8"
           },
           {
             "$ref": "#/components/parameters/query.limit"
@@ -1359,10 +1359,10 @@
         "operationId": "events.list.head",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.7ccd4f7f"
+            "$ref": "#/components/parameters/query.select.6dca0b1b"
           },
           {
-            "$ref": "#/components/parameters/query.order.526fe16a"
+            "$ref": "#/components/parameters/query.order.e6a55ba8"
           },
           {
             "$ref": "#/components/parameters/query.limit"
@@ -1505,7 +1505,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the created row(s) to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, name, type_code.",
+            "description": "Columns and embeds of the created row(s) to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, name, type_code.",
             "schema": {
               "type": "string"
             }
@@ -1630,7 +1630,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the affected row(s) to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, name, type_code.",
+            "description": "Columns and embeds of the affected row(s) to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, name, type_code.",
             "schema": {
               "type": "string"
             }
@@ -1774,7 +1774,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the updated rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, name, type_code.",
+            "description": "Columns and embeds of the updated rows to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, name, type_code.",
             "schema": {
               "type": "string"
             }
@@ -1903,7 +1903,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the deleted rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, name, type_code.",
+            "description": "Columns and embeds of the deleted rows to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, name, type_code.",
             "schema": {
               "type": "string"
             }
@@ -2014,7 +2014,7 @@
         "operationId": "events.get",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.7ccd4f7f"
+            "$ref": "#/components/parameters/query.select.6dca0b1b"
           },
           {
             "$ref": "#/components/parameters/header.If-None-Match"
@@ -2076,7 +2076,7 @@
         "operationId": "events.get.head",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.7ccd4f7f"
+            "$ref": "#/components/parameters/query.select.6dca0b1b"
           },
           {
             "$ref": "#/components/parameters/header.If-None-Match"
@@ -2133,7 +2133,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the updated row to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, name, type_code.",
+            "description": "Columns and embeds of the updated row to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, name, type_code.",
             "schema": {
               "type": "string"
             }
@@ -2237,7 +2237,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the deleted row to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, name, type_code.",
+            "description": "Columns and embeds of the deleted row to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, name, type_code.",
             "schema": {
               "type": "string"
             }
@@ -2336,10 +2336,10 @@
         "operationId": "metrics.list",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.16dc70e2"
+            "$ref": "#/components/parameters/query.select.8f214e1f"
           },
           {
-            "$ref": "#/components/parameters/query.order.63946d13"
+            "$ref": "#/components/parameters/query.order.d112c651"
           },
           {
             "$ref": "#/components/parameters/query.limit"
@@ -2476,10 +2476,10 @@
         "operationId": "metrics.list.head",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.16dc70e2"
+            "$ref": "#/components/parameters/query.select.8f214e1f"
           },
           {
-            "$ref": "#/components/parameters/query.order.63946d13"
+            "$ref": "#/components/parameters/query.order.d112c651"
           },
           {
             "$ref": "#/components/parameters/query.limit"
@@ -2598,10 +2598,10 @@
         "operationId": "places.list",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.c914e03b"
+            "$ref": "#/components/parameters/query.select.8fc1fd53"
           },
           {
-            "$ref": "#/components/parameters/query.order.5e6f4fa0"
+            "$ref": "#/components/parameters/query.order.8b35dc10"
           },
           {
             "$ref": "#/components/parameters/query.limit"
@@ -2768,10 +2768,10 @@
         "operationId": "places.list.head",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.c914e03b"
+            "$ref": "#/components/parameters/query.select.8fc1fd53"
           },
           {
-            "$ref": "#/components/parameters/query.order.5e6f4fa0"
+            "$ref": "#/components/parameters/query.order.8b35dc10"
           },
           {
             "$ref": "#/components/parameters/query.limit"
@@ -2920,7 +2920,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the created row(s) to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, owner_id, name, location, area. Embeds: users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the created row(s) to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, owner_id, name, location, area. Embeds: users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -3045,7 +3045,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the affected row(s) to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, owner_id, name, location, area. Embeds: users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the affected row(s) to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, owner_id, name, location, area. Embeds: users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -3189,7 +3189,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the updated rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, owner_id, name, location, area. Embeds: users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the updated rows to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, owner_id, name, location, area. Embeds: users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -3324,7 +3324,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the deleted rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, owner_id, name, location, area. Embeds: users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the deleted rows to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, owner_id, name, location, area. Embeds: users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -3441,7 +3441,7 @@
         "operationId": "places.get",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.c914e03b"
+            "$ref": "#/components/parameters/query.select.8fc1fd53"
           },
           {
             "$ref": "#/components/parameters/header.If-None-Match"
@@ -3503,7 +3503,7 @@
         "operationId": "places.get.head",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.c914e03b"
+            "$ref": "#/components/parameters/query.select.8fc1fd53"
           },
           {
             "$ref": "#/components/parameters/header.If-None-Match"
@@ -3560,7 +3560,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the updated row to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, owner_id, name, location, area. Embeds: users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the updated row to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, owner_id, name, location, area. Embeds: users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -3664,7 +3664,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the deleted row to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, owner_id, name, location, area. Embeds: users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the deleted row to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, owner_id, name, location, area. Embeds: users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -3763,10 +3763,10 @@
         "operationId": "posts.list",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.b895bf87"
+            "$ref": "#/components/parameters/query.select.047f1c1f"
           },
           {
-            "$ref": "#/components/parameters/query.order.d783c508"
+            "$ref": "#/components/parameters/query.order.ea0300ef"
           },
           {
             "$ref": "#/components/parameters/query.limit"
@@ -3930,10 +3930,10 @@
         "operationId": "posts.list.head",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.b895bf87"
+            "$ref": "#/components/parameters/query.select.047f1c1f"
           },
           {
-            "$ref": "#/components/parameters/query.order.d783c508"
+            "$ref": "#/components/parameters/query.order.ea0300ef"
           },
           {
             "$ref": "#/components/parameters/query.limit"
@@ -4079,7 +4079,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the created row(s) to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Computed (select explicitly): excerpt(max_chars=<int4>). Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the created row(s) to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, author_id, title, body, published. Computed (select explicitly): excerpt(max_chars=<int4>). Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -4204,7 +4204,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the affected row(s) to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Computed (select explicitly): excerpt(max_chars=<int4>). Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the affected row(s) to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, author_id, title, body, published. Computed (select explicitly): excerpt(max_chars=<int4>). Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -4348,7 +4348,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the updated rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Computed (select explicitly): excerpt(max_chars=<int4>). Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the updated rows to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, author_id, title, body, published. Computed (select explicitly): excerpt(max_chars=<int4>). Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -4480,7 +4480,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the deleted rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Computed (select explicitly): excerpt(max_chars=<int4>). Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the deleted rows to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, author_id, title, body, published. Computed (select explicitly): excerpt(max_chars=<int4>). Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -4594,7 +4594,7 @@
         "operationId": "posts.get",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.b895bf87"
+            "$ref": "#/components/parameters/query.select.047f1c1f"
           },
           {
             "$ref": "#/components/parameters/header.If-None-Match"
@@ -4656,7 +4656,7 @@
         "operationId": "posts.get.head",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.b895bf87"
+            "$ref": "#/components/parameters/query.select.047f1c1f"
           },
           {
             "$ref": "#/components/parameters/header.If-None-Match"
@@ -4713,7 +4713,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the updated row to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Computed (select explicitly): excerpt(max_chars=<int4>). Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the updated row to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, author_id, title, body, published. Computed (select explicitly): excerpt(max_chars=<int4>). Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -4817,7 +4817,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the deleted row to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Computed (select explicitly): excerpt(max_chars=<int4>). Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the deleted row to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, author_id, title, body, published. Computed (select explicitly): excerpt(max_chars=<int4>). Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -5924,10 +5924,10 @@
             "$ref": "#/components/parameters/query.term"
           },
           {
-            "$ref": "#/components/parameters/query.select.09478157"
+            "$ref": "#/components/parameters/query.select.90de4a96"
           },
           {
-            "$ref": "#/components/parameters/query.order.d783c508"
+            "$ref": "#/components/parameters/query.order.ea0300ef"
           },
           {
             "$ref": "#/components/parameters/query.limit"
@@ -6067,10 +6067,10 @@
             "$ref": "#/components/parameters/query.term"
           },
           {
-            "$ref": "#/components/parameters/query.select.09478157"
+            "$ref": "#/components/parameters/query.select.90de4a96"
           },
           {
-            "$ref": "#/components/parameters/query.order.d783c508"
+            "$ref": "#/components/parameters/query.order.ea0300ef"
           },
           {
             "$ref": "#/components/parameters/query.limit"
@@ -6187,10 +6187,10 @@
         "operationId": "rpc.search_posts.post",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.09478157"
+            "$ref": "#/components/parameters/query.select.90de4a96"
           },
           {
-            "$ref": "#/components/parameters/query.order.d783c508"
+            "$ref": "#/components/parameters/query.order.ea0300ef"
           },
           {
             "$ref": "#/components/parameters/query.limit"
@@ -6476,10 +6476,10 @@
         "operationId": "users.list",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.7d578cb5"
+            "$ref": "#/components/parameters/query.select.8245e872"
           },
           {
-            "$ref": "#/components/parameters/query.order.dfacfa84"
+            "$ref": "#/components/parameters/query.order.9955e42a"
           },
           {
             "$ref": "#/components/parameters/query.limit"
@@ -6652,10 +6652,10 @@
         "operationId": "users.list.head",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.7d578cb5"
+            "$ref": "#/components/parameters/query.select.8245e872"
           },
           {
-            "$ref": "#/components/parameters/query.order.dfacfa84"
+            "$ref": "#/components/parameters/query.order.9955e42a"
           },
           {
             "$ref": "#/components/parameters/query.limit"
@@ -6810,7 +6810,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the created row(s) to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, recent_posts(n=<int4>), tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the created row(s) to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, recent_posts(n=<int4>), tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -6940,7 +6940,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the affected row(s) to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, recent_posts(n=<int4>), tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the affected row(s) to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, recent_posts(n=<int4>), tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -7089,7 +7089,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the updated rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, recent_posts(n=<int4>), tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the updated rows to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, recent_posts(n=<int4>), tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -7230,7 +7230,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the deleted rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, recent_posts(n=<int4>), tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the deleted rows to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, recent_posts(n=<int4>), tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -7353,7 +7353,7 @@
         "operationId": "users.by_email",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.7d578cb5"
+            "$ref": "#/components/parameters/query.select.8245e872"
           },
           {
             "$ref": "#/components/parameters/header.If-None-Match"
@@ -7415,7 +7415,7 @@
         "operationId": "users.by_email.head",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.7d578cb5"
+            "$ref": "#/components/parameters/query.select.8245e872"
           },
           {
             "$ref": "#/components/parameters/header.If-None-Match"
@@ -7472,7 +7472,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the row to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, recent_posts(n=<int4>), tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the row to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, recent_posts(n=<int4>), tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -7658,7 +7658,7 @@
         "operationId": "users.by_email.update",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.477fc8ec"
+            "$ref": "#/components/parameters/query.select.8b9019ea"
           },
           {
             "$ref": "#/components/parameters/header.If-Match"
@@ -7757,7 +7757,7 @@
         "operationId": "users.by_email.delete",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.c8dbe8c4"
+            "$ref": "#/components/parameters/query.select.6b1f1e45"
           },
           {
             "$ref": "#/components/parameters/header.If-Match"
@@ -7852,7 +7852,7 @@
         "operationId": "users.get",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.7d578cb5"
+            "$ref": "#/components/parameters/query.select.8245e872"
           },
           {
             "$ref": "#/components/parameters/header.If-None-Match"
@@ -7914,7 +7914,7 @@
         "operationId": "users.get.head",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.7d578cb5"
+            "$ref": "#/components/parameters/query.select.8245e872"
           },
           {
             "$ref": "#/components/parameters/header.If-None-Match"
@@ -7969,7 +7969,7 @@
         "operationId": "users.update",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.477fc8ec"
+            "$ref": "#/components/parameters/query.select.8b9019ea"
           },
           {
             "$ref": "#/components/parameters/header.If-Match"
@@ -8068,7 +8068,7 @@
         "operationId": "users.delete",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.c8dbe8c4"
+            "$ref": "#/components/parameters/query.select.6b1f1e45"
           },
           {
             "$ref": "#/components/parameters/header.If-Match"
@@ -9401,7 +9401,7 @@
       "query.moods": {
         "name": "moods",
         "in": "query",
-        "description": "Filter: moods=<op>.<value> (mood[]). Ops: eq, neq, gt, gte, lt, lte, is, isdistinct, cs, cd, ov. Prefix not. to negate (moods=not.eq.<value>).",
+        "description": "Filter: moods=<op>.<value> (mood[]). Ops: eq, neq, gt, gte, lt, lte, is, isdistinct, cs, cd, ov. Prefix not. to negate (moods=not.eq.<value>). JSON paths: moods->key=<op>.<value> compares jsonb (eq, neq, gt, gte, lt, lte, in, is, isdistinct, cs, cd, hk, jpe, jpm; JSON operands), moods->>key=<op>.<value> text (the text operators).",
         "schema": {
           "type": "string"
         },
@@ -9477,50 +9477,50 @@
           "type": "string"
         }
       },
-      "query.order.526fe16a": {
+      "query.order.8b35dc10": {
         "name": "order",
         "in": "query",
-        "description": "Comma list of <col>[.asc|.desc][.nullsfirst|.nullslast] (default asc, nulls last). Orderable columns: id, type_code.",
+        "description": "Comma list of <col>[.asc|.desc][.nullsfirst|.nullslast] (default asc, nulls last); json, jsonb and array columns also order by a JSON path (<col>->key, <col>->>key). Orderable columns: id, owner_id, location, area.",
         "schema": {
           "type": "string"
         }
       },
-      "query.order.5e6f4fa0": {
+      "query.order.9955e42a": {
         "name": "order",
         "in": "query",
-        "description": "Comma list of <col>[.asc|.desc][.nullsfirst|.nullslast] (default asc, nulls last). Orderable columns: id, owner_id, location, area.",
+        "description": "Comma list of <col>[.asc|.desc][.nullsfirst|.nullslast] (default asc, nulls last); json, jsonb and array columns also order by a JSON path (<col>->key, <col>->>key). Orderable columns: id, email, mood, settings, tags, moods.",
         "schema": {
           "type": "string"
         }
       },
-      "query.order.63946d13": {
+      "query.order.c783fd31": {
         "name": "order",
         "in": "query",
-        "description": "Comma list of <col>[.asc|.desc][.nullsfirst|.nullslast] (default asc, nulls last). Orderable columns: .",
+        "description": "Comma list of <col>[.asc|.desc][.nullsfirst|.nullslast] (default asc, nulls last); json, jsonb and array columns also order by a JSON path (<col>->key, <col>->>key). Orderable columns: id, post_id, parent_id.",
         "schema": {
           "type": "string"
         }
       },
-      "query.order.7fd27a93": {
+      "query.order.d112c651": {
         "name": "order",
         "in": "query",
-        "description": "Comma list of <col>[.asc|.desc][.nullsfirst|.nullslast] (default asc, nulls last). Orderable columns: id, post_id, parent_id.",
+        "description": "Comma list of <col>[.asc|.desc][.nullsfirst|.nullslast] (default asc, nulls last); json, jsonb and array columns also order by a JSON path (<col>->key, <col>->>key). Orderable columns: .",
         "schema": {
           "type": "string"
         }
       },
-      "query.order.d783c508": {
+      "query.order.e6a55ba8": {
         "name": "order",
         "in": "query",
-        "description": "Comma list of <col>[.asc|.desc][.nullsfirst|.nullslast] (default asc, nulls last). Orderable columns: id, author_id, title.",
+        "description": "Comma list of <col>[.asc|.desc][.nullsfirst|.nullslast] (default asc, nulls last); json, jsonb and array columns also order by a JSON path (<col>->key, <col>->>key). Orderable columns: id, type_code.",
         "schema": {
           "type": "string"
         }
       },
-      "query.order.dfacfa84": {
+      "query.order.ea0300ef": {
         "name": "order",
         "in": "query",
-        "description": "Comma list of <col>[.asc|.desc][.nullsfirst|.nullslast] (default asc, nulls last). Orderable columns: id, email, mood, settings, tags, moods.",
+        "description": "Comma list of <col>[.asc|.desc][.nullsfirst|.nullslast] (default asc, nulls last); json, jsonb and array columns also order by a JSON path (<col>->key, <col>->>key). Orderable columns: id, author_id, title.",
         "schema": {
           "type": "string"
         }
@@ -9582,74 +9582,74 @@
           "isdistinct"
         ]
       },
-      "query.select.09478157": {
+      "query.select.047f1c1f": {
         "name": "select",
         "in": "query",
-        "description": "Columns and embeds of the returned rows. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Computed (select explicitly): excerpt(max_chars=<int4>). Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+        "description": "Columns and embeds to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, author_id, title, body, published. Computed (select explicitly): excerpt(max_chars=<int4>). Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
         "schema": {
           "type": "string"
         }
       },
-      "query.select.16dc70e2": {
+      "query.select.6b1f1e45": {
         "name": "select",
         "in": "query",
-        "description": "Columns and embeds to return. Comma list of items; item = column | alias:column | embed | *. Columns: name, value.",
+        "description": "Columns and embeds of the deleted row to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, recent_posts(n=<int4>), tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
         "schema": {
           "type": "string"
         }
       },
-      "query.select.477fc8ec": {
+      "query.select.6dca0b1b": {
         "name": "select",
         "in": "query",
-        "description": "Columns and embeds of the updated row to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, recent_posts(n=<int4>), tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+        "description": "Columns and embeds to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, name, type_code.",
         "schema": {
           "type": "string"
         }
       },
-      "query.select.7ccd4f7f": {
+      "query.select.8245e872": {
         "name": "select",
         "in": "query",
-        "description": "Columns and embeds to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, name, type_code.",
+        "description": "Columns and embeds to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, recent_posts(n=<int4>), tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
         "schema": {
           "type": "string"
         }
       },
-      "query.select.7d578cb5": {
+      "query.select.8b9019ea": {
         "name": "select",
         "in": "query",
-        "description": "Columns and embeds to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, recent_posts(n=<int4>), tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+        "description": "Columns and embeds of the updated row to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, recent_posts(n=<int4>), tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
         "schema": {
           "type": "string"
         }
       },
-      "query.select.b7ce512b": {
+      "query.select.8f214e1f": {
         "name": "select",
         "in": "query",
-        "description": "Columns and embeds to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, post_id, parent_id, body. Embeds: comments, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+        "description": "Columns and embeds to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: name, value.",
         "schema": {
           "type": "string"
         }
       },
-      "query.select.b895bf87": {
+      "query.select.8fc1fd53": {
         "name": "select",
         "in": "query",
-        "description": "Columns and embeds to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Computed (select explicitly): excerpt(max_chars=<int4>). Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+        "description": "Columns and embeds to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, owner_id, name, location, area. Embeds: users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
         "schema": {
           "type": "string"
         }
       },
-      "query.select.c8dbe8c4": {
+      "query.select.90de4a96": {
         "name": "select",
         "in": "query",
-        "description": "Columns and embeds of the deleted row to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, recent_posts(n=<int4>), tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+        "description": "Columns and embeds of the returned rows. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, author_id, title, body, published. Computed (select explicitly): excerpt(max_chars=<int4>). Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
         "schema": {
           "type": "string"
         }
       },
-      "query.select.c914e03b": {
+      "query.select.e0d903a2": {
         "name": "select",
         "in": "query",
-        "description": "Columns and embeds to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, owner_id, name, location, area. Embeds: users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+        "description": "Columns and embeds to return. Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: id, post_id, parent_id, body. Embeds: comments, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
         "schema": {
           "type": "string"
         }
@@ -9657,7 +9657,7 @@
       "query.settings": {
         "name": "settings",
         "in": "query",
-        "description": "Filter: settings=<op>.<value> (jsonb). Ops: eq, neq, gt, gte, lt, lte, is, isdistinct, cs, cd, hk, jpe, jpm. Prefix not. to negate (settings=not.eq.<value>).",
+        "description": "Filter: settings=<op>.<value> (jsonb). Ops: eq, neq, gt, gte, lt, lte, is, isdistinct, cs, cd, hk, jpe, jpm. Prefix not. to negate (settings=not.eq.<value>). JSON paths: settings->key=<op>.<value> compares jsonb (eq, neq, gt, gte, lt, lte, in, is, isdistinct, cs, cd, hk, jpe, jpm; JSON operands), settings->>key=<op>.<value> text (the text operators).",
         "schema": {
           "type": "string"
         },
@@ -9680,7 +9680,7 @@
       "query.tags": {
         "name": "tags",
         "in": "query",
-        "description": "Filter: tags=<op>.<value> (text[]). Ops: eq, neq, gt, gte, lt, lte, is, isdistinct, cs, cd, ov. Prefix not. to negate (tags=not.eq.<value>).",
+        "description": "Filter: tags=<op>.<value> (text[]). Ops: eq, neq, gt, gte, lt, lte, is, isdistinct, cs, cd, ov. Prefix not. to negate (tags=not.eq.<value>). JSON paths: tags->key=<op>.<value> compares jsonb (eq, neq, gt, gte, lt, lte, in, is, isdistinct, cs, cd, hk, jpe, jpm; JSON operands), tags->>key=<op>.<value> text (the text operators).",
         "schema": {
           "type": "string"
         },

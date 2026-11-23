@@ -2,7 +2,9 @@ package compile_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/suprbdev/pdbcore/contrib"
@@ -17,8 +19,11 @@ import (
 // appear in the SQL text, only in the parameter list — any two value sets
 // produce byte-identical SQL and the same parameter count. The second
 // statement covers the pdbcore/contrib operators and order terms over the
-// golden-only kb.docs table, the last two an aggregated root (grouped scan,
-// group count, casts) and an aggregated embed.
+// golden-only kb.docs table, the next two an aggregated root (grouped scan,
+// group count, casts) and an aggregated embed, the last two JSON paths
+// (keys, indexes and the path-derived response keys are values) in select,
+// filters, order, casts and grouping; a path-derived key equal to another
+// item's key is a duplicate-key error, which those two skip.
 func FuzzFilter(f *testing.F) {
 	fx := newFixture(f)
 	cfx := &fixture{t: f, built: goldenBuilt(f)}
@@ -152,7 +157,67 @@ func FuzzFilter(f *testing.F) {
 		}
 		return stmt
 	}
+	compilePath := func(t testing.TB, e, tag string, n int64) *compile.Statement {
+		t.Helper()
+		idx := int(int32(n))
+		path := func(text bool) plan.JSONPath {
+			return plan.JSONPath{{Key: e}, {Array: true, Index: idx}, {Key: tag, Text: text}}
+		}
+		pc := func(p plan.JSONPath, op plan.Op, v any) plan.Cond {
+			c := cond(settings, op, v)
+			c.Path = p
+			return c
+		}
+		pg := func(name string) *plan.TypeRef { return &plan.TypeRef{Schema: "pg_catalog", Name: name} }
+		p := list(users)
+		p.Select = &plan.Node{Resource: users, Fields: []plan.FieldSel{
+			{Column: settings, Path: path(true)},
+			{Alias: "c", Column: settings, Path: path(false), Cast: pg("int4")},
+			{Alias: "a", Column: tags, Path: plan.JSONPath{{Array: true, Index: idx, Text: true}}},
+			{Column: id, Cast: pg("text")},
+		}}
+		p.Filter = plan.And{Terms: []plan.Expr{
+			pc(path(true), plan.OpEq, e),
+			pc(path(true), plan.OpIn, []any{e, tag}),
+			pc(path(false), plan.OpCs, tag),
+			pc(path(false), plan.OpGt, tag),
+			plan.Not{Term: pc(path(true), plan.OpLike, e)},
+		}}
+		p.Order = []plan.OrderTerm{{Column: settings, Path: path(true), Desc: true}, {Column: settings, Path: path(false)}}
+		p.Page = plan.Page{Limit: 10, After: []any{n}}
+		stmt, err := fx.c.Compile(context.Background(), &compile.Request{Plan: p, Built: fx.built})
+		if duplicateKey(err) {
+			return nil
+		}
+		if err != nil {
+			t.Fatalf("path compile error on valid input: %v", err)
+		}
+		return stmt
+	}
+	compilePathAgg := func(t testing.TB, e, tag string, n int64) *compile.Statement {
+		t.Helper()
+		path := plan.JSONPath{{Key: e}, {Key: tag, Text: true}}
+		p := list(users)
+		p.Select = &plan.Node{Resource: users, Fields: []plan.FieldSel{
+			{Column: settings, Path: path},
+			{Agg: &plan.Aggregate{Func: plan.AggCount}},
+			{Alias: "s", Column: settings, Path: plan.JSONPath{{Key: tag}}, Agg: &plan.Aggregate{Func: plan.AggSum, InputCast: &plan.TypeRef{Schema: "pg_catalog", Name: "numeric"}}},
+		}}
+		p.Order = []plan.OrderTerm{{Column: settings, Path: path, Desc: true}}
+		p.Page = plan.Page{Limit: 10, Offset: 2}
+		p.Count = true
+		stmt, err := fx.c.Compile(context.Background(), &compile.Request{Plan: p, Built: fx.built})
+		if duplicateKey(err) {
+			return nil
+		}
+		if err != nil {
+			t.Fatalf("path aggregate compile error on valid input: %v", err)
+		}
+		return stmt
+	}
 	baseline := compileWith(f, "a@example.com", "admin", 5)
+	pathBaseline := compilePath(f, "a@example.com", "admin", 5)
+	pathAggBaseline := compilePathAgg(f, "a@example.com", "admin", 5)
 	contribBaseline := compileContrib(f, "a@example.com", "admin", 5)
 	aggBaseline := compileAgg(f, "a@example.com", "admin", 5)
 	aggEmbedBaseline := compileAggEmbed(f, "a@example.com", "admin", 5)
@@ -169,7 +234,12 @@ func FuzzFilter(f *testing.F) {
 			{compileContrib(t, e, tag, n), contribBaseline},
 			{compileAgg(t, e, tag, n), aggBaseline},
 			{compileAggEmbed(t, e, tag, n), aggEmbedBaseline},
+			{compilePath(t, e, tag, n), pathBaseline},
+			{compilePathAgg(t, e, tag, n), pathAggBaseline},
 		} {
+			if c.stmt == nil {
+				continue
+			}
 			if c.stmt.SQL != c.baseline.SQL {
 				t.Fatalf("SQL text varied with input values:\n--- baseline ---\n%s\n--- got ---\n%s", c.baseline.SQL, c.stmt.SQL)
 			}
@@ -239,4 +309,11 @@ func FuzzSpatial(f *testing.F) {
 			t.Fatalf("parameter count varied: %d != %d", len(stmt.Args), len(baseline.Args))
 		}
 	})
+}
+
+// duplicateKey reports the user error of two select items answering under
+// the same response key.
+func duplicateKey(err error) bool {
+	var ue *compile.UserError
+	return errors.As(err, &ue) && ue.Code == compile.CodeInvalidSelect && strings.HasPrefix(ue.Detail, "two select items answer under")
 }

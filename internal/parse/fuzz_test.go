@@ -40,6 +40,9 @@ func FuzzParse(f *testing.F) {
 		{"GET", "/places", "select=owner_id,location.extent(),u:area.union(),location.centroid(),location.collect(),n:location.count()", "text/csv", ""},
 		{"GET", "/posts", "select=count,id.sum(x),title::text,users(count())&after=x&distinct=id&order=id", "", ""},
 		{"GET", "/rpc/search_posts", "term=a&select=author_id,count()&order=author_id", "", ""},
+		{"GET", "/users", `select=id,x:settings->a->>b,settings->"a.b"->-1::int,tags->0,address->>city::text&settings->>theme=eq.dark&settings->n=in.(1,2)&order=settings->>theme.desc,settings->0`, "", ""},
+		{"GET", "/users", `select=settings->>theme,count(),settings->n::numeric.sum()&or=(settings->>x.eq.1,not.settings->"y".cs.[1])&order=settings->>theme&posts.settings->>a=eq.1`, "", ""},
+		{"GET", "/posts", "select=id,users(settings->>theme)&users.settings->>theme=like.d*&users.order=settings->n.desc&users.settings->>a->b=eq.x", "", ""},
 	}
 	for _, s := range seeds {
 		f.Add(s.method, s.path, s.query, s.accept, s.body)

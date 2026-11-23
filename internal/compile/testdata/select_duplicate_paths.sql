@@ -1,0 +1,2 @@
+-- request: GET /api/users?select=id,id,*,email,settings->>a,settings->>a
+-- error: 400 invalid_select: two select items answer under "a"; alias one of them

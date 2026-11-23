@@ -64,7 +64,7 @@ func csvColumns(op *exec.Operation) []string {
 	for i := range node.Fields {
 		f := &node.Fields[i]
 		key := f.Key(res)
-		if node.Star && f.Alias == "" && f.Column != nil && f.Agg == nil && seen[key] {
+		if node.Star && f.Alias == "" && f.Column != nil && f.Agg == nil && len(f.Path) == 0 && f.Cast == nil && seen[key] {
 			continue
 		}
 		add(key)

@@ -739,8 +739,8 @@ func TestBasePathRoot(t *testing.T) {
 
 // TestKeyOrderFollowsSelect: response objects keep the select= order of
 // their fields (json objects are built in pair order; embeds follow the
-// fields), at the root, in embeds and in composites, and a key selected
-// twice appears once with its last value.
+// fields), at the root, in embeds and in composites; a column selected
+// twice appears once, other items sharing a key are a 400.
 func TestKeyOrderFollowsSelect(t *testing.T) {
 	srv := testServer(t, nil)
 	res, body := get(t, srv.URL+"/api/users?select=title:email,id,posts(title,id),address&order=id&limit=1")
@@ -758,7 +758,11 @@ func TestKeyOrderFollowsSelect(t *testing.T) {
 		at += i + len(k)
 	}
 	res, body = get(t, srv.URL+"/api/users?select=id,email,email:full_name&order=id&limit=1")
-	if res.StatusCode != 200 || strings.Count(string(body), `"email"`) != 1 || !sameJSON(body, `[{"id": 1, "email": "Ada Lovelace"}]`) {
-		t.Errorf("duplicate key = %d %s", res.StatusCode, body)
+	wantProblem(t, res, body, 400, "invalid_select")
+	res, body = get(t, srv.URL+"/api/posts?select=excerpt(max_chars=5),excerpt:title")
+	wantProblem(t, res, body, 400, "invalid_select")
+	res, body = get(t, srv.URL+"/api/users?select=*,id,email,id&order=id&limit=1")
+	if res.StatusCode != 200 || strings.Count(string(body), `"email"`) != 1 {
+		t.Errorf("repeated column = %d %s", res.StatusCode, body)
 	}
 }

@@ -381,7 +381,7 @@ func (p *parser) parseDotted(node *plan.Node, key, val string, depth int) error 
 		return p.addFilter(node, expr)
 	}
 	// A real field wins over any dotted interpretation.
-	if res.Field(key) != nil || res.Computed[key] != nil {
+	if res.Field(key) != nil || res.Computed[key] != nil || isPathKey(res, key) {
 		expr, err := p.parseColumnFilter(res, key, val)
 		if err != nil {
 			return err

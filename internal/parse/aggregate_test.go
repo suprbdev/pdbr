@@ -134,7 +134,6 @@ func TestAggregateSelect(t *testing.T) {
 			{"/api/users?select=id.sum()::", CodeInvalidSelect},
 			{"/api/users?select=id.sum()::1x", CodeInvalidSelect},
 			{"/api/users?select=id.sum()!inner", CodeInvalidSelect},
-			{"/api/users?select=id::text", CodeInvalidSelect},
 			{"/api/users?select=posts(id)::text", CodeInvalidSelect},
 			{"/api/users?select=id.sum(),balance.sum()", CodeInvalidSelect},
 			{"/api/users?select=*,id.sum(),email.min(),id:count()", CodeInvalidSelect},

@@ -24,8 +24,10 @@ type groupedQuery struct {
 	sql   string
 	alias string
 	obj   string
-	// cols maps a plain grouping column name to its key term.
-	cols map[string]orderTerm
+	// cols maps a plain grouping column name to its key term, paths a
+	// grouping JSON path (pathSignature) to its key term.
+	cols  map[string]orderTerm
+	paths map[string]orderTerm
 	// keys are every grouping key in select order (the ORDER BY tiebreak).
 	keys []orderTerm
 }
@@ -43,8 +45,8 @@ func (s *stmt) grouped(node *plan.Node, filter plan.Expr, corr func(childAlias s
 	r := node.Resource
 	t := r.Table
 	alias := s.alias("t")
-	g := &groupedQuery{alias: s.alias("g"), cols: map[string]orderTerm{}}
-	var cols, groupBy, pairs []string
+	g := &groupedQuery{alias: s.alias("g"), cols: map[string]orderTerm{}, paths: map[string]orderTerm{}}
+	var cols, groupBy []string
 	key := func(expr string, term orderTerm) string {
 		name := "__k" + strconv.Itoa(len(g.keys))
 		cols = append(cols, expr+" AS "+name)
@@ -66,24 +68,16 @@ func (s *stmt) grouped(node *plan.Node, filter plan.Expr, corr func(childAlias s
 		kc.Name = columnKey(c)
 		return s.columnJSON(g.alias, &kc, args, depth)
 	}
-	seen := map[string]bool{}
-	pos := map[string]int{}
-	add := func(k, expr string) {
-		seen[k] = true
-		if i, ok := pos[k]; ok {
-			pairs[i+1] = expr
-			return
-		}
-		pos[k] = len(pairs)
-		pairs = append(pairs, quoteLiteral(k), expr)
-	}
+	pl := newPairList()
 	if node.Star {
 		for _, f := range r.Columns {
 			expr, err := columnJSON(f.Column, nil)
 			if err != nil {
 				return nil, err
 			}
-			add(f.Key, expr)
+			if err := pl.add(f.Key, quoteLiteral(f.Key), expr); err != nil {
+				return nil, err
+			}
 		}
 	}
 	nAgg := 0
@@ -98,10 +92,16 @@ func (s *stmt) grouped(node *plan.Node, filter plan.Expr, corr func(childAlias s
 			nAgg++
 			cols = append(cols, s.aggregateSQL(f, alias)+" AS "+name)
 			expr = aggregateJSON(colRef(g.alias, name), f.Agg)
-		case f.Column != nil:
-			if node.Star && f.Alias == "" && seen[k] {
-				continue
+		case f.Column != nil && (len(f.Path) > 0 || f.Cast != nil):
+			name := key(s.valueSQL(alias, f, false), orderTerm{nullable: true})
+			if len(f.Path) > 0 && f.Cast == nil {
+				g.paths[pathSignature(f.Column, f.Path)] = g.keys[len(g.keys)-1]
 			}
+			expr = colRef(g.alias, name)
+			if f.Cast != nil {
+				expr = "to_json(" + expr + ")"
+			}
+		case f.Column != nil:
 			expr, err = columnJSON(f.Column, f.Args)
 		default:
 			_, value, ferr := s.fieldJSON(r, f, alias, depth)
@@ -113,7 +113,9 @@ func (s *stmt) grouped(node *plan.Node, filter plan.Expr, corr func(childAlias s
 		if err != nil {
 			return nil, err
 		}
-		add(k, expr)
+		if err := pl.add(k, s.pairKey(f, k), expr); err != nil {
+			return nil, err
+		}
 	}
 	var extra []string
 	if corr != nil {
@@ -132,7 +134,7 @@ func (s *stmt) grouped(node *plan.Node, filter plan.Expr, corr func(childAlias s
 		group = "\nGROUP BY " + strings.Join(groupBy, ", ")
 	}
 	g.sql = fmt.Sprintf("SELECT %s\nFROM %s %s%s%s", strings.Join(cols, ", "), from, alias, where, group)
-	g.obj = buildJSONObject(pairs)
+	g.obj = pl.object()
 	return g, nil
 }
 
@@ -172,6 +174,8 @@ func (s *stmt) groupCountSQL(node *plan.Node) (string, error) {
 		f := &node.Fields[i]
 		switch {
 		case f.Agg != nil:
+		case f.Column != nil && (len(f.Path) > 0 || f.Cast != nil):
+			keys = append(keys, s.valueSQL(alias, f, false))
 		case f.Column != nil:
 			column(f.Column)
 		default:
@@ -205,6 +209,9 @@ func (g *groupedQuery) orderTerms(order []plan.OrderTerm) ([]orderTerm, error) {
 			return nil, errUser(CodeColumnNotOrderable, "an aggregate select orders only by its grouping columns")
 		}
 		term, ok := g.cols[o.Column.Name]
+		if len(o.Path) > 0 {
+			term, ok = g.paths[pathSignature(o.Column, o.Path)]
+		}
 		if !ok {
 			return nil, errUser(CodeColumnNotOrderable, "order by %q needs %q selected as a grouping column", o.Column.Name, o.Column.Name)
 		}
@@ -233,6 +240,9 @@ func (s *stmt) aggregateSQL(f *plan.FieldSel, alias string) string {
 		return "count(*)"
 	}
 	in := colRef(alias, f.Column.Name)
+	if len(f.Path) > 0 {
+		in = s.jsonPathSQL(alias, f.Column, f.Path, false)
+	}
 	if a.InputCast != nil {
 		in = "(" + in + ")::" + typeRefSQL(a.InputCast)
 	}
