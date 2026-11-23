@@ -20,9 +20,7 @@ import (
 	"github.com/suprbdev/pdbr/internal/config"
 )
 
-// watchServer boots an App in watch mode. The watcher goroutine holds a
-// pooled connection (LISTEN) until ctx ends, and pgxpool.Close waits for
-// acquired connections, so the context is cancelled before the App closes.
+// watchServer boots an App in watch mode.
 func watchServer(t *testing.T, dbURL string, logs *syncWriter, mutate func(*config.Config)) *httptest.Server {
 	t.Helper()
 	cfg := config.DefaultConfig()
@@ -237,4 +235,48 @@ func TestWatchPollFallback(t *testing.T) {
 	if props := openAPIProperties(t, srv, "watch_poll_probe"); !contains(props, "v") {
 		t.Fatalf("openapi properties = %v", props)
 	}
+}
+
+// TestCloseStopsWatcher: App.Close returns without the context given to
+// Handler being cancelled, and is idempotent.
+func TestCloseStopsWatcher(t *testing.T) {
+	dbURL := os.Getenv("PDBR_TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("PDBR_TEST_DATABASE_URL not set; run `make test-e2e`")
+	}
+	cfg := config.DefaultConfig()
+	cfg.Database.URL = dbURL
+	cfg.RLS.Enabled = false
+	cfg.Watch.Enabled = true
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	app := pdbr.New(cfg, pdbr.WithVersion("e2e"))
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	h, err := app.Handler(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	done := make(chan struct{})
+	go func() {
+		app.Close()
+		app.Close()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("App.Close did not return while the watcher context was live")
+	}
+}
+
+// TestCloseWithoutServe: Close is safe on an App that never started a server.
+func TestCloseWithoutServe(t *testing.T) {
+	app := pdbr.New(config.DefaultConfig())
+	app.Close()
+	app.Close()
 }

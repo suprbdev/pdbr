@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -48,6 +49,9 @@ type App struct {
 	Version  string
 
 	pool *pgxpool.Pool
+
+	watchMu sync.Mutex
+	stops   []func()
 
 	// readOnly lives on the App so one flag is shared by every runtime the
 	// App builds — flipping it at runtime survives watch-mode swaps.
@@ -158,8 +162,18 @@ func (a *App) Connect(ctx context.Context) error {
 // Pool exposes the connection pool (nil before Connect).
 func (a *App) Pool() *pgxpool.Pool { return a.pool }
 
-// Close releases resources.
+// Close stops any running schema watcher, waits for it to release its
+// connection, then closes the pool. It is idempotent, needs no prior Serve or
+// Handler call, and does not require the context given to them to be
+// cancelled first.
 func (a *App) Close() {
+	a.watchMu.Lock()
+	stops := a.stops
+	a.stops = nil
+	a.watchMu.Unlock()
+	for _, stop := range stops {
+		stop()
+	}
 	if a.pool != nil {
 		a.pool.Close()
 	}
@@ -352,6 +366,7 @@ func (a *App) buildServer(ctx context.Context) (*server.Server, error) {
 	}
 	srv := server.New(a.Config.Server, auth.New(confx.AuthConfig(a.Config.RLS)), rt, a.Log)
 	if a.Config.Watch.Enabled {
+		wctx, cancel := context.WithCancel(ctx)
 		w := &watch.Watcher{
 			Pool:         a.pool,
 			Schemas:      a.Config.Schema.Schemas,
@@ -361,7 +376,7 @@ func (a *App) buildServer(ctx context.Context) (*server.Server, error) {
 			TriggerName:  "pdbr_watch",
 			InitialHash:  bootHash,
 			OnChange: func(cat *introspect.Catalog) {
-				nb, err := a.BuildAPI(ctx, cat)
+				nb, err := a.BuildAPI(wctx, cat)
 				if err != nil {
 					a.Log.Error("watch: api rebuild failed", "err", err)
 					return
@@ -375,11 +390,19 @@ func (a *App) buildServer(ctx context.Context) (*server.Server, error) {
 				a.Log.Info("watch: api reloaded", "resources", len(nb.Resources), "rpcs", len(nb.RPCs))
 			},
 		}
+		done := make(chan struct{})
 		go func() {
-			if err := w.Run(ctx); err != nil {
+			defer close(done)
+			if err := w.Run(wctx); err != nil {
 				a.Log.Error("watch: stopped", "err", err)
 			}
 		}()
+		a.watchMu.Lock()
+		a.stops = append(a.stops, func() {
+			cancel()
+			<-done
+		})
+		a.watchMu.Unlock()
 	}
 	return srv, nil
 }
