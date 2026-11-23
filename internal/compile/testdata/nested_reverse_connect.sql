@@ -23,7 +23,7 @@ __vis_1 AS NOT MATERIALIZED (
   UNION ALL SELECT "id", "author_id", "title" FROM __c_2
 ),
 __guard AS MATERIALIZED (
-  SELECT (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard: nested "posts.connect[0]": matched ', count(*), ' rows')::boolean END FROM __c_1) AS ok
+  SELECT (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard <token>: nested "posts.connect[0]": matched ', count(*), ' rows')::boolean END FROM __c_1) AS ok
 )
 SELECT __guarded.data
 FROM __guard

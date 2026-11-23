@@ -31,10 +31,10 @@ __vis_1 AS NOT MATERIALIZED (
   UNION ALL SELECT "id", "owner_id", "name" FROM __c_3
 ),
 __guard AS MATERIALIZED (
-  SELECT (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard: row of "users": matched ', count(*), ' rows')::boolean END FROM __mut)
-    AND (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard: nested "places.connect[0]": matched ', count(*), ' rows')::boolean END FROM __c_1)
-    AND (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard: nested "places.delete[0]": matched ', count(*), ' rows')::boolean END FROM __c_2)
-    AND (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard: nested "places.update[0]": matched ', count(*), ' rows')::boolean END FROM __c_3) AS ok
+  SELECT (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard <token>: row of "users": matched ', count(*), ' rows')::boolean END FROM __mut)
+    AND (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard <token>: nested "places.connect[0]": matched ', count(*), ' rows')::boolean END FROM __c_1)
+    AND (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard <token>: nested "places.delete[0]": matched ', count(*), ' rows')::boolean END FROM __c_2)
+    AND (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard <token>: nested "places.update[0]": matched ', count(*), ' rows')::boolean END FROM __c_3) AS ok
 )
 SELECT __guarded.data
 FROM __guard

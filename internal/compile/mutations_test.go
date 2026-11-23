@@ -2,6 +2,7 @@ package compile_test
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -276,14 +277,33 @@ func TestBulkMutationShapes(t *testing.T) {
 
 func TestGuardSQL(t *testing.T) {
 	g := compile.GuardSQL("__c_1", `nested "posts.update[0]":`)
-	want := `(SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard: nested "posts.update[0]": matched ', count(*), ' rows')::boolean END FROM __c_1)`
-	if g != want {
+	re := regexp.MustCompile(`^\(SELECT CASE WHEN count\(\*\) > 0 THEN true ELSE concat\('pdbr guard ([0-9a-f]{32}): nested "posts\.update\[0\]": matched ', count\(\*\), ' rows'\)::boolean END FROM __c_1\)$`)
+	m := re.FindStringSubmatch(g)
+	if m == nil {
 		t.Fatalf("GuardSQL = %s", g)
 	}
-	if d, ok := compile.GuardFailure(`invalid input syntax for type boolean: "pdbr guard: nested "posts.update[0]": matched 0 rows"`); !ok || d != `nested "posts.update[0]": matched 0 rows` {
-		t.Fatalf("GuardFailure = %q %v", d, ok)
+	marker := "pdbr guard " + m[1] + ": "
+	if strings.Contains(compile.RenderGolden("GET", "/", &compile.Statement{SQL: g}), m[1]) {
+		t.Fatal("RenderGolden leaks the guard token")
 	}
-	if _, ok := compile.GuardFailure(`invalid input syntax for type boolean: "yes please"`); ok {
-		t.Fatal("plain 22P02 taken for a guard")
+	for _, msg := range []string{
+		`invalid input syntax for type boolean: "` + marker + `nested "posts.update[0]": matched 0 rows"`,
+		`ungültige Eingabesyntax für Typ boolean: »` + marker + `nested "posts.update[0]": matched 0 rows«`,
+	} {
+		if d, ok := compile.GuardFailure(msg); !ok || d != `nested "posts.update[0]": matched 0 rows` {
+			t.Fatalf("GuardFailure(%s) = %q %v", msg, d, ok)
+		}
+	}
+	for _, msg := range []string{
+		`invalid input syntax for type boolean: "yes please"`,
+		`invalid input syntax for type boolean: "pdbr guard: nested "posts.update[0]": matched 0 rows"`,
+		`invalid input value for enum mood: "pdbr guard: everything is fine, nothing matched"`,
+		`invalid input syntax for type boolean: "pdbr guard 0123456789abcdef0123456789abcdef: x matched 0 rows"`,
+		`invalid input syntax for type boolean: "` + marker + `x matched many rows"`,
+		`invalid input syntax for type boolean: "` + marker + ` matched 0 rows"`,
+	} {
+		if d, ok := compile.GuardFailure(msg); ok {
+			t.Errorf("GuardFailure(%s) = %q, want no guard", msg, d)
+		}
 	}
 }

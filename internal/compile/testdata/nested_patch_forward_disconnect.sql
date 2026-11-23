@@ -6,7 +6,7 @@ WITH __mut AS (
   RETURNING 1
 ),
 __guard AS MATERIALIZED (
-  SELECT (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard: row of "places": matched ', count(*), ' rows')::boolean END FROM __mut) AS ok
+  SELECT (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard <token>: row of "places": matched ', count(*), ' rows')::boolean END FROM __mut) AS ok
 )
 SELECT __guarded.data
 FROM __guard

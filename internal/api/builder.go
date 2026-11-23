@@ -30,6 +30,12 @@ type Options struct {
 	// ExposePartitions makes partitions of partitioned tables resources too
 	// (schema.expose_partitions); by default only the partitioned parent is.
 	ExposePartitions bool
+	// HiddenTables holds the "schema.table" keys of introspected tables
+	// removed from the catalog before the build (a schema contract, a bare
+	// @omit, any catalog hook). Functions returning or taking their row
+	// types are not exposed, and columns typed as them are hidden, since
+	// their rows would otherwise be rendered whole as JSON.
+	HiddenTables map[string]bool
 	// BasePath is server.base_path (OpenAPI servers[0].url).
 	BasePath string
 	// Schemas is schema.schemas; Schemas[0] gets bare aliases.
@@ -433,6 +439,7 @@ func (b *Builder) addResources() {
 		r.Keyset = t.PrimaryKey != nil
 		r.Etag = b.Options.Etags && len(t.RowKeys()) > 0
 		b.applyFilterPolicy(r)
+		b.hideRowTypedColumns(r)
 		b.Resources[t.Schema+"."+t.Name] = r
 	}
 }
@@ -705,6 +712,13 @@ func (b *Builder) addFunctions() {
 		}
 		if what := pseudoTyped(f); what != "" {
 			b.log.Debug("skipping function: pseudo-type signature", "function", fkey, "position", what)
+			continue
+		}
+		if ref, hidden := b.unexposedType(f); hidden {
+			b.log.Info("skipping function: returns or takes rows of a hidden table (omit or schema contract)", "function", fkey, "table", ref)
+			continue
+		} else if ref != "" {
+			b.Warn("skipping function: uses a type from a schema outside schema.schemas (the row type of an unexposed table?)", "function", fkey, "type", ref)
 			continue
 		}
 		if i, t := b.rowTypeArg(f); i == 0 && f.Volatility != introspect.VolatilityVolatile {

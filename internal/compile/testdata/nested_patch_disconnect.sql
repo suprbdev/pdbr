@@ -16,7 +16,7 @@ __vis_1 AS NOT MATERIALIZED (
   UNION ALL SELECT "id", "owner_id" FROM __c_1
 ),
 __guard AS MATERIALIZED (
-  SELECT (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard: row of "users": matched ', count(*), ' rows')::boolean END FROM __mut) AS ok
+  SELECT (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard <token>: row of "users": matched ', count(*), ' rows')::boolean END FROM __mut) AS ok
 )
 SELECT __guarded.data
 FROM __guard

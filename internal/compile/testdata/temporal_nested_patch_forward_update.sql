@@ -15,8 +15,8 @@ __vis_1 AS NOT MATERIALIZED (
   UNION ALL SELECT "room_id", "valid_at", "guest" FROM __p_1
 ),
 __guard AS MATERIALIZED (
-  SELECT (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard: row of "tk_notes": matched ', count(*), ' rows')::boolean END FROM __mut)
-    AND (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard: nested "tk_bookings.update": matched ', count(*), ' rows')::boolean END FROM __p_1) AS ok
+  SELECT (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard <token>: row of "tk_notes": matched ', count(*), ' rows')::boolean END FROM __mut)
+    AND (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard <token>: nested "tk_bookings.update": matched ', count(*), ' rows')::boolean END FROM __p_1) AS ok
 )
 SELECT __guarded.data
 FROM __guard

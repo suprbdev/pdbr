@@ -1,6 +1,8 @@
 package compile
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"strconv"
 	"strings"
@@ -162,32 +164,68 @@ func (c *Compiler) MutationChain(req *Request, ch Chain) (*Statement, error) {
 	return s.finish(s.mutationResponse(strings.TrimSpace(ch.CTEs), rep, ch.Writes))
 }
 
+// guardToken is a random per-process secret embedded in every guard
+// message, so that a 22P02 raised over a client or stored value (the
+// message quotes the offending input) cannot pass for a failed guard: the
+// token never leaves the server (RenderGolden masks it).
+var guardToken = newGuardToken()
+
+func newGuardToken() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		panic("compile: guard token: " + err.Error())
+	}
+	return hex.EncodeToString(b[:])
+}
+
 // guardMarker prefixes the message a failed guard raises (GuardSQL).
-const guardMarker = "pdbr guard: "
+var guardMarker = "pdbr guard " + guardToken + ": "
+
+// guardMask replaces guardToken in rendered SQL (RenderGolden).
+const guardMask = "<token>"
 
 // GuardSQL renders a guard requiring the CTE named cte to yield at least
 // one row. A failed guard casts its message (built from count(*), so the
 // planner cannot fold the cast into a plan-time error) to boolean, which
 // raises SQLSTATE 22P02; the executor answers 404 not_found with
-// "<label> matched 0 rows" as the detail. label must not depend on request
-// values (the SQL text stays a function of the request shape).
+// "<label> matched 0 rows" as the detail. The message carries a secret
+// per-process token that GuardFailure requires, so no other 22P02 maps to
+// a guard failure. label must not depend on request values (the SQL text
+// stays a function of the request shape).
 func GuardSQL(cte, label string) string {
 	return fmt.Sprintf("(SELECT CASE WHEN count(*) > 0 THEN true ELSE concat(%s, count(*), ' rows')::boolean END FROM %s)",
 		quoteLiteral(guardMarker+label+" matched "), cte)
 }
 
 // GuardFailure reports whether a database error message is a failed
-// GuardSQL guard, and returns its "<label> matched 0 rows" text.
+// GuardSQL guard raised by this process, and returns its "<label> matched
+// N rows" text: the message must carry the guard's token and end its
+// quoted value with " matched N rows" (the quote characters around it
+// depend on the server's lc_messages).
 func GuardFailure(message string) (string, bool) {
 	i := strings.Index(message, guardMarker)
 	if i < 0 {
 		return "", false
 	}
 	rest := message[i+len(guardMarker):]
-	if j := strings.LastIndexByte(rest, '"'); j >= 0 {
-		rest = rest[:j]
+	j := strings.LastIndex(rest, " rows")
+	if j < 0 {
+		return "", false
+	}
+	rest = rest[:j+len(" rows")]
+	head, n, ok := cutLast(rest[:j], " matched ")
+	if !ok || head == "" || n == "" || strings.Trim(n, "0123456789") != "" {
+		return "", false
 	}
 	return rest, true
+}
+
+// cutLast is strings.Cut at the last occurrence of sep.
+func cutLast(s, sep string) (before, after string, found bool) {
+	if i := strings.LastIndex(s, sep); i >= 0 {
+		return s[:i], s[i+len(sep):], true
+	}
+	return s, "", false
 }
 
 // CoerceInput converts an input value into a driver-friendly parameter for

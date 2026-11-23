@@ -10,7 +10,7 @@ __mut AS (
   RETURNING "id", "room_id", "valid_at", "note"
 ),
 __guard AS MATERIALIZED (
-  SELECT (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard: nested "tk_bookings.connect": matched ', count(*), ' rows')::boolean END FROM __p_1) AS ok
+  SELECT (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard <token>: nested "tk_bookings.connect": matched ', count(*), ' rows')::boolean END FROM __p_1) AS ok
 )
 SELECT __guarded.data
 FROM __guard

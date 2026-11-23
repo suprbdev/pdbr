@@ -149,6 +149,17 @@ level, so clients can branch on `code` in every environment.
 | `prod` (default) | `23*` and `22*` messages pass through, and so do contrib input errors (`syntax error in tsquery: …`); PostGIS input errors → `invalid geometry`; `42501` → `permission denied`; other `42*` → `invalid operation`; everything else → `database error` | absent |
 | `strict` | `23*` → `constraint violation`; `22*`, contrib and PostGIS input errors → `invalid input value`; rest as `prod` | absent |
 
+In `prod`, a `23*` message is replaced by a generic one (`not-null
+violation`, `foreign key violation`, `unique violation`, `check
+violation`, `exclusion violation`, else `constraint violation`) when it
+names something the serving API hides: a table missing from the catalog
+(bare `@omit`, a [schema contract](contracts.md), a schema outside
+`schema.schemas`), a column hidden from both responses and bodies, a
+foreign key the API dropped or whose referenced table is hidden, or a
+unique key over a hidden column. A `NOT NULL` column hidden that way is
+not listed by the `missing required column(s)` check either; the
+database's not-null violation answers instead.
+
 Sanitization mirrors pdbq's `sanitizePGMessage`: constraint (`23*`) and
 data-exception (`22*`) messages are user-actionable and safe; `42*` messages
 can leak schema internals; everything else is hidden. pdbr's own grammar
