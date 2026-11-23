@@ -106,6 +106,14 @@ func TestTemporalRelations(t *testing.T) {
 	if len(emb.AnyOf) != 2 || emb.AnyOf[0].Ref != "#/components/schemas/tk_rooms" || emb.AnyOf[1].Type != "null" || !strings.Contains(emb.Description, "NOT ENFORCED") {
 		t.Errorf("NOT ENFORCED forward embed = %+v", emb)
 	}
+
+	cat := temporalCatalog()
+	fk := cat.Table("public", "tk_readings").ForeignKeys[0]
+	fk.NotEnforced, fk.NotValid = false, true
+	emb = build(t, cat, defaultOptions()).OpenAPI.Components.Schemas["tk_readings"].Properties["tk_rooms"]
+	if len(emb.AnyOf) != 2 || !strings.Contains(emb.Description, "NOT VALID foreign key: the referenced row may be missing") {
+		t.Errorf("NOT VALID forward embed = %+v", emb)
+	}
 }
 
 func TestTemporalNestedInputs(t *testing.T) {

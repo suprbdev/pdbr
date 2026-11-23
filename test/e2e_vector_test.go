@@ -169,12 +169,18 @@ func TestVectorOrder(t *testing.T) {
 	}
 
 	indexed := vectorServer(t, nil)
-	getJSON(t, indexed+"/api/items?select=id&id=lt.5&order=emb.vec_cos&vec="+q, &rows)
+	getJSON(t, indexed+"/api/items?select=id&id=lt.5&order=emb.vec_l2&vec="+q, &rows)
 	if !eq(ids(rows, "id"), []int{1, 4, 2, 3}) {
-		t.Errorf("indexed emb.vec_cos = %v", ids(rows, "id"))
+		t.Errorf("indexed emb.vec_l2 = %v", ids(rows, "id"))
 	}
-	res, out := get(t, indexed+"/api/items?order=sparse.vec_l2&vec="+sq)
-	wantProblem(t, res, out, 400, "column_not_orderable")
+	for _, order := range []string{"emb.vec_cos", "sparse.vec_l2"} {
+		vec := q
+		if strings.HasPrefix(order, "sparse") {
+			vec = sq
+		}
+		res, out := get(t, indexed+"/api/items?order="+order+"&vec="+vec)
+		wantProblem(t, res, out, 400, "column_not_orderable")
+	}
 }
 
 // TestVectorValues: vector and halfvec values come out as JSON arrays of
