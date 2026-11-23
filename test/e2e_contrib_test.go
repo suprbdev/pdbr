@@ -131,27 +131,29 @@ func TestContribKeysAndJoins(t *testing.T) {
 		t.Errorf("created = %v, want %v", created, want)
 	}
 
-	var full []row
-	getJSON(t, srv+"/api/authors?select=email&order=meta.desc", &full)
-	next := srv + "/api/authors?select=email&order=meta.desc&limit=1"
-	var walked []any
-	for range 5 {
-		res := getJSON(t, next, &rows)
-		for _, r := range rows {
-			walked = append(walked, r["email"])
+	for _, order := range []string{"meta.desc", "email.desc,meta.asc"} {
+		var full []row
+		getJSON(t, srv+"/api/authors?select=email&order="+order, &full)
+		next := srv + "/api/authors?select=email&order=" + order + "&limit=1"
+		var walked []any
+		for range 5 {
+			res := getJSON(t, next, &rows)
+			for _, r := range rows {
+				walked = append(walked, r["email"])
+			}
+			cursor := res.Header.Get("X-Next-Cursor")
+			if cursor == "" {
+				break
+			}
+			next = srv + "/api/authors?select=email&order=" + order + "&limit=1&after=" + cursor
 		}
-		cursor := res.Header.Get("X-Next-Cursor")
-		if cursor == "" {
-			break
+		var want []any
+		for _, r := range full {
+			want = append(want, r["email"])
 		}
-		next = srv + "/api/authors?select=email&order=meta.desc&limit=1&after=" + cursor
-	}
-	var want []any
-	for _, r := range full {
-		want = append(want, r["email"])
-	}
-	if len(want) != 3 || !reflect.DeepEqual(walked, want) {
-		t.Errorf("keyset walk by hstore = %v, want %v", walked, want)
+		if len(want) != 3 || !reflect.DeepEqual(walked, want) {
+			t.Errorf("keyset walk by %s = %v, want %v", order, walked, want)
+		}
 	}
 
 	sendJSON(t, "DELETE", srv+"/api/notes/2", "", 200, nil)

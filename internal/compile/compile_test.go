@@ -788,6 +788,11 @@ FROM (
 	if !strings.Contains(stmt.SQL, `WHERE ((t0."body" < (SELECT __a."body" FROM "public"."posts" __a WHERE __a."id" = $1) OR (t0."body" IS NULL AND (SELECT __a."body" FROM "public"."posts" __a WHERE __a."id" = $1) IS NOT NULL)) OR (t0."body" IS NOT DISTINCT FROM (SELECT __a."body" FROM "public"."posts" __a WHERE __a."id" = $1) AND t0."id" > $2))`) {
 		t.Errorf("nullable keyset:\n%s", stmt.SQL)
 	}
+	p.Order = []plan.OrderTerm{{Column: f.col("posts", "title")}, {Column: f.col("posts", "author_id"), Desc: true}}
+	stmt = f.compile(p)
+	if !strings.Contains(stmt.SQL, `WHERE t0."title" >= (SELECT __a."title" FROM "public"."posts" __a WHERE __a."id" = $1) AND (t0."title" > (SELECT __a."title" FROM "public"."posts" __a WHERE __a."id" = $1) OR (t0."title" = `) {
+		t.Errorf("mixed keyset leading bound:\n%s", stmt.SQL)
+	}
 	p.Order = nil
 	stmt = f.compile(p)
 	if !strings.Contains(stmt.SQL, `WHERE t0."id" > $1`) {
