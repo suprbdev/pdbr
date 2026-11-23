@@ -368,7 +368,10 @@ type Not struct{ Term Expr }
 //   - in: []any of element values (never nil; may be empty).
 //   - is: nil for is.null, bool for is.true / is.false.
 //   - like/ilike/sw/ew: the raw string operand (the compiler translates *
-//     to % for like/ilike and escapes sw/ew).
+//     to % for like/ilike and escapes sw/ew); match/imatch: the raw POSIX
+//     regular expression.
+//   - any/all modifier (Mod): []any of the values the operator alone
+//     would take.
 //   - cs/cd/ov: []any for array columns, JSON text (string) for jsonb.
 //   - hk: string key; jpe/jpm: the jsonpath string.
 //   - spatial ops: a postgis.Value (st_* and geometry-operand bbox_* ops),
@@ -391,7 +394,20 @@ type Cond struct {
 	Op       Op            // eq, neq, ..., st_intersects, exists
 	Value    any           // coerced; nil for structural ops (is.null ...)
 	Negate   bool          // leading not.
+	// Mod is the any/all modifier (eq(any).{a,b}); Value is then the
+	// []any of coerced elements.
+	Mod OpModifier
 }
+
+// OpModifier is the any/all modifier of eq, gt, gte, lt, lte, like, ilike,
+// match and imatch: the operator applies against every element of the
+// operand list, true when any (ANY) or all (ALL) match.
+type OpModifier string
+
+const (
+	ModAny OpModifier = "any"
+	ModAll OpModifier = "all"
+)
 
 // DWithin is the operand of st_dwithin / st_beyond.
 type DWithin struct {
@@ -428,6 +444,8 @@ const (
 	OpIs     Op = "is"
 	OpLike   Op = "like"
 	OpILike  Op = "ilike"
+	OpMatch  Op = "match"
+	OpIMatch Op = "imatch"
 	OpSw     Op = "sw"
 	OpEw     Op = "ew"
 	OpCs     Op = "cs"

@@ -1,0 +1,2 @@
+-- request: GET /api/users?select=id&email=eq(any).a
+-- error: 400 invalid_filter: "a" is not an array literal ({a,b})

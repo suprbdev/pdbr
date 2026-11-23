@@ -87,6 +87,8 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Scalar operators: `eq neq gt gte lt lte in is` (`is.null|true|false`) (parity)
 - [x] `in.(a,b,"c,d")` / `not.in.(…)` → `= ANY($n)` / `<> ALL($n)` (parity)
 - [x] Text operators: `like ilike sw ew` (`*` → `%`; `sw`/`ew` operands escaped) (parity)
+- [x] Regular expressions `match` (`~`) and `imatch` (`~*`), citext through its own operators (parity)
+- [x] `any`/`all` modifiers on `eq gt gte lt lte like ilike match imatch` (`col=like(any).{a*,b*}` → `LIKE ANY($n)`) (parity)
 - [x] Array operators: `cs cd ov` (`{a,b}` literal) (parity)
 - [x] `jsonb` operators: `cs cd hk jpe jpm` (parity)
 - [x] Enum filtering with pg labels verbatim (parity)

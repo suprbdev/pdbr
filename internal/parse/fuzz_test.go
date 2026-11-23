@@ -42,6 +42,8 @@ func FuzzParse(f *testing.F) {
 		{"GET", "/rpc/search_posts", "term=a&select=author_id,count()&order=author_id", "", ""},
 		{"GET", "/users", `select=id,x:settings->a->>b,settings->"a.b"->-1::int,tags->0,address->>city::text&settings->>theme=eq.dark&settings->n=in.(1,2)&order=settings->>theme.desc,settings->0`, "", ""},
 		{"GET", "/users", `select=settings->>theme,count(),settings->n::numeric.sum()&or=(settings->>x.eq.1,not.settings->"y".cs.[1])&order=settings->>theme&posts.settings->>a=eq.1`, "", ""},
+		{"GET", "/users", "email=match.^a&id=gt(any).{1,2}&mood=eq(all).{ok}&or=(email.like(any).{a*,*b},email.not.imatch(all).{x})&settings->>t=ilike(any).{A*}", "", ""},
+		{"GET", "/kb/docs", "email=imatch.^a&email=match(any).{^b,^c}&title=like(all).{P*}", "", ""},
 		{"GET", "/posts", "select=id,users(settings->>theme)&users.settings->>theme=like.d*&users.order=settings->n.desc&users.settings->>a->b=eq.x", "", ""},
 	}
 	for _, s := range seeds {

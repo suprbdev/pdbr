@@ -1,0 +1,1 @@
+GET /api/posts?select=id&or=(title.like(any).{N*,C*},id.eq(all).{1,1},title.imatch(all).{^n,engine$})

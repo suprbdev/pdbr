@@ -747,7 +747,7 @@ func coreFilterOps(cat *introspect.Catalog, c *introspect.Column, base string, i
 		return []string{"is", "cs", "cd", "hk", "jpe", "jpm"}
 	case "text", "varchar", "bpchar", "char", "name", "citext":
 		if c.EnumRef == "" {
-			return []string{"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew"}
+			return []string{"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew", "match", "imatch"}
 		}
 	}
 	return []string{"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct"}

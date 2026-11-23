@@ -535,8 +535,11 @@ func (b *Builder) filterParams(r *Resource, shadow map[string]bool) []*Parameter
 			Description: "Filter: " + f.Key + "=<op>.<value> (" + typeLabel(f.Column) + "). Ops: " + strings.Join(ops, ", ") + ". Prefix not. to negate (" + f.Key + "=not." + ops[0] + ".<value>).",
 			Deprecated:  f.Deprecated, XDeprecationReason: f.DeprecationReason,
 		}
+		if mods := modifiableOps(ops); len(mods) > 0 {
+			p.Description += " Modifiers: " + strings.Join(mods, ", ") + " also take (any) or (all) with a {a,b} list (" + f.Key + "=" + mods[0] + "(any).{a,b})."
+		}
 		if jsonPathFilterable(f.Column) {
-			p.Description += " JSON paths: " + f.Key + "->key=<op>.<value> compares jsonb (eq, neq, gt, gte, lt, lte, in, is, isdistinct, cs, cd, hk, jpe, jpm; JSON operands), " + f.Key + "->>key=<op>.<value> text (the text operators)."
+			p.Description += " JSON paths: " + f.Key + "->key=<op>.<value> compares jsonb (eq, neq, gt, gte, lt, lte, in, is, isdistinct, cs, cd, hk, jpe, jpm; JSON operands), " + f.Key + "->>key=<op>.<value> text (the text operators, match and imatch included)."
 		}
 		if f.Description != "" {
 			p.Description = f.Description + " " + p.Description
@@ -922,4 +925,16 @@ func jsonPathFilterable(c *introspect.Column) bool {
 		return !postgis.FlavourOf(base).Spatial()
 	}
 	return base == "json" || base == "jsonb"
+}
+
+// modifiableOps lists the operators of ops that take the any/all modifier.
+func modifiableOps(ops []string) []string {
+	var out []string
+	for _, op := range ops {
+		switch op {
+		case "eq", "gt", "gte", "lt", "lte", "like", "ilike", "match", "imatch":
+			out = append(out, op)
+		}
+	}
+	return out
 }

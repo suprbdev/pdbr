@@ -179,6 +179,8 @@ t0."email" OPERATOR("ext".=) $1::"ext".citext
 t0."email" OPERATOR("ext".~~*) $2::"ext".citext          -- ilike
 t0."email" OPERATOR("ext".~~) ($3 || '%')::"ext".citext  -- sw
 t0."email" OPERATOR("ext".=) ANY($4::text[]::"ext"."citext"[])
+t0."email" OPERATOR("ext".~) $5::"ext".citext            -- match (case-insensitive on citext)
+t0."email" OPERATOR("ext".~~) ALL($6::text[]::"ext"."citext"[])  -- like(all)
 ```
 
 The same goes for every key and correlation comparison: single-row reads,
@@ -303,8 +305,6 @@ description, and the `trgm` parameter on resources that have a distance term.
   fails on inet.
 - **Full-text search on json/jsonb columns**, which PostgREST supports through
   `to_tsvector(jsonb)`, is not offered.
-- **`match`/`imatch`** (regex) and the `any`/`all` modifiers are not
-  implemented.
 - **The indexed-only policy** has no PostgREST counterpart.
 
 ## Differences from pdbq

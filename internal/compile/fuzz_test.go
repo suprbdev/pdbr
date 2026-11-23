@@ -182,6 +182,13 @@ func FuzzFilter(f *testing.F) {
 			pc(path(false), plan.OpCs, tag),
 			pc(path(false), plan.OpGt, tag),
 			plan.Not{Term: pc(path(true), plan.OpLike, e)},
+			modCond(pc(path(true), plan.OpMatch, []any{e, tag}), plan.ModAny),
+			cond(email, plan.OpMatch, e),
+			plan.Not{Term: cond(email, plan.OpIMatch, tag)},
+			modCond(cond(email, plan.OpLike, []any{e, tag}), plan.ModAll),
+			modCond(cond(email, plan.OpILike, []any{tag}), plan.ModAny),
+			modCond(cond(id, plan.OpGt, []any{n, n}), plan.ModAll),
+			modCond(cond(mood, plan.OpEq, []any{e}), plan.ModAny),
 		}}
 		p.Order = []plan.OrderTerm{{Column: settings, Path: path(true), Desc: true}, {Column: settings, Path: path(false)}}
 		p.Page = plan.Page{Limit: 10, After: []any{n}}
@@ -316,4 +323,9 @@ func FuzzSpatial(f *testing.F) {
 func duplicateKey(err error) bool {
 	var ue *compile.UserError
 	return errors.As(err, &ue) && ue.Code == compile.CodeInvalidSelect && strings.HasPrefix(ue.Detail, "two select items answer under")
+}
+
+func modCond(c plan.Cond, m plan.OpModifier) plan.Cond {
+	c.Mod = m
+	return c
 }
