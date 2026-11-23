@@ -79,7 +79,7 @@ body.
 | `aggregates_disabled` | an aggregate function in `select=` while `aggregates.enabled` is off (PostgREST `PGRST123`) |
 | `temporal_conflict_target` | `PUT` or `POST` with `Prefer: resolution=merge-duplicates` whose conflict target is a temporal (`WITHOUT OVERLAPS`, PostgreSQL 18) key — `?on_conflict=` naming one, or the default target on a table whose primary key is temporal (`ignore-duplicates` accepts them); `ON CONFLICT` cannot infer the exclusion constraint behind it (PostgreSQL would fail with `42P10`) |
 | `unfiltered_mutation` | bulk `PATCH`/`DELETE` on a collection path without a root filter or `!inner` embed while `mutations.allow_unfiltered` is off |
-| `if_match_unsupported` | `If-Match` on a write that cannot honour it (bulk `PATCH`/`DELETE` on a collection path, `PUT` on a single-row path, a `PATCH` carrying nested-mutation keys) while `server.etags` is on |
+| `if_match_unsupported` | `If-Match` on any request while `server.etags` is off; with it on, `If-Match` on a write that cannot honour it (bulk `PATCH`/`DELETE` on a collection path, `PUT` on a single-row path, a `PATCH` carrying nested-mutation keys) |
 | `max_affected_exceeded` | `Prefer: handling=strict, max-affected=N` and the write touched more than `N` rows; rolled back (PostgREST `PGRST124`) |
 
 ### Limits
@@ -291,11 +291,14 @@ static per path until a hot swap):
 ## `412`
 
 `If-Match` on `PATCH`/`DELETE` single-row paths ([mutations.md](mutations.md#if-match-on-patch--delete)):
-row exists and hash differs → `412 etag_mismatch`, transaction rolled back,
-no body change. Row missing → `404` (takes precedence over `412`).
-`If-Match` on bulk `PATCH`/`DELETE` and on a single-row `PUT` is
-`400 if_match_unsupported`; on other routes it is ignored. `If-None-Match` on single-row `GET`
-match → `304` (no body, not a problem document).
+row exists and its row hash (the `<row>` part of the ETag) differs →
+`412 etag_mismatch`, transaction rolled back, no body change. Row missing →
+`404` (takes precedence over `412`). `If-Match` on bulk `PATCH`/`DELETE` and
+on a single-row `PUT` is `400 if_match_unsupported`; on other routes it is
+ignored. With `server.etags: false`, `If-Match` is `400
+if_match_unsupported` on every route instead of being ignored.
+`If-None-Match` matching a single-row `GET`'s whole ETag → `304` (no body,
+not a problem document).
 
 ## `413`
 

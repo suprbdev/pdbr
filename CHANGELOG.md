@@ -20,6 +20,8 @@ becomes the release notes of the next tag.
   signature of the checksums and GitHub build provenance attestations.
 - Migration guide from PostgREST
   ([docs/migrating-from-postgrest.md](docs/migrating-from-postgrest.md)).
+- `pdbr request --role NAME --claims '{json}'` runs a request as a role with
+  claims; the default stays the connection role without claims.
 
 ### Changed
 
@@ -44,6 +46,13 @@ becomes the release notes of the next tag.
   `ambiguous_relation`. The never-emitted `not_implemented` (501) and
   `compile.ErrNotImplemented` are removed. `embed_depth_exceeded` is
   `depth_exceeded`, as in pdbq.
+- ETags are `W/"<row>.<repr>"`: the row as `select=*` renders it (hidden
+  composite attributes no longer count) plus the response body, so `304` and
+  the ETag follow embeds, computed columns and `Accept`; `If-Match` compares
+  the row part, and is `400 if_match_unsupported` with `server.etags: false`
+  instead of being ignored. API responses carry `Vary: Accept`.
+- `/{schema}/rpc/{x}` always names a function: a table named `rpc` has no
+  `/{pk}` path (list and `/by/` paths stay).
 
 - The query grammar uses one naming rule each: the reference parameters and
   every pseudo-column live in a `~` namespace (`~near=`, `~vec=`,

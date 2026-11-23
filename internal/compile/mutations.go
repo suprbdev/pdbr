@@ -544,7 +544,11 @@ func (s *stmt) keyedDML() (cur, dml string, rep replaced, err error) {
 	where := keyConds(tableRef(t))
 	rep = replaced{cond: "(" + where + ") IS NOT TRUE", removes: p.Method == plan.DELETE}
 	if tags := s.ifMatchTags(); tags != nil {
-		cur = fmt.Sprintf("cur AS (\n  SELECT %s AS h\n  FROM %s __cur\n  WHERE %s\n)", etagSQL(p.Resource, "__cur"), tableRef(t), keyConds("__cur"))
+		hash, err := s.rowHashSQL(p.Resource, "__cur")
+		if err != nil {
+			return "", "", rep, err
+		}
+		cur = fmt.Sprintf("cur AS (\n  SELECT %s AS h\n  FROM %s __cur\n  WHERE %s\n)", hash, tableRef(t), keyConds("__cur"))
 		switch {
 		case tags.star:
 		case len(tags.tags) == 1:
@@ -794,6 +798,8 @@ type etagTags struct {
 
 // ifMatchTags returns the If-Match tags for a keyed PATCH/DELETE when ETags
 // are enabled for the resource, or nil when the header is absent/ignored.
+// Each tag is cut to its row part (before the "."), so a tag read from a
+// response with any select=, embeds or Accept guards the same row state.
 func (s *stmt) ifMatchTags() *etagTags {
 	p := s.plan
 	if p.IfMatch == "" || p.Key == nil || !s.etagWanted() {
@@ -802,7 +808,11 @@ func (s *stmt) ifMatchTags() *etagTags {
 	if p.Method != plan.PATCH && p.Method != plan.DELETE {
 		return nil
 	}
-	return parseETagList(p.IfMatch)
+	tags := parseETagList(p.IfMatch)
+	for i, tag := range tags.tags {
+		tags.tags[i], _, _ = strings.Cut(tag, ".")
+	}
+	return tags
 }
 
 // parseETagList reads an If-Match value: `*`, or a comma-separated list of

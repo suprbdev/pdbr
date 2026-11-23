@@ -288,3 +288,31 @@ func TestNestedRowsRenderReadableColumns(t *testing.T) {
 		}
 	}
 }
+
+// TestETagIgnoresHiddenCompositeParts: a row's ETag is the hash of its
+// visible projection, so a change to an @omit read attribute of a stored
+// composite does not change it, nor does one to an attribute the contract
+// hides; a visible change does.
+func TestETagIgnoresHiddenCompositeParts(t *testing.T) {
+	dbURL := nestedSetup(t)
+	srv := testServer(t, nestedMutate)
+	tag := func(base string) string {
+		res, body := get(t, srv.URL+base+"/dholder/1?select=id")
+		if res.StatusCode != 200 || res.Header.Get("ETag") == "" {
+			t.Fatalf("%s/dholder/1 = %d %s", base, res.StatusCode, body)
+		}
+		return res.Header.Get("ETag")
+	}
+	internal, public := tag("/api/internal"), tag("/api/public")
+	execDDL(t, dbURL, `UPDATE nested_e2e.dholder SET d.secret = 'changed secret', darr[1].secret = 'changed' WHERE id = 1`)
+	if got := tag("/api/internal"); got != internal {
+		t.Errorf("@omit read attribute changed the ETag: %s -> %s", internal, got)
+	}
+	execDDL(t, dbURL, `UPDATE nested_e2e.dholder SET d.title = 'retitled' WHERE id = 1`)
+	if got := tag("/api/public"); got != public {
+		t.Errorf("contract-hidden attribute changed the public ETag: %s -> %s", public, got)
+	}
+	if got := tag("/api/internal"); got == internal {
+		t.Error("visible attribute left the internal ETag unchanged")
+	}
+}

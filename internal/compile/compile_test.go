@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -906,13 +907,26 @@ func TestETagHashesExposedColumnsOnly(t *testing.T) {
 	users = f.res("users")
 	key := &plan.Key{Constraint: users.Table.PrimaryKey, Values: []any{1}}
 	row := f.compile(&plan.Request{Method: plan.GET, Resource: users, Key: key, Select: fields(users, "id")})
-	const hash = `md5(to_jsonb(ROW(t0."id", t0."email", t0."full_name", t0."settings", t0."tags", t0."created_at", t0."address", t0."prev_addresses", t0."moods"))::text)`
-	if !strings.Contains(row.SQL, "'etag', "+hash) {
+	hashOf := func(sql, alias string) string {
+		start := strings.Index(sql, "SELECT md5((json_build_object(")
+		end := strings.Index(sql, " AS h")
+		if start < 0 || end < start {
+			t.Fatalf("no row hash in:\n%s", sql)
+		}
+		h := strings.ReplaceAll(sql[start+len("SELECT "):end], alias+".", "A.")
+		return regexp.MustCompile(`\be[0-9]+\b`).ReplaceAllString(h, "e")
+	}
+	hash := hashOf(row.SQL, "t0")
+	if !strings.HasPrefix(hash, `md5((json_build_object('id', A."id", 'email', A."email", 'full_name', A."full_name", 'settings'`) ||
+		strings.Contains(hash, `"balance"`) || strings.Contains(hash, `"mood"`) && !strings.Contains(hash, `."mood")`) {
 		t.Errorf("row etag hashes hidden columns:\n%s", row.SQL)
 	}
-	patch := f.compile(&plan.Request{Method: plan.PATCH, Resource: users, Key: key, Body: body(users, map[string]any{"full_name": "x"}), IfMatch: `W/"abc"`})
-	if !strings.Contains(patch.SQL, strings.ReplaceAll(hash, "t0.", "__cur.")+" AS h") {
-		t.Errorf("If-Match hash differs from the ETag:\n%s", patch.SQL)
+	patch := f.compile(&plan.Request{Method: plan.PATCH, Resource: users, Key: key, Body: body(users, map[string]any{"full_name": "x"}), IfMatch: `W/"abc.def"`})
+	if got := hashOf(patch.SQL, "__cur"); got != hash {
+		t.Errorf("If-Match hash differs from the ETag:\n%s\n%s", got, hash)
+	}
+	if patch.Args[len(patch.Args)-1] != "abc" {
+		t.Errorf("If-Match compares %v, want the row part abc", patch.Args)
 	}
 	for _, st := range []*compile.Statement{row, patch} {
 		if strings.Contains(st.SQL, `"balance"`) && !strings.Contains(st.SQL, "RETURNING") || strings.Contains(st.SQL, "to_jsonb(t0)") || strings.Contains(st.SQL, "to_jsonb(__cur)") {
@@ -926,10 +940,18 @@ func TestRowPK(t *testing.T) {
 	users := f.res("users")
 	p := &plan.Request{Method: plan.GET, Resource: users, Key: &plan.Key{Constraint: users.Table.PrimaryKey, Values: []any{1}}, Select: fields(users, "id", "email")}
 	stmt := f.compile(p)
-	wantSQL(t, stmt, `SELECT json_build_object('etag', md5(to_jsonb(ROW(t0."id", t0."email", t0."full_name", t0."mood", t0."settings", t0."tags", t0."balance", t0."created_at", t0."address", t0."prev_addresses", t0."moods"))::text), 'row', json_build_object('id', t0."id", 'email', t0."email")) AS data
-FROM "public"."users" t0
-WHERE t0."id" = $1
-LIMIT 1`, 1)
+	for _, want := range []string{
+		"SELECT json_build_object('etag', __q.h || '.' || md5(__q.data::text), 'row', __q.data) AS data\nFROM (\n",
+		`  SELECT md5((json_build_object('id', t0."id", 'email', t0."email", 'full_name', t0."full_name", 'mood', t0."mood"`,
+		`)::text) AS h, json_build_object('id', t0."id", 'email', t0."email") AS data` + "\n  FROM \"public\".\"users\" t0\n  WHERE t0.\"id\" = $1\n  LIMIT 1\n) __q",
+	} {
+		if !strings.Contains(stmt.SQL, want) {
+			t.Errorf("row SQL lacks %q:\n%s", want, stmt.SQL)
+		}
+	}
+	if len(stmt.Args) != 1 || stmt.Args[0] != 1 {
+		t.Errorf("args %v", stmt.Args)
+	}
 	if stmt.Shape != compile.ShapeRowEtag {
 		t.Errorf("shape %s", stmt.Shape)
 	}

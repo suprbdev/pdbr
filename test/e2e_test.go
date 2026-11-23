@@ -529,16 +529,23 @@ func TestRowsAndEtags(t *testing.T) {
 	if one["email"] != "ada@example.com" || one["address"].(map[string]any)["city"] != "London" || len(one) != 3 {
 		t.Fatalf("row = %v", one)
 	}
-	etag := res.Header.Get("ETag")
-	if !strings.HasPrefix(etag, `W/"`) || len(etag) != 3+32+1 {
-		t.Fatalf("etag = %q", etag)
+	sparse := res.Header.Get("ETag")
+	if !strings.HasPrefix(sparse, `W/"`) || len(sparse) != 3+32+1+32+1 || sparse[3+32] != '.' {
+		t.Fatalf("etag = %q", sparse)
 	}
-	// ETag is a property of the row, not of select=
+	if !slicesContain(res.Header.Values("Vary"), "Accept") {
+		t.Errorf("Vary = %v, want Accept", res.Header.Values("Vary"))
+	}
 	res2 := getJSON(t, srv.URL+"/api/users/1", &one)
-	if res2.Header.Get("ETag") != etag {
-		t.Errorf("etag depends on select: %q vs %q", res2.Header.Get("ETag"), etag)
+	etag := res2.Header.Get("ETag")
+	if etag == sparse || etag[:3+32] != sparse[:3+32] {
+		t.Errorf("etags of two selects of one row: %q vs %q", sparse, etag)
 	}
-	res, body := do(t, "GET", srv.URL+"/api/users/1", map[string]string{"If-None-Match": etag})
+	res, body := do(t, "GET", srv.URL+"/api/users/1?select=id,email,address", map[string]string{"If-None-Match": etag})
+	if res.StatusCode != 200 || len(body) == 0 {
+		t.Errorf("If-None-Match of another representation = %d", res.StatusCode)
+	}
+	res, body = do(t, "GET", srv.URL+"/api/users/1", map[string]string{"If-None-Match": etag})
 	if res.StatusCode != 304 || len(body) != 0 || res.Header.Get("ETag") != etag {
 		t.Errorf("304: %d %q %v", res.StatusCode, body, res.Header)
 	}
@@ -578,11 +585,67 @@ func TestRowsAndEtags(t *testing.T) {
 	if res.StatusCode != 404 {
 		t.Errorf("HEAD 404 = %d", res.StatusCode)
 	}
-	// etags off: no header, If-None-Match ignored
+	// etags off: no header, If-None-Match ignored, If-Match refused
 	srv2 := testServer(t, func(c *config.Config) { c.Server.Etags = false })
 	res, body = do(t, "GET", srv2.URL+"/api/users/1", map[string]string{"If-None-Match": etag})
 	if res.StatusCode != 200 || res.Header.Get("ETag") != "" || len(body) == 0 {
 		t.Errorf("etags off: %d %v", res.StatusCode, res.Header)
+	}
+	res, body = send(t, "PATCH", srv2.URL+"/api/users/1", `{"full_name":"x"}`, map[string]string{"If-Match": etag})
+	wantProblem(t, res, body, 400, "if_match_unsupported")
+}
+
+func slicesContain(vs []string, want string) bool {
+	for _, v := range vs {
+		for _, part := range strings.Split(v, ",") {
+			if strings.TrimSpace(part) == want {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// TestETagCoversRepresentation: an embedded row that changes changes the
+// ETag of the parent's row response (no stale 304), the media type is part
+// of it, and If-Match still compares the parent row only.
+func TestETagCoversRepresentation(t *testing.T) {
+	dbURL := os.Getenv("PDBR_TEST_DATABASE_URL")
+	srv := testServer(t, nil)
+	t.Cleanup(func() {
+		execDDL(t, dbURL, `UPDATE public.posts SET title = 'Notes on the Analytical Engine' WHERE id = 1`)
+	})
+	embed := srv.URL + "/api/users/1?select=id,posts(id,title)"
+	var one row
+	before := getJSON(t, embed, &one).Header.Get("ETag")
+	execDDL(t, dbURL, `UPDATE public.posts SET title = 'Notes, revised' WHERE id = 1`)
+	res, body := do(t, "GET", embed, map[string]string{"If-None-Match": before})
+	after := res.Header.Get("ETag")
+	if res.StatusCode != 200 || len(body) == 0 || after == before {
+		t.Fatalf("embedded change: %d, etag %q -> %q", res.StatusCode, before, after)
+	}
+	if after[:3+32] != before[:3+32] {
+		t.Errorf("row part changed with an embedded row only: %q -> %q", before, after)
+	}
+	res, body = do(t, "GET", embed, map[string]string{"If-None-Match": after})
+	if res.StatusCode != 304 || len(body) != 0 {
+		t.Errorf("unchanged representation = %d", res.StatusCode)
+	}
+
+	geo := map[string]string{"Accept": "application/geo+json"}
+	jsonTag := getJSON(t, srv.URL+"/api/places/1?select=id,location", &one).Header.Get("ETag")
+	res, _ = do(t, "GET", srv.URL+"/api/places/1?select=id,location", geo)
+	if g := res.Header.Get("ETag"); res.StatusCode != 200 || g == jsonTag || g[:3+32] != jsonTag[:3+32] {
+		t.Errorf("geo+json etag %q vs json %q (%d)", g, jsonTag, res.StatusCode)
+	}
+
+	res, body = send(t, "PATCH", srv.URL+"/api/users/1?select=id", `{"full_name":"Ada Lovelace"}`, map[string]string{"If-Match": before})
+	if res.StatusCode != 200 {
+		t.Fatalf("If-Match with an embed's tag = %d %s", res.StatusCode, body)
+	}
+	res, body = send(t, "PATCH", srv.URL+"/api/users/1?select=id", `{"full_name":"Ada Lovelace"}`, map[string]string{"If-Match": `W/"` + before[3:3+32] + `"`})
+	if res.StatusCode != 200 {
+		t.Errorf("If-Match with the row part only = %d %s", res.StatusCode, body)
 	}
 }
 

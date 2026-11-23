@@ -160,3 +160,69 @@ func TestCommandsRunOnDefaultConfig(t *testing.T) {
 		t.Fatalf("removed flag: %v", err)
 	}
 }
+
+func TestRequestIdentityFlags(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.UseConnectionIdentity()
+	if err := useRequestIdentity(&cfg, ""); err != nil || cfg.Roles.Switch || cfg.Roles.Anonymous != "" {
+		t.Fatalf("no --role: %v %+v", err, cfg.Roles)
+	}
+	if err := useRequestIdentity(&cfg, "app_user"); err != nil || !cfg.Roles.Switch || cfg.Roles.Anonymous != "app_user" {
+		t.Fatalf("--role app_user: %v %+v", err, cfg.Roles)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("--role config: %v", err)
+	}
+	for _, role := range []string{"pg_read_all_data", "public", "none", "a b", "x;drop"} {
+		if err := useRequestIdentity(&cfg, role); err == nil {
+			t.Errorf("--role %q accepted", role)
+		}
+	}
+	claims, err := parseClaims(`{"user_id": 1, "org": {"id": "x"}}`)
+	if err != nil || claims["user_id"] == nil || claims["org"] == nil {
+		t.Fatalf("claims = %v, %v", claims, err)
+	}
+	if claims, err := parseClaims(""); err != nil || claims != nil {
+		t.Errorf("no --claims = %v, %v", claims, err)
+	}
+	for _, bad := range []string{`[1]`, `null`, `1`, `{"a":1} {}`, `{`} {
+		if _, err := parseClaims(bad); err == nil {
+			t.Errorf("--claims %s accepted", bad)
+		}
+	}
+	if _, err := runCLI(t, "request", "GET", "/users", "--role", "pg_monitor"); err == nil || !strings.Contains(err.Error(), "--role") {
+		t.Errorf("bad --role through the CLI: %v", err)
+	}
+}
+
+// TestRequestIdentityLive: --role runs the request as that role under its
+// RLS policies, --claims feeds the policies' current_setting lookups, and
+// the default stays the connection role.
+func TestRequestIdentityLive(t *testing.T) {
+	dbURL := os.Getenv("PDBR_TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("PDBR_TEST_DATABASE_URL not set; run `make test-e2e`")
+	}
+	ids := func(extra ...string) string {
+		t.Helper()
+		out, err := runCLI(t, append([]string{"request", "GET", "/posts?select=id&order=id", "--database.url", dbURL, "--log.level", "error"}, extra...)...)
+		if err != nil {
+			t.Fatalf("%v: %v\n%s", extra, err, out)
+		}
+		i := strings.Index(out, "[")
+		if i < 0 {
+			t.Fatalf("%v: no body in\n%s", extra, out)
+		}
+		return strings.Join(strings.Fields(out[i:]), "")
+	}
+	all := ids()
+	if all != `[{"id":1},{"id":2},{"id":3},{"id":4}]` {
+		t.Fatalf("connection role = %s", all)
+	}
+	if got := ids("--role", "anonymous"); got != `[{"id":1},{"id":3},{"id":4}]` {
+		t.Errorf("--role anonymous = %s", got)
+	}
+	if got := ids("--role", "anonymous", "--claims", `{"user_id": 1}`); got != all {
+		t.Errorf("--role anonymous --claims user 1 = %s", got)
+	}
+}

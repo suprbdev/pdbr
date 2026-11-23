@@ -614,3 +614,8 @@ func (r *Resource) HasSpatial() bool {
 	}
 	return false
 }
+
+// RowPathReserved reports that the resource's primary-key path would be
+// /{schema}/rpc/{pk}, which always addresses a function of the schema, so
+// the resource has no row route (its list and /by/ routes stay).
+func (r *Resource) RowPathReserved() bool { return r.Segment == "rpc" }

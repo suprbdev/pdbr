@@ -34,7 +34,7 @@ Runs a single request through the real handler in-process — no listener, no
 HTTP client — and prints the result. Pipe-friendly.
 
 ```
-pdbr request METHOD PATH [--body @file|-|'{json}'] [--header 'K: V']... [--accept text/csv] [-i] [--print-sql]
+pdbr request METHOD PATH [--body @file|-|'{json}'] [--header 'K: V']... [--accept text/csv] [--role NAME] [--claims '{json}'] [-i] [--print-sql]
 ```
 
 - `PATH` may omit `server.base_path`: `/users?select=id` and
@@ -45,13 +45,27 @@ pdbr request METHOD PATH [--body @file|-|'{json}'] [--header 'K: V']... [--accep
 - `--header 'K: V'` is repeatable (`Prefer`, `If-Match`, `If-None-Match`,
   `Accept-Encoding`, ...). `--accept text/csv` is shorthand for
   `--header 'Accept: text/csv'`.
-- The request runs as the **connection role**, without credentials:
-  `pdbr request` forces `auth.mode: none` and `roles.switch: false` after
-  loading the config and before validating it, so it works on a default
-  config without a JWT secret. No role is switched and no claims are set,
-  so row-level security policies for request roles do not apply. To
-  exercise a role, point `database.url` at that role or use `curl` against
-  a running server.
+- By default the request runs as the **connection role**, without
+  credentials: `pdbr request` forces `auth.mode: none` and
+  `roles.switch: false` after loading the config and before validating it,
+  so it works on a default config without a JWT secret. No role is switched
+  and no claims are set, so row-level security policies for request roles
+  do not apply.
+- `--role NAME` runs the request as that role, as a server with
+  `auth.mode: none`, `roles.switch: true` and `roles.anonymous: NAME` would:
+  `SET LOCAL ROLE` inside the request's transaction. The connection role must
+  be able to switch to it; `none`, `public`, `pg_*` roles and names outside
+  `[A-Za-z0-9_]+` are refused before connecting. `roles.allowed` does not
+  apply (it restricts roles taken from credentials).
+- `--claims '{"user_id": 1}'` sets the request's claims, a JSON object,
+  exposed to SQL exactly as for an authenticated request: one
+  `claims.prefix` setting per claim (`current_setting('jwt.claims.user_id',
+  true)`) and the whole object in `claims.json_setting` when that is set.
+  With both flags, `pdbr request GET /posts --role app_user --claims
+  '{"user_id": 1}'` reproduces what that user's token would see.
+- `--role` and `--claims` do not change `--print-sql` output: the identity
+  is applied by statements around the request's one statement, not in its
+  text.
 - Output: the status line goes to **stderr**, the body to **stdout**; `-i`
   also prints response headers (sorted by name) to stdout before the body,
   then a blank line (like `curl -i`). CSV bodies (`--accept text/csv`) are
@@ -65,6 +79,7 @@ $ pdbr request POST /users --body @user.json --header 'Prefer: return=minimal'
 $ echo '{"title":"x","author_id":1}' | pdbr request POST /posts --body -
 $ pdbr request PATCH /users/1 --body '{"full_name":"Ann"}' --header 'If-Match: W/"9f2c..."'
 $ pdbr request DELETE /users/1
+$ pdbr request GET /posts --role app_user --claims '{"user_id": 1}'
 $ pdbr request GET '/rpc/search_posts?q=pg'
 $ pdbr request GET '/posts?select=id,title' --accept text/csv > posts.csv
 $ pdbr request GET /openapi.json > openapi.json

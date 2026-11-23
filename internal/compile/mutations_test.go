@@ -142,11 +142,11 @@ func TestMutationIfMatch(t *testing.T) {
 	if st.Shape != compile.ShapeMutWrap {
 		t.Errorf("shape %s", st.Shape)
 	}
-	has(t, st.SQL, "WITH cur AS (", `md5(to_jsonb(ROW(__cur."id", __cur."email", __cur."full_name", __cur."mood", __cur."settings", __cur."tags", __cur."balance", __cur."created_at", __cur."address", __cur."prev_addresses", __cur."moods"))::text) AS h`, `WHERE __cur."id" = $2`, "AND (SELECT h FROM cur) = $3", "'found', EXISTS (SELECT 1 FROM cur)", "'row', (")
+	has(t, st.SQL, "WITH cur AS (", `SELECT md5((json_build_object('id', __cur."id", 'email', __cur."email"`, `'moods', to_json(__cur."moods")))::text) AS h`, `WHERE __cur."id" = $2`, "AND (SELECT h FROM cur) = $3", "'found', EXISTS (SELECT 1 FROM cur)", "'row', (")
 	if len(st.Args) != 3 || st.Args[2] != "abc" {
 		t.Errorf("args %v", st.Args)
 	}
-	st = f.compile(req(`"a", W/"b" , c`, false))
+	st = f.compile(req(`"a.x", W/"b" , c.y`, false))
 	has(t, st.SQL, "= ANY($3)")
 	if got, ok := st.Args[2].([]string); !ok || strings.Join(got, ",") != "a,b,c" {
 		t.Errorf("multi tags %#v", st.Args[2])
@@ -155,7 +155,7 @@ func TestMutationIfMatch(t *testing.T) {
 	has(t, st.SQL, "WITH cur AS (")
 	lacks(t, st.SQL, "(SELECT h FROM cur) =")
 	st = f.compile(req(`W/"abc"`, true))
-	has(t, st.SQL, "'row', (SELECT to_json(true) FROM __mut t0)", "RETURNING 1")
+	has(t, st.SQL, "'row', (SELECT to_json(true) FROM __mut t1)", "RETURNING 1")
 	// GET-side ETag off -> If-Match ignored
 	off := buildCatalog(t, f.built.Catalog, false)
 	st2, err := compile.New(off).Compile(t.Context(), &compile.Request{Plan: &plan.Request{Method: plan.PATCH, Resource: off.ByPath["users"], Key: pkKey(off.ByPath["users"], int64(1)), Body: body(off.ByPath["users"], map[string]any{"full_name": "x"}), IfMatch: `W/"abc"`}, Built: off})

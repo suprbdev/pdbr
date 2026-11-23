@@ -12,7 +12,7 @@ both. One request → one statement → one json `data` row, as everywhere else.
 | `GET {base}/rpc/{fn}?arg=value…` | `stable` / `immutable` | query string | read; runs outside a tx unless a role or claim settings are applied |
 | `POST {base}/rpc/{fn}` (JSON body `{"arg": value}`) | any | body | volatile → [mutation semantics](#volatile-functions-are-mutations); stable/immutable via POST behave like GET |
 | `GET` on a volatile function | — | — | `405`, `Allow: POST` |
-| `{base}/{schema}/rpc/{fn}` | | | schema-qualified form; bare `/rpc/{fn}` alias only for `schema.schemas[0]` |
+| `{base}/{schema}/rpc/{fn}` | | | schema-qualified form; bare `/rpc/{fn}` alias only for `schema.schemas[0]`. Always a function: a table named `rpc` never answers on `/{schema}/rpc/{pk}`, so creating a function cannot change what a URL means |
 
 `HEAD` mirrors `GET`. Unknown function → `404 not_found`. Examples use the
 fixture functions (`add_numbers(a int4, b int4)` — **volatile** in the
@@ -375,10 +375,13 @@ GET /users/1?select=id,post_count
 ```
 
 ```sql
-SELECT json_build_object('etag', md5(to_jsonb(ROW(t0."id", t0."email", t0."full_name", t0."mood", t0."settings", t0."tags", t0."balance", t0."created_at", t0."address", t0."prev_addresses", t0."moods"))::text), 'row', json_build_object('id', t0."id", 'post_count', ("public"."users_post_count"("u" => ROW(t0."id", t0."email", t0."full_name", t0."mood", t0."settings", t0."tags", t0."balance", t0."created_at", t0."address", t0."prev_addresses", t0."moods")::"public"."users"))::text)) AS data
-FROM "public"."users" t0
-WHERE t0."id" = $1
-LIMIT 1
+SELECT json_build_object('etag', __q.h || '.' || md5(__q.data::text), 'row', __q.data) AS data
+FROM (
+  SELECT md5((json_build_object('id', t0."id", …))::text) AS h, json_build_object('id', t0."id", 'post_count', ("public"."users_post_count"("u" => ROW(t0."id", t0."email", t0."full_name", t0."mood", t0."settings", t0."tags", t0."balance", t0."created_at", t0."address", t0."prev_addresses", t0."moods")::"public"."users"))::text) AS data
+  FROM "public"."users" t0
+  WHERE t0."id" = $1
+  LIMIT 1
+) __q
 -- args: [1]
 ```
 

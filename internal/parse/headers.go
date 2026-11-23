@@ -44,6 +44,8 @@ func (p *parser) parseHeaders(r *http.Request) error {
 	if p.opts.Etags {
 		p.req.IfMatch = r.Header.Get("If-Match")
 		p.req.IfNoneMatch = r.Header.Get("If-None-Match")
+	} else if r.Header.Get("If-Match") != "" {
+		return errf(CodeIfMatchUnsupported, "If-Match needs server.etags, which is off")
 	}
 	return nil
 }

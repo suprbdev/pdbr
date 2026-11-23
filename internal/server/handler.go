@@ -98,6 +98,7 @@ func isMutation(method string, m *api.Match) bool {
 
 // ServeRoute implements RouteHandler.
 func (h *Handler) ServeRoute(w http.ResponseWriter, r *http.Request, m *api.Match) {
+	w.Header().Add("Vary", "Accept")
 	if h.rejectReadOnly(w, r, m) {
 		return
 	}

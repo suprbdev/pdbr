@@ -979,9 +979,11 @@ func TestHeaders(t *testing.T) {
 	}
 	off := allOn
 	off.Etags = false
-	p, _ = doParse(t, b, req{url: "/api/users/1", header: map[string]string{"If-Match": `W/"def"`}}, off)
-	if p.IfMatch != "" {
-		t.Fatal("etags off")
+	_, err = doParse(t, b, req{url: "/api/users/1", header: map[string]string{"If-Match": `W/"def"`}}, off)
+	wantCode(t, err, CodeIfMatchUnsupported)
+	p, err = doParse(t, b, req{url: "/api/users/1", header: map[string]string{"If-None-Match": `W/"def"`}}, off)
+	if err != nil || p.IfNoneMatch != "" {
+		t.Fatalf("etags off: If-None-Match = %q, %v", p.IfNoneMatch, err)
 	}
 	// Accept negotiation
 	for _, tc := range []struct {

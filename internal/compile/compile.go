@@ -329,27 +329,38 @@ func (s *stmt) rowByKey() (*Statement, error) {
 		return nil, err
 	}
 	conds = append(conds, extra...)
-	shape := ShapeRow
-	sel := jsonExpr
-	if s.etagWanted() {
-		shape = ShapeRowEtag
-		sel = fmt.Sprintf("json_build_object('etag', %s, 'row', %s)", etagSQL(r, alias), jsonExpr)
+	from := fmt.Sprintf("FROM %s %s%s\nWHERE %s\nLIMIT 1",
+		s.sourceRef(r.Table, alias), alias, joinLaterals(laterals), strings.Join(conds, " AND "))
+	if !s.etagWanted() {
+		return &Statement{SQL: "SELECT " + jsonExpr + " AS data\n" + from, Args: s.ps.Args(), Shape: ShapeRow}, nil
 	}
-	sql := fmt.Sprintf("SELECT %s AS data\nFROM %s %s%s\nWHERE %s\nLIMIT 1",
-		sel, s.sourceRef(r.Table, alias), alias, joinLaterals(laterals), strings.Join(conds, " AND "))
-	return &Statement{SQL: sql, Args: s.ps.Args(), Shape: shape}, nil
+	hash, err := s.rowHashSQL(r, alias)
+	if err != nil {
+		return nil, err
+	}
+	repr := "md5(__q.data::text)"
+	if s.plan.Accept == plan.AcceptGeoJSON {
+		repr = "md5('application/geo+json' || __q.data::text)"
+	}
+	sql := fmt.Sprintf("SELECT json_build_object('etag', __q.h || '.' || %s, 'row', __q.data) AS data\nFROM (\n%s\n) __q",
+		repr, indent(fmt.Sprintf("SELECT %s AS h, %s AS data\n%s", hash, jsonExpr, from)))
+	return &Statement{SQL: sql, Args: s.ps.Args(), Shape: ShapeRowEtag}, nil
 }
 
-// etagSQL renders the row hash behind ETag and If-Match over alias: md5 of
-// the resource's exposed columns in catalog order, independent of select=.
-// Columns the resource does not expose (@omit, @omit read) never reach the
-// hash, so the ETag reveals neither their values nor their changes.
-func etagSQL(r *api.Resource, alias string) string {
-	cols := make([]string, len(r.Columns))
-	for i, f := range r.Columns {
-		cols[i] = colRef(alias, f.Column.Name)
+// rowHashSQL renders the row half of the ETag, the part If-Match compares,
+// over alias: md5 of the resource's select=* projection. Only what a reader
+// of the row sees reaches it: hidden columns, hidden attributes of
+// composite and domain values and raster columns are never projected, so
+// the ETag reveals neither their values nor their changes.
+func (s *stmt) rowHashSQL(r *api.Resource, alias string) (string, error) {
+	expr, laterals, err := s.rowJSON(&plan.Node{Resource: r, Star: true}, alias, 0)
+	if err != nil {
+		return "", err
 	}
-	return "md5(to_jsonb(ROW(" + strings.Join(cols, ", ") + "))::text)"
+	if len(laterals) > 0 {
+		return "", fmt.Errorf("compile: the row hash of %s needs a lateral join", r.Path)
+	}
+	return "md5((" + expr + ")::text)", nil
 }
 
 func (s *stmt) etagWanted() bool {

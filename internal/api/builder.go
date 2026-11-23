@@ -1068,7 +1068,11 @@ func (b *Builder) Build() (*Built, error) {
 			out.byResource[r][RouteList] = rt
 		}
 		rowMethods := methodList(r.Methods, MethodGet, MethodHead, MethodPut, MethodPatch, MethodDelete)
-		if pk := r.PrimaryKey(); pk != nil && !r.HiddenKey && len(rowMethods) > 0 {
+		if r.RowPathReserved() && r.PrimaryKey() != nil && !r.HiddenKey && len(rowMethods) > 0 {
+			b.Warn("row path dropped: /<schema>/rpc/<segment> is the function namespace; use the /by/ paths", "table", r.Table.Schema+"."+r.Table.Name)
+			out.Warnings = append(out.Warnings, b.Warnings[len(b.Warnings)-1])
+		}
+		if pk := r.PrimaryKey(); pk != nil && !r.HiddenKey && !r.RowPathReserved() && len(rowMethods) > 0 {
 			rt := &Route{Kind: RouteRow, Pattern: base + "/" + r.keyTemplate(pk.Columns), Methods: keyedMethods(r, rowMethods, pk.Columns), Resource: r}
 			out.Routes = append(out.Routes, rt)
 			out.byResource[r][RouteRow] = rt

@@ -148,7 +148,8 @@ of failing on an empty string. The JSON setting must not lie under
 - **`none`**: no credentials; every request runs as `roles.anonymous`, or
   as the connection role with `roles.switch: false` (one of the two is
   required). `pdbr request` and the other one-off CLI commands force this
-  mode with `roles.switch: false` — see [cli.md](cli.md).
+  mode with `roles.switch: false`; `pdbr request --role NAME --claims
+  '{json}'` runs one request as a role with claims — see [cli.md](cli.md).
 
 The verification code (`Authenticator`, JWKS cache, trusted-proxy check,
 role resolution) lives in `pdbcore/auth` and is shared with pdbq; the

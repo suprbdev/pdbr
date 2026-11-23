@@ -253,7 +253,7 @@ func (b *Builder) rowItem(item *PathItem, rt *Route) {
 		if r.Etag {
 			get.Parameters = append(get.Parameters, &Parameter{Name: "If-None-Match", In: "header", Schema: &Schema{Type: "string"},
 				Description: "Weak ETag(s) (or *) from an earlier response; a match answers 304."})
-			ok.Headers = map[string]*Header{"ETag": {Schema: &Schema{Type: "string"}, Description: `Weak row hash W/"<md5>" over the exposed columns, independent of select=.`}}
+			ok.Headers = map[string]*Header{"ETag": {Schema: &Schema{Type: "string"}, Description: `Weak W/"<row>.<repr>": md5 of the row as select=* renders it, then md5 of this response body (select=, embeds, Accept).`}}
 			get.Responses["304"] = &Response{Description: "Not Modified (If-None-Match matched)."}
 		}
 		get.Responses["200"] = ok
@@ -855,7 +855,7 @@ func (b *Builder) ifMatchParam(r *Resource) []*Parameter {
 		return nil
 	}
 	return []*Parameter{{Name: "If-Match", In: "header", Schema: &Schema{Type: "string"},
-		Description: "Weak ETag(s) (or *) the row must still carry; a mismatch answers 412 etag_mismatch, a missing row 404."}}
+		Description: "Weak ETag(s) (or *) the row must still carry, compared on their <row> part; a mismatch answers 412 etag_mismatch, a missing row 404."}}
 }
 
 // preferParam documents the Prefer header of a write; maxAffected adds the

@@ -50,9 +50,8 @@ func TestBulkWrites(t *testing.T) {
 	wantCode(t, err, CodeIfMatchUnsupported)
 	noEtags := allOn
 	noEtags.Etags = false
-	if _, err := doParse(t, b, req{method: "DELETE", url: "/api/posts?id=eq.1", header: map[string]string{"If-Match": `W/"x"`}}, noEtags); err != nil {
-		t.Fatalf("If-Match is ignored without server.etags: %v", err)
-	}
+	_, err = doParse(t, b, req{method: "DELETE", url: "/api/posts?id=eq.1", header: map[string]string{"If-Match": `W/"x"`}}, noEtags)
+	wantCode(t, err, CodeIfMatchUnsupported)
 	open := allOn
 	open.AllowUnfilteredMutations = true
 	if p, err := doParse(t, b, req{method: "DELETE", url: "/api/posts"}, open); err != nil || p.Filter != nil {

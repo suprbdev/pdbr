@@ -1029,7 +1029,7 @@
             "description": "OK",
             "headers": {
               "ETag": {
-                "description": "Weak row hash W/\"<md5>\" over the exposed columns, independent of select=.",
+                "description": "Weak W/\"<row>.<repr>\": md5 of the row as select=* renders it, then md5 of this response body (select=, embeds, Accept).",
                 "schema": {
                   "type": "string"
                 }
@@ -1091,7 +1091,7 @@
             "description": "OK (same headers as GET, no body)",
             "headers": {
               "ETag": {
-                "description": "Weak row hash W/\"<md5>\" over the exposed columns, independent of select=.",
+                "description": "Weak W/\"<row>.<repr>\": md5 of the row as select=* renders it, then md5 of this response body (select=, embeds, Accept).",
                 "schema": {
                   "type": "string"
                 }
@@ -2318,7 +2318,7 @@
             "description": "OK",
             "headers": {
               "ETag": {
-                "description": "Weak row hash W/\"<md5>\" over the exposed columns, independent of select=.",
+                "description": "Weak W/\"<row>.<repr>\": md5 of the row as select=* renders it, then md5 of this response body (select=, embeds, Accept).",
                 "schema": {
                   "type": "string"
                 }
@@ -2380,7 +2380,7 @@
             "description": "OK (same headers as GET, no body)",
             "headers": {
               "ETag": {
-                "description": "Weak row hash W/\"<md5>\" over the exposed columns, independent of select=.",
+                "description": "Weak W/\"<row>.<repr>\": md5 of the row as select=* renders it, then md5 of this response body (select=, embeds, Accept).",
                 "schema": {
                   "type": "string"
                 }
@@ -3893,7 +3893,7 @@
             "description": "OK",
             "headers": {
               "ETag": {
-                "description": "Weak row hash W/\"<md5>\" over the exposed columns, independent of select=.",
+                "description": "Weak W/\"<row>.<repr>\": md5 of the row as select=* renders it, then md5 of this response body (select=, embeds, Accept).",
                 "schema": {
                   "type": "string"
                 }
@@ -3955,7 +3955,7 @@
             "description": "OK (same headers as GET, no body)",
             "headers": {
               "ETag": {
-                "description": "Weak row hash W/\"<md5>\" over the exposed columns, independent of select=.",
+                "description": "Weak W/\"<row>.<repr>\": md5 of the row as select=* renders it, then md5 of this response body (select=, embeds, Accept).",
                 "schema": {
                   "type": "string"
                 }
@@ -5194,7 +5194,7 @@
             "description": "OK",
             "headers": {
               "ETag": {
-                "description": "Weak row hash W/\"<md5>\" over the exposed columns, independent of select=.",
+                "description": "Weak W/\"<row>.<repr>\": md5 of the row as select=* renders it, then md5 of this response body (select=, embeds, Accept).",
                 "schema": {
                   "type": "string"
                 }
@@ -5256,7 +5256,7 @@
             "description": "OK (same headers as GET, no body)",
             "headers": {
               "ETag": {
-                "description": "Weak row hash W/\"<md5>\" over the exposed columns, independent of select=.",
+                "description": "Weak W/\"<row>.<repr>\": md5 of the row as select=* renders it, then md5 of this response body (select=, embeds, Accept).",
                 "schema": {
                   "type": "string"
                 }
@@ -8693,7 +8693,7 @@
             "description": "OK",
             "headers": {
               "ETag": {
-                "description": "Weak row hash W/\"<md5>\" over the exposed columns, independent of select=.",
+                "description": "Weak W/\"<row>.<repr>\": md5 of the row as select=* renders it, then md5 of this response body (select=, embeds, Accept).",
                 "schema": {
                   "type": "string"
                 }
@@ -8755,7 +8755,7 @@
             "description": "OK (same headers as GET, no body)",
             "headers": {
               "ETag": {
-                "description": "Weak row hash W/\"<md5>\" over the exposed columns, independent of select=.",
+                "description": "Weak W/\"<row>.<repr>\": md5 of the row as select=* renders it, then md5 of this response body (select=, embeds, Accept).",
                 "schema": {
                   "type": "string"
                 }
@@ -9203,7 +9203,7 @@
             "description": "OK",
             "headers": {
               "ETag": {
-                "description": "Weak row hash W/\"<md5>\" over the exposed columns, independent of select=.",
+                "description": "Weak W/\"<row>.<repr>\": md5 of the row as select=* renders it, then md5 of this response body (select=, embeds, Accept).",
                 "schema": {
                   "type": "string"
                 }
@@ -9265,7 +9265,7 @@
             "description": "OK (same headers as GET, no body)",
             "headers": {
               "ETag": {
-                "description": "Weak row hash W/\"<md5>\" over the exposed columns, independent of select=.",
+                "description": "Weak W/\"<row>.<repr>\": md5 of the row as select=* renders it, then md5 of this response body (select=, embeds, Accept).",
                 "schema": {
                   "type": "string"
                 }
@@ -10627,7 +10627,7 @@
       "header.If-Match": {
         "name": "If-Match",
         "in": "header",
-        "description": "Weak ETag(s) (or *) the row must still carry; a mismatch answers 412 etag_mismatch, a missing row 404.",
+        "description": "Weak ETag(s) (or *) the row must still carry, compared on their <row> part; a mismatch answers 412 etag_mismatch, a missing row 404.",
         "schema": {
           "type": "string"
         }
