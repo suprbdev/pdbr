@@ -78,6 +78,7 @@ only (`make test-e2e`, project `pdbr-test`, host port 5433).
 | `{base}/rpc/{fn}` | functions |
 | `{base}/openapi.json` | OpenAPI 3.1 (`server.openapi`, on by default) |
 | `GET /healthz`, `/readyz` | liveness/readiness (outside `base_path`) |
+| `GET /metrics` | Prometheus metrics when `metrics.enabled` (`metrics.path`; on `metrics.addr` when set) — see [metrics.md](metrics.md) |
 | `OPTIONS *` | CORS preflight when `server.cors_origins` is set |
 
 Filters, `select=` and RPC arguments travel in the URL, so proxy, load
@@ -125,6 +126,9 @@ strings in intermediary log formats.
   role needs no `pg_catalog` privileges and cold start skips introspection.
 - Leave `watch.enabled` off — it installs an event trigger and re-introspects
   on DDL, both dev-time behaviours; it is refused alongside a cache anyway.
+- Metrics: with `metrics.enabled`, set `metrics.addr` (e.g. `:9090`) to a
+  port only the scraper reaches, so the unauthenticated endpoint stays off
+  the public listener ([metrics.md](metrics.md#security)).
 - Consider `server.etags: false` when column-level grants deny `SELECT` on
   some columns: the ETag hashes the whole row in SQL and those resources
   would otherwise `403`.

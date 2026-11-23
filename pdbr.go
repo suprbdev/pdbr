@@ -21,6 +21,7 @@ import (
 	"github.com/suprbdev/pdbcore/confx"
 	"github.com/suprbdev/pdbcore/introspect"
 	"github.com/suprbdev/pdbcore/jwtmint"
+	"github.com/suprbdev/pdbcore/metrics"
 	"github.com/suprbdev/pdbcore/pgexec"
 	"github.com/suprbdev/pdbcore/watch"
 
@@ -49,6 +50,11 @@ type App struct {
 	Version  string
 
 	pool *pgxpool.Pool
+
+	metrics           *metrics.Metrics
+	metricsErr        error
+	costRejections    *metrics.Counter
+	aggregateRequests *metrics.Counter
 
 	watchMu sync.Mutex
 	stops   []func()
@@ -80,6 +86,16 @@ func WithVersion(v string) Option {
 	return func(a *App) { a.Version = v }
 }
 
+// WithMetrics makes the App record into m instead of the instance it
+// creates when metrics.enabled is set, so embedders can build one with
+// their own Registerer and ConstLabels. The App registers its pool and its
+// product counters on m, so m serves one App only. The endpoint at
+// metrics.path is still served only when metrics.enabled is set; without
+// it the embedder serves m.Handler() itself.
+func WithMetrics(m *metrics.Metrics) Option {
+	return func(a *App) { a.metrics = m }
+}
+
 // New creates an App with the built-in plugins registered.
 func New(cfg config.Config, opts ...Option) *App {
 	a := &App{
@@ -92,8 +108,34 @@ func New(cfg config.Config, opts ...Option) *App {
 		o(a)
 	}
 	a.readOnly.Store(cfg.Server.ReadOnly)
+	a.metricsErr = a.setupMetrics()
 	return a
 }
+
+func (a *App) setupMetrics() error {
+	if a.metrics == nil && a.Config.Metrics.Enabled {
+		m, err := metrics.New(metrics.Options{Namespace: "pdbr"})
+		if err != nil {
+			return err
+		}
+		a.metrics = m
+	}
+	var err error
+	if a.costRejections, err = a.metrics.NewCounter("cost_limit_rejections_total",
+		"Requests rejected because their estimated cost exceeds server.max_cost."); err != nil {
+		return err
+	}
+	if a.aggregateRequests, err = a.metrics.NewCounter("aggregate_requests_total",
+		"Requests whose select= uses an aggregate function."); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Metrics returns the Prometheus instruments the App records into: the
+// instance given to WithMetrics, else the one created for metrics.enabled,
+// else nil (every recording call on a nil *metrics.Metrics is a no-op).
+func (a *App) Metrics() *metrics.Metrics { return a.metrics }
 
 // builtinPlugins lists the plugins every App starts with, in priority order
 // (smart-comments 50, advanced-filters 150, postgis 160, nested-mutations
@@ -153,6 +195,10 @@ func (a *App) Connect(ctx context.Context) error {
 		StatementTimeout: a.Config.Database.StatementTimeout,
 	})
 	if err != nil {
+		return err
+	}
+	if err := a.metrics.RegisterPool(pool); err != nil {
+		pool.Close()
 		return err
 	}
 	a.pool = pool
@@ -249,19 +295,22 @@ func (a *App) routeHandler(built *api.Built) *server.Handler {
 		db = a.pool
 	}
 	ex := exec.New(db, built, chain, execHooks, exec.Options{
-		TxMutations:   a.Config.TX.Mutations,
-		Isolation:     pgexec.ParseIsolation(a.Config.TX.Isolation),
-		MaxRetries:    a.Config.TX.MaxRetries,
-		RLS:           a.Config.RLS.Enabled,
-		ClaimsPrefix:  a.Config.RLS.ClaimsPrefix,
-		Detail:        pgexec.ParseDetail(a.Config.Errors.Detail),
-		MaxCost:       a.Config.Server.MaxCost,
-		MaxEmbedDepth: a.Config.Server.MaxEmbedDepth,
-		MaxPageSize:   a.Config.Server.MaxPageSize,
-		BasePath:      a.Config.Server.BasePath,
-		ReadOnly:      &a.readOnly,
-		Mint:          a.mintOptions(),
-		Logger:        a.Log,
+		TxMutations:       a.Config.TX.Mutations,
+		Isolation:         pgexec.ParseIsolation(a.Config.TX.Isolation),
+		MaxRetries:        a.Config.TX.MaxRetries,
+		RLS:               a.Config.RLS.Enabled,
+		ClaimsPrefix:      a.Config.RLS.ClaimsPrefix,
+		Detail:            pgexec.ParseDetail(a.Config.Errors.Detail),
+		MaxCost:           a.Config.Server.MaxCost,
+		MaxEmbedDepth:     a.Config.Server.MaxEmbedDepth,
+		MaxPageSize:       a.Config.Server.MaxPageSize,
+		BasePath:          a.Config.Server.BasePath,
+		ReadOnly:          &a.readOnly,
+		Mint:              a.mintOptions(),
+		Logger:            a.Log,
+		Metrics:           a.metrics,
+		CostRejections:    a.costRejections,
+		AggregateRequests: a.aggregateRequests,
 	})
 	opts := server.ParseOptions(built, a.Config.Server.MaxEmbedDepth, a.Config.Server.MaxPageSize, a.Config.Server.Etags, a.Config.Server.CSV)
 	opts.AllowUnfilteredMutations = a.Config.Server.AllowUnfilteredMutations
@@ -342,6 +391,9 @@ func (a *App) startupWarnings() {
 
 // buildServer is the shared boot pipeline behind Serve and Handler.
 func (a *App) buildServer(ctx context.Context) (*server.Server, error) {
+	if a.metricsErr != nil {
+		return nil, a.metricsErr
+	}
 	a.startupWarnings()
 	cat, err := a.LoadCatalog(ctx)
 	if err != nil {
@@ -365,6 +417,7 @@ func (a *App) buildServer(ctx context.Context) (*server.Server, error) {
 		return nil, err
 	}
 	srv := server.New(a.Config.Server, auth.New(confx.AuthConfig(a.Config.RLS)), rt, a.Log)
+	srv.SetMetrics(a.metrics, a.Config.Metrics)
 	if a.Config.Watch.Enabled {
 		wctx, cancel := context.WithCancel(ctx)
 		w := &watch.Watcher{
@@ -378,15 +431,18 @@ func (a *App) buildServer(ctx context.Context) (*server.Server, error) {
 			OnChange: func(cat *introspect.Catalog) {
 				nb, err := a.BuildAPI(wctx, cat)
 				if err != nil {
+					a.metrics.SchemaRebuilt(err)
 					a.Log.Error("watch: api rebuild failed", "err", err)
 					return
 				}
 				nrt, err := a.Runtime(nb)
 				if err != nil {
+					a.metrics.SchemaRebuilt(err)
 					a.Log.Error("watch: runtime rebuild failed", "err", err)
 					return
 				}
 				srv.Swap(nrt)
+				a.metrics.SchemaRebuilt(nil)
 				a.Log.Info("watch: api reloaded", "resources", len(nb.Resources), "rpcs", len(nb.RPCs))
 			},
 		}

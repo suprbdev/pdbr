@@ -32,6 +32,7 @@ type Config struct {
 	Errors   confx.Errors   `koanf:"errors"`
 	Plugins  confx.Plugins  `koanf:"plugins"`
 	Log      confx.Log      `koanf:"log"`
+	Metrics  confx.Metrics  `koanf:"metrics"`
 }
 
 // Server is the pdbr-owned HTTP section.
@@ -96,6 +97,7 @@ func DefaultConfig() Config {
 		Errors:  confx.Errors{Detail: "prod"},
 		Plugins: confx.Plugins{Settings: map[string]map[string]any{}},
 		Log:     confx.Log{Level: "info", Format: "text"},
+		Metrics: confx.DefaultMetrics(),
 	}
 }
 
@@ -124,7 +126,30 @@ func (c *Config) Validate() error {
 	errs = append(errs, confx.ValidateSchema(c.Schema.Schema)...)
 	errs = append(errs, validateServer(c.Server)...)
 	errs = append(errs, confx.ValidateLog(c.Log)...)
+	errs = append(errs, confx.ValidateMetrics(c.Metrics, c.Server.Addr)...)
+	errs = append(errs, validateMetricsPath(c.Metrics, c.Server)...)
 	return confx.InvalidConfig(errs)
+}
+
+// validateMetricsPath rejects a metrics.path that would shadow one of pdbr's
+// own routes on the main listener: /healthz, /readyz, or server.base_path and
+// any path under it (the API and openapi.json). With an empty base_path only
+// /openapi.json is added: the API owns every path there and metrics.path
+// takes precedence over a resource of the same name. A separate metrics.addr
+// never collides.
+func validateMetricsPath(m confx.Metrics, s Server) []string {
+	if !m.Enabled || m.Addr != "" {
+		return nil
+	}
+	p := m.Path
+	switch {
+	case p == "/healthz" || p == "/readyz":
+	case s.BasePath != "" && (p == s.BasePath || strings.HasPrefix(p, s.BasePath+"/")):
+	case s.BasePath == "" && p == "/openapi.json":
+	default:
+		return nil
+	}
+	return []string{fmt.Sprintf("metrics.path: %q collides with a pdbr route on server.addr; choose another path or set metrics.addr", p)}
 }
 
 func validateServer(s Server) []string {

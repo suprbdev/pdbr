@@ -3,7 +3,9 @@
 // root, GET {base}/openapi.json, problem+json errors, and the middleware
 // chain (recover, timeout, CORS, gzip, body limit, auth). The Runtime is
 // stored atomically so watch mode can swap in a new API without a restart;
-// requests in flight keep the runtime they started with.
+// requests in flight keep the runtime they started with. With metrics
+// enabled (SetMetrics) every request is counted and timed by route class and
+// the Prometheus endpoint is served on the main or a separate listener.
 package server
 
 import (
@@ -20,8 +22,12 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/suprbdev/pdbcore/auth"
+	"github.com/suprbdev/pdbcore/confx"
 	"github.com/suprbdev/pdbcore/httpx"
+	"github.com/suprbdev/pdbcore/metrics"
 	"github.com/suprbdev/pdbcore/pgexec"
 
 	"github.com/suprbdev/pdbr/internal/api"
@@ -89,7 +95,20 @@ type Server struct {
 	auth *auth.Authenticator
 	log  *slog.Logger
 	rt   atomic.Pointer[Runtime]
+
+	metrics    *metrics.Metrics
+	metricsCfg confx.Metrics
 }
+
+// Route classes of the pdbr_http_* metrics' route label.
+const (
+	RouteResource = "resource"
+	RouteRPC      = "rpc"
+	RouteOpenAPI  = "openapi"
+	RouteHealth   = "health"
+	RouteMetrics  = "metrics"
+	RouteOther    = metrics.DefaultRoute
+)
 
 // New creates a server over an initial runtime. authn may be nil (no auth:
 // every request runs without claims or a role).
@@ -100,6 +119,16 @@ func New(cfg config.Server, authn *auth.Authenticator, rt *Runtime, log *slog.Lo
 	s := &Server{cfg: cfg, auth: authn, log: log}
 	s.rt.Store(rt)
 	return s
+}
+
+// SetMetrics instruments the handler with m and, when cfg.Enabled, serves
+// m.Handler() at cfg.Path: on the main listener when cfg.Addr is empty,
+// otherwise on a second listener at cfg.Addr that ListenAndServe runs
+// alongside the main one. The endpoint bypasses auth, CORS, gzip and the
+// request timeout. A nil m changes nothing. Call it before Handler or
+// ListenAndServe.
+func (s *Server) SetMetrics(m *metrics.Metrics, cfg confx.Metrics) {
+	s.metrics, s.metricsCfg = m, cfg
 }
 
 // Swap atomically replaces the runtime (watch mode).
@@ -148,17 +177,82 @@ func (s *Server) Handler() http.Handler {
 			full.ServeHTTP(w, r)
 		})
 	}
-	return s.withRecover(h)
+	if s.metricsOnMain() {
+		var scrape http.Handler = readOnlyRoute(s.metrics.Handler().ServeHTTP)
+		full, path := h, s.metricsCfg.Path
+		h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == path {
+				scrape.ServeHTTP(w, r)
+				return
+			}
+			full.ServeHTTP(w, r)
+		})
+	}
+	return s.metrics.Middleware(s.withRecover(h), s.classify)
 }
 
-// ListenAndServe runs the server until ctx is cancelled.
-func (s *Server) ListenAndServe(ctx context.Context) error {
-	return httpx.ListenAndServe(ctx, s.Handler(), httpx.ServeOptions{
-		Addr:           s.cfg.Addr,
-		RequestTimeout: s.cfg.RequestTimeout,
-		Log:            s.log,
-		LogAttrs:       []any{"base_path", s.cfg.BasePath, "openapi", s.cfg.OpenAPI},
+func (s *Server) metricsOnMain() bool {
+	return s.metrics != nil && s.metricsCfg.Enabled && s.metricsCfg.Addr == ""
+}
+
+func (s *Server) metricsOnOwnAddr() bool {
+	return s.metrics != nil && s.metricsCfg.Enabled && s.metricsCfg.Addr != ""
+}
+
+// classify is the initial route class of a request; handleAPI refines API
+// requests to RouteResource or RouteRPC once the route table matched them.
+func (s *Server) classify(r *http.Request) string {
+	switch p := r.URL.Path; {
+	case p == "/healthz" || p == "/readyz":
+		return RouteHealth
+	case s.cfg.OpenAPI && p == s.cfg.BasePath+"/openapi.json":
+		return RouteOpenAPI
+	case s.metricsOnMain() && p == s.metricsCfg.Path:
+		return RouteMetrics
+	}
+	return RouteOther
+}
+
+// MetricsHandler is the handler of the separate metrics listener: the
+// Prometheus endpoint at metrics.path, a 404 problem everywhere else.
+func (s *Server) MetricsHandler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		WriteProblem(w, r, http.StatusNotFound, CodeNotFound, "no such route")
 	})
+	mux.Handle(s.metricsCfg.Path, readOnlyRoute(s.metrics.Handler().ServeHTTP))
+	return s.withRecover(mux)
+}
+
+// ListenAndServe runs the server until ctx is cancelled. With metrics on a
+// separate metrics.addr it runs that listener too; both shut down together
+// and the first listener error stops both.
+func (s *Server) ListenAndServe(ctx context.Context) error {
+	attrs := []any{"base_path", s.cfg.BasePath, "openapi", s.cfg.OpenAPI}
+	if s.metricsOnMain() {
+		attrs = append(attrs, "metrics_path", s.metricsCfg.Path)
+	}
+	main := func(ctx context.Context) error {
+		return httpx.ListenAndServe(ctx, s.Handler(), httpx.ServeOptions{
+			Addr:           s.cfg.Addr,
+			RequestTimeout: s.cfg.RequestTimeout,
+			Log:            s.log,
+			LogAttrs:       attrs,
+		})
+	}
+	if !s.metricsOnOwnAddr() {
+		return main(ctx)
+	}
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error { return main(gctx) })
+	g.Go(func() error {
+		return httpx.ListenAndServe(gctx, s.MetricsHandler(), httpx.ServeOptions{
+			Addr:     s.metricsCfg.Addr,
+			Log:      s.log,
+			LogAttrs: []any{"metrics_path", s.metricsCfg.Path},
+		})
+	})
+	return g.Wait()
 }
 
 // readOnlyRoute serves GET/HEAD and answers every other method with a
@@ -223,6 +317,11 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		WriteProblem(w, r, http.StatusNotFound, CodeNotFound, "no such route")
 		return
+	}
+	if m.RPC != nil {
+		metrics.SetRoute(r.Context(), RouteRPC)
+	} else {
+		metrics.SetRoute(r.Context(), RouteResource)
 	}
 	if !m.Route.Allows(api.Method(r.Method)) {
 		w.Header().Set("Allow", m.Route.AllowHeader())

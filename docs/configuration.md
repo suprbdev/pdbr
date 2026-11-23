@@ -97,6 +97,9 @@ See [cli.md](cli.md) for details.
 | `plugins.settings.<name>` | map | `{}` | per-plugin config |
 | `log.level` | string | `info` | `debug`, `info`, `warn`, `error` |
 | `log.format` | string | `text` | `text` or `json` |
+| `metrics.enabled` | bool | `false` | serve Prometheus metrics and record them; see [metrics.md](metrics.md) |
+| `metrics.path` | string | `/metrics` | URL path of the metrics endpoint (outside `base_path`) |
+| `metrics.addr` | string | — | separate listen address for the metrics endpoint (e.g. `:9090`); empty serves it on `server.addr` |
 
 ## Validation rules
 
@@ -131,6 +134,14 @@ together.
 18. `rls.claims_prefix` is dot-separated identifiers whose first component
     is not a server or extension settings namespace (`pg_*`, `plpgsql`,
     `auto_explain`, `postgis`, …).
+19. `metrics.path` starts with `/`, is not `/` itself and has no query or
+    fragment.
+20. `metrics.addr`, when set, is a `host:port` listen address and differs
+    from `server.addr`.
+21. With `metrics.enabled` and no `metrics.addr`, `metrics.path` is not
+    `/healthz`, `/readyz`, `server.base_path` or a path below it (with an
+    empty `base_path`: not `/openapi.json`); see
+    [metrics.md](metrics.md#on-the-main-listener-metricsaddr-empty).
 
 ## Removed vs pdbq
 
@@ -171,5 +182,8 @@ subcommand that loads configuration accepts them plus `--config`.
 | `--filters.indexed_only` | bool | |
 | `--errors.detail` | string | `dev`, `prod`, `strict` (shell-completed) |
 | `--log.level` | string | `debug`, `info`, `warn`, `error` (shell-completed) |
+| `--metrics.enabled` | bool | |
+| `--metrics.path` | string | |
+| `--metrics.addr` | string | |
 
 Keys without a flag are still settable through YAML or `PDBR_*` env vars.
