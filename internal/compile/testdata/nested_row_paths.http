@@ -1,0 +1,1 @@
+GET /api/audit/snaps?select=id,t:post->>title,s:history->0->>title,h:history::text&limit=5

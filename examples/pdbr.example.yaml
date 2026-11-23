@@ -34,6 +34,8 @@ server:
   max_cost: 100000
   # Largest accepted limit (larger answers 400 page_size_exceeded); also the page size when limit is absent.
   max_page_size: 100
+  # Characters of a document a full-text headline (<col>_headline) reads: a text document is cut to its first max_headline_document characters, a json or jsonb document longer than that gives a null headline. ts_headline re-parses its document on every call, so each headline costs 10 per started 8192 characters of this bound in max_cost.
+  max_headline_document: 65536
   # Allowed CORS origins (exact match, or '*' for any). Empty disables CORS headers and preflight entirely.
   cors_origins: []
   # Gzip responses for clients that send Accept-Encoding: gzip (off by default).

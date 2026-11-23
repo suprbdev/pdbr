@@ -2,8 +2,10 @@ package e2e
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -269,5 +271,45 @@ func TestHeadlineOpenAPIAndContracts(t *testing.T) {
 	getJSON(t, hlURL(pub+"/api/internal", "articles", "select=id,search_headline(document=body)", "search=fts(english).cat"), &rows)
 	if len(rows) != 1 {
 		t.Errorf("internal contract headline: %v", rows)
+	}
+}
+
+func TestHeadlineDocumentBound(t *testing.T) {
+	long := strings.Repeat("lorem ipsum dolor ", 10) + "the fat cat"
+	insert := `INSERT INTO ` + headlineSchema + `.articles (id, title, body, raw) VALUES (4, 'Long', '` + long + `', '{"note": "` + long + `"}')`
+	headlines := func(srv string, id int) row {
+		var rows []row
+		getJSON(t, hlURL(srv+"/api", "articles", "select=id,h:body_headline,r:raw_headline", "body=fts(english).cat", "raw=fts(english).cat", "id=eq."+strconv.Itoa(id)), &rows)
+		if len(rows) != 1 {
+			t.Fatalf("article %d: rows %v", id, rows)
+		}
+		return rows[0]
+	}
+
+	bounded := headlineServer(t, func(cfg *config.Config) { cfg.Server.MaxHeadlineDocument = 60 })
+	execDDL(t, os.Getenv("PDBR_TEST_DATABASE_URL"), insert)
+	if r := headlines(bounded, 4); strings.Contains(r["h"].(string), "<b>") || r["r"] != nil {
+		t.Errorf("match past the bound: %v", r)
+	}
+	if r := headlines(bounded, 1); !strings.Contains(r["h"].(string), "<b>cat</b>") || !strings.Contains(fmt.Sprint(r["r"]), "<b>cats</b>") {
+		t.Errorf("match inside the bound: %v", r)
+	}
+
+	full := headlineServer(t, nil)
+	execDDL(t, os.Getenv("PDBR_TEST_DATABASE_URL"), insert)
+	if r := headlines(full, 4); !strings.Contains(r["h"].(string), "<b>cat</b>") || !strings.Contains(fmt.Sprint(r["r"]), "<b>cat</b>") {
+		t.Errorf("default bound: %v", r)
+	}
+
+	page := []string{"select=id,a:body_headline,b:body_headline(max_words=20)", "body=fts(english).cat", "limit=10"}
+	costly := headlineServer(t, func(cfg *config.Config) { cfg.Server.MaxCost = 1000 })
+	res, body := get(t, hlURL(costly+"/api", "articles", page...))
+	wantProblem(t, res, body, 400, "cost_exceeded")
+	cheap := headlineServer(t, func(cfg *config.Config) {
+		cfg.Server.MaxCost = 1000
+		cfg.Server.MaxHeadlineDocument = 8192
+	})
+	if res, body := get(t, hlURL(cheap+"/api", "articles", page...)); res.StatusCode != 200 {
+		t.Errorf("headlines over an 8192-character bound = %d %s", res.StatusCode, body)
 	}
 }

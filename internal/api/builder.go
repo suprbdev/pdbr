@@ -33,9 +33,10 @@ type Options struct {
 	ExposePartitions bool
 	// HiddenTables holds the "schema.table" keys of introspected tables
 	// removed from the catalog before the build (a schema contract, a bare
-	// @omit, any catalog hook). Functions returning or taking their row
-	// types are not exposed, and columns typed as them are hidden, since
-	// their rows would otherwise be rendered whole as JSON.
+	// @omit, any catalog hook). Functions returning or taking a type that
+	// is or holds their row type (through domains, composite attributes
+	// and arrays) are not exposed, and columns of such a type are hidden,
+	// since their rows would otherwise be rendered whole as JSON.
 	HiddenTables map[string]bool
 	// BasePath is server.base_path (OpenAPI servers[0].url).
 	BasePath string
@@ -456,9 +457,9 @@ func (b *Builder) addResources() {
 		r.Keyset = t.PrimaryKey != nil
 		r.Etag = b.Options.Etags && len(t.RowKeys()) > 0
 		b.applyFilterPolicy(r)
-		b.hideRowTypedColumns(r)
 		b.Resources[t.Schema+"."+t.Name] = r
 	}
+	b.hideUnexposedColumns()
 }
 
 // claimOpenAPIName reserves a components.schemas name, suffixing on
@@ -496,7 +497,7 @@ func (b *Builder) applyFilterPolicy(r *Resource) {
 		if b.Options.FilterIndexedOnly && !allowed[c.Name] {
 			continue
 		}
-		if b.Catalog.Composite(c.TypeSchema, strings.TrimPrefix(c.PGType, "_")) != nil {
+		if b.Catalog.Composite(c.TypeSchema, strings.TrimPrefix(c.PGType, "_")) != nil || NestsRows(b.Catalog, c) {
 			continue
 		}
 		r.FilterColumns[f.Key] = true
@@ -623,6 +624,10 @@ func (b *Builder) addComposites() {
 		return cs[i].Name < cs[j].Name
 	})
 	for _, c := range cs {
+		if ref, _ := b.unexposedIn(c.Schema, c.Name, "", true, map[string]bool{}); ref != "" {
+			b.log.Debug("skipping composite: it holds rows of a hidden or unexposed table", "composite", c.Schema+"."+c.Name, "type", ref)
+			continue
+		}
 		out := &Composite{Composite: c}
 		out.Name = b.claimOpenAPIName(b.typeSchemaName(c.Schema, c.Name), "composite "+c.Schema+"."+c.Name)
 		b.Composites[c.Schema+"."+c.Name] = out
@@ -742,10 +747,14 @@ func (b *Builder) addFunctions() {
 			continue
 		}
 		if ref, hidden := b.unexposedType(f); hidden {
-			b.log.Info("skipping function: returns or takes rows of a hidden table (omit or schema contract)", "function", fkey, "table", ref)
+			b.log.Info("skipping function: returns or takes rows of a hidden or unexposed table (omit or schema contract)", "function", fkey, "table", ref)
 			continue
 		} else if ref != "" {
 			b.Warn("skipping function: uses a type from a schema outside schema.schemas (the row type of an unexposed table?)", "function", fkey, "type", ref)
+			continue
+		}
+		if b.returnsRaster(f) {
+			b.log.Debug("skipping function: returns raster values, which are never returned", "function", fkey)
 			continue
 		}
 		if i, t := b.rowTypeArg(f); i == 0 && f.Volatility != introspect.VolatilityVolatile {
@@ -829,8 +838,13 @@ func (b *Builder) recordResource(f *introspect.Function) *Resource {
 		c := ArgColumn(b.Catalog, a)
 		c.Position = i + 1
 		t.Columns = append(t.Columns, c)
-		r.Columns = append(r.Columns, &Field{Column: c, Key: a.Name})
-		if b.Catalog.Composite(c.TypeSchema, strings.TrimPrefix(c.PGType, "_")) == nil {
+		fld := &Field{Column: c, Key: a.Name}
+		if postgis.IsRaster(strings.TrimPrefix(c.PGType, "_")) {
+			r.Rasters = append(r.Rasters, fld)
+			continue
+		}
+		r.Columns = append(r.Columns, fld)
+		if b.Catalog.Composite(c.TypeSchema, strings.TrimPrefix(c.PGType, "_")) == nil && !NestsRows(b.Catalog, c) {
 			r.FilterColumns[a.Name] = true
 			r.OrderColumns[a.Name] = true
 		}

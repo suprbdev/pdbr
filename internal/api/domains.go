@@ -61,7 +61,7 @@ func (b *Builder) colTypeSchema(c *introspect.Column) *Schema {
 	if s := b.domainRef(c.Domain, c.PGType); s != nil {
 		return s
 	}
-	return b.typeSchema(c.PGType, c.TypeSchema, c.EnumRef)
+	return b.typeSchema(c.PGType, ColumnTypeSchema(c), c.EnumRef)
 }
 
 // colInputTypeSchema is inputTypeSchema for a column-shaped value,

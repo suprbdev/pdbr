@@ -1347,8 +1347,16 @@ func TestCostHeadlineAndBuffer(t *testing.T) {
 		{Column: docs.Table.Column("id")},
 		{Pseudo: docs.Pseudo["body_headline"], Headline: &plan.Headline{Document: docs.Table.Column("body")}},
 	}}
-	if got, want := compile.Cost(p, 100), 1+10*(1+contrib.HeadlineCost); got != want {
+	if got, want := compile.Cost(p, 100), 1+10*(1+contrib.HeadlineDocumentCost(contrib.MaxHeadlineDocument)); got != want {
 		t.Errorf("headline cost = %d, want %d", got, want)
+	}
+	p.Select.Fields[1].Headline.MaxDocument = 1000
+	if got, want := compile.Cost(p, 100), 1+10*(1+contrib.HeadlineCost); got != want {
+		t.Errorf("headline cost over a short bound = %d, want %d", got, want)
+	}
+	p.Select.Fields[1].Headline.MaxDocument = 1 << 20
+	if got, want := compile.Cost(p, 100), 1+10*(1+128*contrib.HeadlineCost); got != want {
+		t.Errorf("headline cost over a long bound = %d, want %d", got, want)
 	}
 }
 

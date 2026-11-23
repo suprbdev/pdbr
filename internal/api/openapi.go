@@ -194,7 +194,8 @@ func Nullable(s *Schema) *Schema {
 }
 
 // TypeSchema maps a PostgreSQL type to its OpenAPI schema (docs/openapi.md
-// "Type map"). Arrays nest; enums and composites reference their schemas.
+// "Type map"). Arrays nest; enums, composites and the row types of exposed
+// tables reference their schemas.
 func (b *Built) TypeSchema(pgType, typeSchema string, enumRef string) *Schema {
 	return b.typeSchema(pgType, typeSchema, enumRef)
 }
@@ -206,7 +207,7 @@ func (b *Builder) typeSchema(pgType, typeSchema, enumRef string) *Schema {
 	if s := cubeSchema(b.Catalog, pgType, "", false); s != nil {
 		return s
 	}
-	return typeSchemaWith(b.Enums, b.Composites, b.Extra.Types, pgType, typeSchema, enumRef)
+	return typeSchemaWith(b.Enums, b.Composites, b.Resources, b.Extra.Types, pgType, typeSchema, enumRef)
 }
 
 func (b *Built) typeSchema(pgType, typeSchema, enumRef string) *Schema {
@@ -216,7 +217,7 @@ func (b *Built) typeSchema(pgType, typeSchema, enumRef string) *Schema {
 	if s := cubeSchema(b.Catalog, pgType, "", false); s != nil {
 		return s
 	}
-	return typeSchemaWith(b.Enums, b.Composites, b.Extra.Types, pgType, typeSchema, enumRef)
+	return typeSchemaWith(b.Enums, b.Composites, b.Resources, b.Extra.Types, pgType, typeSchema, enumRef)
 }
 
 // vectorSchema is the schema of a pgvector value (nil for other types):
@@ -332,7 +333,13 @@ func (b *Builder) inputTypeSchema(pgType, typeSchema, baseSchema, enumRef string
 		}
 	}
 	if len(b.Extra.InputTypes) == 0 {
-		return b.typeSchema(pgType, typeSchema, enumRef)
+		if s := vectorSchema(b.Catalog, pgType, "", false); s != nil {
+			return s
+		}
+		if s := cubeSchema(b.Catalog, pgType, "", false); s != nil {
+			return s
+		}
+		return typeSchemaWith(b.Enums, b.Composites, nil, b.Extra.Types, pgType, typeSchema, enumRef)
 	}
 	types := make(map[string]*Schema, len(b.Extra.Types)+len(b.Extra.InputTypes))
 	for k, v := range b.Extra.Types {
@@ -341,12 +348,19 @@ func (b *Builder) inputTypeSchema(pgType, typeSchema, baseSchema, enumRef string
 	for k, v := range b.Extra.InputTypes {
 		types[k] = v
 	}
-	return typeSchemaWith(b.Enums, b.Composites, types, pgType, typeSchema, enumRef)
+	return typeSchemaWith(b.Enums, b.Composites, nil, types, pgType, typeSchema, enumRef)
 }
 
-func typeSchemaWith(enums map[string]*Enum, comps map[string]*Composite, types map[string]*Schema, pgType, typeSchema, enumRef string) *Schema {
+// typeSchemaWith is the type map over the given components. rows maps
+// "schema.table" to the resources whose read schema a row of the table's
+// type references (its readable columns, as responses render it); nil for
+// request bodies, which take a row value as its text form.
+func typeSchemaWith(enums map[string]*Enum, comps map[string]*Composite, rows map[string]*Resource, types map[string]*Schema, pgType, typeSchema, enumRef string) *Schema {
 	if elem, ok := strings.CutPrefix(pgType, "_"); ok {
-		return &Schema{Type: "array", Items: typeSchemaWith(enums, comps, types, elem, typeSchema, "")}
+		return &Schema{Type: "array", Items: typeSchemaWith(enums, comps, rows, types, elem, typeSchema, "")}
+	}
+	if r := rows[typeSchema+"."+pgType]; r != nil {
+		return SchemaRef(r.Path)
 	}
 	if s := types[pgType]; s != nil {
 		return s
@@ -553,7 +567,7 @@ func (b *Builder) openAPI(built *Built) *Document {
 	}
 	for _, c := range b.Composites {
 		s := &Schema{Type: "object", Properties: map[string]*Schema{}}
-		for _, f := range c.Composite.Fields {
+		for _, f := range RenderedFields(c.Composite) {
 			s.Properties[f.Name] = b.columnSchema(f, false)
 		}
 		doc.Components.Schemas[c.Name] = s

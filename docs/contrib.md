@@ -708,9 +708,15 @@ GET /api/authors?select=name,articles(id,search_headline(document=title))&articl
   from a schema contract cannot be named as a document there. A real,
   computed or other pseudo-column owning the key keeps it (with a warning).
 - **Bounding.** `ts_headline` re-parses the whole document on every call,
-  so a headline is expensive per row. It costs
-  `pdbcore/contrib.HeadlineCost` (10) per row in `server.max_cost` instead
-  of 1. It runs only on the rows the response returns: the filter and the
+  so its work grows with the document's length. It reads at most
+  `server.max_headline_document` characters (default 65536): a text
+  document is cut to its first that many characters (`left(doc, $n)`, a
+  bound parameter), so a match further in is not highlighted and the
+  headline shows the opening words, and a json or jsonb document whose
+  text is longer gives a `null` headline (it cannot be cut). A headline
+  costs `pdbcore/contrib.HeadlineDocumentCost` of that bound per row in
+  `server.max_cost`: 10 per started 8192 characters, so 80 by default. It
+  runs only on the rows the response returns: the filter and the
   ordering run first, and PostgreSQL evaluates the projection after the
   `LIMIT` (the page plus its one look-ahead row; `EXPLAIN ANALYZE` shows it
   above the `Limit`, or above a top-N `Sort` in an embed). The options above

@@ -170,6 +170,12 @@ type Headline struct {
 	// Filter is the full-text condition, bound once the whole query is
 	// parsed.
 	Filter *Cond
+	// MaxDocument is the number of characters of Document the headline
+	// reads (server.max_headline_document, contrib.HeadlineDocumentSQL); it
+	// is bound as a parameter and prices the headline
+	// (contrib.HeadlineDocumentCost). <= 0 means
+	// contrib.MaxHeadlineDocument.
+	MaxDocument int
 }
 
 // Key is the response key of the selected field on res: its alias, else

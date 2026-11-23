@@ -303,6 +303,8 @@ func (s *stmt) aggregateSQL(f *plan.FieldSel, alias string) string {
 	in := colRef(alias, f.Column.Name)
 	if len(f.Path) > 0 {
 		in = s.jsonPathSQL(alias, f.Column, f.Path, false)
+	} else if a.InputCast != nil {
+		in = s.renderedRef(alias, f.Column)
 	}
 	if a.InputCast != nil {
 		in = "(" + in + ")::" + typeRefSQL(a.InputCast)

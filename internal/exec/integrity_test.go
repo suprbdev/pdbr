@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/suprbdev/pdbcore/introspect"
 	"github.com/suprbdev/pdbcore/pgexec"
 	"github.com/suprbdev/pdbcore/testutil"
 
@@ -15,7 +16,18 @@ import (
 )
 
 func TestIntegrityErrorsHideHiddenObjects(t *testing.T) {
-	ab := api.New(testutil.FixtureCatalog(), inflect.Default, api.Options{
+	cat := testutil.FixtureCatalog()
+	u := cat.Table("public", "users")
+	u.Checks = append(u.Checks,
+		&introspect.Constraint{Name: "users_contact_check", Columns: []string{"email", "full_name"}},
+		&introspect.Constraint{Name: "users_name_check", Columns: []string{"full_name"}},
+	)
+	u.Indexes = append(u.Indexes,
+		&introspect.Index{Name: "users_lower_email_idx", Unique: true, ExpressionColumns: []string{"email"}},
+		&introspect.Index{Name: "users_name_partial_idx", Unique: true, Columns: []string{"full_name"}, ExpressionColumns: []string{"email"}},
+		&introspect.Index{Name: "users_lower_name_idx", Unique: true, ExpressionColumns: []string{"full_name"}},
+	)
+	ab := api.New(cat, inflect.Default, api.Options{
 		Functions: true, BasePath: "/api", Schemas: []string{"public"},
 		MaxPageSize: 100, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
@@ -43,7 +55,13 @@ func TestIntegrityErrorsHideHiddenObjects(t *testing.T) {
 		{pg("23502", "posts", "title", ""), "raw 23502"},
 		{pg("23505", "users", "", "users_email_key"), "unique violation"},
 		{pg("23505", "users", "", "users_pkey"), "raw 23505"},
-		{pg("23505", "users", "", "users_some_expr_idx"), "raw 23505"},
+		{pg("23505", "users", "", "users_some_expr_idx"), "unique violation"},
+		{pg("23505", "users", "", "users_lower_email_idx"), "unique violation"},
+		{pg("23505", "users", "", "users_name_partial_idx"), "unique violation"},
+		{pg("23505", "users", "", "users_lower_name_idx"), "raw 23505"},
+		{pg("23514", "users", "", "users_contact_check"), "check violation"},
+		{pg("23514", "users", "", "users_name_check"), "raw 23514"},
+		{pg("23514", "users", "", "users_unknown_check"), "check violation"},
 		{pg("23514", "vault", "", "vault_pin_check"), "check violation"},
 		{pg("23514", "posts", "", "posts_title_check"), "raw 23514"},
 		{pg("23P01", "vault", "", "vault_excl"), "exclusion violation"},

@@ -17,7 +17,8 @@ import (
 //	mult(other)  = 1 (columns, forward embeds, single rows)
 //	cost(column) = 1; `*` costs the number of columns it expands to; an
 //	               aggregate function costs 1 like a column; a headline
-//	               costs contrib.HeadlineCost, a buffer argument adds
+//	               costs contrib.HeadlineDocumentCost of its document
+//	               bound (plan.Headline.MaxDocument), a buffer argument adds
 //	               postgis.BufferCost; a raster pixel value costs
 //	               postgis.RasterValueCost and raster summary statistics
 //	               postgis.RasterSummaryStatsCost (raster metadata
@@ -127,15 +128,15 @@ func nodeCost(node *plan.Node, maxPageSize int) int {
 	return cost
 }
 
-// fieldCost is the cost of one selected field: 1; contrib.HeadlineCost for
-// a headline; the raster weight of a raster pixel value or summary
+// fieldCost is the cost of one selected field: 1;
+// contrib.HeadlineDocumentCost of its document bound for a headline; the raster weight of a raster pixel value or summary
 // statistics pseudo-column; 1 + postgis.BufferCost for a spatial value
 // with a buffer argument; or for a set-returning computed column
 // 1 + maxPageSize × the cost of its rows (one value per row for a set of
 // scalars).
 func fieldCost(f *plan.FieldSel, maxPageSize int) int {
 	if f.Pseudo != nil && f.Pseudo.Headline != nil {
-		return contrib.HeadlineCost
+		return contrib.HeadlineDocumentCost(headlineDocument(f.Headline))
 	}
 	if rv := rasterOf(f); rv != nil {
 		switch {
@@ -173,4 +174,13 @@ func rasterOf(f *plan.FieldSel) *api.RasterValue {
 		return nil
 	}
 	return f.Pseudo.Raster
+}
+
+// headlineDocument returns the characters of its document headline h
+// reads: h.MaxDocument, or contrib.MaxHeadlineDocument when unset.
+func headlineDocument(h *plan.Headline) int {
+	if h == nil || h.MaxDocument <= 0 {
+		return contrib.MaxHeadlineDocument
+	}
+	return h.MaxDocument
 }

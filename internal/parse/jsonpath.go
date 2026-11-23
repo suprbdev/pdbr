@@ -144,13 +144,14 @@ func isIndex(s string) bool {
 
 // jsonPathTarget reports whether a JSON path can be applied to c: json and
 // jsonb columns directly, arrays and composites through to_jsonb (as
-// PostgREST does), hstore columns as a key lookup; never spatial columns.
+// PostgREST does), table rows through their rendered form, hstore columns
+// as a key lookup; never spatial columns.
 func (p *parser) jsonPathTarget(c *introspect.Column) bool {
 	t := p.typeOf(c)
 	switch {
 	case t.isArray:
 		return !postgis.IsSpatial(c.PGType)
-	case t.kind == kindJSON, t.kind == kindComposite, t.owner == contrib.VocabHstore:
+	case t.kind == kindJSON, t.kind == kindComposite, t.owner == contrib.VocabHstore, api.RowTable(p.built.Catalog, c) != nil:
 		return true
 	}
 	return false

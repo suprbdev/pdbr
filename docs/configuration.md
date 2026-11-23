@@ -59,6 +59,7 @@ See [cli.md](cli.md) for details.
 | `server.max_body_bytes` | int | 1048576 | maximum request body size (1 MiB); over → `413` |
 | `server.max_embed_depth` | int | 5 | maximum `select=` embed nesting; over → `400 embed_depth_exceeded` |
 | `server.max_cost` | int | 100000 | per-request cost limit (1 + Σ list multipliers, a list counting the rows its SQL can fetch: its `limit`, else `server.max_page_size`, to-many embeds included); over → `400 cost_exceeded`; `@costMultiplier` tunes estimates (see [pagination.md](pagination.md#cost-limit), [smart-comments.md](smart-comments.md)) |
+| `server.max_headline_document` | int | 65536 | characters of a document a [full-text headline](contrib.md#headlines) reads: a text document is cut to that many characters, a longer json/jsonb document gives a `null` headline; each headline costs 10 per started 8192 of them in `server.max_cost` |
 | `server.max_page_size` | int | 100 | largest accepted `limit` (larger → `400 page_size_exceeded`); also the default when `limit` is absent; see [pagination.md](pagination.md) |
 | `server.cors_origins` | []string | `[]` | allowed CORS origins (exact match, or `*`); empty disables CORS headers and preflight |
 | `server.compression` | bool | `false` | gzip responses when the client sends `Accept-Encoding: gzip` |
@@ -152,7 +153,8 @@ together.
     [metrics.md](metrics.md#on-the-main-listener-metricsaddr-empty).
     With `contracts`, the same holds for every contract's base path instead
     of `server.base_path`.
-22. `contracts` entries have unique names of lower-case letters, digits,
+22. `server.max_headline_document >= 1`.
+23. `contracts` entries have unique names of lower-case letters, digits,
     `_` and `-` starting with a letter, a `default` of `include` or
     `exclude`, and unique, non-overlapping clean paths; they require the
     `smart-comments` plugin (see [contracts.md](contracts.md#configuration)).

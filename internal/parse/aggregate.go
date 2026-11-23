@@ -216,6 +216,9 @@ func (p *parser) checkAggregateType(fs *plan.FieldSel) error {
 		if !array && (unorderedTypes[typ] || composite) {
 			return errf(CodeInvalidSelect, "%s() is not defined on %s column %q", agg.Func, typ, c.Name)
 		}
+		if agg.InputCast == nil && len(fs.Path) == 0 && api.NestsRows(p.built.Catalog, c) {
+			return errf(CodeInvalidSelect, "%s() is not defined on column %q: it holds table rows or rasters", agg.Func, c.Name)
+		}
 	}
 	return nil
 }
@@ -315,6 +318,9 @@ func (p *parser) checkGroupKeys(n *plan.Node) error {
 		}
 	}
 	check := func(c *introspect.Column) error {
+		if api.NestsRows(p.built.Catalog, c) {
+			return errf(CodeInvalidSelect, "column %q (%s) cannot be a grouping key: it holds table rows or rasters", c.Name, strings.TrimPrefix(c.PGType, "_"))
+		}
 		if !p.groupable(c, false, 0) {
 			return errf(CodeInvalidSelect, "column %q (%s) cannot be a grouping key: its type has no equality or ordering", c.Name, strings.TrimPrefix(c.PGType, "_"))
 		}

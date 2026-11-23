@@ -1,6 +1,8 @@
 package exec
 
 import (
+	"slices"
+
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/suprbdev/pdbcore/introspect"
 
@@ -30,7 +32,10 @@ func integrityMessage(code string) string {
 // does not expose: a table missing from the served catalog (a schema
 // contract, a bare @omit, an unexposed schema), a column hidden from both
 // responses and bodies, a foreign key the catalog dropped or one whose
-// referenced table is missing, or a key over a hidden column. The messages
+// referenced table is missing, or another constraint or index (primary
+// key, unique, check, exclusion, an index over expressions or with a
+// predicate) referencing a hidden column, or one the catalog does not
+// record on a table with any hidden column. The messages
 // of such errors name the table, the constraint (whose name usually
 // spells its columns) and, for foreign keys, the other table.
 func integrityHidden(built *api.Built, pgErr *pgconn.PgError) bool {
@@ -59,22 +64,15 @@ func integrityHidden(built *api.Built, pgErr *pgconn.PgError) bool {
 			return ref == nil || anyColumnHidden(built, t, fk.Columns) || anyColumnHidden(built, ref, fk.RefColumns)
 		}
 		return true
-	case "23505", "23P01":
-		if pk := t.PrimaryKey; pk != nil && pk.Name == name {
-			return anyColumnHidden(built, t, pk.Columns)
-		}
-		for _, u := range t.Uniques {
-			if u.Name == name {
-				return anyColumnHidden(built, t, u.Columns)
-			}
-		}
-		for _, ix := range t.Indexes {
-			if ix.Name == name {
-				return anyColumnHidden(built, t, ix.Columns)
-			}
-		}
+	case "23502":
+		return false
 	}
-	return false
+	hidden := func(col string) bool { return columnHidden(built, t, col) }
+	refs, ok := t.ConstraintReferences(name, hidden)
+	if !ok {
+		return slices.ContainsFunc(t.Columns, func(c *introspect.Column) bool { return hidden(c.Name) })
+	}
+	return refs
 }
 
 func anyColumnHidden(built *api.Built, t *introspect.Table, cols []string) bool {

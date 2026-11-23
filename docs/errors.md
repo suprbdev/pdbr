@@ -157,7 +157,13 @@ names something the serving API hides: a table missing from the catalog
 (bare `@omit`, a [schema contract](contracts.md), a schema outside
 `schema.schemas`), a column hidden from both responses and bodies, a
 foreign key the API dropped or whose referenced table is hidden, or a
-unique key over a hidden column. A `NOT NULL` column hidden that way is
+primary key, unique, check or exclusion constraint or unique index that
+references a hidden column — in its key, an index expression or a
+partial-index predicate, or anywhere in a check's expression (a check's
+default name `<table>_<column>_check` spells the column). A constraint the
+catalog does not record (a partition's own copy of an index, a constraint
+added after the schema was loaded) counts as hidden when the table has
+any hidden column. A `NOT NULL` column hidden that way is
 not listed by the `missing required column(s)` check either; the
 database's not-null violation answers instead.
 

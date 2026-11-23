@@ -91,10 +91,20 @@ fixture, so `POST` only —, `search_posts(term text) SETOF posts`,
 | `SETOF <table>` | array of objects | `200` | `select=`, filters, `order=`, `limit`/`offset`, `count=true` → `X-Total-Count`, `Accept: text/csv`; **offset paging only** (no `after`/`before`, no cursors, `Link` with `offset=`) |
 | `SETOF <scalar>` / `SETOF <composite>` | array of values / objects | `200` | `limit`/`offset` (`limit` defaults to and is capped by `server.max_page_size`; no `count`) |
 | `rls.auth.jwt_type` composite (`SETOF` too) | signed HS256 JWT string (array of strings) | `200` | minted by `pdbcore/jwtmint` from the row's fields as claims |
-| `RETURNS TABLE(...)` / `SETOF record` with `OUT` params (two or more result columns) | array of objects, one key per result column | `200` | as `SETOF <table>`: `select=` (columns and aliases; no embeds), filters and `order=` on every non-composite result column (no index policy: the output is scanned), `limit`/`offset`, `count=true`, `Accept: text/csv`; offset paging only |
+| `RETURNS TABLE(...)` / `SETOF record` with `OUT` params (two or more result columns) | array of objects, one key per result column | `200` | as `SETOF <table>`: `select=` (columns and aliases; no embeds), filters and `order=` on every result column that holds no composite, table row or raster (no index policy: the output is scanned), `limit`/`offset`, `count=true`, `Accept: text/csv`; offset paging only; a `raster` result column is left out of the rows |
 | `OUT` / `INOUT` params, not `SETOF` (two or more) | one object, one key per output parameter (all-null columns stay an object) | `200` | `select=` |
 | one output parameter / `RETURNS TABLE(x …)` with one column | PostgreSQL returns that column's type, so the function is a scalar / `SETOF <scalar>` | `200` | |
 | anonymous `record` (no output parameters) | | | excluded (no shape) |
+
+**Nested rows.** A table row nested inside a value (an array of rows such
+as `RETURNS docs[]`, a `RETURNS TABLE` column of row type, a composite
+attribute of row type, a domain over a row type, a computed column
+returning the row) renders as the object `select=*` gives for that
+table's resource: its readable columns under their keys, recursively, so a
+column hidden by `@omit read` or a [contract](contracts.md) and raster
+columns never appear. Composite attributes of type `raster` are left out
+the same way, and a function returning `raster` (or `raster[]`) is not
+exposed. OpenAPI references the resource's read schema for such a value.
 
 `SETOF <table>` results honour the table's filter/order policy
 (`filters.indexed_only` etc.) — the function output is scanned, so the index
@@ -331,8 +341,9 @@ where noted):
 | overloads (same schema + name, different signature) | keep-first by `oid`, warn — later overloads are unreachable |
 | function returns a table that is not an exposed resource (`SETOF`/row) | no resource to compile the row against → excluded with warning |
 | row-type argument (or array of rows) of a table that is not an exposed resource | no row shape to accept (`info` log line) |
-| result, argument or `OUT`/`TABLE` column typed as the row (or array of rows) of a table hidden by a bare `@omit` or a [schema contract](contracts.md), including through a resolved `@anyelement` / `@anycompatible` tag | the row would be rendered whole as JSON, hidden columns included (`info` log line); columns typed as such a row are hidden the same way |
-| result, argument or `OUT`/`TABLE` column typed in a schema outside `schema.schemas` that is no known enum, composite, domain, range, spatial or extension type (typically the row of a table in an unexposed schema) | same reason, excluded with warning |
+| result, argument or `OUT`/`TABLE` column whose type is, or holds through a domain, a composite attribute or an array (recursively), the row of a table hidden by a bare `@omit` or a [schema contract](contracts.md), including through a resolved `@anyelement` / `@anycompatible` tag; or holds, through a domain or composite, the row of a table that is not an exposed resource | the row would be rendered whole as JSON, hidden columns included (`info` log line); table columns of such a type are hidden the same way, and the composite gets no OpenAPI schema |
+| result, argument or `OUT`/`TABLE` column whose type is, or holds as above, a type in a schema outside `schema.schemas` that is no known enum, composite, domain, range, spatial or extension type (typically the row of a table in an unexposed schema) | same reason, excluded with warning; table columns of such a type are hidden with a warning |
+| returns `raster` or `raster[]` (postgis_raster) | raster bytes are never returned ([postgis.md](postgis.md#rasters)); encode them in a computed column instead |
 | row-type argument in first position, stable/immutable | [computed column](#computed-columns) instead of RPC; volatile → RPC with a [row argument](#table-valued-row-arguments) |
 
 ## Computed columns
