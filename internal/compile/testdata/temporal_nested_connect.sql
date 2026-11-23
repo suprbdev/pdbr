@@ -8,7 +8,15 @@ __mut AS (
   SELECT $2, $3, __p_1."room_id"
   FROM __p_1
   RETURNING "id", "room_id", "valid_at", "note"
+),
+__guard AS MATERIALIZED (
+  SELECT (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard: nested "tk_bookings.connect": matched ', count(*), ' rows')::boolean END FROM __p_1) AS ok
 )
-SELECT json_build_object('key', jsonb_build_array(t0."id"), 'row', json_build_object('id', t0."id", 'room_id', t0."room_id", 'valid_at', t0."valid_at", 'note', t0."note")) AS data
-FROM __mut t0
+SELECT __guarded.data
+FROM __guard
+LEFT JOIN LATERAL (
+  SELECT json_build_object('key', jsonb_build_array(t0."id"), 'row', json_build_object('id', t0."id", 'room_id', t0."room_id", 'valid_at', t0."valid_at", 'note', t0."note")) AS data
+  FROM __mut t0
+) __guarded ON true
+WHERE __guard.ok
 -- args: [1,"[2026-01-02,2026-01-03)","late checkout"]

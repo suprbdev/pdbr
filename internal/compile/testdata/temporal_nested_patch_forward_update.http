@@ -1,0 +1,3 @@
+PATCH /api/tk_notes/1?select=id,tk_bookings(guest)
+
+{"tk_bookings": {"update": {"guest": "Bo"}}}

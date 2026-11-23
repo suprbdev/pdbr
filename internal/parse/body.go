@@ -32,7 +32,7 @@ const CodeColumnReadOnly = "column_readonly"
 // travel as Body.Nested[key] = {Relation, Raw: <decoded JSON>} for the
 // plugin's CompileHook to resolve, and the FK columns of a forward relation
 // stop being required. Nested keys are accepted on single-object POST bodies
-// only.
+// and on PATCH of a single-row path only.
 func (p *parser) parseBody(r *http.Request) error {
 	if !p.isMutation() || p.method == plan.DELETE {
 		return nil
@@ -133,7 +133,7 @@ func (p *parser) checkColumnsParam(res *api.Resource) error {
 	}
 	inputCols := res.InputColumnsFor(writeAs)
 	var nestedKeys map[string]*api.Relation
-	if p.method == plan.POST && p.opts.NestedKeys != nil {
+	if p.nestedAllowed() {
 		nestedKeys = p.opts.NestedKeys(res)
 	}
 	for _, key := range p.columnsOrder {
@@ -206,11 +206,22 @@ func readBody(r *http.Request) ([]byte, error) {
 	return raw, nil
 }
 
+// nestedAllowed reports whether the request may carry nested-mutation keys:
+// the plugin gate is open and the write is a POST or a PATCH of a
+// single-row path.
+func (p *parser) nestedAllowed() bool {
+	if p.opts.NestedKeys == nil {
+		return false
+	}
+	return p.method == plan.POST || (p.method == plan.PATCH && p.req != nil && p.req.Key != nil)
+}
+
 // bodyObject validates and coerces one body object into a column-name keyed
-// map. allowNested admits nested-mutation keys (single-object POST only).
+// map. allowNested admits nested-mutation keys (single-object POST and
+// single-row PATCH only).
 func (p *parser) bodyObject(res *api.Resource, obj map[string]any, allowNested bool) (map[string]any, map[string]*plan.Nested, error) {
 	var nestedKeys map[string]*api.Relation
-	if allowNested && p.method == plan.POST && p.opts.NestedKeys != nil {
+	if allowNested && p.nestedAllowed() {
 		nestedKeys = p.opts.NestedKeys(res)
 	}
 	out := make(map[string]any, len(obj))
@@ -266,7 +277,7 @@ func (p *parser) bodyObject(res *api.Resource, obj map[string]any, allowNested b
 func (p *parser) checkBody(res *api.Resource, body *plan.Body) error {
 	switch p.method {
 	case plan.PATCH:
-		if len(body.Object) == 0 {
+		if len(body.Object) == 0 && len(body.Nested) == 0 {
 			return errf(CodeInvalidBody, "PATCH body must set at least one column")
 		}
 		return nil
@@ -536,10 +547,17 @@ func CoerceValue(built *api.Built, col *introspect.Column, v any) (any, error) {
 // build their own DML from nested body rows (nested-mutations) use this so
 // their coercion matches the core's.
 func CoerceObject(built *api.Built, res *api.Resource, obj map[string]any) (map[string]any, error) {
+	return CoerceObjectFor(built, res, obj, plan.POST)
+}
+
+// CoerceObjectFor is CoerceObject for the body of method: plan.PATCH
+// applies the update rules (columns tagged @omit update are rejected),
+// plan.POST the insert rules.
+func CoerceObjectFor(built *api.Built, res *api.Resource, obj map[string]any, method plan.Method) (map[string]any, error) {
 	if built == nil || res == nil {
 		return nil, fmt.Errorf("parse: CoerceObject needs a built API and a resource")
 	}
-	p := &parser{built: built, method: plan.POST}
+	p := &parser{built: built, method: method}
 	out, _, err := p.bodyObject(res, obj, false)
 	if err != nil {
 		return nil, err

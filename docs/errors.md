@@ -44,7 +44,7 @@ has a `code`, see the note below the table):
 
 | `code` | Status | Meaning |
 |---|---|---|
-| `not_found` | 404 | no such route/resource/function, or single-row path matched zero rows (incl. rows hidden by RLS), or a nested `connect` found no parent |
+| `not_found` | 404 | no such route/resource/function, or single-row path matched zero rows (incl. rows hidden by RLS), or a nested `connect` / `update` / `delete` matched no row (detail `nested "<path>": matched 0 rows`; the whole statement is rolled back) |
 | `invalid_filter` | 400 | filter grammar: bad `op`, unparsable value, bad `and=`/`or=` nesting, missing `near=` with distance order, bad `in.(…)` list, uncoercible RPC GET arg |
 | `invalid_select` | 400 | `select=` grammar: unbalanced parens, empty item, bad alias, unknown hint, `col(k=v)` args on a non-spatial column; aggregates ([aggregates.md](aggregates.md#errors)): a cast outside an aggregate or to a type outside the allowlist (`::regclass`), an aggregate without the input type (`text.sum()`), an embed or ungroupable column as a grouping key, duplicate response keys, aggregates on single-row paths, mutations or in to-one embeds, `distinct=` with aggregates |
 | `aggregates_disabled` | 400 | an aggregate function in `select=` while `server.aggregates` is off (PostgREST `PGRST123`) |
@@ -58,20 +58,20 @@ has a `code`, see the note below the table):
 | `cost_exceeded` | 400 | estimated cost > `server.max_cost` |
 | `embed_depth_exceeded` | 400 | `select=` nesting deeper than `server.max_embed_depth`; nested-mutation depth > `max_depth` |
 | `ambiguous_relation` | 400 | relation key matches ≥ 2 FKs and no `!hint`; detail lists the candidates |
-| `invalid_body` | 400 | body not an object/array as required, unknown key, empty patch, missing required columns, missing conflict-target columns, both `create` and `connect`, uncoercible value, empty `[]` bulk, single-row `PUT` body key ≠ path key (PostgREST `PGRST115`) |
+| `invalid_body` | 400 | body not an object/array as required, unknown key, empty patch, missing required columns, missing conflict-target columns, both `create` and `connect`, malformed nested operation, more than `max_operations` nested operations, uncoercible value, empty `[]` bulk, single-row `PUT` body key ≠ path key (PostgREST `PGRST115`) |
 | `temporal_conflict_target` | 400 | `PUT` or `POST` with `Prefer: resolution=merge-duplicates` whose conflict target is a temporal (`WITHOUT OVERLAPS`, PostgreSQL 18) key — `?on_conflict=` naming one, or the default target on a table whose primary key is temporal (`ignore-duplicates` accepts them); `ON CONFLICT` cannot infer the exclusion constraint behind it (PostgreSQL would fail with `42P10`) |
 | `column_readonly` | 400 | generated / identity-`ALWAYS` column in a write body |
 | `read_only` | 405 | write attempted while `server.read_only` (config or `App.SetReadOnly`) |
 | `etag_mismatch` | 412 | `If-Match` did not match the current row hash |
 | (`unfiltered_mutation`) | 400 | bulk `PATCH`/`DELETE` on a collection path without a root filter or `!inner` embed while `server.allow_unfiltered_mutations` is off |
-| (`if_match_unsupported`) | 400 | `If-Match` on a write that cannot honour it (bulk `PATCH`/`DELETE` on a collection path, `PUT` on a single-row path) while `server.etags` is on |
+| (`if_match_unsupported`) | 400 | `If-Match` on a write that cannot honour it (bulk `PATCH`/`DELETE` on a collection path, `PUT` on a single-row path, a `PATCH` carrying nested-mutation keys) while `server.etags` is on |
 | (`invalid_preference`) | 400 | `Prefer: handling=strict` with an unknown token or a malformed value (PostgREST `PGRST122`); `resolution=merge-duplicates` on a resource without `PUT`; `tx=` while `server.tx_end` has no override; an unknown `timezone=` |
 | (`max_affected_exceeded`) | 400 | `Prefer: handling=strict, max-affected=N` and the write touched more than `N` rows; rolled back (PostgREST `PGRST124`) |
 | `not_acceptable` | 406 | `Accept` unsatisfiable (incl. `text/csv` with embeds or on non-list responses) |
 | `unsupported_media_type` | 415 | request body `Content-Type` is not `application/json` |
 | `role_not_allowed` | 403 | credential valid, but the resolved role is not in `rls.allowed_roles`, or is `none`, `public`, a `pg_*` role or not `[A-Za-z0-9_]+` |
 | `invalid_token` | 401 | JWT/headers present but invalid (signature, exp, iss/aud, JWKS miss or unavailable, malformed; a claim header misspelt, repeated, folding onto another claim or outside `rls.auth.header_claims`) |
-| (`unknown_relation`) | 400 | relation key in `select=`, a filter/order path, a per-embed param, or a nested-mutation body that matches no FK of the resource |
+| (`unknown_relation`) | 400 | relation key in `select=`, a filter/order path, a per-embed param, or a nested-mutation body that matches no FK of the resource; a nested-mutation operation the relation does not offer (privilege, `@omit`, FK column not writable, referenced column hidden, `NOT NULL` FK for `disconnect`) |
 | (`invalid_cursor`) | 400 | `after`/`before` cursor undecodable or minted for a different resource |
 | (`method_not_allowed`) | 405 | method not registered on the path (view, missing privilege, `@omit`, volatile GET) |
 | (`unknown_argument`) | 400 | RPC argument name not declared by the function |

@@ -1,0 +1,2 @@
+-- request: PATCH /api/users?id=eq.1
+-- error: 400 invalid_body: unknown key "places" in body for "users"

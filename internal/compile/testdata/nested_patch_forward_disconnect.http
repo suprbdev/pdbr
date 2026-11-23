@@ -1,0 +1,5 @@
+PATCH /api/places/4
+Content-Type: application/json
+Prefer: return=minimal
+
+{"name": "Opera House", "users": {"disconnect": true}}

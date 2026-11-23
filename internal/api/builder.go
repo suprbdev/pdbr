@@ -125,9 +125,14 @@ type Surface struct {
 	// NestedKeys names the nested-mutation body keys a resource accepts
 	// (relation key -> relation); nil while the nested-mutations plugin is
 	// off, so bodies carrying relation keys stay invalid_body. The parser
-	// reads it through parse.Options.NestedKeys; OpenAPI's .insert schemas
-	// (M6) render nested-input properties from it.
+	// reads it through parse.Options.NestedKeys; OpenAPI's .insert and
+	// .update schemas render one property per key from NestedSchema.
 	NestedKeys func(*Resource) map[string]*Relation
+	// NestedSchema returns the OpenAPI schema of nested key rel of r in a
+	// body of method m (MethodPost: the .insert schema, MethodPatch:
+	// .update), or nil when the key takes no input there. A forward key
+	// with a POST schema releases its FK columns from the required set.
+	NestedSchema func(r *Resource, rel *Relation, m Method) *Schema
 }
 
 // New creates a Builder with the default model generated from the catalog.

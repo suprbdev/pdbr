@@ -226,7 +226,7 @@ pdbr's defaults are already the raw names.
 | `smart-comments` | 50 | catalog, inflection, api | — |
 | `advanced-filters` | 150 | api | `relations` (true), `computed` (true), `relation_order` (true), `relations_opt_in` (false), `computed_opt_in` (false) |
 | `postgis` | 160 | api | `filters`, `derived`, `ordering`, `projection` (all true) |
-| `nested-mutations` | 200 | api, compile, request | `force_transactions` (true), `max_depth` (3) |
+| `nested-mutations` | 200 | api, compile, request | `force_transactions` (true), `max_depth` (3), `max_operations` (50) |
 
 `advanced-filters` and `postgis` are `APIHook` only (pdbq parity: the core
 compiler reads the bindings they register, and `internal/compile/spatial.go`
@@ -313,33 +313,42 @@ query surface. See [postgis.md](postgis.md).
 Exercises every REST-specific hook surface
 (`internal/plugins/nestedmutations`). **APIHook** — publishes
 `Builder.Surface.NestedKeys` (`nestedmutations.NestedKeys`: every
-unambiguous relation key of a resource; forward keys take `{"create": {…}}`
-or `{"connect": {<key cols>}}`, exactly one; backward keys take
-`{"create": [{…}, …]}`), which the parser reads through
-`parse.Options.NestedKeys` — only `POST` create bodies (single object)
-accept them, and forward-FK columns stop being required when the key is
-present — and adds a `<name>.connect` schema per connectable resource
-(`oneOf` the primary key / each unique constraint; a temporal key without
-its period column, which `PERIOD` relations connect by). Over a `PERIOD` FK
-only the equality columns are copied from the related row
-([mutations.md](mutations.md#temporal-period-relations)). The `.insert` schema
-variants themselves land with the M6 OpenAPI bodies, rendered from
-`Surface.NestedKeys`. **CompileHook** — when the plan carries nested keys it
-resolves them (`create` / `connect` exactly one, nested-in-nested up to
-`max_depth`, body-rule coercion of every nested row via
-`parse.CoerceObject`, values rendered by `compile.InputValue`), replaces the
-DML with a multi-CTE statement (`__p_n` parents inserted / looked-up first,
-`__mut` main row, `__c_n` children reading the FK from their parent CTE) and
-hands the chain to `compile.MutationWithCTEs`, which reuses the core
-response compiler (`select=` embeds included). Rows inserted in CTEs are
-invisible to same-statement table scans, so it also passes the insert CTEs
-of every table that received inserts (children and created parents); the
-core reads such a table, when the response embeds it, from a `__vis_n`
-visibility CTE (the table `UNION ALL` those CTEs). **RequestHook** —
-sets `op.ForceTx` when the plan has nested keys (`force_transactions: false`
-opts out). Depth beyond `max_depth` (default 3, root = 1) → `400
-embed_depth_exceeded`; `create` on a related resource without `POST` → `400
-unknown_relation`. Full rules and the exact SQL shape:
+unambiguous relation key of a resource), which the parser reads through
+`parse.Options.NestedKeys` — single-object `POST` bodies and `PATCH` bodies
+of a single-row path accept them, and forward-FK columns stop being
+required when the key is present — plus `Builder.Surface.NestedSchema`
+(`nestedmutations.NestedSchema`: the `.insert` / `.update` property of a key,
+listing only the operations it offers there) and a `<name>.connect` key
+schema per resource a nested key leads to (`oneOf` the primary key / each
+unique constraint; a temporal key without its period column, which `PERIOD`
+relations connect by). Forward keys take `create` / `connect` (and, on a
+`PATCH`, `disconnect`, `update`, `delete`); backward keys take lists under
+`create` / `connect` (and, on a `PATCH`, `update`, `delete`, `disconnect`).
+Over a `PERIOD` FK only the equality columns are copied from the related
+row ([mutations.md](mutations.md#temporal-period-relations)).
+**CompileHook** — when the plan carries nested keys it resolves them
+(operation availability per relation and method — privileges, `@omit`,
+FK writability, hidden referenced columns, nullable FK for `disconnect` —
+nested-in-nested up to `max_depth`, at most `max_operations` operations,
+body-rule coercion of every nested row and patch via
+`parse.CoerceObjectFor`, values rendered by `compile.InputValue`), replaces
+the DML with a multi-CTE statement (`__p_n` / `__d_n` forward operations
+first, `__mut` main row — an `INSERT`, an `UPDATE`, or a `SELECT … FOR
+UPDATE` lock for a `PATCH` without columns — then `__c_n` backward
+operations reading the parent from its CTE) and hands the chain to
+`compile.MutationChain`, which reuses the core response compiler
+(`select=` embeds included). Rows written in CTEs are invisible to
+same-statement table scans, so it also passes, per table, the CTEs holding
+rows that are in it after the statement and conditions excluding the rows
+it replaced or deleted; the core reads such a table, when the response
+embeds it, from a `__vis_n` visibility CTE. Every `connect`, `update` and
+`delete` (and the addressed row of a `PATCH`) carries a
+`compile.GuardSQL` guard, so a lookup that matches nothing aborts the
+statement and answers `404 not_found`. **RequestHook** — sets `op.ForceTx`
+when the plan has nested keys (`force_transactions: false` opts out). Depth
+beyond `max_depth` (default 3, root = 1) → `400 embed_depth_exceeded`; an
+operation the relation does not offer → `400 unknown_relation`. Full rules
+and the exact SQL shape:
 [mutations.md](mutations.md#nested-mutations-plugin-nested-mutations).
 
 ## Extending the API: `api.Builder`
@@ -370,7 +379,8 @@ that introduced it.
 | `Resource/Field/Computed/RPC.Deprecated` + `DeprecationReason` | `deprecated: true` + `x-deprecation-reason` on schemas, properties and operations | smart-comments (`@deprecated`) |
 | `Builder.Surface` (`RelationFilters`, `RelationOrder`, `ComputedFilters`, `ComputedOrder`, `Spatial` + `SpatialFilters`/`SpatialOrder`/`SpatialProjection`, `SpatialAggregates`) | grammar gates copied to `Built.Surface` and read by `server.ParseOptions` (`Spatial` implies the three spatial halves; postgis sets the halves from its `filters`/`ordering`/`projection` settings and `SpatialAggregates` from `aggregates`) | advanced-filters, postgis |
 | `Relation.Filterable`/`Orderable`/`Embeddable`, `Computed.Filterable`/`Orderable` | per-object gates (default true — `Computed`'s to `!ReturnsSet`); plugins only ever narrow them | smart-comments, advanced-filters |
-| `Builder.Surface.NestedKeys func(*Resource) map[string]*Relation` | the nested-input body keys a resource accepts (relation key → relation); copied to `Built.Surface`, read by `server.ParseOptions` → `parse.Options.NestedKeys` (and by the M6 `.insert` schema renderer); nil = nested keys are unknown body keys | nested-mutations |
+| `Builder.Surface.NestedKeys func(*Resource) map[string]*Relation` | the nested-input body keys a resource accepts (relation key → relation); copied to `Built.Surface`, read by `server.ParseOptions` → `parse.Options.NestedKeys`; nil = nested keys are unknown body keys | nested-mutations |
+| `Builder.Surface.NestedSchema func(*Resource, *Relation, Method) *Schema` | the OpenAPI property of a nested key in the `.insert` (`MethodPost`) or `.update` (`MethodPatch`) body, or nil when the key takes no input there; a forward key's `.insert` property releases its FK columns from `required` | nested-mutations |
 | `Builder.Extra.Schemas[name]` + `Builder.ColumnSchema(col)` | add a `components.schemas` entry (rendered verbatim at `Build`), with the core's per-column schema mapping for its properties | postgis (`GeoJSON`), nested-mutations (`<name>.connect`) |
 | `Builder.Extra.Types[pgType]` | override the OpenAPI schema of a PostgreSQL type name (`Built.TypeSchema` consults it first; arrays nest) | postgis (`geometry`/`geography` → `$ref GeoJSON`) |
 | `Builder.Extra.FilterOps[pgType]` | the operator vocabulary a column of that type documents in `x-pdbr-filter-ops` (and the parameter description) instead of the scalar ops | postgis (`st_*`, `bbox_*`, `is`) |
@@ -389,9 +399,11 @@ parameter numbering and identifier quoting compose with the core compiler:
 | `compile.ParamSet` — `Add(v any) string`, `Args() []any` | append a bind parameter, get its `$n` placeholder; the core continues numbering after yours |
 | `(*ParamSet).SpatialValue(col *introspect.Column, v any) (string, error)` | render a GeoJSON/WKT input for a spatial column as its single-parameter constructor expression (`ST_GeomFromGeoJSON($3)` …); mandatory for spatial columns — a bare parameter would fail type resolution |
 | `(*Compiler).MutationWithCTEs(req *Request, ctes string, ps *ParamSet, inserted map[string][]string) (*Statement, error)` | compile the response (`select=`, embeds, RETURNING projection) against a caller-supplied CTE chain that defines `__mut` (a plain INSERT); `inserted` maps `"schema.table"` to the chain's other CTEs holding rows the statement inserted into it (`RETURNING *`), and embeds reading those tables or the mutated one read a visibility CTE (table `UNION ALL` the new rows) for same-snapshot visibility |
+| `(*Compiler).MutationChain(req *Request, ch Chain) (*Statement, error)` | the general form: `Chain{CTEs, Params, RootKeep, Writes, Guards}`. `RootKeep` is set when `__mut` updates or locks existing rows (a condition over the bare table keeping the rows it left alone); `Writes["schema.table"]` = `TableWrites{Rows, Keep}` — CTEs returning every column of rows in the table after the statement, and conditions keeping the pre-statement rows the chain left alone; `Guards` are `GuardSQL` conditions evaluated before the response (even an empty one) |
+| `compile.GuardSQL(cte, label string) string` / `compile.GuardFailure(msg)` | a guard requiring `cte` to yield a row; a failure raises `22P02` carrying `pdbr guard: <label> matched 0 rows`, which the executor answers as `404 not_found` with that detail (`label` must not depend on request values) |
 | `compile.CoerceInput(built *api.Built, col *introspect.Column, v any) any` | convert a JSON body value into a driver-friendly parameter (enum labels, json/jsonb re-encoded as text, arrays element-wise, `int8`/`numeric` strings); route every column value through it before `ParamSet.Add` |
 | `(*Compiler).InputValue(col *introspect.Column, v any, ps *ParamSet) (string, error)` | render a (parser-coerced) body value as the parameter expression the core DML uses — composites `jsonb_populate_record(NULL::t, $n::jsonb)`, arrays `$n::type[]`, json `$n::jsonb`, PostGIS constructors, bare `$n` otherwise — appending to `ps`; the one-stop rendering for plugin-built INSERT tuples (nested-mutations) |
-| `parse.CoerceObject(built, res, obj)` / `parse.CoerceValue(built, col, v)` | apply the body-validation rules and coercion table to a nested row (unknown key / readonly / uncoercible → `UserError`) or to one value regardless of writability (`connect` keys) |
+| `parse.CoerceObject(built, res, obj)` / `parse.CoerceObjectFor(built, res, obj, method)` / `parse.CoerceValue(built, col, v)` | apply the body-validation rules and coercion table to a nested row (`POST` rules) or patch (`plan.PATCH`: `@omit update` columns rejected) — unknown key / readonly / uncoercible → `UserError` — or to one value regardless of writability (key lookups) |
 | `compile.QuoteIdent(s string) string` | identifier quoting — the **only** way identifiers may enter SQL text |
 | `compile.TableRefSQL(schema, table string) string` | quoted, schema-qualified relation reference |
 

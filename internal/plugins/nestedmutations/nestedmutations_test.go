@@ -43,7 +43,12 @@ func buildWith(t *testing.T, p *Plugin) *api.Built {
 // would (parse gate from Built.Surface, plugin wrapping the core compiler).
 func run(t *testing.T, p *Plugin, built *api.Built, target, body string, hdr map[string]string) (*compile.Statement, error) {
 	t.Helper()
-	r := httptest.NewRequest("POST", target, strings.NewReader(body))
+	return runMethod(t, p, built, "POST", target, body, hdr)
+}
+
+func runMethod(t *testing.T, p *Plugin, built *api.Built, method, target, body string, hdr map[string]string) (*compile.Statement, error) {
+	t.Helper()
+	r := httptest.NewRequest(method, target, strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
 	for k, v := range hdr {
 		r.Header.Set(k, v)
@@ -85,8 +90,11 @@ func TestSettings(t *testing.T) {
 		t.Fatalf("float max_depth: %+v", p)
 	}
 	p = New(map[string]any{"max_depth": 0})
-	if p.MaxDepth() != 3 {
+	if p.MaxDepth() != 3 || p.MaxOperations() != DefaultMaxOperations {
 		t.Fatalf("zero max_depth keeps default: %+v", p)
+	}
+	if p = New(map[string]any{"max_operations": 7}); p.MaxOperations() != 7 {
+		t.Fatalf("max_operations: %+v", p)
 	}
 	if got := strings.Join(plugin.Hooks(p), ", "); got != "api, compile, request" {
 		t.Fatalf("hooks = %s", got)
@@ -180,10 +188,14 @@ func TestValidation(t *testing.T) {
 		{"connect partial key", "/api/posts", `{"title":"t","users":{"connect":{"id":1,"email":"a"}}}`, CodeInvalidBody, "primary key or one unique"},
 		{"connect null", "/api/posts", `{"title":"t","users":{"connect":{"id":null}}}`, CodeInvalidBody, "must not be null"},
 		{"connect bad value", "/api/posts", `{"title":"t","users":{"connect":{"id":"x"}}}`, CodeInvalidBody, `nested "users"`},
-		{"backward not object", "/api/users", `{"email":"a","posts":[{"title":"t"}]}`, CodeInvalidBody, `expected an object with a "create" list`},
-		{"backward connect", "/api/users", `{"email":"a","posts":{"connect":[{"id":1}]}}`, CodeInvalidBody, "not supported on a backward relation"},
+		{"backward not object", "/api/users", `{"email":"a","posts":[{"title":"t"}]}`, CodeInvalidBody, `expected an object with "create" and/or "connect" lists`},
+		{"backward update on insert", "/api/users", `{"email":"a","posts":{"update":[{"where":{"id":1},"data":{"title":"x"}}]}}`, CodeInvalidBody, `"update" applies only to a row being updated`},
+		{"forward delete on insert", "/api/posts", `{"title":"t","users":{"connect":{"id":1},"delete":true}}`, CodeInvalidBody, `"delete" applies only to a row being updated`},
 		{"backward unknown key", "/api/users", `{"email":"a","posts":{"x":1}}`, CodeInvalidBody, `unknown key "x"`},
-		{"backward missing create", "/api/users", `{"email":"a","posts":{}}`, CodeInvalidBody, `"create" is required`},
+		{"backward empty", "/api/users", `{"email":"a","posts":{}}`, CodeInvalidBody, `expected "create" and/or "connect" lists`},
+		{"backward connect not list", "/api/users", `{"email":"a","posts":{"connect":{"id":1}}}`, CodeInvalidBody, `"connect" must be a non-empty JSON array`},
+		{"backward connect non-key", "/api/users", `{"email":"a","posts":{"connect":[{"title":"x"}]}}`, CodeInvalidBody, `nested "posts.connect[0]": "connect" keys must be the primary key`},
+		{"backward connect null", "/api/users", `{"email":"a","posts":{"connect":[{"id":null}]}}`, CodeInvalidBody, `must not be null`},
 		{"backward create not list", "/api/users", `{"email":"a","posts":{"create":{"title":"t"}}}`, CodeInvalidBody, "non-empty JSON array"},
 		{"backward create empty", "/api/users", `{"email":"a","posts":{"create":[]}}`, CodeInvalidBody, "non-empty JSON array"},
 		{"backward element not object", "/api/users", `{"email":"a","posts":{"create":[{"title":"t"},1]}}`, CodeInvalidBody, `nested "posts[1]": expected a JSON object`},
@@ -409,5 +421,155 @@ func TestBeforeRequest(t *testing.T) {
 			t.Fatalf("ForceTx = %v, want %v (%+v)", op.ForceTx, tc.want, tc)
 		}
 		tc.p.AfterRequest(context.Background(), op, &exec.Result{})
+	}
+}
+
+func TestPatchValidation(t *testing.T) {
+	p := New(nil)
+	built := buildWith(t, p)
+	cases := []struct {
+		name, target, body, code, detail string
+	}{
+		{"forward two setters", "/api/places/1", `{"users":{"connect":{"id":1},"disconnect":true}}`, CodeInvalidBody, `at most one of "create", "connect" or "disconnect"`},
+		{"forward empty", "/api/places/1", `{"users":{}}`, CodeInvalidBody, "expected at most one of"},
+		{"forward update and delete", "/api/places/1", `{"users":{"update":{"full_name":"x"},"delete":true}}`, CodeInvalidBody, `"update" and "delete" target the same row`},
+		{"forward disconnect not true", "/api/places/1", `{"users":{"disconnect":{"id":1}}}`, CodeInvalidBody, `"disconnect" must be true`},
+		{"forward delete not true", "/api/places/1", `{"users":{"delete":false}}`, CodeInvalidBody, `"delete" must be true`},
+		{"forward update empty", "/api/places/1", `{"users":{"update":{}}}`, CodeInvalidBody, `"update" must be a non-empty JSON object`},
+		{"forward update unknown column", "/api/places/1", `{"users":{"update":{"nope":1}}}`, CodeInvalidBody, `nested "users.update": unknown key "nope"`},
+		{"forward update readonly", "/api/places/1", `{"users":{"update":{"id":2}}}`, parse.CodeColumnReadOnly, `nested "users.update"`},
+		{"forward disconnect not null fk", "/api/posts/1", `{"users":{"disconnect":true}}`, CodeUnknownRelation, `"users" does not accept "disconnect" (the foreign key column author_id is NOT NULL)`},
+		{"backward disconnect not null fk", "/api/users/1", `{"posts":{"disconnect":[{"id":1}]}}`, CodeUnknownRelation, `"posts" does not accept "disconnect"`},
+		{"backward update not object", "/api/users/1", `{"posts":{"update":[1]}}`, CodeInvalidBody, `nested "posts.update[0]": expected a JSON object with "where" and "data"`},
+		{"backward update no where", "/api/users/1", `{"posts":{"update":[{"data":{"title":"x"}}]}}`, CodeInvalidBody, `"where" is required`},
+		{"backward update no data", "/api/users/1", `{"posts":{"update":[{"where":{"id":1}}]}}`, CodeInvalidBody, `"data" must be a non-empty JSON object`},
+		{"backward update extra key", "/api/users/1", `{"posts":{"update":[{"where":{"id":1},"data":{"title":"x"},"x":1}]}}`, CodeInvalidBody, `unknown key "x" (expected "where" and "data")`},
+		{"backward update where non-key", "/api/users/1", `{"posts":{"update":[{"where":{"title":"x"},"data":{"title":"y"}}]}}`, CodeInvalidBody, `"where" keys must be the primary key`},
+		{"backward update sets fk", "/api/users/1", `{"posts":{"update":[{"where":{"id":1},"data":{"author_id":2}}]}}`, CodeInvalidBody, `column "author_id" links the row to its parent`},
+		{"backward delete empty", "/api/users/1", `{"posts":{"delete":[]}}`, CodeInvalidBody, `"delete" must be a non-empty JSON array`},
+		{"backward delete bad key", "/api/users/1", `{"posts":{"delete":[{"nope":1}]}}`, CodeInvalidBody, `nested "posts.delete[0]": unknown key "nope" in "delete"`},
+		{"backward connect bad value", "/api/users/1", `{"posts":{"connect":[{"id":"x"}]}}`, CodeInvalidBody, `nested "posts.connect[0]"`},
+		{"nested update depth", "/api/users/1", `{"posts":{"update":[{"where":{"id":1},"data":{"comments":{"update":[{"where":{"id":1},"data":{"posts":{"update":{"title":"x"}}}}]}}}]}}`, CodeEmbedDepthExceeded, "exceeds max_depth 3"},
+		{"fk and nested", "/api/places/1", `{"owner_id":1,"users":{"update":{"full_name":"x"}}}`, CodeInvalidBody, "both column"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := runMethod(t, p, built, "PATCH", tc.target, tc.body, nil)
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			wantCode(t, err, tc.code, tc.detail)
+		})
+	}
+}
+
+func TestMaxOperations(t *testing.T) {
+	built := buildWith(t, New(nil))
+	body := `{"email":"a","posts":{"create":[{"title":"1"},{"title":"2"}],"connect":[{"id":1}]}}`
+	if _, err := run(t, New(map[string]any{"max_operations": 3}), built, "/api/users", body, nil); err != nil {
+		t.Fatalf("3 operations within max_operations 3: %v", err)
+	}
+	_, err := run(t, New(map[string]any{"max_operations": 2}), built, "/api/users", body, nil)
+	wantCode(t, err, CodeInvalidBody, `nested "posts[1]": more than 2 nested operations`)
+}
+
+// TestOperationAvailability covers the per-action gates: privileges and
+// @omit on the related table, @omit create/update on the FK column, and
+// @omit read on the referenced column.
+func TestOperationAvailability(t *testing.T) {
+	p := New(nil)
+	fresh := func() *api.Built { return buildWith(t, p) }
+
+	built := fresh()
+	built.Resources["public.places"].Methods[api.MethodDelete] = false
+	_, err := runMethod(t, p, built, "PATCH", "/api/users/1", `{"places":{"delete":[{"id":1}]}}`, nil)
+	wantCode(t, err, CodeUnknownRelation, `"places" does not accept "delete" (no DELETE on the related table)`)
+	if _, err := runMethod(t, p, built, "PATCH", "/api/users/1", `{"places":{"disconnect":[{"id":1}]}}`, nil); err != nil {
+		t.Fatalf("disconnect without DELETE: %v", err)
+	}
+
+	built = fresh()
+	built.Resources["public.places"].Methods[api.MethodPatch] = false
+	for _, op := range []string{`"connect":[{"id":1}]`, `"update":[{"where":{"id":1},"data":{"name":"x"}}]`, `"disconnect":[{"id":1}]`} {
+		_, err = runMethod(t, p, built, "PATCH", "/api/users/1", `{"places":{`+op+`}}`, nil)
+		wantCode(t, err, CodeUnknownRelation, "no UPDATE on the related table")
+	}
+	built.Resources["public.users"].Methods[api.MethodPatch] = false
+	_, err = runMethod(t, p, built, "PATCH", "/api/places/1", `{"users":{"update":{"full_name":"x"}}}`, nil)
+	wantCode(t, err, CodeUnknownRelation, `"users" does not accept "update"`)
+
+	built = fresh()
+	built.Resources["public.places"].NoUpdate = map[string]bool{"owner_id": true}
+	_, err = runMethod(t, p, built, "PATCH", "/api/users/1", `{"places":{"connect":[{"id":1}]}}`, nil)
+	wantCode(t, err, CodeUnknownRelation, "the foreign key column owner_id is not writable")
+	_, err = runMethod(t, p, built, "PATCH", "/api/places/1", `{"users":{"connect":{"id":1}}}`, nil)
+	wantCode(t, err, CodeUnknownRelation, "the foreign key column owner_id is not writable")
+	if _, err := run(t, p, built, "/api/users", `{"email":"a","places":{"create":[{"name":"x"}]}}`, nil); err != nil {
+		t.Fatalf("create with @omit update on the FK: %v", err)
+	}
+	built.Resources["public.places"].NoCreate = map[string]bool{"owner_id": true}
+	_, err = run(t, p, built, "/api/users", `{"email":"a","places":{"create":[{"name":"x"}]}}`, nil)
+	wantCode(t, err, CodeUnknownRelation, `"places" does not accept "create" (the foreign key column owner_id is not writable)`)
+
+	b := api.New(testutil.FixtureCatalog(), inflect.Default, api.Options{
+		Functions: true, BasePath: "/api", Schemas: []string{"public"}, MaxPageSize: 100,
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	b.RemoveField(b.Resources["public.users"], "id", false)
+	if err := p.TransformAPI(context.Background(), b); err != nil {
+		t.Fatal(err)
+	}
+	hidden, err := b.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = run(t, p, hidden, "/api/users", `{"email":"a","places":{"create":[{"name":"x"}]}}`, nil)
+	wantCode(t, err, CodeUnknownRelation, "references a column hidden from reads")
+	_, err = run(t, p, hidden, "/api/places", `{"name":"x","users":{"create":{"email":"a"}}}`, nil)
+	wantCode(t, err, CodeUnknownRelation, "references a column hidden from reads")
+	_, err = run(t, p, hidden, "/api/places", `{"name":"x","users":{"connect":{"email":"a"}}}`, nil)
+	wantCode(t, err, CodeUnknownRelation, "references a column hidden from reads")
+	if s := NestedSchema(hidden.Resources["public.users"], hidden.Resources["public.users"].Relations["places"][0], api.MethodPost); s != nil {
+		t.Fatalf("users.insert.places offered over a hidden key: %+v", s)
+	}
+}
+
+func TestNestedSchemas(t *testing.T) {
+	built := buildWith(t, New(nil))
+	schemas := built.OpenAPI.Components.Schemas
+	props := func(name, key string) []string {
+		t.Helper()
+		s := schemas[name].Properties[key]
+		if s == nil {
+			t.Fatalf("%s.%s missing", name, key)
+		}
+		return sortedSchemaKeys(s.Properties)
+	}
+	for _, tc := range []struct {
+		schema, key, want string
+	}{
+		{"users.insert", "posts", "connect create"},
+		{"users.update", "posts", "connect create delete update"},
+		{"users.update", "places", "connect create delete disconnect update"},
+		{"posts.insert", "users", "connect create"},
+		{"posts.update", "users", "connect create delete update"},
+		{"places.update", "users", "connect create delete disconnect update"},
+	} {
+		if got := strings.Join(props(tc.schema, tc.key), " "); got != tc.want {
+			t.Errorf("%s.%s = %s, want %s", tc.schema, tc.key, got, tc.want)
+		}
+	}
+	up := schemas["users.update"].Properties["posts"].Properties["update"]
+	if up.Type != "array" || up.Items.Properties["where"].Ref != "#/components/schemas/posts.connect" || up.Items.Properties["data"].Ref != "#/components/schemas/posts.update" {
+		t.Errorf("users.update.posts.update = %+v", up.Items)
+	}
+	if d := schemas["places.update"].Properties["users"].Properties["disconnect"]; d.Type != "boolean" || d.Const != true {
+		t.Errorf("disconnect = %+v", d)
+	}
+	if _, ok := schemas["places.connect"]; !ok {
+		t.Error("places.connect missing (backward connect target)")
+	}
+	if p := schemas["posts.insert"].Properties["users"]; p.MaxProperties == nil || *p.MaxProperties != 1 {
+		t.Errorf("forward insert schema allows several operations: %+v", p)
 	}
 }

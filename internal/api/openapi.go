@@ -128,6 +128,7 @@ type Schema struct {
 	MinProperties        *int               `json:"minProperties,omitempty"`
 	MaxProperties        *int               `json:"maxProperties,omitempty"`
 	Enum                 []string           `json:"enum,omitempty"`
+	Const                any                `json:"const,omitempty"`
 	AnyOf                []*Schema          `json:"anyOf,omitempty"`
 	OneOf                []*Schema          `json:"oneOf,omitempty"`
 	ReadOnly             bool               `json:"readOnly,omitempty"`
@@ -609,7 +610,7 @@ func insertRequired(c *introspect.Column) bool {
 // inputSchema renders <name>.insert / .update / .upsert: the accepted body
 // keys per method, the required set (create: NOT NULL without default;
 // upsert: plus the primary key when it is insertable; update: none, but at
-// least one key), nested-input properties from Surface.NestedKeys, and
+// least one key), nested-input properties (Surface.NestedSchema), and
 // additionalProperties: false because unknown keys are 400 invalid_body.
 func (b *Builder) inputSchema(r *Resource, m Method) *Schema {
 	s := &Schema{Type: "object", Properties: map[string]*Schema{}, AdditionalProperties: boolPtr(false)}
@@ -628,10 +629,11 @@ func (b *Builder) inputSchema(r *Resource, m Method) *Schema {
 	switch m {
 	case MethodPost:
 		s.Description = "Create body for " + r.Path + ": one object, or an array of objects for a bulk insert (missing keys take their column default)."
-		b.nestedInputProps(r, s, required)
+		b.nestedInputProps(r, s, required, m)
 	case MethodPatch:
 		s.Description = "Update body for " + r.Path + ": any subset of the writable columns; at least one key."
 		s.MinProperties = intPtr(1)
+		b.nestedInputProps(r, s, required, m)
 	case MethodPut:
 		s.Description = "Upsert body for " + r.Path + ": inserted or updated on the conflict target (the primary key, or ?on_conflict=<unique columns>), whose columns must be present."
 		if pk := r.PrimaryKey(); pk != nil {
@@ -655,14 +657,12 @@ func (b *Builder) inputSchema(r *Resource, m Method) *Schema {
 	return s
 }
 
-// nestedInputProps adds the nested-mutations properties to a .insert
-// schema: for each key of Surface.NestedKeys(r) a forward relation takes
-// exactly one of {"create": <to>.insert} (when the related resource has
-// POST) / {"connect": <to>.connect} (when the plugin published one) and
-// releases the FK columns from required; a backward relation takes
-// {"create": [<to>.insert]}.
-func (b *Builder) nestedInputProps(r *Resource, s *Schema, required map[string]bool) {
-	if b.Surface.NestedKeys == nil {
+// nestedInputProps adds the nested-mutations properties to a .insert or
+// .update schema: one per key of Surface.NestedKeys(r) for which
+// Surface.NestedSchema renders a schema. A forward key of a create body
+// supplies the FK columns, which leave the required set.
+func (b *Builder) nestedInputProps(r *Resource, s *Schema, required map[string]bool, m Method) {
+	if b.Surface.NestedKeys == nil || b.Surface.NestedSchema == nil {
 		return
 	}
 	keys := b.Surface.NestedKeys(r)
@@ -671,40 +671,17 @@ func (b *Builder) nestedInputProps(r *Resource, s *Schema, required map[string]b
 		if rel == nil || rel.To == nil || s.Properties[key] != nil {
 			continue
 		}
-		insert := rel.To.Path + ".insert"
-		connect := rel.To.Path + ".connect"
-		if rel.Forward {
-			props := map[string]*Schema{}
-			if rel.To.Methods[MethodPost] {
-				props["create"] = SchemaRef(insert)
-			}
-			if b.Extra.Schemas[connect] != nil {
-				props["connect"] = SchemaRef(connect)
-			}
-			if len(props) == 0 {
-				continue
-			}
-			s.Properties[key] = &Schema{
-				Type: "object", Properties: props, MinProperties: intPtr(1), MaxProperties: intPtr(1), AdditionalProperties: boolPtr(false),
-				Description: "Nested input (nested-mutations plugin): exactly one of " + strings.Join(sortedKeys(props), " / ") +
-					" for the " + rel.To.Path + " row referenced by " + strings.Join(r.keys(rel.EqualityColumns()), ",") + ", which then need not be sent.",
-			}
+		ns := b.Surface.NestedSchema(r, rel, m)
+		if ns == nil {
+			continue
+		}
+		s.Properties[key] = ns
+		if rel.Forward && m == MethodPost {
 			for _, c := range rel.EqualityColumns() {
 				if f := r.FieldByColumn(c); f != nil {
 					delete(required, f.Key)
 				}
 			}
-			continue
-		}
-		if !rel.To.Methods[MethodPost] {
-			continue
-		}
-		s.Properties[key] = &Schema{
-			Type:       "object",
-			Properties: map[string]*Schema{"create": {Type: "array", Items: SchemaRef(insert), MinItems: intPtr(1)}},
-			Required:   []string{"create"}, AdditionalProperties: boolPtr(false),
-			Description: "Nested input (nested-mutations plugin): " + rel.To.Path + " rows to create referencing the new row (their " +
-				strings.Join(rel.To.keys(rel.EqualityColumns()), ",") + " is filled in).",
 		}
 	}
 }

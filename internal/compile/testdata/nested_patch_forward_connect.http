@@ -1,0 +1,4 @@
+PATCH /api/places/1?select=id,users(id,email)
+Content-Type: application/json
+
+{"users": {"connect": {"email": "grace@example.com"}}}

@@ -1,0 +1,4 @@
+PATCH /api/places/2?select=id,users(id,email)
+Content-Type: application/json
+
+{"users": {"create": {"email": "golden-owner@example.com"}}}

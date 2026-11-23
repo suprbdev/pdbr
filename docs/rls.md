@@ -212,6 +212,16 @@ consequences for generated mutations:
   column to a claim setting directly), or split the creates into separate
   requests.
 
+- **Nested operations run under the same policies.** A nested `connect`,
+  `update`, `delete` or `disconnect` whose row the role's `UPDATE` or
+  `DELETE` policy (or, for a forward `connect`, `SELECT` policy) filters out
+  matches nothing: `connect`, `update` and `delete` then fail and roll back
+  the whole request (`404 not_found`, `nested "…": matched 0 rows`), a
+  filtered `disconnect` leaves the row as it was. A `WITH CHECK` failure is
+  `403 pg:42501`. A `PATCH` whose body only carries nested keys still locks
+  its row with `SELECT … FOR UPDATE`, so it needs the `UPDATE` privilege and
+  passes the `UPDATE` policies like any update.
+
 ## Minting JWTs from a function (`rls.auth.jwt_type`)
 
 Set `rls.auth.jwt_type` to a schema-qualified composite type (e.g.

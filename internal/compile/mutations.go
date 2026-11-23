@@ -77,9 +77,12 @@ type visSource struct {
 	// root marks the mutated table: the CTE merges in __mut, minus the
 	// pre-statement versions of the rows the DML replaced.
 	root bool
-	// rows lists further CTEs of the chain holding rows the statement
-	// inserted into table (nested-mutations), each projecting every column.
+	// rows lists further CTEs of the chain holding rows that are in table
+	// once the statement completes (nested-mutations), each projecting
+	// every column; keep restricts the table half to the rows the chain
+	// left alone.
 	rows []string
+	keep []string
 	// name is allocated on first read; aliases records every alias the
 	// CTE is read under.
 	name    string
@@ -100,18 +103,18 @@ type replaced struct {
 
 // mutationResponse compiles the response half of a mutation over a CTE
 // chain (which must define __mut) and assembles the statement. rep says
-// which rows of the mutated table __mut replaced; inserted maps
-// "schema.table" to further chain CTEs holding rows the statement inserted
-// into that table. Both feed the visibility CTEs, which are emitted only for
-// the tables the response actually reads.
-func (s *stmt) mutationResponse(ctes string, rep replaced, inserted map[string][]string) (*Statement, error) {
+// which rows of the mutated table __mut replaced; writes maps
+// "schema.table" to the chain's other writes to that table. Both feed the
+// visibility CTEs, which are emitted only for the tables the response
+// actually reads.
+func (s *stmt) mutationResponse(ctes string, rep replaced, writes map[string]TableWrites) (*Statement, error) {
 	p := s.plan
 	r := p.Resource
 	t := r.Table
 	s.vis = map[string]*visSource{}
-	for name, rows := range inserted {
+	for name, w := range writes {
 		if tbl := s.tableByName(name); tbl != nil {
-			s.vis[name] = &visSource{table: tbl, rows: rows}
+			s.vis[name] = &visSource{table: tbl, rows: w.Rows, keep: w.Keep}
 		}
 	}
 	root := t.Schema + "." + t.Name
@@ -201,6 +204,10 @@ func (s *stmt) mutationResponse(ctes string, rep replaced, inserted map[string][
 		ctes += ",\n" + v.cte(referencedColumns(v.table, sql, v.aliases), rep)
 	}
 	ctes = strings.ReplaceAll(ctes, returningPlaceholder, returningList(t, ctes+"\n"+body, alias, p.Method == plan.PUT))
+	if len(s.guards) > 0 {
+		ctes += ",\n__guard AS MATERIALIZED (\n  SELECT " + strings.Join(s.guards, "\n    AND ") + " AS ok\n)"
+		body = "SELECT __guarded.data\nFROM __guard\nLEFT JOIN LATERAL (\n" + indent(body) + "\n) __guarded ON true\nWHERE __guard.ok"
+	}
 	return &Statement{SQL: "WITH " + ctes + "\n" + body, Args: s.ps.Args(), Mutation: true, Shape: shape}, nil
 }
 
@@ -218,10 +225,11 @@ func (s *stmt) tableByName(name string) *introspect.Table {
 // cte renders the visibility CTE: the table as it stands once the statement
 // completes, projected to cols. That is the table itself (still subject to
 // the role's RLS policies) minus, for the mutated table, the rows rep says
-// the DML replaced, UNION ALL the RETURNING rows of __mut unless the DML
-// deleted them, UNION ALL the rows of the chain's other insert CTEs for the
-// table. RETURNING rows already passed the table's SELECT policies: INSERT
-// and UPDATE ... RETURNING raise an error for a new row they reject.
+// the DML replaced, minus the rows a chain's keep conditions exclude, UNION
+// ALL the RETURNING rows of __mut unless the DML deleted them, UNION ALL the
+// rows of the chain's other CTEs for the table. RETURNING rows already
+// passed the table's SELECT policies: INSERT and UPDATE ... RETURNING raise
+// an error for a new row they reject.
 //
 // The __mut half reads its columns as __mut."col", so the RETURNING list
 // widens to them (as it does to the key columns a bulk exclusion reads).
@@ -242,14 +250,19 @@ func (v *visSource) cte(cols []string, rep replaced) string {
 		return strings.Join(cols, ", ")
 	}
 	from := tableRef(v.table)
-	where := ""
+	var conds []string
 	if v.root {
 		if rep.from != "" {
 			from = rep.from
 		}
 		if rep.cond != "" {
-			where = " WHERE " + rep.cond
+			conds = append(conds, rep.cond)
 		}
+	}
+	conds = append(conds, v.keep...)
+	where := ""
+	if len(conds) > 0 {
+		where = " WHERE " + strings.Join(conds, " AND ")
 	}
 	parts := []string{"SELECT " + list(bare) + " FROM " + from + where}
 	if v.root && !rep.removes {
