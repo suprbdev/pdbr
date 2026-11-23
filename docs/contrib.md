@@ -1,5 +1,7 @@
 # Contrib types: full-text search, trigrams, unaccent, fuzzystrmatch, hstore, ltree, intarray, ranges, inet, pgvector, cube, earthdistance
 
+> **Experimental.** Bit-vector distances, cube, earthdistance, `ts_headline` and index-aware ordering are outside the 1.0 compatibility promise and may change in a minor release. See [Compatibility and versioning](compatibility.md#experimental-features).
+
 pdbr gives PostgreSQL's non-scalar built-in types and the common contrib
 extensions a filter and ordering surface, built on the operator vocabularies
 of `pdbcore/contrib` (shared with pdbq). It is core, not a plugin. Whatever a

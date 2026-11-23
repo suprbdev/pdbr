@@ -465,6 +465,8 @@ and cost 1 per row in `limits.max_cost`.
 
 ## Rasters
 
+> **Experimental.** Raster support is outside the 1.0 compatibility promise and may change in a minor release. See [Compatibility and versioning](compatibility.md#experimental-features).
+
 A column of the `postgis_raster` type `raster` holds a pixel grid, often
 megabytes per row. pdbr **never returns raw raster bytes**:
 

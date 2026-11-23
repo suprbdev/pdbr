@@ -21,11 +21,11 @@ Released images are published multi-arch (`linux/amd64`, `linux/arm64`) to
 tagged `X.Y.Z`, `vX.Y.Z` and `X.Y`:
 
 ```console
-$ docker run -e PDBR_DATABASE_URL=postgres://... -p 8080:8080 ghcr.io/suprbdev/pdbr:0.1.0
+$ docker run -e PDBR_DATABASE_URL=postgres://... -p 8080:8080 ghcr.io/suprbdev/pdbr:X.Y.Z
 ```
 
 Any subcommand works as the container command:
-`docker run ghcr.io/suprbdev/pdbr:0.1.0 schema dump -o /out/schema.cache`.
+`docker run ghcr.io/suprbdev/pdbr:X.Y.Z schema dump -o /out/schema.cache`.
 
 Distroless has no shell, so run health checks from the orchestrator against
 `GET /healthz` (liveness) and `GET /readyz` (readiness). Both return
@@ -213,34 +213,36 @@ shared read-only across requests.
 
 ## Releasing
 
-`make release` (interactive) refuses a dirty tree, prompts for `vX.Y.Z`,
-runs `make test lint`, creates an annotated tag and pushes it. The `Release`
-workflow (`.github/workflows/release.yaml`) then, on the `v*` tag:
+Releases are tags. `make release` (interactive) refuses a dirty tree, prompts
+for `vX.Y.Z`, runs the tests and lint, creates an annotated tag and pushes it.
+The `Release` workflow (`.github/workflows/release.yaml`) then, on the `v*` tag:
 
 1. runs `go test -race ./...`;
-2. cross-compiles `linux/amd64`, `linux/arm64`, `darwin/amd64`,
-   `darwin/arm64`, `windows/amd64` (`pdbr_X.Y.Z_<os>_<arch>.tar.gz` / `.zip`)
+2. cross-compiles `linux/amd64`, `linux/arm64`, `darwin/amd64`, `darwin/arm64`
+   and `windows/amd64` archives (`pdbr_X.Y.Z_<os>_<arch>.tar.gz` / `.zip`)
    with `-X main.version=vX.Y.Z`;
-3. writes `checksums.txt` (sha256);
-4. creates the GitHub release with generated notes and the archives attached;
-5. builds and pushes the multi-arch image (`linux/amd64`, `linux/arm64`) to
-   `ghcr.io/suprbdev/pdbr` and `docker.io/suprbdev/pdbr`, tagged `X.Y.Z`,
-   `vX.Y.Z` and `X.Y` (Docker Hub needs the `DOCKERHUB_USERNAME` /
-   `DOCKERHUB_TOKEN` repository secrets; ghcr uses `GITHUB_TOKEN`).
+3. generates a CycloneDX SBOM (`pdbr_X.Y.Z_sbom.cdx.json`) and writes
+   `checksums.txt` (sha256) over the archives and the SBOM;
+4. signs `checksums.txt` with cosign (keyless, `checksums.txt.sigstore.json`) and
+   attests build provenance for the files it lists;
+5. creates the GitHub release with generated notes and the files attached;
+6. builds the multi-arch image (`linux/amd64`, `linux/arm64`) with buildkit SBOM
+   and provenance attestations, pushes it to `ghcr.io/suprbdev/pdbr` and
+   `docker.io/suprbdev/pdbr` (tags `X.Y.Z`, `vX.Y.Z`, `X.Y`, and `X` from 1.0)
+   and signs it with cosign (Docker Hub needs the `DOCKERHUB_USERNAME` /
+   `DOCKERHUB_TOKEN` repository secrets).
 
-Publishing steps are skipped under [act](https://github.com/nektos/act)
-(`if: ${{ !env.ACT }}`), so `act -n -W .github/workflows/release.yaml`
-dry-runs the whole thing locally.
+Publishing, signing and attestation steps are skipped under
+[act](https://github.com/nektos/act) (`if: ${{ !env.ACT }}`), so
+`act -n -W .github/workflows/release.yaml` dry-runs the workflow locally.
+`go install github.com/suprbdev/pdbr/cmd/pdbr@vX.Y.Z` builds report the module
+version in `--version` too. Verification commands are in
+[SECURITY.md](../SECURITY.md#verifying-releases).
 
-### Dependency on pdbcore
-
-pdbr consumes `github.com/suprbdev/pdbcore` as an ordinary tagged module
-(`v0.1.0`); no `replace` directive, vendoring or side-by-side checkout is
-needed to build, test or run CI.
-
-Later pdbcore releases: bump with `go get github.com/suprbdev/pdbcore@vX.Y.Z`
-and `go mod tidy`, regenerate goldens and `db/init/01-schema.sql`
-(`make fixture`) if the fixture changed, run `make test test-e2e lint`, then
-`make release`. Verify the published release lists 5 archives +
-`checksums.txt` and that `docker run ghcr.io/suprbdev/pdbr:X.Y.Z --version`
-prints `vX.Y.Z`.
+Release order across the three repositories is pdbcore, then pdbq, then pdbr. To
+pick up a new pdbcore release, run `go get github.com/suprbdev/pdbcore@vX.Y.Z`
+and `go mod tidy`, regenerate goldens and `db/init/01-schema.sql` (`make
+fixture`) if the fixture changed, run `make test test-e2e lint`, move the
+"Unreleased" notes in `CHANGELOG.md` under the new version, then `make release`.
+Verify the release lists 5 archives, the SBOM, `checksums.txt` and its bundle,
+and that `docker run ghcr.io/suprbdev/pdbr:X.Y.Z --version` prints the tag.
