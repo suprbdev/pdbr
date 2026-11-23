@@ -128,6 +128,17 @@ route, a key, a privilege or a row:
   range filters or probed through `/by/…` routes.
 - Hiding a foreign key column does not hide the relation it backs: tag the
   constraint as well when the related row must not be embeddable.
+- A polymorphic function cannot be resolved to a hidden table's row type
+  (`@anyelement app.secrets` skips the function in contracts hiding
+  `secrets`), and every function whose result, arguments or output
+  columns use that row type is left out, so no function returns hidden
+  rows whole.
+- Integrity errors do not name hidden objects: in `errors.detail: prod`, a
+  `23*` error whose table, column or constraint is hidden from the
+  contract (or a foreign key to a hidden table) carries a generic detail
+  such as `foreign key violation` instead of PostgreSQL's message (see
+  [errors.md](errors.md#errorsdetail)). The status and code stay, so a
+  `409` on deleting a row still tells the client some row references it.
 
 ## Watch mode and metrics
 

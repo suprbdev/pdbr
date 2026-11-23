@@ -504,6 +504,9 @@ func (e *Executor) dbError(ctx context.Context, op *Operation, err error) error 
 		}
 	}
 	c := pgexec.Classify(err, e.Opts.Detail)
+	if e.Opts.Detail == pgexec.Prod && c.PG != nil && strings.HasPrefix(c.SQLState, "23") && integrityHidden(e.Built, c.PG) {
+		c.Message = integrityMessage(c.SQLState)
+	}
 	if c.SQLState == "" && (c.Class == pgexec.Resource || (c.Class == pgexec.Internal && connectionLost(err))) {
 		// The connection was refused, reset or dropped without a SQLSTATE
 		// (pool acquire, dial, mid-query EOF): the database was not

@@ -346,8 +346,10 @@ func (p *parser) checkBody(res *api.Resource, body *plan.Body) error {
 }
 
 // requiredColumns rejects an insert row missing a NOT NULL column without a
-// default (generated columns and FK columns covered by a nested forward
-// relation excepted).
+// default (generated columns, FK columns covered by a nested forward
+// relation, and columns hidden from both responses and bodies excepted:
+// the error must not name a hidden column, so the database's not-null
+// violation answers for those).
 func requiredColumns(res *api.Resource, obj map[string]any, nested map[string]*plan.Nested) error {
 	covered := map[string]bool{}
 	for _, n := range nested {
@@ -359,7 +361,7 @@ func requiredColumns(res *api.Resource, obj map[string]any, nested map[string]*p
 	}
 	var missing []string
 	for _, c := range res.Table.Columns {
-		if !c.NotNull || c.HasDefault || c.Generated || covered[c.Name] {
+		if !c.NotNull || c.HasDefault || c.Generated || covered[c.Name] || hiddenColumn(res, c.Name) {
 			continue
 		}
 		if _, ok := obj[c.Name]; !ok {
@@ -370,6 +372,20 @@ func requiredColumns(res *api.Resource, obj map[string]any, nested map[string]*p
 		return errf(CodeInvalidBody, "missing required column(s): %s", strings.Join(missing, ", "))
 	}
 	return nil
+}
+
+// hiddenColumn reports whether column col of res is neither a response
+// field nor a body key.
+func hiddenColumn(res *api.Resource, col string) bool {
+	if res.FieldByColumn(col) != nil {
+		return false
+	}
+	for _, c := range res.InputColumns {
+		if c.Name == col {
+			return false
+		}
+	}
+	return true
 }
 
 func keyFor(res *api.Resource, col string) string {
