@@ -1,0 +1,2 @@
+-- request: GET /api/kb/docs?select=id,body_headline(max_words=500)&body=fts.cat
+-- error: 400 invalid_select: body_headline: headline option max_words must be an integer between 1 and 100

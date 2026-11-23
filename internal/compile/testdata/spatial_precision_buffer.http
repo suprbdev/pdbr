@@ -1,0 +1,1 @@
+GET /api/places?select=id,location(precision=6),ring:area(buffer=100,precision=5),b:area(buffer=50,simplify=0.0001,transform=3857),c:area_centroid(buffer=10,precision=4),m2:area_area(buffer=10),n:location(buffer=-0.5)&order=id&limit=5

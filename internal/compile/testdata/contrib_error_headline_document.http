@@ -1,0 +1,1 @@
+GET /api/kb/articles?select=id,search_headline&search=fts.cat

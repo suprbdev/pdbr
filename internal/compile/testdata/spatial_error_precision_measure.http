@@ -1,0 +1,1 @@
+GET /api/places?select=id,area_area(precision=3)

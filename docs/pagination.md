@@ -398,7 +398,7 @@ cost         = 1 + Σ mult(child) × cost(child)   over the selected items
 mult(list)   = explicit limit clamped to server.max_page_size,
                else server.max_page_size                       (root list, to-many embed)
 mult(other)  = 1                                                (columns, forward embeds)
-cost(column) = 1
+cost(column) = 1   (a headline: 10; a spatial value with buffer=: 1 + 5)
 ```
 
 A list's multiplier is the number of rows its SQL can fetch: an embed
@@ -431,7 +431,10 @@ defaults. With `posts.limit=5&posts.comments.limit=5`: `comments` = 1 + 5 × 1
 = 6, `posts` = 1 + 5 × (1 + 6) = 36, request = 1 + 20 × (1 + 36) = 741.
 
 Two details the formula leaves implicit, fixed here: each named column
-costs 1 and `*` costs the number of columns it expands to; a root list without
+costs 1 and `*` costs the number of columns it expands to (a
+[headline](contrib.md#headlines) costs `pdbcore/contrib.HeadlineCost`, 10,
+and a [`buffer=`](postgis.md#reprojection-simplification-buffers-and-precision)
+argument adds `pdbcore/postgis.BufferCost`, 5); a root list without
 an explicit `limit` uses its **effective** limit (`server.max_page_size`,
 default 100) as the multiplier, and so does a backward embed without an
 explicit `limit` (`limit=0` included), since that is the limit its SQL

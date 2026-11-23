@@ -60,6 +60,10 @@ func FuzzParse(f *testing.F) {
 		{"POST", "/kb/embeddings", "select=id,emb", "", `{"emb":[1,2,3],"half":"[1,2]","sparse":[0,1.5]}`},
 		{"GET", "/places", "location=bbox_intersects2d.POINT(1%202)&or=(area.not.bbox_intersects2d.POINT(0%200))", "", ""},
 		{"GET", "/posts", "select=id,users(settings->>theme)&users.settings->>theme=like.d*&users.order=settings->n.desc&users.settings->>a->b=eq.x", "", ""},
+		{"GET", "/places", "select=id,p:location(precision=6,buffer=-0.5),area(buffer=100,simplify=1,transform=3857,precision=0),area_centroid(buffer=1e3,precision=15),area_area(precision=2)", "application/geo+json", ""},
+		{"GET", "/kb/docs", `select=id,body_headline(max_words=10,min_words=2,start_sel="<b>",stop_sel="</b>",fragment_delimiter=" ... ",max_fragments=3,short_word=0,highlight_all=false),search_headline(document=title)&search=wfts(english).cat&body=fts.rat&and=(body.plfts.x)`, "", ""},
+		{"PATCH", "/kb/docs", "body=fts.cat&select=id,body_headline(document=x),search_headline(document=body,max_words=500)", "", `{"title":"t"}`},
+		{"GET", "/kb/docs", "select=id,articles:docs(id)&or=(search.fts.x,body.fts.y)&select=search_headline(document=email)", "", ""},
 	}
 	for _, s := range seeds {
 		f.Add(s.method, s.path, s.query, s.accept, s.body)

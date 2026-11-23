@@ -1,0 +1,2 @@
+-- request: GET /api/kb/docs?select=id,body_headline&body=fts.cat&and=(body.plfts.dog)
+-- error: 400 invalid_filter: body_headline is ambiguous: more than one full-text filter on body

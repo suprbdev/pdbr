@@ -1,0 +1,2 @@
+-- request: GET /api/kb/articles?select=id&meta=fts.rat
+-- error: 400 column_not_filterable: operator "fts" on column "meta" of "kb.articles" needs an index that serves it (filters.indexed_only) or the column in filters.allow_columns

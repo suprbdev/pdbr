@@ -1,0 +1,1 @@
+GET /api/kb/articles?select=id&raw=wfts(english).fat%20cat&or=(raw.not.fts.rat,id.eq.1)&order=raw.rank.desc,raw.rank_cd&limit=5

@@ -5,7 +5,8 @@ extensions a filter and ordering surface, built on the operator vocabularies
 of `pdbcore/contrib` (shared with pdbq). It is core, not a plugin. Whatever a
 vocabulary needs is read from the catalog:
 
-- **Core types** (`tsvector`, text columns for full-text search, the six
+- **Core types** (`tsvector`, text and json/jsonb columns for full-text
+  search, the six
   built-in range types and their multiranges, `inet`/`cidr`) always get their
   operators, and so do range types created with `CREATE TYPE … AS RANGE`
   (and their multiranges), which the catalog records with their subtype.
@@ -45,7 +46,7 @@ beyond PostgREST.
 
 | op | SQL | Columns |
 |---|---|---|
-| `fts` | `@@ to_tsquery` | `tsvector`; text-like (`text`, `varchar`, `char(n)`, `citext`) through `to_tsvector` |
+| `fts` | `@@ to_tsquery` | `tsvector`; text-like (`text`, `varchar`, `char(n)`, `citext`) and `json`/`jsonb` through `to_tsvector` |
 | `plfts` | `@@ plainto_tsquery` | same |
 | `phfts` | `@@ phraseto_tsquery` | same |
 | `wfts` | `@@ websearch_to_tsquery` | same |
@@ -63,7 +64,20 @@ GET /api/articles?or=(search.plfts.fat%20cat,body.fts(simple).rat)
 On a text column the column is converted with `to_tsvector` in the same
 config as the query (`to_tsvector($2::regconfig, col) @@
 websearch_to_tsquery($2::regconfig, $1::text)`), like PostgREST. Without a
-config, `default_text_search_config` applies. A malformed `fts` query, an
+config, `default_text_search_config` applies. A `json` or `jsonb` column is
+searched the same way, as in PostgREST: `to_tsvector(config, doc)` reads the
+document's string values (also inside arrays and nested objects) and
+ignores its keys, numbers and booleans, so `meta=fts.summary` does not
+match `{"summary": "…"}`:
+
+```http
+GET /api/articles?meta=wfts(english).cat%20story&order=meta.rank.desc
+```
+
+The jsonb operators (`cs`, `cd`, `hk`, JSON paths, …) keep working on the
+same column; the full-text spellings do not clash with them. Like full-text
+search on a text column, it needs `filters.allow_columns` under
+`filters.indexed_only` ([the indexed-only policy](#the-indexed-only-policy)). A malformed `fts` query, an
 unknown config or bad ltree syntax is a `400` (`pg:42601` / `pg:42704`), not
 a 500.
 
@@ -517,6 +531,68 @@ GET /api/docs?select=id,chunks(id,embedding_cosine_distance)&chunks.order=embedd
   them as read-only nullable `number` properties of the resource schema and
   in the `select` description.
 
+## Headlines
+
+A `<col>_headline` pseudo-column returns a `ts_headline` snippet: the
+document with the words the request's full-text filter matched marked up,
+next to `order=<col>.rank`. It exists on every column that accepts a
+full-text filter under the filter policy:
+
+- on a text-like, `json` or `jsonb` column the document is the column
+  itself: `body_headline` highlights `body` against the `body=fts…` filter;
+- on a `tsvector` column (typically generated from other columns) the
+  document is another column of the resource named by `document=`: a
+  readable text-like, `json` or `jsonb` column. `search_headline` needs it
+  (`400 invalid_select` without it, or with a column that is not one), and
+  exists only on resources with such a column.
+
+```http
+GET /api/articles?select=id,title,search_headline(document=body,max_words=20,min_words=5,start_sel="<mark>",stop_sel="</mark>")&search=wfts(english).fat%20cat&order=search.rank.desc&limit=10
+GET /api/articles?select=id,body_headline(max_fragments=2,fragment_delimiter="%20…%20")&body=plfts.cheese
+GET /api/articles?select=id,meta_headline&meta=fts(english).story
+GET /api/authors?select=name,articles(id,search_headline(document=title))&articles.search=fts.cat&articles.limit=3
+```
+
+- **The query** is the scope's single non-negated `fts`/`plfts`/`phfts`/`wfts`
+  filter on the headline's column, the same rule as the rank terms: the
+  root filters including `and=(…)` groups for the root select and a
+  mutation's response, the embed's own filters (`articles.search=…`) for an
+  embed or spread, never under `or=` or `not.`. Without one, or with two,
+  the request is `400 invalid_filter`. The query and config are bound
+  again for the headline, like the rank terms.
+- **Options** are select arguments, each a ts_headline option:
+  `max_words`, `min_words`, `short_word` (integers up to 100; `min_words`
+  stays below `max_words`, with PostgreSQL's defaults 35 and 15 filled in),
+  `max_fragments` (0 to 10), `highlight_all` (`true`/`false`), and
+  `start_sel`, `stop_sel`, `fragment_delimiter` (1 to 32 bytes, no `"`, `\` or
+  control characters; double-quote them when they contain `,`, `(` or `)`).
+  Anything else is `400 invalid_select` (`400 unknown_argument` for an
+  unknown name). pdbr renders the options as one options text and binds it
+  as a parameter, always (an empty text means PostgreSQL's defaults), so
+  the SQL text never depends on the options.
+- **Value.** A string for a text document, null for a null document. For a
+  `json`/`jsonb` document it is the document with its string values
+  highlighted (`{"summary": "A <b>story</b> about cats", …}`). OpenAPI
+  lists headlines as read-only nullable string properties (`{}` for json
+  documents) with their select syntax, and in the `select` description.
+- Like the other pseudo-columns they are selected explicitly (never part of
+  `*`), aliasable, take no casts, filters or ordering, and work in embeds,
+  spreads, row paths and mutation responses (`PATCH`/`DELETE` by filter,
+  where the filter is the scope). `@omit read` removes a column's
+  headline and its use as a `document=`; `@omit filter` or an indexed-only
+  rejection of its full-text filter removes the headline. A column hidden
+  from a schema contract cannot be named as a document there. A real,
+  computed or other pseudo-column owning the key keeps it (with a warning).
+- **Bounding.** `ts_headline` re-parses the whole document on every call,
+  so a headline is expensive per row. It costs
+  `pdbcore/contrib.HeadlineCost` (10) per row in `server.max_cost` instead
+  of 1. It runs only on the rows the response returns: the filter and the
+  ordering run first, and PostgreSQL evaluates the projection after the
+  `LIMIT` (the page plus its one look-ahead row; `EXPLAIN ANALYZE` shows it
+  above the `Limit`, or above a top-N `Sort` in an embed). The options above
+  bound what it returns: at most 10 fragments of at most 100 words, or the
+  whole document with `highlight_all=true`.
+
 ## Derived columns (ltree and intarray)
 
 Some accessors of the vocabularies are pseudo-columns next to the column
@@ -605,8 +681,8 @@ operators, GiST for ltree, GiST or SP-GiST for range and inet operators.
 Index operator classes are not introspected, so a B-tree index on a text
 column does not admit `trgm_sim`, while any GIN index on it would. Operators
 no index can serve (hstore `cd`, ltree `*_any`, `ancestor` on `ltree[]`) and
-full-text search on a text column (only an expression index on
-`to_tsvector('<config>', col)` serves it, and expression indexes have no
+full-text search on a text, json or jsonb column (only an expression index
+on `to_tsvector('<config>', col)` serves it, and expression indexes have no
 columns) need the column in `filters.allow_columns`, or
 `filters.indexed_only: false`. The unaccent operators are never
 index-served and always need `filters.allow_columns` under the policy.
@@ -650,8 +726,8 @@ trigram / vector distance term, score column or threshold.
   second decode. `sparsevec` stays a string in both. Input takes either form.
 - **inet `cs`/`cd`** mean `>>=`/`<<=`, where PostgREST's literal `@>`/`<@`
   fails on inet.
-- **Full-text search on json/jsonb columns**, which PostgREST supports through
-  `to_tsvector(jsonb)`, is not offered.
+- **Headlines** (`<col>_headline`, `ts_headline`) are a pdbr extension;
+  full-text search on json/jsonb columns matches PostgREST.
 - **The indexed-only policy** has no PostgREST counterpart.
 
 ## Differences from pdbq
@@ -682,7 +758,12 @@ pseudo-columns (`<col>_similarity`, `<col>_cosine_distance`, …); pdbq reads
 each list's own `similarTo:`/`nearVector:` and its threshold operators carry
 their own vector, where pdbr has one request-wide `trgm=`/`vec=`, and a
 pdbq score without its reference is `null` where pdbr answers `400`.
-hstore `hasDefinedKey` is `hk_def`; fuzzystrmatch `levenshteinDistanceLessThan`,
+pdbq's `<field>Headline(document: …, options: {…})` is pdbr's
+`<col>_headline(document=…, max_words=…)`; pdbq offers it on `tsvector`
+columns over text documents only, because it exposes no `to_tsvector`
+filters over text or json columns (no index serves them), so it has no
+`body_headline` on a text column and no full-text search or headlines on
+json/jsonb columns. hstore `hasDefinedKey` is `hk_def`; fuzzystrmatch `levenshteinDistanceLessThan`,
 `soundexEqualTo`, `metaphoneEqualTo`, `doubleMetaphoneEqualTo` are
 `levenshtein_lt`, `soundex`, `metaphone`, `dmetaphone`, the
 `levenshteinDistance` ordering and score are `<col>.levenshtein` and

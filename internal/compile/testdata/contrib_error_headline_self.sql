@@ -1,0 +1,2 @@
+-- request: GET /api/kb/docs?select=id,body_headline(document=title)&body=fts.cat
+-- error: 400 invalid_select: "body_headline" highlights body itself and takes no document=

@@ -1,0 +1,4 @@
+PATCH /api/kb/docs?body=fts.cat&select=id,body_headline
+Content-Type: application/json
+
+{"title":"x"}

@@ -575,13 +575,13 @@ func (b *Builder) resourceSchema(r *Resource) *Schema {
 		p := &Schema{}
 		if pc.Schema != nil {
 			p = pc.Schema
-			if !pc.Column.NotNull || pc.Score != nil || pc.Contrib != nil && p.Type != "integer" {
+			if !pc.Column.NotNull || pc.Score != nil || pc.Headline != nil || pc.Contrib != nil && p.Type != "integer" {
 				p = Nullable(p)
 			}
 		}
 		cp := *p
 		cp.ReadOnly = true
-		sel := key + pc.Contrib.ContribArgSyntax()
+		sel := key + pc.SelectArgSyntax()
 		if pc.Score != nil && pc.Score.Param == "near" && postgis.FlavourOf(pc.Column.PGType) == postgis.Geometry {
 			sel += "[(spheroid=true)]"
 		}

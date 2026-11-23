@@ -451,7 +451,7 @@ func (b *Builder) selectParam(r *Resource, lead string) *Parameter {
 	}
 	if derived := pseudoKeys(r, false); len(derived) > 0 {
 		for i, k := range derived {
-			derived[i] = k + r.Pseudo[k].Contrib.ContribArgSyntax()
+			derived[i] = k + r.Pseudo[k].SelectArgSyntax()
 		}
 		sb.WriteString(". Derived (select explicitly): " + strings.Join(derived, ", "))
 	}
@@ -462,7 +462,7 @@ func (b *Builder) selectParam(r *Resource, lead string) *Parameter {
 		sb.WriteString(". Embeds: " + strings.Join(embeds, ", ") + " (rel(...) with a nested select; rel!inner(...) drops parents without a match; ...rel(...) spreads the embed's items into the row: values for a to-one relation, one array per item for a to-many one; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>)")
 	}
 	if b.Surface.SpatialProjection && hasSpatial(r) {
-		sb.WriteString(". Spatial columns and their derived fields take projection args: col(transform=<srid>,simplify=<tolerance>)")
+		sb.WriteString(". Spatial columns and their derived fields take projection args: col(transform=<srid>,simplify=<tolerance>,buffer=<distance>,precision=<0-15 digits>)")
 	}
 	sb.WriteString(".")
 	return &Parameter{Name: "select", In: "query", Schema: &Schema{Type: "string"}, Description: sb.String()}

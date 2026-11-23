@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/suprbdev/pdbcore/contrib"
 	"github.com/suprbdev/pdbcore/introspect"
 	"github.com/suprbdev/pdbcore/postgis"
 
@@ -210,8 +211,17 @@ func (p *parser) resolveSelectItem(node *plan.Node, it selectItem, depth int) er
 	if fs.Pseudo != nil && fs.Pseudo.Score != nil {
 		p.scores = append(p.scores, fs.Pseudo)
 	}
+	if fs.Pseudo != nil && fs.Pseudo.Headline != nil {
+		h, err := parseHeadlineArgs(fs.Pseudo, it.inner, it.hasInner)
+		if err != nil {
+			return err
+		}
+		fs.Headline = h
+		p.headlines = append(p.headlines, headlineUse{node: node, pc: fs.Pseudo, h: h})
+	}
 	if it.hasInner && (fs.Computed == nil || fs.Computed.SetOf != nil && inner != "") {
 		switch {
+		case fs.Pseudo != nil && fs.Pseudo.Headline != nil:
 		case fs.Pseudo != nil && fs.Pseudo.Score != nil:
 			args, err := parseScoreArgs(fs.Pseudo, it.inner)
 			if err != nil {
@@ -244,7 +254,7 @@ func (p *parser) resolveSelectItem(node *plan.Node, it selectItem, depth int) er
 			}
 			fs.Args = args
 		default:
-			return errf(CodeInvalidSelect, "arguments are not allowed on %q (only spatial columns and their pseudo-columns take (transform=,simplify=))", it.name)
+			return errf(CodeInvalidSelect, "arguments are not allowed on %q (only spatial columns and their pseudo-columns take (transform=,simplify=,buffer=,precision=))", it.name)
 		}
 	}
 	if fs.Pseudo != nil && fs.Pseudo.Contrib != nil && fs.Pseudo.Contrib.Expr != nil && !it.hasInner {
@@ -480,7 +490,70 @@ func (p *parser) resolveRelation(res *api.Resource, key, hint string) (*api.Rela
 	return nil, errf(CodeAmbiguousRelation, "relation %q on %q is ambiguous; use a hint: %s", key, res.Path, strings.Join(hs, ", "))
 }
 
-// parseSpatialArgs parses "transform=<srid>,simplify=<tolerance>".
+// parseHeadlineArgs parses the arguments of a headline pseudo-column:
+// document=<col> (required on a tsvector column, refused on a document
+// column, which highlights itself) and the ts_headline options, validated by
+// contrib.ParseHeadlineOptions.
+func parseHeadlineArgs(pc *api.PseudoColumn, inner string, hasInner bool) (*plan.Headline, error) {
+	h := &plan.Headline{Document: pc.Column}
+	opts := map[string]any{}
+	doc, hasDoc := "", false
+	if hasInner {
+		items, ok := splitTop(inner)
+		if !ok {
+			return nil, errf(CodeInvalidSelect, "unbalanced parentheses or quotes in select")
+		}
+		if strings.TrimSpace(inner) == "" {
+			return nil, errf(CodeInvalidSelect, "empty argument list")
+		}
+		seen := map[string]bool{}
+		for _, raw := range items {
+			name, val, isArg := cutArg(raw)
+			if !isArg {
+				return nil, errf(CodeInvalidSelect, "%q takes arguments %s%s, got %q", pc.Key, pc.Key, pc.SelectArgSyntax(), strings.TrimSpace(raw))
+			}
+			if seen[name] {
+				return nil, errf(CodeInvalidSelect, "duplicate argument %q", name)
+			}
+			seen[name] = true
+			if name == "document" {
+				if pc.Headline.Documents == nil {
+					return nil, errf(CodeInvalidSelect, "%q highlights %s itself and takes no document=", pc.Key, pc.Column.Name)
+				}
+				doc, hasDoc = val, true
+				continue
+			}
+			key := api.HeadlineOption(name)
+			if key == "" {
+				return nil, errf(CodeUnknownArgument, "%q has no argument %q (takes %s)", pc.Key, name, pc.SelectArgSyntax())
+			}
+			opts[key] = val
+		}
+	}
+	if pc.Headline.Documents != nil {
+		if !hasDoc {
+			return nil, errf(CodeInvalidSelect, "%q needs a document to highlight: %s%s", pc.Key, pc.Key, pc.SelectArgSyntax())
+		}
+		col := pc.Headline.Documents[doc]
+		if col == nil {
+			return nil, errf(CodeInvalidSelect, "%q: document %q is not a readable text, json or jsonb column of this resource", pc.Key, doc)
+		}
+		h.Document = col
+	}
+	o, err := contrib.ParseHeadlineOptions(opts)
+	if err != nil {
+		msg := err.Error()
+		for _, k := range contrib.HeadlineOptionKeys() {
+			msg = strings.ReplaceAll(msg, k, api.HeadlineArg(k))
+		}
+		return nil, errf(CodeInvalidSelect, "%s: %s", pc.Key, msg)
+	}
+	h.Options = o.String()
+	return h, nil
+}
+
+// parseSpatialArgs parses "transform=<srid>,simplify=<tolerance>,
+// buffer=<distance>,precision=<digits>".
 func parseSpatialArgs(s string) (map[string]any, error) {
 	out := map[string]any{}
 	if strings.TrimSpace(s) == "" {
@@ -509,8 +582,26 @@ func parseSpatialArgs(s string) (map[string]any, error) {
 				return nil, errf(CodeInvalidSelect, "simplify must be a non-negative tolerance, got %q", v)
 			}
 			out[k] = f
+		case "buffer":
+			f, err := strconv.ParseFloat(v, 64)
+			if err == nil {
+				err = postgis.CheckBuffer(f)
+			}
+			if err != nil {
+				return nil, errf(CodeInvalidSelect, "buffer must be a finite distance, got %q", v)
+			}
+			out[k] = f
+		case "precision":
+			n, err := strconv.ParseInt(v, 10, 64)
+			if err == nil {
+				err = postgis.CheckPrecision(n)
+			}
+			if err != nil {
+				return nil, errf(CodeInvalidSelect, "precision must be an integer between 0 and %d, got %q", postgis.MaxPrecision, v)
+			}
+			out[k] = n
 		default:
-			return nil, errf(CodeInvalidSelect, "unknown argument %q (want transform= or simplify=)", k)
+			return nil, errf(CodeInvalidSelect, "unknown argument %q (want transform=, simplify=, buffer= or precision=)", k)
 		}
 	}
 	return out, nil

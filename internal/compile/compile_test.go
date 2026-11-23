@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/suprbdev/pdbcore/contrib"
 	"github.com/suprbdev/pdbcore/introspect"
 	"github.com/suprbdev/pdbcore/postgis"
 	"github.com/suprbdev/pdbcore/testutil"
@@ -1326,6 +1327,31 @@ func TestAggregateOrderGuard(t *testing.T) {
 
 // TestCostScores pins score pseudo-columns at the cost of a column: 1 per
 // row, whatever the reference.
+func TestCostHeadlineAndBuffer(t *testing.T) {
+	built := goldenBuilt(t)
+	places := built.ByPath["places"]
+	p := list(places)
+	p.Page = plan.Page{Limit: 20, LimitSet: true}
+	p.Select = &plan.Node{Resource: places, Fields: []plan.FieldSel{
+		{Column: places.Table.Column("id")},
+		{Column: places.Table.Column("area"), Args: map[string]any{"buffer": 10.0, "precision": int64(5)}},
+		{Column: places.Table.Column("location"), Args: map[string]any{"precision": int64(5)}},
+	}}
+	if got, want := compile.Cost(p, 100), 1+20*(1+1+postgis.BufferCost+1); got != want {
+		t.Errorf("buffer cost = %d, want %d", got, want)
+	}
+	docs := built.ByPath["kb.docs"]
+	p = list(docs)
+	p.Page = plan.Page{Limit: 10, LimitSet: true}
+	p.Select = &plan.Node{Resource: docs, Fields: []plan.FieldSel{
+		{Column: docs.Table.Column("id")},
+		{Pseudo: docs.Pseudo["body_headline"], Headline: &plan.Headline{Document: docs.Table.Column("body")}},
+	}}
+	if got, want := compile.Cost(p, 100), 1+10*(1+contrib.HeadlineCost); got != want {
+		t.Errorf("headline cost = %d, want %d", got, want)
+	}
+}
+
 func TestCostScores(t *testing.T) {
 	built := goldenBuilt(t)
 	places := built.ByPath["places"]

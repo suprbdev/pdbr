@@ -1,0 +1,2 @@
+-- request: GET /api/kb/articles?select=id,search_headline&search=fts.cat
+-- error: 400 invalid_select: "search_headline" needs a document to highlight: search_headline(document=<meta|raw|title>[,<max_words|min_words|short_word|max_fragments|highlight_all|start_sel|stop_sel|fragment_delimiter>=<value>...])

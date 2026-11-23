@@ -279,7 +279,7 @@ func (p *parser) resolveContribOrders(trgm string, hasTrgm bool, vec string, has
 				}
 				continue
 			}
-			fc, err := fullTextFilter(filter, co.Column)
+			fc, err := fullTextFilter(filter, co.Column, "order by "+co.Column.Name+".rank")
 			if err != nil {
 				return err
 			}
@@ -439,8 +439,8 @@ func (p *parser) scoreUse(param string) (*api.PseudoColumn, error) {
 // fullTextFilter finds the single non-negated full-text condition on col
 // among the conjuncts of filter: a Cond, or the terms of And nodes at any
 // depth (and=(...) nests one inside the top-level And); Or and Not
-// subtrees do not count.
-func fullTextFilter(filter plan.Expr, col *introspect.Column) (*plan.Cond, error) {
+// subtrees do not count. use names what needs it in the error messages.
+func fullTextFilter(filter plan.Expr, col *introspect.Column, use string) (*plan.Cond, error) {
 	var found *plan.Cond
 	ambiguous := false
 	var walk func(e plan.Expr)
@@ -469,12 +469,42 @@ func fullTextFilter(filter plan.Expr, col *introspect.Column) (*plan.Cond, error
 	}
 	walk(filter)
 	if ambiguous {
-		return nil, errf(CodeInvalidFilter, "order by %s.rank is ambiguous: more than one full-text filter on %s", col.Name, col.Name)
+		return nil, errf(CodeInvalidFilter, "%s is ambiguous: more than one full-text filter on %s", use, col.Name)
 	}
 	if found == nil {
-		return nil, errf(CodeInvalidFilter, "order by %s.rank needs a non-negated fts, plfts, phfts or wfts filter on %s outside or=/not.", col.Name, col.Name)
+		return nil, errf(CodeInvalidFilter, "%s needs a non-negated fts, plfts, phfts or wfts filter on %s outside or=/not.", use, col.Name)
 	}
 	return found, nil
+}
+
+// resolveHeadlines binds every selected headline to the full-text filter on
+// its column in its scope: the root filters for the root select (and a
+// mutation's response), the embed's own filters for an embed or spread.
+// A headline without one, or with two, is 400 invalid_filter.
+func (p *parser) resolveHeadlines() error {
+	if len(p.headlines) == 0 {
+		return nil
+	}
+	scopes := map[*plan.Node]plan.Expr{}
+	var walk func(n *plan.Node, filter plan.Expr)
+	walk = func(n *plan.Node, filter plan.Expr) {
+		if n == nil {
+			return
+		}
+		scopes[n] = filter
+		for i := range n.Embeds {
+			walk(n.Embeds[i].Node, n.Embeds[i].Filter)
+		}
+	}
+	walk(p.root, p.req.Filter)
+	for _, u := range p.headlines {
+		fc, err := fullTextFilter(scopes[u.node], u.pc.Column, u.pc.Key)
+		if err != nil {
+			return err
+		}
+		u.h.Filter = fc
+	}
+	return nil
 }
 
 // parseDistinct parses distinct=col1,col2.

@@ -205,6 +205,9 @@ func (p *parser) parseQueryWith(raw string, res *api.Resource, extra func(key, v
 	if err := p.resolveContribOrders(trgm, hasTrgm, vec, hasVec, lev, hasLev); err != nil {
 		return err
 	}
+	if err := p.resolveHeadlines(); err != nil {
+		return err
+	}
 	if err := p.applyRange(); err != nil {
 		return err
 	}

@@ -129,10 +129,10 @@ Absent `select` means all columns (`*`). Grammar:
 ```
 select    := item ("," item)*
 item      := field | alias ":" field | embed | "..." embed | "*" | [ alias ":" ] aggregate
-field     := name [ "(" k "=" v ("," k "=" v)* ")" ]      -- args only for spatial projection (transform=<srid>, simplify=<tol>) and geometry distance (spheroid=true)
+field     := name [ "(" k "=" v ("," k "=" v)* ")" ]      -- args only for spatial projection (transform=<srid>, simplify=<tol>, buffer=<distance>, precision=<digits>), geometry distance (spheroid=true), contrib derived values and headlines (document=<col>, max_words=…)
            | column [ jsonpath ] [ "::" type ]             -- JSON path and/or cast
 embed     := relkey [ "!" hint ]* "(" select ")"           -- hint := fk_name | column | "inner"
-name      := column | computed column | postgis or score pseudo-column
+name      := column | computed column | postgis, contrib, headline or score pseudo-column
 aggregate := "count()" | column [ jsonpath ] [ "::" type ] "." fn "()" [ "::" type ]   -- server.aggregates
 fn        := count | sum | avg | max | min | extent | union | collect | centroid
 jsonpath  := ( "->" step )* [ "->>" step ]                 -- at least one arrow
@@ -379,9 +379,11 @@ omitted argument takes its `DEFAULT`, an omitted argument without one → `400
 missing_argument`, an unknown name → `400 unknown_argument`, a bad value →
 `400 invalid_filter`. A `SETOF <table>` column takes its nested select after
 the arguments: `recent_posts(n=2,id,title)`. Parenthesised arguments on
-spatial columns and their pseudo-columns are `transform=<srid>` →
-`ST_Transform`, `simplify=<tolerance>` → `ST_SimplifyPreserveTopology`
-(`postgis` plugin). Spatial values are GeoJSON
+spatial columns and their pseudo-columns are `buffer=<distance>` →
+`ST_Buffer`, `simplify=<tolerance>` → `ST_SimplifyPreserveTopology`,
+`transform=<srid>` → `ST_Transform` and `precision=<digits>` → the
+`ST_AsGeoJSON` decimal digits (`postgis` plugin,
+[postgis.md](postgis.md#reprojection-simplification-buffers-and-precision)). Spatial values are GeoJSON
 on output; GeoJSON or WKT/EWKT on input.
 
 ## RPC (functions)

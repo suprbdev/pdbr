@@ -198,7 +198,8 @@ type Computed struct {
 // PseudoColumn is a derived value over a real column: a PostGIS accessor
 // (postgis plugin: <col>_area, <col>_centroid, ...), a pdbcore/contrib
 // accessor or derived value (Contrib set: <col>_nlevel, <col>_parent,
-// <col>_lca, <col>_subpath, <col>_icount) or a score measured against the
+// <col>_lca, <col>_subpath, <col>_icount), a full-text headline (Headline
+// set: <col>_headline) or a score measured against the
 // request's reference parameter (Score set: <col>_distance from near=,
 // <col>_similarity from trgm=, <col>_cosine_distance from vec=,
 // <col>_levenshtein_distance from levenshtein=, ...).
@@ -211,6 +212,9 @@ type PseudoColumn struct {
 	// Contrib is set on a contrib accessor or derived pseudo-column;
 	// Accessor is then empty.
 	Contrib *ContribValue
+	// Headline is set on a <col>_headline pseudo-column; Accessor is then
+	// empty.
+	Headline *Headline
 	// Filterable and Orderable report that the pseudo-column takes filters
 	// (<key>=<op>.<value>) and order terms (order=<key>); only integer
 	// contrib accessors the filter policy admits do.
@@ -230,6 +234,16 @@ type Score struct {
 	// cosineDistance, hammingDistance, ...); the zero Expr for the spatial
 	// distance (ST_Distance).
 	Expr contrib.Expr
+}
+
+// Headline binds a <col>_headline pseudo-column: ts_headline over a
+// document against the full-text filter on Column in the request scope.
+type Headline struct {
+	// Documents maps the field keys of the readable document columns
+	// (text-like, json, jsonb) a tsvector column's headline can highlight,
+	// one named by the document= select argument, to their columns; nil
+	// when Column is its own document.
+	Documents map[string]*introspect.Column
 }
 
 // ContribValue binds a pseudo-column to a pdbcore/contrib accessor (no

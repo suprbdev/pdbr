@@ -6,6 +6,7 @@ import (
 	"github.com/suprbdev/pdbcore/postgis"
 
 	"github.com/suprbdev/pdbr/internal/api"
+	"github.com/suprbdev/pdbr/internal/plan"
 )
 
 // scoreSQL renders a score pseudo-column of the row at alias against the
@@ -60,6 +61,32 @@ func (s *stmt) contribPseudoSQL(p *api.PseudoColumn, args map[string]any, alias 
 	expr := cv.Expr.Render(ref, s.params(params)...)
 	if expr == "" {
 		return "", fmt.Errorf("compile: contrib pseudo-column %s rendered no SQL", p.Key)
+	}
+	return expr, nil
+}
+
+// headlineSQL renders a headline pseudo-column of the row at alias:
+// ts_headline over its document against the query of the full-text
+// filter of its scope (Op.HeadlineSQL over fresh placeholders for the
+// same operand, like a rank term), with the options text bound as one
+// parameter whether or not options were given.
+func (s *stmt) headlineSQL(p *api.PseudoColumn, h *plan.Headline, alias string) (string, error) {
+	missing := errUser(CodeInvalidFilter, "%s needs a non-negated fts, plfts, phfts or wfts filter on %s outside or=/not.", p.Key, p.Column.Name)
+	if h == nil || h.Filter == nil || h.Document == nil {
+		return "", missing
+	}
+	cf, ok := api.ContribFilterFor(s.catalog(), p.Column, string(h.Filter.Op), h.Filter.Value)
+	if !ok || !api.IsFullTextOp(cf.Name) {
+		return "", missing
+	}
+	params, err := cf.Op.Params(h.Filter.Value)
+	if err != nil {
+		return "", errUser(CodeInvalidFilter, "%s: %s", cf.Name, err.Error())
+	}
+	phs := s.params(params)
+	expr := cf.Op.HeadlineSQL(colRef(alias, h.Document.Name), s.param(h.Options), phs...)
+	if expr == "" {
+		return "", fmt.Errorf("compile: %s rejected %d parameters", cf.Name, len(params))
 	}
 	return expr, nil
 }

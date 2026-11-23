@@ -111,7 +111,7 @@ type Options struct {
 	// ComputedOrder enables order=computed.
 	ComputedOrder bool
 	// Spatial enables spatial filter ops, .dist ordering with near=, and
-	// col(transform=,simplify=) projection args (postgis plugin) all at
+	// col(transform=,simplify=,buffer=,precision=) projection args (postgis plugin) all at
 	// once; SpatialFilters / SpatialOrder / SpatialProjection enable them
 	// one at a time (the plugin's filters / ordering / projection settings).
 	// Pseudo-columns need no gate: they exist only when the plugin
@@ -258,6 +258,18 @@ type parser struct {
 	// levFilters are the levenshtein_lt thresholds, checked against
 	// levenshtein=.
 	levFilters []vecFilter
+	// headlines are the headline pseudo-columns selected anywhere in the
+	// request, bound to the full-text filter of their scope once the whole
+	// query is parsed.
+	headlines []headlineUse
+}
+
+// headlineUse is a selected headline pseudo-column and the projection node
+// it was selected in, whose filters it highlights against.
+type headlineUse struct {
+	node *plan.Node
+	pc   *api.PseudoColumn
+	h    *plan.Headline
 }
 
 // vecFilter is a distance threshold (vec_cos_lt, levenshtein_lt, ...) on
