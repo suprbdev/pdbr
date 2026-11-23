@@ -3,7 +3,8 @@
 As built (M4). Every function in `schema.schemas` that
 passes the [exclusion rules](#exclusion-rules) becomes an RPC route; functions
 whose first argument is a table's row type instead become
-[computed columns](#computed-columns). `schema.functions: false` disables
+[computed columns](#computed-columns) (stable/immutable ones; a volatile one
+is an RPC taking the row, see [row arguments](#table-valued-row-arguments)). `schema.functions: false` disables
 both. One request → one statement → one json `data` row, as everywhere else.
 
 | Route | Volatility | Args | Semantics |
@@ -64,11 +65,17 @@ fixture, so `POST` only —, `search_posts(term text) SETOF posts`,
 | numeric / bool / text-like | text, cast by PG | JSON scalar (`int8`/`numeric` number **or** string) |
 | enum | label verbatim | label verbatim |
 | array | `{a,b}` PG literal | JSON array |
-| composite | JSON text | JSON object → `jsonb_populate_record(NULL::type, $n::jsonb)`; composite arrays → `ARRAY(SELECT jsonb_populate_recordset(NULL::type, $n::jsonb))` |
+| composite | JSON text | JSON object → `jsonb_populate_record(NULL::type, $n::jsonb)`; composite arrays → one jsonb array parameter populated element-wise (`jsonb_array_elements` + `jsonb_populate_record`, `null` elements kept, order kept) |
+| table row type / array of rows | JSON text | JSON object (array of objects and `null`s) keyed by the table's readable columns — see [row arguments](#table-valued-row-arguments) |
 | `json`/`jsonb` | JSON text | any JSON value |
 | geometry/geography (postgis plugin) | GeoJSON or WKT/EWKT text | GeoJSON object or WKT/EWKT string → one `CASE WHEN left($n, 1) = '{' THEN ST_GeomFromGeoJSON($n) ELSE ST_GeomFromEWKT($n) END` whatever the input form |
 | any other | text `::type` | string `::type` |
 
+- Polymorphic arguments (`anyelement`, `anyarray`, `anyrange`, the
+  `anycompatible…` family) take the concrete type the function's
+  `@anyelement <type>` / `@anycompatible <type>` smart tag names (see
+  [polymorphic functions](#polymorphic-functions)); after resolution they
+  are coerced and cast like any argument of that type.
 - Uncoercible value → `400 invalid_body` (POST) / `400 invalid_filter` (GET)
   when detectable at compile time; otherwise PG's `22*` → `400 pg:22P02`.
 - Body must be a JSON object (`{}` allowed → every argument omitted);
@@ -238,6 +245,73 @@ differs.
 - Stable/immutable functions called via `POST` are **not** treated as
   mutations (no tx unless RLS claims).
 
+## Table-valued (row) arguments
+
+An argument typed as a table's row type (`u users`) or an array of rows
+(`ps posts[]`) takes the row as a JSON object, PostgREST-style:
+
+```
+POST /rpc/user_greeting   {"greeting": "Hello", "u": {"full_name": "Ada", "email": "ada@example.com"}}
+POST /rpc/total_title_length   {"ps": [{"title": "abc"}, null, {"title": "de"}]}
+GET  /rpc/user_greeting?greeting=Hi&u=%7B%22email%22%3A%22a%40b%22%7D     (the object as JSON text)
+POST /rpc/rename_user   {"u": {"id": 2}, "new_name": "Grace"}            (volatile: POST only)
+```
+
+- **Keys** are the table's readable columns: every column the resource
+  exposes for reading, including the primary key and generated/identity
+  columns; `@omit read` columns are hidden here too. `@omit create` /
+  `@omit update` and column INSERT/UPDATE privileges do not apply: the
+  argument is a value handed to the function, not a write. Every key is
+  optional; an omitted key is a `NULL` attribute. An unknown or hidden key,
+  a non-object value or an uncoercible attribute → `400 invalid_body`
+  (POST) / `400 invalid_filter` (GET), naming the argument and column.
+- **Values** follow the request-body coercion of each column (enum labels,
+  `int8`/`numeric` as number or string, arrays, json, composites, GeoJSON or
+  WKT/EWKT for spatial columns); hstore, range and multirange columns take
+  their literal string form only (`"[1,5)"`) inside a row argument.
+- **GET** passes the object (array of objects) as JSON text in the query
+  parameter; a `VARIADIC` row argument takes one JSON object per
+  repetition.
+- **SQL**: the whole row is one jsonb parameter,
+  `jsonb_populate_record(NULL::"public"."users", $n::jsonb)`; an array is
+  populated element-wise like composite arrays (`null` elements stay
+  `NULL`). A JSON `null` argument is `NULL::"public"."users"`.
+- **Exposure**: a function taking rows of a table that is not an exposed
+  resource is skipped (`info` log line), and removing a resource (an
+  `APIHook`) removes the RPCs taking its rows. A stable/immutable function
+  whose **first** argument is a row stays a [computed column](#computed-columns)
+  only; a volatile one is an RPC (POST) taking the row.
+- OpenAPI: the argument references the `<resource>.row` component (array
+  `items` for arrays): an object with every readable column, all optional
+  and nullable, `additionalProperties: false`. It is generated only for
+  tables some function takes. GET parameters are `string` (JSON text).
+
+## Polymorphic functions
+
+PostgreSQL resolves a polymorphic signature from the actual types of the
+arguments in a call (a non-polymorphic sibling argument does not take part),
+so the API needs to be told the type. Tag the function:
+
+```sql
+COMMENT ON FUNCTION pick_first(anyelement, anyelement) IS '@anyelement text';
+COMMENT ON FUNCTION larger_of(anycompatible, anycompatible) IS '@anycompatible numeric';
+COMMENT ON FUNCTION range_lower(anyrange) IS '@anyelement integer';   -- r: int4range, returns int4
+```
+
+The `smart-comments` plugin (pdbcore's catalog hook) rewrites the signature:
+`anyelement`/`anynonarray`/`anyenum` become the named type, `anyarray` its
+array, `anyrange`/`anymultirange` the range over it (the built-in range, or
+the single range type with that subtype) and its multirange; the
+`anycompatible…` family likewise from `@anycompatible`. The return type and
+`OUT` columns resolve too. Arguments are then cast to the concrete types
+(`"a" => $1::"text"`), which makes PostgreSQL resolve the call the same way.
+The type is any SQL spelling (`integer`, `timestamp with time zone`,
+`numeric(10,2)`, `text[]`, `public.mood`, or an unqualified enum,
+composite, table, domain or range of the introspected schemas). A function
+that stays polymorphic — no tag, an unusable one (logged as a warning), or
+`smart-comments` disabled — is skipped with one `info` log line naming the
+tags.
+
 ## Exclusion rules
 
 The first three rows are applied by `pdbcore/introspect` (the catalog never
@@ -250,12 +324,14 @@ where noted):
 | no `EXECUTE` privilege for the connecting role | can't be called |
 | owned by an extension (`pg_depend` on `pg_extension`) | PostGIS alone has thousands |
 | any unnamed argument | args are mapped by name |
-| returns or takes `trigger`, `event_trigger`, `internal`, `language_handler`, `record` (anonymous), `cstring`, polymorphic (`anyelement`, `anyarray`, `anycompatible…`, …) | not callable / not typeable |
+| returns or takes `trigger`, `event_trigger`, `internal`, `language_handler`, `record` (anonymous), `cstring` | not callable / not typeable |
+| polymorphic (`anyelement`, `anyarray`, `anycompatible…`, …) without a resolving `@anyelement` / `@anycompatible` tag | no concrete type to cast to (`info` log line); see [polymorphic functions](#polymorphic-functions) |
 | aggregate / window / procedure (`prokind` ≠ `f`) | not a plain function (pdbcore) |
 | `@omit` smart comment on the function | user opt-out (`smart-comments` plugin, M5) |
 | overloads (same schema + name, different signature) | keep-first by `oid`, warn — later overloads are unreachable |
 | function returns a table that is not an exposed resource (`SETOF`/row) | no resource to compile the row against → excluded with warning |
-| row-type argument (a table in `schema.schemas`) | first position → [computed column](#computed-columns) instead of RPC; other positions → excluded |
+| row-type argument (or array of rows) of a table that is not an exposed resource | no row shape to accept (`info` log line) |
+| row-type argument in first position, stable/immutable | [computed column](#computed-columns) instead of RPC; volatile → RPC with a [row argument](#table-valued-row-arguments) |
 
 ## Computed columns
 
@@ -274,10 +350,11 @@ CREATE FUNCTION users_post_count(u users) RETURNS bigint LANGUAGE sql STABLE AS 
 | SQL | `"public"."users_post_count"("u" => ROW(__t_1."id", __t_1."email", …)::"public"."users")` — an explicit `ROW(...)::table` cast rather than the bare alias, so the same expression works over any row source (`__mut` CTE in mutation responses, `__vis` / `__vis_n` visibility CTEs, function row sources) |
 | set-returning (`SETOF <scalar>` / `SETOF <table>`) | array field; `SETOF <table>` accepts a nested `select=` like an embed: `select=id,recent_posts(id,title)` |
 | `int8` result (`count(*)`) | serialized as string like `int8` columns |
-| volatile / `void` | skipped |
-| extra arguments after the row | passed as `select=field(k=v,…)` (see below); omitted ones take their `DEFAULT`, an omitted one without a default → `400 missing_argument`; `VARIADIC` and `INOUT` extras → the function is skipped |
+| volatile | RPC (POST) with a [row argument](#table-valued-row-arguments), not a computed column |
+| `void` | skipped |
+| extra arguments after the row | passed as `select=field(k=v,…)` (see below); omitted ones take their `DEFAULT`, an omitted one without a default → `400 missing_argument`; `VARIADIC`, `INOUT` and row-typed extras → the function is skipped |
 | filter / order (`post_count=gt.3`, `order=post_count.desc`) | `advanced-filters` plugin, only for columns whose extra arguments all have defaults (called with the defaults) (bypasses the index policy by nature; `@omit filter|order` respected) |
-| RPC route | none — a function whose first arg is a row type is a computed column, not an RPC (pdbq parity); a row-type arg in any other position excludes the function entirely |
+| RPC route | none — a stable/immutable function whose first arg is a row type is a computed column, not an RPC (pdbq parity); a row-type arg in any other position makes an RPC with a [row argument](#table-valued-row-arguments) |
 | RETURNING (mutations) | selecting a computed column forces every column of the table into `RETURNING` ([mutations.md](mutations.md#rls-caveats-for-returning)) |
 | OpenAPI | listed as a `readOnly` property of the resource schema, absent from `.insert`/`.update` |
 
@@ -326,7 +403,8 @@ argument, typed by the column type map). Arguments without a `DEFAULT` are
 `required: true` when there is at least one); defaulted ones are optional and
 their description shows the default expression (`optional, default
 'hello'::text.`). A `VARIADIC` argument is an `array` query parameter
-(`style: form`, `explode: true`) / a JSON array property. Responses reference
+(`style: form`, `explode: true`) / a JSON array property. A row-typed
+argument references the `<resource>.row` component. Responses reference
 the returned resource schema (`users`, array of `users`), the
 `rpc.<fn path>` schema of a record result (one property per output
 parameter; non-nullable for a single record), an inline scalar

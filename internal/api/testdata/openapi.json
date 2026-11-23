@@ -5586,6 +5586,169 @@
         }
       }
     },
+    "/rpc/address_cities": {
+      "get": {
+        "tags": [
+          "rpc"
+        ],
+        "summary": "Call public.address_cities",
+        "operationId": "rpc.address_cities",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/query.addrs"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": [
+                    "array",
+                    "null"
+                  ],
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "406": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      },
+      "head": {
+        "tags": [
+          "rpc"
+        ],
+        "summary": "Call public.address_cities (headers only)",
+        "operationId": "rpc.address_cities.head",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/query.addrs"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (same headers as GET, no body)"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "406": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "rpc"
+        ],
+        "summary": "Call public.address_cities",
+        "operationId": "rpc.address_cities.post",
+        "requestBody": {
+          "description": "Arguments by name; an omitted argument takes its DEFAULT (arguments without one are required, 400 missing_argument); null is SQL NULL.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "addrs": {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "$ref": "#/components/schemas/address"
+                    }
+                  }
+                },
+                "required": [
+                  "addrs"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": [
+                    "array",
+                    "null"
+                  ],
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "406": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
     "/rpc/all_moods": {
       "get": {
         "tags": [
@@ -6438,6 +6601,98 @@
         }
       }
     },
+    "/rpc/rename_user": {
+      "post": {
+        "tags": [
+          "rpc"
+        ],
+        "summary": "Call public.rename_user",
+        "operationId": "rpc.rename_user.post",
+        "requestBody": {
+          "description": "Arguments by name; an omitted argument takes its DEFAULT (arguments without one are required, 400 missing_argument); null is SQL NULL.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "new_name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "u": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/users.row"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "u",
+                  "new_name"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/users"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "406": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "415": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
     "/rpc/retry_probe": {
       "post": {
         "tags": [
@@ -6896,6 +7151,172 @@
         }
       }
     },
+    "/rpc/total_title_length": {
+      "get": {
+        "tags": [
+          "rpc"
+        ],
+        "summary": "Call public.total_title_length",
+        "operationId": "rpc.total_title_length",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/query.ps"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int32"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "406": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      },
+      "head": {
+        "tags": [
+          "rpc"
+        ],
+        "summary": "Call public.total_title_length (headers only)",
+        "operationId": "rpc.total_title_length.head",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/query.ps"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (same headers as GET, no body)"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "406": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "rpc"
+        ],
+        "summary": "Call public.total_title_length",
+        "operationId": "rpc.total_title_length.post",
+        "requestBody": {
+          "description": "Arguments by name; an omitted argument takes its DEFAULT (arguments without one are required, 400 missing_argument); null is SQL NULL.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ps": {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/posts.row"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "ps"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int32"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "406": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
     "/rpc/unpublish_post": {
       "post": {
         "tags": [
@@ -6961,6 +7382,177 @@
             "$ref": "#/components/responses/Problem"
           },
           "415": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/rpc/user_greeting": {
+      "get": {
+        "tags": [
+          "rpc"
+        ],
+        "summary": "Call public.user_greeting",
+        "operationId": "rpc.user_greeting",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/query.greeting"
+          },
+          {
+            "$ref": "#/components/parameters/query.u"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "406": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      },
+      "head": {
+        "tags": [
+          "rpc"
+        ],
+        "summary": "Call public.user_greeting (headers only)",
+        "operationId": "rpc.user_greeting.head",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/query.greeting"
+          },
+          {
+            "$ref": "#/components/parameters/query.u"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (same headers as GET, no body)"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "406": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "504": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "rpc"
+        ],
+        "summary": "Call public.user_greeting",
+        "operationId": "rpc.user_greeting.post",
+        "requestBody": {
+          "description": "Arguments by name; an omitted argument takes its DEFAULT (arguments without one are required, 400 missing_argument); null is SQL NULL.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "greeting": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "u": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/users.row"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "greeting",
+                  "u"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "406": {
             "$ref": "#/components/responses/Problem"
           },
           "500": {
@@ -9462,6 +10054,45 @@
         ],
         "additionalProperties": false
       },
+      "posts.row": {
+        "type": "object",
+        "description": "A posts row passed to a function argument: any subset of its readable columns; omitted columns are null.",
+        "properties": {
+          "author_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "published": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
       "posts.update": {
         "type": "object",
         "description": "Update body for posts: any subset of the writable columns; at least one key.",
@@ -9705,6 +10336,94 @@
         "required": [
           "email"
         ],
+        "additionalProperties": false
+      },
+      "users.row": {
+        "type": "object",
+        "description": "A users row passed to a function argument: any subset of its readable columns; omitted columns are null.",
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/address"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "balance": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "int8, serialized as a string to preserve precision."
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "full_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "mood": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/mood"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "moods": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/mood"
+            }
+          },
+          "prev_addresses": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/address"
+            }
+          },
+          "settings": {},
+          "tags": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        },
         "additionalProperties": false
       },
       "users.update": {
@@ -9980,6 +10699,15 @@
           ]
         }
       },
+      "query.addrs": {
+        "name": "addrs",
+        "in": "query",
+        "required": true,
+        "description": "Argument (_address); required. Structured value as JSON text (spatial: GeoJSON or WKT).",
+        "schema": {
+          "type": "string"
+        }
+      },
       "query.after": {
         "name": "after",
         "in": "query",
@@ -10090,6 +10818,15 @@
           "match",
           "imatch"
         ]
+      },
+      "query.greeting": {
+        "name": "greeting",
+        "in": "query",
+        "required": true,
+        "description": "Argument (text); required.",
+        "schema": {
+          "type": "string"
+        }
       },
       "query.id": {
         "name": "id",
@@ -10343,6 +11080,15 @@
           "isdistinct"
         ]
       },
+      "query.ps": {
+        "name": "ps",
+        "in": "query",
+        "required": true,
+        "description": "Argument (_posts); required. An array of posts rows as JSON text: objects keyed by the readable columns, all optional (schema posts.row).",
+        "schema": {
+          "type": "string"
+        }
+      },
       "query.select.57e10bcf": {
         "name": "select",
         "in": "query",
@@ -10511,6 +11257,15 @@
           "is",
           "isdistinct"
         ]
+      },
+      "query.u": {
+        "name": "u",
+        "in": "query",
+        "required": true,
+        "description": "Argument (users); required. A users row as JSON text: an object keyed by the readable columns, all optional (schema users.row).",
+        "schema": {
+          "type": "string"
+        }
       }
     }
   }

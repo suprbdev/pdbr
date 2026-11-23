@@ -701,9 +701,15 @@ func (s *stmt) inputValue(col *introspect.Column, v any) string {
 // compositeInput renders a composite (or composite-array) value from one
 // jsonb parameter holding the object (or array of objects) as JSON text.
 func (s *stmt) compositeInput(comp *introspect.Composite, col *introspect.Column, v any) string {
-	typeRef := quoteIdent(comp.Schema) + "." + quoteIdent(comp.Name)
-	ph := s.param(compositeText(v))
-	if col.IsArray {
+	return s.populateSQL(quoteIdent(comp.Schema)+"."+quoteIdent(comp.Name), col.IsArray, compositeText(v))
+}
+
+// populateSQL renders a value of the composite or row type typeRef (an
+// array of it when isArray) from one jsonb parameter holding text, the
+// object or array of objects as JSON.
+func (s *stmt) populateSQL(typeRef string, isArray bool, text any) string {
+	ph := s.param(text)
+	if isArray {
 		// Element-wise population keeps null elements (populate_recordset
 		// rejects them) and the array order explicit.
 		elem := s.alias("e")

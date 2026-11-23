@@ -1,0 +1,2 @@
+-- request: POST /api/rpc/user_greeting
+-- error: 400 invalid_body: argument "u": unknown column "nope" of users

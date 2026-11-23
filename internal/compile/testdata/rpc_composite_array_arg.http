@@ -1,0 +1,4 @@
+POST /api/rpc/address_cities
+Content-Type: application/json
+
+{"addrs": [{"city": "London"}, {"street": "x", "city": "Paris"}]}

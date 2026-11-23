@@ -132,7 +132,7 @@ func TestRPCTypedArguments(t *testing.T) {
 		"prev": []any{`{"street":"2 Main"}`, nil},
 	}))
 	want := `SELECT CASE WHEN (__fn.v)::text IS NULL THEN NULL ELSE json_build_object('street', (__fn.v)."street", 'city', (__fn.v)."city", 'mood', (__fn.v)."mood") END AS data
-FROM (SELECT "public"."home"("a" => jsonb_populate_record(NULL::"public"."address", $1::jsonb), "prev" => ARRAY(SELECT jsonb_populate_recordset(NULL::"public"."address", $2::jsonb))) AS v) AS __fn`
+FROM (SELECT "public"."home"("a" => jsonb_populate_record(NULL::"public"."address", $1::jsonb), "prev" => CASE WHEN $2::jsonb IS NULL THEN NULL ELSE coalesce((SELECT array_agg(jsonb_populate_record(NULL::"public"."address", NULLIF(e0.v, 'null'::jsonb)) ORDER BY e0.o) FROM jsonb_array_elements($2::jsonb) WITH ORDINALITY e0(v, o)), ARRAY[]::"public"."address"[]) END) AS v) AS __fn`
 	wantSQL(t, st, want, `{"street":"1 Main","city":"X","mood":"ok"}`, `[{"street":"2 Main"},null]`)
 
 	pt, err := postgis.Parse("POINT(0 1)", postgis.Geometry)

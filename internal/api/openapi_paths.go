@@ -287,7 +287,11 @@ func (b *Builder) rpcItem(item *PathItem, rt *Route) {
 		argNames := map[string]bool{}
 		for _, a := range rpc.Args {
 			argNames[a.Name] = true
-			get.Parameters = append(get.Parameters, b.argParam(a))
+			param := b.argParam(a)
+			if row := rpc.RowArgs[a.Name]; row != nil {
+				b.rowArgParam(param, a, row)
+			}
+			get.Parameters = append(get.Parameters, param)
 		}
 		get.Parameters = append(get.Parameters, b.rpcListParams(rpc, argNames)...)
 		if setOf {
@@ -774,6 +778,42 @@ func (b *Builder) argParam(a introspect.FuncArg) *Parameter {
 	return p
 }
 
+// rowArgSchema is the body schema of a row-typed argument: a reference to
+// the resource's .row component, or an array of them.
+func rowArgSchema(a introspect.FuncArg, row *Resource) *Schema {
+	ref := SchemaRef(row.Path + ".row")
+	if strings.HasPrefix(a.PGType, "_") {
+		return &Schema{Type: "array", Items: Nullable(ref)}
+	}
+	return ref
+}
+
+// rowArgParam documents a row-typed GET argument, which travels as JSON
+// text (one object per repetition for a VARIADIC argument).
+func (b *Builder) rowArgParam(p *Parameter, a introspect.FuncArg, row *Resource) {
+	value := "A " + row.Path + " row as JSON text: an object"
+	if strings.HasPrefix(a.PGType, "_") && !a.Variadic() {
+		value = "An array of " + row.Path + " rows as JSON text: objects"
+	}
+	p.Description = "Argument (" + a.PGType + ")" + argDefaultProse(a) + " " + value +
+		" keyed by the readable columns, all optional (schema " + row.Path + ".row)."
+	if a.Variadic() {
+		p.Description += " VARIADIC: repeat the parameter once per element."
+	}
+}
+
+// rowInputSchema is the <resource>.row component: the value of a function
+// argument typed as the resource's row type. Every readable column is an
+// optional property; an omitted one is NULL in the row the function gets.
+func (b *Builder) rowInputSchema(r *Resource) *Schema {
+	s := &Schema{Type: "object", Properties: map[string]*Schema{}, AdditionalProperties: boolPtr(false),
+		Description: "A " + r.Path + " row passed to a function argument: any subset of its readable columns; omitted columns are null."}
+	for _, f := range r.Columns {
+		s.Properties[f.Key] = annotate(Nullable(b.colInputTypeSchema(f.Column)), f)
+	}
+	return s
+}
+
 // argDefaultProse completes an argument description: required, or the
 // DEFAULT an omitted argument takes.
 func argDefaultProse(a introspect.FuncArg) string {
@@ -812,7 +852,12 @@ func (b *Builder) enumByRef(ref string) *Enum {
 func (b *Builder) rpcBodySchema(rpc *RPC) *Schema {
 	s := &Schema{Type: "object", Properties: map[string]*Schema{}, AdditionalProperties: boolPtr(false)}
 	for _, a := range rpc.Args {
-		prop := *Nullable(b.colInputTypeSchema(ArgColumn(b.Catalog, a)))
+		var prop Schema
+		if row := rpc.RowArgs[a.Name]; row != nil {
+			prop = *Nullable(rowArgSchema(a, row))
+		} else {
+			prop = *Nullable(b.colInputTypeSchema(ArgColumn(b.Catalog, a)))
+		}
 		if a.HasDefault {
 			prop.Description = strings.TrimPrefix(argDefaultProse(a), "; ")
 		} else {

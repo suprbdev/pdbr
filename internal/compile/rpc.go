@@ -113,11 +113,13 @@ func (s *stmt) argParam(a introspect.FuncArg, v any) (string, error) {
 	col := argColumn(s.c.Built, a)
 	base := strings.TrimPrefix(col.PGType, "_")
 	switch {
+	case s.plan.RPC != nil && s.plan.RPC.RowArgs[a.Name] != nil:
+		return s.populateSQL(typeRef(a.TypeSchema, base), col.IsArray, toJSONParam(v)), nil
 	case s.compositeFor(col) != nil:
 		if col.IsArray {
-			return fmt.Sprintf("ARRAY(SELECT jsonb_populate_recordset(NULL::%s, %s::jsonb))", typeRef(a.TypeSchema, base), s.param(jsonArrayText(v))), nil
+			return s.populateSQL(typeRef(a.TypeSchema, base), true, jsonArrayText(v)), nil
 		}
-		return fmt.Sprintf("jsonb_populate_record(NULL::%s, %s::jsonb)", typeRef(a.TypeSchema, base), s.jsonParam(v)), nil
+		return s.populateSQL(typeRef(a.TypeSchema, base), false, jsonText(v)), nil
 	case postgis.IsSpatial(base) && !col.IsArray:
 		expr, err := s.spatialOperand(postgis.FlavourOf(base), 0, v)
 		if err != nil {

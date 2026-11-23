@@ -177,13 +177,13 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] `SETOF <table>` → array with full `select=` / filters / `order=` / `limit` / `offset` / `count=true` (offset paging only; `Accept: text/csv` supported) (parity — filters/order/count are a superset)
 - [x] `SETOF <scalar>` → array (parity)
 - [x] `rls.auth.jwt_type` composite return → minted HS256 JWT string (pdbcore/jwtmint) (parity)
-- [x] EXECUTE-privilege gating; extension-owned / unnamed / anonymous `record` / trigger / polymorphic returns excluded (parity)
+- [x] EXECUTE-privilege gating; extension-owned / unnamed / anonymous `record` / trigger / unresolved polymorphic signatures excluded (parity)
 - [x] Overloads / duplicate route names → keep-first + warning (parity)
 - [x] Computed columns: stable/immutable row-type functions → `select=` fields, key = function name minus `<table>_` prefix, `@name` override (via the inflector; smart-comments plugin M5), real column wins on collision (parity)
 - [x] Set-returning computed columns → array fields (parity)
 - [x] `schema.functions: false` disables RPC + computed columns (parity)
 - [x] Computed-column extra args `select=field(k=v,…)`: validated against the function's arguments, bound as parameters, `400 missing_argument` when a required one is absent; select only (filters/order need all-defaulted args); documented in OpenAPI (parity)
-- [ ] Functions with table-valued arguments or polymorphic types (parity)
+- [x] Functions with table-valued arguments (row types and arrays of rows as JSON objects, `jsonb_populate_record`; keys = readable columns) and polymorphic types resolved by `@anyelement` / `@anycompatible` smart tags (untagged → skipped) — see [rpc.md](rpc.md#table-valued-row-arguments) (parity)
 
 ## Errors
 

@@ -1,0 +1,4 @@
+POST /api/rpc/larger_of
+Content-Type: application/json
+
+{"a": 1, "b": 2.5}

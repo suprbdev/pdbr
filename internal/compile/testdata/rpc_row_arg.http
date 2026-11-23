@@ -1,0 +1,4 @@
+POST /api/rpc/user_greeting
+Content-Type: application/json
+
+{"greeting": "Hello", "u": {"id": 1, "email": "ada@example.com", "mood": "happy", "tags": ["a", "b"], "settings": {"theme": "dark"}, "address": {"city": "London"}}}
