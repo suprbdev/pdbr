@@ -54,7 +54,7 @@ const (
 	CodeColumnNotOrderable   = "column_not_orderable"
 	CodePageSizeExceeded     = "page_size_exceeded"
 	CodeKeysetUnsupported    = "keyset_unsupported"
-	CodeEmbedDepthExceeded   = "embed_depth_exceeded"
+	CodeDepthExceeded        = "depth_exceeded"
 	CodeAmbiguousRelation    = "ambiguous_relation"
 	CodeInvalidCursor        = "invalid_cursor"
 	CodeInvalidBody          = "invalid_body"

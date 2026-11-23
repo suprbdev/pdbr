@@ -271,7 +271,7 @@ serializable and does not need to be — `pdbr request --print-sql` re-parses.
   is a relation filter (advanced_filters plugin, `EXISTS`); a key that matches
   no FK of the resource → 400 `unknown_relation`.
 - `select=` grammar (brief §5) → `Node` tree; depth > `limits.max_depth`
-  → 400 `embed_depth_exceeded`; ambiguous relation key without hint → 400
+  → 400 `depth_exceeded`; ambiguous relation key without hint → 400
   `ambiguous_relation` listing candidates.
 - Filter values are coerced by column type here (enum labels verbatim, arrays
   from `{a,b}`, jsonb from JSON text, spatial from GeoJSON/WKT); unknown column

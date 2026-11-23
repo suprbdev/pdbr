@@ -281,7 +281,7 @@ func TestListSelectAndEmbeds(t *testing.T) {
 	res, body := get(t, srv.URL+"/api/comments?select=id,comments(id)")
 	wantProblem(t, res, body, 400, "ambiguous_relation")
 	res, body = get(t, srv.URL+"/api/users?select=id,posts(id,comments(id,posts(id,comments(id,posts(id,comments(id))))))")
-	wantProblem(t, res, body, 400, "embed_depth_exceeded")
+	wantProblem(t, res, body, 400, "depth_exceeded")
 	res, body = get(t, srv.URL+"/api/users?select=id,nope")
 	wantProblem(t, res, body, 400, "unknown_column")
 	res, body = get(t, srv.URL+"/api/users?select=id,nope(id)")

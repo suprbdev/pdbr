@@ -46,7 +46,7 @@ openapi:
 limits:
   # Maximum accepted request body size in bytes; over answers 413.
   max_body_bytes: 1048576
-  # Maximum select= embed nesting depth; deeper answers 400 embed_depth_exceeded.
+  # Maximum select= embed nesting depth; deeper answers 400 depth_exceeded.
   max_depth: 5
   # Maximum estimated cost (1 + list multipliers) per request; over answers 400 cost_exceeded. A list counts the rows the SQL can fetch: its limit, else max_page_size (to-many embeds included). @costMultiplier smart comments tune the estimate.
   max_cost: 100000
@@ -188,7 +188,7 @@ plugins:
       aggregates: true
     # nested_mutations plugin: related rows written in the same statement as a POST or PATCH.
     nested_mutations:
-      # Deepest nesting of create/update operations (the root row is depth 1; connect, delete and disconnect add no level); deeper answers 400 embed_depth_exceeded.
+      # Deepest nesting of create/update operations (the root row is depth 1; connect, delete and disconnect add no level); deeper answers 400 depth_exceeded.
       max_depth: 3
       # Most nested operations per request (every list item and forward operation counts once); more answers 400 invalid_body.
       max_operations: 50

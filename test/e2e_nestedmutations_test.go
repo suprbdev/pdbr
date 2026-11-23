@@ -164,7 +164,7 @@ func TestNestedChildren(t *testing.T) {
 	t.Run("depth", func(t *testing.T) {
 		res, body := send(t, "POST", srv.URL+"/api/comments",
 			`{"body":"M5N d","posts":{"create":{"title":"M5N d","users":{"create":{"email":"`+nestedEmail(t)+`","places":{"create":[{"name":"M5N d"}]}}}}}}`, nil)
-		p := wantProblem(t, res, body, 400, "embed_depth_exceeded")
+		p := wantProblem(t, res, body, 400, "depth_exceeded")
 		if !strings.Contains(p.Detail, "max_depth 3") {
 			t.Fatalf("detail = %q", p.Detail)
 		}

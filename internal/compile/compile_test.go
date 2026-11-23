@@ -388,7 +388,7 @@ func TestEmbedDepth(t *testing.T) {
 	}
 	p := list(comments)
 	p.Select = node
-	userErr(t, f.compileErr(p), compile.CodeEmbedDepthExceeded)
+	userErr(t, f.compileErr(p), compile.CodeDepthExceeded)
 }
 
 // ---- filters ----

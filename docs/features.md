@@ -80,7 +80,7 @@ These shipped features are outside the 1.0 compatibility promise: they may chang
 - [x] `select=` projection: columns, `*`, `alias:field`, computed columns, PostGIS pseudo-columns (parity)
 - [x] PostGIS accessors `_x`, `_y`, `_z`, `_m`, `_num_points`, `_num_geometries`, `_start_point`, `_end_point`, `_point_on_surface`, `_wkt`, `_ewkt`, `_is_empty`, `_is_simple`, `_xmin`/`_ymin`/`_xmax`/`_ymax`; type-specific ones generated only where the column's typmod allows a non-null value (`introspect.Column.Spatial`) — see [PostGIS](postgis.md#derived-accessors-pseudo-columns) (parity)
 - [x] Embeds `rel(select)` compiled to `LEFT JOIN LATERAL` — forward → object or `null`, backward → array (parity)
-- [x] Arbitrarily nested embeds up to `limits.max_depth` (default 5) → else 400 `embed_depth_exceeded` (parity)
+- [x] Arbitrarily nested embeds up to `limits.max_depth` (default 5) → else 400 `depth_exceeded` (parity)
 - [x] Relation keys = table names; `!fk_name` / `!column` hints for ambiguous relations; unhinted ambiguity → 400 `ambiguous_relation` listing candidates (new)
 - [x] `!inner` hint — embed filters also restrict the parent (new)
 - [x] Per-embed params on backward embeds: `posts.order=`, `posts.limit=`, `posts.offset=`, `posts.<col>=op.v` (parity)

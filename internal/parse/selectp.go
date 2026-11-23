@@ -252,7 +252,7 @@ func (p *parser) resolveSelectItem(node *plan.Node, it selectItem, depth int) er
 			fs.Args = args
 		case fs.Computed != nil && fs.Computed.SetOf != nil:
 			if depth+1 > p.opts.maxEmbedDepth() {
-				return errf(CodeEmbedDepthExceeded, "select nesting exceeds max_embed_depth %d", p.opts.maxEmbedDepth())
+				return errf(CodeDepthExceeded, "select nesting exceeds max_embed_depth %d", p.opts.maxEmbedDepth())
 			}
 			sub, err := p.parseSelect(inner, fs.Computed.SetOf, depth+1)
 			if err != nil {
@@ -460,7 +460,7 @@ func (p *parser) resolveEmbed(node *plan.Node, it selectItem, depth int) error {
 		return errf(CodeUnknownRelation, "relation %q of %q cannot be embedded", it.name, res.Path)
 	}
 	if depth+1 > p.opts.maxEmbedDepth() {
-		return errf(CodeEmbedDepthExceeded, "select nesting exceeds max_embed_depth %d", p.opts.maxEmbedDepth())
+		return errf(CodeDepthExceeded, "select nesting exceeds max_embed_depth %d", p.opts.maxEmbedDepth())
 	}
 	if !it.hasInner {
 		return errf(CodeInvalidSelect, "embed %q needs a selection: %s(...)", it.name, it.name)

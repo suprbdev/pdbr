@@ -237,7 +237,7 @@ func TestSelect(t *testing.T) {
 		opts := allOn
 		opts.MaxEmbedDepth = 2
 		_, err := doParse(t, b, req{url: "/api/users?select=posts(comments(posts(id)))"}, opts)
-		wantCode(t, err, CodeEmbedDepthExceeded)
+		wantCode(t, err, CodeDepthExceeded)
 		if _, err := doParse(t, b, req{url: "/api/users?select=posts(comments(id))"}, opts); err != nil {
 			t.Fatal(err)
 		}

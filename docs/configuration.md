@@ -87,7 +87,7 @@ See [cli.md](cli.md) for details.
 | `openapi.title` | string | `pdbr` | the document's `info.title` |
 | `openapi.server_url` | string | — | absolute origin clients reach the API at (e.g. `https://api.example.com` behind a proxy), put before the base path in `servers[0].url`; empty leaves it relative (the base path, `/` at the root). Must be an absolute URL without query or fragment |
 | `limits.max_body_bytes` | int | 1048576 | maximum request body size (1 MiB); over → `413` |
-| `limits.max_depth` | int | 5 | maximum `select=` embed nesting; over → `400 embed_depth_exceeded` |
+| `limits.max_depth` | int | 5 | maximum `select=` embed nesting; over → `400 depth_exceeded` |
 | `limits.max_cost` | int | 100000 | per-request cost limit (1 + Σ list multipliers, a list counting the rows its SQL can fetch: its `limit`, else `limits.max_page_size`, to-many embeds included); over → `400 cost_exceeded`; `@costMultiplier` tunes estimates (see [pagination.md](pagination.md#cost-limit), [smart-comments.md](smart-comments.md)) |
 | `limits.max_page_size` | int | 100 | largest accepted `limit` (larger → `400 page_size_exceeded`); also the default when `limit` is absent; see [pagination.md](pagination.md) |
 | `limits.max_headline_document` | int | 65536 | characters of a document a [full-text headline](contrib.md#headlines) reads: a text document is cut to that many characters, a longer json/jsonb document gives a `null` headline; each headline costs 10 per started 8192 of them in `limits.max_cost` |
@@ -140,7 +140,7 @@ See [cli.md](cli.md) for details.
 | `plugins.settings.postgis.ordering` | bool | `true` | `order=<col>.st_distance` and `~<col>_st_distance` with `~near=` |
 | `plugins.settings.postgis.projection` | bool | `true` | `select=col(transform=…,simplify=…,buffer=…,precision=…)` |
 | `plugins.settings.postgis.aggregates` | bool | `true` | spatial aggregates (`col.extent()`, `union()`, `collect()`, `centroid()`; also needs `aggregates.enabled`) |
-| `plugins.settings.nested_mutations.max_depth` | int | `3` | deepest create/update nesting (root = 1); over → `400 embed_depth_exceeded`; must be `>= 1` |
+| `plugins.settings.nested_mutations.max_depth` | int | `3` | deepest create/update nesting (root = 1); over → `400 depth_exceeded`; must be `>= 1` |
 | `plugins.settings.nested_mutations.max_operations` | int | `50` | most nested operations per request; over → `400 invalid_body`; must be `>= 1` |
 | `log.level` | string | `info` | `debug`, `info`, `warn`, `error` |
 | `log.format` | string | `text` | `text` or `json` (other values are rejected) |

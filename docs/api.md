@@ -282,7 +282,7 @@ GET /users?select=id,posts(id,title,comments(id))   -- backward, nested
 ```
 
 Nesting depth is bounded by `limits.max_depth` (default 5); deeper →
-`400 embed_depth_exceeded`. Cost is bounded by `limits.max_cost` — see
+`400 depth_exceeded`. Cost is bounded by `limits.max_cost` — see
 [pagination.md](pagination.md#cost-limit).
 
 ### Spread embeds
@@ -594,7 +594,7 @@ Cursor and `Link` details: [pagination.md](pagination.md).
 | Limit | Config | Over |
 |---|---|---|
 | page size | `limits.max_page_size` (100) | `400 page_size_exceeded` (`limit=`); a `Range` header is clamped instead |
-| embed depth | `limits.max_depth` (5) | `400 embed_depth_exceeded` |
+| embed depth | `limits.max_depth` (5) | `400 depth_exceeded` |
 | request cost | `limits.max_cost` (100000) | `400 cost_exceeded` |
 | body size | `limits.max_body_bytes` (1 MiB) | `413` |
 | request time | `server.request_timeout` (30s) | `504` |

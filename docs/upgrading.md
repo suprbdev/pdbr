@@ -299,6 +299,8 @@ branch on `code` need these changes; statuses are unchanged.
 - **A hint that selects no relation is `unknown_relation`** (it was
   `ambiguous_relation`). `ambiguous_relation` is only for a key with
   several FKs and no hint.
+- **`embed_depth_exceeded` is `depth_exceeded`**, the code pdbq uses for
+  the same `limits.max_depth` limit (also for the nested-mutation depth).
 - **`not_implemented` (501) is gone.** It was never emitted.
 - **A hook's `UserError` without a code is `invalid_parameter`** (it was
   `invalid_filter`).
@@ -311,6 +313,7 @@ branch on `code` need these changes; statuses are unchanged.
 | `400 invalid_filter` | `400 invalid_argument` | `GET /rpc/f?n=abc`, `select=excerpt(max_chars=x)`, a row argument that is not JSON |
 | `400 invalid_body` | `400 invalid_argument` | `POST /rpc/f {"n": "abc"}`, a row argument with an unknown key |
 | `400 ambiguous_relation` | `400 unknown_relation` | `select=comments!nope(id)`, `posts!left(*)`, `users?posts!bad.title=eq.x` |
+| `400 embed_depth_exceeded` | `400 depth_exceeded` | `select=` nested deeper than `limits.max_depth`, nested mutations deeper than `nested_mutations.max_depth` |
 | `501 not_implemented` | — | removed |
 | `400 invalid_filter` (hook `UserError` with an empty `Code`) | `400 invalid_parameter` | |
 

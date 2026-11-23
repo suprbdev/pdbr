@@ -386,7 +386,7 @@ embeds it, from a `__vis_n` visibility CTE. Every `connect`, `update` and
 `compile.GuardSQL` guard, so a lookup that matches nothing aborts the
 statement and answers `404 not_found`. **RequestHook** — sets `op.ForceTx`
 when the plan has nested keys. Depth
-beyond `max_depth` (default 3, root = 1) → `400 embed_depth_exceeded`; an
+beyond `max_depth` (default 3, root = 1) → `400 depth_exceeded`; an
 operation the relation does not offer → `400 unknown_relation`. Full rules
 and the exact SQL shape:
 [mutations.md](mutations.md#nested-mutations-plugin-nested_mutations).

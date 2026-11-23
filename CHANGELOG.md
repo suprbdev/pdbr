@@ -40,7 +40,8 @@ becomes the release notes of the next tag.
   `invalid_argument` (also in a `POST` body, which used `invalid_body`). A hint
   that selects no relation is `unknown_relation` instead of
   `ambiguous_relation`. The never-emitted `not_implemented` (501) and
-  `compile.ErrNotImplemented` are removed.
+  `compile.ErrNotImplemented` are removed. `embed_depth_exceeded` is
+  `depth_exceeded`, as in pdbq.
 
 - The query grammar uses one naming rule each: the reference parameters and
   every pseudo-column live in a `~` namespace (`~near=`, `~vec=`,

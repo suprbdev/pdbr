@@ -48,8 +48,8 @@ code you do not know as the generic error of its status.
 
 The codes for concepts pdbq shares are spelled the same in both products:
 `invalid_token`, `auth_required`, `role_not_allowed`, `read_only`,
-`cost_exceeded`, `page_size_exceeded`, `not_found`, `timeout`,
-`unavailable` and `pg:<SQLSTATE>`.
+`cost_exceeded`, `depth_exceeded`, `page_size_exceeded`, `not_found`,
+`timeout`, `unavailable` and `pg:<SQLSTATE>`.
 
 ### Request grammar (400)
 
@@ -88,7 +88,7 @@ body.
 |---|---|---|
 | `page_size_exceeded` | 400 | `limit` > `limits.max_page_size` (also on embeds and RPC lists) |
 | `cost_exceeded` | 400 | estimated cost > `limits.max_cost` |
-| `embed_depth_exceeded` | 400 | `select=` nesting deeper than `limits.max_depth`; nested-mutation depth > `max_depth` |
+| `depth_exceeded` | 400 | `select=` nesting deeper than `limits.max_depth`; nested-mutation depth > `max_depth` |
 | `body_too_large` | 413 | body > `limits.max_body_bytes` |
 
 ### Identity
