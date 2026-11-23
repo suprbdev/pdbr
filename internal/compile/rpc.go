@@ -242,7 +242,9 @@ func (s *stmt) rpcNode(r *api.Resource) *plan.Node {
 
 // rpcRow compiles a single table-row return: the projection (with embeds)
 // over the call as a row source. A strict function returning NULL yields one
-// all-null row, which the CASE surfaces as JSON null (200, body null).
+// all-null row, which the CASE surfaces as JSON null (200, body null). A
+// record of output parameters is always an object, all-null columns
+// included.
 func (s *stmt) rpcRow(rpc *api.RPC, call string) (*Statement, error) {
 	node := s.rpcNode(rpc.Resource)
 	alias := s.alias("t")
@@ -254,8 +256,10 @@ func (s *stmt) rpcRow(rpc *api.RPC, call string) (*Statement, error) {
 	if err != nil {
 		return nil, err
 	}
-	sql := fmt.Sprintf("SELECT CASE WHEN %s IS NULL THEN NULL ELSE %s END AS data\nFROM %s AS %s%s%s",
-		alias, jsonExpr, call, alias, joinLaterals(laterals), where)
+	if !rpc.Record {
+		jsonExpr = fmt.Sprintf("CASE WHEN %s IS NULL THEN NULL ELSE %s END", alias, jsonExpr)
+	}
+	sql := fmt.Sprintf("SELECT %s AS data\nFROM %s AS %s%s%s", jsonExpr, call, alias, joinLaterals(laterals), where)
 	return &Statement{SQL: sql, Shape: ShapeScalar}, nil
 }
 

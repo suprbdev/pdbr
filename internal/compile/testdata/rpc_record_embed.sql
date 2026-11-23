@@ -1,0 +1,2 @@
+-- request: GET /api/rpc/mood_counts?select=mood,users(id)
+-- error: 400 unknown_relation: unknown relation "users" on "rpc.mood_counts"

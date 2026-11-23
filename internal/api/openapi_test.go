@@ -227,6 +227,69 @@ func TestOpenAPIRPCDefaultsAndVariadic(t *testing.T) {
 	}
 }
 
+func TestRecordReturningFunctions(t *testing.T) {
+	pg := "pg_catalog"
+	cat := testutil.FixtureCatalog()
+	cat.Functions = append(cat.Functions, &introspect.Function{
+		Schema: "public", Name: "order_status_counts", ReturnType: "record", ReturnTypeSchema: pg, ReturnsSet: true, Volatility: introspect.VolatilityStable,
+		ReturnColumns: []introspect.FuncArg{
+			{Name: "status", PGType: "mood", TypeSchema: "public", Mode: introspect.ArgModeTable},
+			{Name: "n", PGType: "int8", TypeSchema: pg, Mode: introspect.ArgModeTable},
+		},
+	}, &introspect.Function{
+		Schema: "public", Name: "user_stats", ReturnType: "record", ReturnTypeSchema: pg, Volatility: introspect.VolatilityStable,
+		Args: []introspect.FuncArg{{Name: "uid", PGType: "int4", TypeSchema: pg}},
+		ReturnColumns: []introspect.FuncArg{
+			{Name: "posts", PGType: "int8", TypeSchema: pg, Mode: introspect.ArgModeOut},
+			{Name: "home", PGType: "address", TypeSchema: "public", Mode: introspect.ArgModeOut},
+		},
+	}, &introspect.Function{
+		Schema: "public", Name: "anon_record", ReturnType: "record", ReturnTypeSchema: pg, Volatility: introspect.VolatilityStable,
+	}, &introspect.Function{
+		Schema: "public", Name: "poly_out", ReturnType: "record", ReturnTypeSchema: pg, Volatility: introspect.VolatilityStable,
+		ReturnColumns: []introspect.FuncArg{
+			{Name: "a", PGType: "anyelement", TypeSchema: pg, Mode: introspect.ArgModeOut},
+			{Name: "b", PGType: "int4", TypeSchema: pg, Mode: introspect.ArgModeOut},
+		},
+	})
+	built, err := New(cat, inflect.Default, Options{FilterIndexedOnly: true, Functions: true, BasePath: "/api", Schemas: []string{"public"}, MaxPageSize: 100, Logger: quiet()}).Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if built.RPCByPath["anon_record"] != nil || built.RPCByPath["poly_out"] != nil {
+		t.Error("anonymous / polymorphic record functions must stay excluded")
+	}
+	osc := built.RPCByPath["order_status_counts"]
+	if osc == nil || !osc.Record || osc.Returns != ReturnSetOfRows || osc.Resource.Path != "rpc.order_status_counts" {
+		t.Fatalf("order_status_counts = %+v", osc)
+	}
+	if !osc.Resource.FilterColumns["n"] || !osc.Resource.OrderColumns["status"] {
+		t.Errorf("record columns not filterable/orderable under indexed_only: %v %v", osc.Resource.FilterColumns, osc.Resource.OrderColumns)
+	}
+	if built.Resources["public.order_status_counts"] != nil {
+		t.Error("record resource leaked into Resources")
+	}
+	us := built.RPCByPath["user_stats"]
+	if us == nil || us.Returns != ReturnRow || us.Resource.FilterColumns["home"] {
+		t.Fatalf("user_stats = %+v", us)
+	}
+	doc := built.OpenAPI
+	rs := doc.Components.Schemas["rpc.order_status_counts"]
+	if rs == nil || rs.Properties["status"] == nil || rs.Properties["n"] == nil || len(rs.Required) != 0 {
+		t.Fatalf("result schema = %+v", rs)
+	}
+	get := doc.Paths["/rpc/order_status_counts"].Get
+	if items := get.Responses["200"].Content["application/json"].Schema.Items; items.Ref != "#/components/schemas/rpc.order_status_counts" {
+		t.Errorf("200 items = %+v", items)
+	}
+	if got := strings.Join(paramNames(get.Parameters, "query"), ","); !strings.Contains(got, "select,order,limit,offset,count") || !strings.HasSuffix(got, ",status,n") {
+		t.Errorf("params = %s", got)
+	}
+	if s := doc.Paths["/rpc/user_stats"].Get.Responses["200"].Content["application/json"].Schema; s.Ref != "#/components/schemas/rpc.user_stats" {
+		t.Errorf("user_stats 200 = %+v", s)
+	}
+}
+
 func TestOpenAPIRPC(t *testing.T) {
 	doc := fixture(t).OpenAPI
 	sp := doc.Paths["/rpc/search_posts"]

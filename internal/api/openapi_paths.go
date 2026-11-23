@@ -592,6 +592,9 @@ func (b *Builder) rpcResponses(rpc *RPC, get bool) map[string]*Response {
 	case ReturnVoid:
 		return map[string]*Response{"204": {Description: "No Content (void function)."}}
 	case ReturnRow:
+		if rpc.Record {
+			return ok(SchemaRef(rpc.Resource.Path))
+		}
 		return ok(Nullable(SchemaRef(rpc.Resource.Path)))
 	case ReturnSetOfRows:
 		return list(SchemaRef(rpc.Resource.Path), map[string]*Header{

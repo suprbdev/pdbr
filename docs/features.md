@@ -22,8 +22,9 @@ Checklist of PostgreSQL and REST features pdbr supports. **As built (v0.1.0): ev
 - [x] Composite-type columns mapped to OpenAPI object schemas (nested objects in bodies; composite arrays included) (v1) (parity)
 - [x] `CatalogFormatVersion` shared with pdbq; cache files interchangeable (v1) (new)
 - [ ] Domains surfaced as named schemas (v1 resolves them to the base type) (v1.x) (parity)
-- [ ] Function argument default values / variadic args (v1.x) (parity)
-- [ ] Functions with `OUT`/`INOUT` parameters or anonymous record returns (v1.x) (parity)
+- [x] Function argument default values / variadic args (`FuncArg.HasDefault`, `Function.Variadic`) (v1.x) (parity)
+- [x] Functions with `OUT`/`INOUT` parameters / `RETURNS TABLE` (`Function.ReturnColumns`) (v1.x) (parity)
+- [ ] Anonymous `record` returns (no output parameters: no shape to describe) (stretch) (parity)
 
 ## Type mapping (Postgres → JSON/OpenAPI)
 
@@ -144,6 +145,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **As built (v0.1.0): ev
 - [x] `POST {base}/rpc/{fn}` JSON body `{arg: value}` for any volatility; volatile via `GET` → `405` `Allow: POST` (v1) (parity)
 - [x] Volatile → mutation semantics (tx, read-only `405`) (v1) (parity)
 - [x] Args by name (named notation); omitted → the function's `DEFAULT` (none → `400 missing_argument`), `null` → SQL `NULL`; unknown → 400; coerced by pg type; enum labels verbatim; spatial args GeoJSON/WKT (v1) (parity)
+- [x] `RETURNS TABLE` / `OUT`-parameter functions: objects keyed by the result columns; `SETOF record` paged like `SETOF <table>` with `select=`, filters, `order=`, `count`, CSV; OpenAPI `rpc.<fn>` schema (v1.x) (parity)
 - [x] `VARIADIC` arguments: repeated query params on GET, JSON array in the body, called with `VARIADIC` (v1.x) (parity)
 - [x] Computed columns whose extra arguments all have defaults (v1.x) (parity)
 - [x] Scalar returns → JSON value `200` (via `to_jsonb`) (v1) (parity)
@@ -152,7 +154,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **As built (v0.1.0): ev
 - [x] `SETOF <table>` → array with full `select=` / filters / `order=` / `limit` / `offset` / `count=true` (offset paging only; `Accept: text/csv` supported) (v1) (parity — filters/order/count are a superset)
 - [x] `SETOF <scalar>` → array (v1) (parity)
 - [x] `rls.auth.jwt_type` composite return → minted HS256 JWT string (pdbcore/jwtmint) (v1) (parity)
-- [x] EXECUTE-privilege gating; extension-owned / unnamed / OUT/INOUT (`record`) / trigger / polymorphic returns excluded (VARIADIC undetectable in the catalog) (v1) (parity)
+- [x] EXECUTE-privilege gating; extension-owned / unnamed / anonymous `record` / trigger / polymorphic returns excluded (v1) (parity)
 - [x] Overloads / duplicate route names → keep-first + warning (v1) (parity)
 - [x] Computed columns: stable/immutable row-type functions → `select=` fields, key = function name minus `<table>_` prefix, `@name` override (via the inflector; smart-comments plugin M5), real column wins on collision (v1) (parity)
 - [x] Set-returning computed columns → array fields (v1) (parity)

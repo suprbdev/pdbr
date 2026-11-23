@@ -164,8 +164,12 @@ type RPC struct {
 	// exec layer signs each returned row into a JWT string.
 	Mint    bool
 	Returns ReturnKind
-	// Resource is set for row / SETOF <table> returns.
+	// Resource is set for row / SETOF <table> returns, and for functions
+	// returning record rows described by output parameters (OUT/INOUT
+	// parameters or RETURNS TABLE), where it is a route-less resource over
+	// Function.ReturnColumns and Record is set.
 	Resource *Resource
+	Record   bool
 	// Composite is set for composite returns.
 	Composite         *Composite
 	Args              []introspect.FuncArg

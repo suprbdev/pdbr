@@ -249,7 +249,8 @@ func TestRPCDefaultsAndVariadic(t *testing.T) {
 		t.Errorf("computed column with a defaulted argument = %v", rows)
 	}
 
-	doc := openAPI(t, srv.URL)
+	raw, doc := fetchOpenAPI(t, srv.URL)
+	validateOpenAPI(t, oasSchema(t), raw)
 	get := doc["paths"].(map[string]any)["/rpc/e2e_sum"].(map[string]any)["get"].(map[string]any)
 	for _, p := range get["parameters"].([]any) {
 		pm := p.(map[string]any)
@@ -572,5 +573,98 @@ func TestJWTMintRoundTrip(t *testing.T) {
 		t.Errorf("composite = %v", v)
 	} else if _, isStr := got["exp"].(string); !isStr {
 		t.Errorf("exp (int8) should render as a string in composite output: %#v", got["exp"])
+	}
+}
+
+// recordFixtures creates functions returning record rows described by
+// output parameters (issue 7); dropped again after the test.
+func recordFixtures(t *testing.T) {
+	t.Helper()
+	url := os.Getenv("PDBR_TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("PDBR_TEST_DATABASE_URL not set; run `make test-e2e`")
+	}
+	ctx := context.Background()
+	run := func(ddl ...string) error {
+		conn, err := pgx.Connect(ctx, url)
+		if err != nil {
+			return err
+		}
+		defer conn.Close(ctx)
+		for _, d := range ddl {
+			if _, err := conn.Exec(ctx, d); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	drop := []string{
+		`DROP FUNCTION IF EXISTS public.mood_counts()`,
+		`DROP FUNCTION IF EXISTS public.user_stats(int4)`,
+	}
+	if err := run(drop...); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := run(drop...); err != nil {
+			t.Errorf("record fixture cleanup: %v", err)
+		}
+	})
+	err := run(
+		`CREATE FUNCTION public.mood_counts() RETURNS TABLE(mood mood, n bigint) STABLE LANGUAGE sql AS $$
+		    SELECT u.mood, count(*) FROM users u WHERE u.mood IS NOT NULL GROUP BY u.mood $$`,
+		`CREATE FUNCTION public.user_stats(uid int4, OUT posts bigint, OUT last_title text) STABLE LANGUAGE sql AS $$
+		    SELECT count(*), max(title) FILTER (WHERE id = (SELECT max(id) FROM posts WHERE author_id = uid))
+		    FROM posts WHERE author_id = uid $$`,
+		`GRANT EXECUTE ON FUNCTION public.mood_counts(), public.user_stats(int4) TO anonymous, app_user`,
+	)
+	if err != nil {
+		t.Fatalf("record fixture: %v", err)
+	}
+}
+
+func TestRPCRecordReturning(t *testing.T) {
+	recordFixtures(t)
+	srv := testServer(t, nil)
+	for path, want := range map[string]string{
+		"/api/rpc/mood_counts?order=mood":                  `[{"n": "1", "mood": "ok"}, {"n": "2", "mood": "happy"}]`,
+		"/api/rpc/mood_counts?select=mood&order=n.asc":     `[{"mood": "ok"}, {"mood": "happy"}]`,
+		"/api/rpc/mood_counts?select=c:n&n=gt.1":           `[{"c": "2"}]`,
+		"/api/rpc/mood_counts?order=mood&limit=1&offset=1": `[{"n": "2", "mood": "happy"}]`,
+		"/api/rpc/user_stats?uid=1":                        `{"posts": "2", "last_title": "Unpublished draft"}`,
+		"/api/rpc/user_stats?uid=999":                      `{"posts": "0", "last_title": null}`,
+		"/api/rpc/user_stats?uid=1&select=posts":           `{"posts": "2"}`,
+	} {
+		res, body, _ := rpcCall(t, "GET", srv.URL+path, "", nil)
+		if res.StatusCode != 200 || string(body) != want {
+			t.Errorf("GET %s = %d %s, want %s", path, res.StatusCode, body, want)
+		}
+	}
+	res, _, _ := rpcCall(t, "GET", srv.URL+"/api/rpc/mood_counts?count=true&n=gte.1", "", nil)
+	if res.Header.Get("X-Total-Count") != "2" {
+		t.Errorf("X-Total-Count = %q", res.Header.Get("X-Total-Count"))
+	}
+	res, body, _ := rpcCall(t, "GET", srv.URL+"/api/rpc/mood_counts?order=mood", "", map[string]string{"Accept": "text/csv"})
+	if res.StatusCode != 200 || string(body) != "mood,n\r\nok,1\r\nhappy,2\r\n" {
+		t.Errorf("CSV = %d %q", res.StatusCode, body)
+	}
+	for path, code := range map[string]string{
+		"/api/rpc/mood_counts?select=nope":      "unknown_column",
+		"/api/rpc/mood_counts?select=users(id)": "unknown_relation",
+		"/api/rpc/mood_counts?after=x":          "keyset_unsupported",
+		"/api/rpc/user_stats":                   "missing_argument",
+	} {
+		res, body, _ := rpcCall(t, "GET", srv.URL+path, "", nil)
+		wantProblem(t, res, body, 400, code)
+	}
+	raw, doc := fetchOpenAPI(t, srv.URL)
+	validateOpenAPI(t, oasSchema(t), raw)
+	if s, _ := schemas(doc)["rpc.mood_counts"].(map[string]any); s == nil || s["properties"].(map[string]any)["n"] == nil {
+		t.Errorf("rpc.mood_counts schema = %v", s)
+	}
+	paths := doc["paths"].(map[string]any)
+	ok := paths["/rpc/user_stats"].(map[string]any)["get"].(map[string]any)["responses"].(map[string]any)["200"].(map[string]any)
+	if ref := ok["content"].(map[string]any)["application/json"].(map[string]any)["schema"].(map[string]any)["$ref"]; ref != "#/components/schemas/rpc.user_stats" {
+		t.Errorf("user_stats 200 schema = %v", ok)
 	}
 }

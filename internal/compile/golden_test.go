@@ -93,6 +93,19 @@ func goldenCatalog() *introspect.Catalog {
 			{Name: "greeting", PGType: "text", TypeSchema: pg, Mode: introspect.ArgModeIn, HasDefault: true, Default: "'hello'::text"},
 		},
 	}, &introspect.Function{
+		Schema: "public", Name: "mood_counts", ReturnType: "record", ReturnTypeSchema: pg, ReturnsSet: true, Volatility: introspect.VolatilityStable,
+		ReturnColumns: []introspect.FuncArg{
+			{Name: "mood", PGType: "mood", TypeSchema: "public", Mode: introspect.ArgModeTable},
+			{Name: "n", PGType: "int8", TypeSchema: pg, Mode: introspect.ArgModeTable},
+		},
+	}, &introspect.Function{
+		Schema: "public", Name: "user_stats", ReturnType: "record", ReturnTypeSchema: pg, Volatility: introspect.VolatilityStable,
+		Args: []introspect.FuncArg{{Name: "uid", PGType: "int4", TypeSchema: pg, Mode: introspect.ArgModeIn}},
+		ReturnColumns: []introspect.FuncArg{
+			{Name: "posts", PGType: "int8", TypeSchema: pg, Mode: introspect.ArgModeOut},
+			{Name: "last_title", PGType: "text", TypeSchema: pg, Mode: introspect.ArgModeOut},
+		},
+	}, &introspect.Function{
 		Schema: "public", Name: "sum_all", ReturnType: "int4", ReturnTypeSchema: pg, Volatility: introspect.VolatilityImmutable,
 		Args: []introspect.FuncArg{
 			{Name: "base", PGType: "int4", TypeSchema: pg, Mode: introspect.ArgModeIn},
@@ -253,7 +266,7 @@ func TestGolden(t *testing.T) {
 }
 
 // goldenOnlyRPCs are the functions goldenCatalog adds to the fixture.
-var goldenOnlyRPCs = map[string]bool{"noop": true, "greet": true, "sum_all": true}
+var goldenOnlyRPCs = map[string]bool{"noop": true, "greet": true, "sum_all": true, "mood_counts": true, "user_stats": true}
 
 // TestGoldenAgainstDatabase executes every golden statement against the
 // live fixture database (PDBR_TEST_DATABASE_URL; skipped otherwise), each in

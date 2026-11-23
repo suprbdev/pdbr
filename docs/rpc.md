@@ -84,7 +84,10 @@ fixture, so `POST` only —, `search_posts(term text) SETOF posts`,
 | `SETOF <table>` | array of objects | `200` | `select=`, filters, `order=`, `limit`/`offset`, `count=true` → `X-Total-Count`, `Accept: text/csv`; **offset paging only** (no `after`/`before`, no cursors, `Link` with `offset=`) |
 | `SETOF <scalar>` / `SETOF <composite>` | array of values / objects | `200` | `limit`/`offset` (`limit` defaults to and is capped by `server.max_page_size`; no `count`) |
 | `rls.auth.jwt_type` composite (`SETOF` too) | signed HS256 JWT string (array of strings) | `200` | minted by `pdbcore/jwtmint` from the row's fields as claims |
-| `TABLE(...)` / `RETURNS record` | | | excluded (OUT args) |
+| `RETURNS TABLE(...)` / `SETOF record` with `OUT` params (two or more result columns) | array of objects, one key per result column | `200` | as `SETOF <table>`: `select=` (columns and aliases; no embeds), filters and `order=` on every non-composite result column (no index policy: the output is scanned), `limit`/`offset`, `count=true`, `Accept: text/csv`; offset paging only |
+| `OUT` / `INOUT` params, not `SETOF` (two or more) | one object, one key per output parameter (all-null columns stay an object) | `200` | `select=` |
+| one output parameter / `RETURNS TABLE(x …)` with one column | PostgreSQL returns that column's type, so the function is a scalar / `SETOF <scalar>` | `200` | |
+| anonymous `record` (no output parameters) | | | excluded (no shape) |
 
 `SETOF <table>` results honour the table's filter/order policy
 (`filters.indexed_only` etc.) — the function output is scanned, so the index
@@ -93,6 +96,20 @@ policy is advisory here, but the same rules keep the surface predictable.
 
 Settled: `SETOF <scalar>` / `SETOF <composite>` get `limit`/`offset` but no
 `count=true` (ignored) in v1.
+
+Record results (`pdbcore/introspect.Function.ReturnColumns`) are compiled
+against a route-less resource named `rpc.<fn path>` whose columns are the
+output parameters, so `RETURNS TABLE` functions get exactly the `SETOF
+<table>` statement over `FROM "public"."mood_counts"() t0`, and OpenAPI
+documents the rows as the `rpc.<fn path>` component schema:
+
+```http
+GET /api/rpc/mood_counts?select=mood,n&n=gt.0&order=n.desc,mood&limit=5&count=true
+```
+
+(`mood_counts() RETURNS TABLE(mood mood, n bigint)`, golden
+`rpc_record_setof`; `user_stats(uid int4, OUT posts bigint, OUT last_title
+text)` is `rpc_record_row`.)
 
 ## SQL shapes
 
@@ -297,15 +314,17 @@ filters/order disappear with them. `pdbr plugins list` is unaffected.
 ## OpenAPI
 
 Each RPC route is a path item under `/rpc/{fn}` (or `/{schema}/rpc/{fn}`):
-`get` for stable/immutable (args as query params, plus the `SETOF <table>`
-list params), `post` for all (request body `object` with one property per
+`get` for stable/immutable (args as query params, plus the `SETOF <table>` /
+`SETOF record` list params), `post` for all (request body `object` with one property per
 argument, typed by the column type map). Arguments without a `DEFAULT` are
 `required` (query parameter `required: true`, body `required` list, body
 `required: true` when there is at least one); defaulted ones are optional and
 their description shows the default expression (`optional, default
 'hello'::text.`). A `VARIADIC` argument is an `array` query parameter
 (`style: form`, `explode: true`) / a JSON array property. Responses reference
-the returned resource schema (`users`, array of `users`), an inline scalar
+the returned resource schema (`users`, array of `users`), the
+`rpc.<fn path>` schema of a record result (one property per output
+parameter; non-nullable for a single record), an inline scalar
 schema, `204`, or — for `rls.auth.jwt_type` functions — `string` with
 `format: jwt` (array thereof for `SETOF`). Tags per schema. Argument
 parameters / request bodies land with the M6 OpenAPI pass. See
