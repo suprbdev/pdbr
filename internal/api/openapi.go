@@ -761,10 +761,9 @@ func (r *Resource) inputColumns(m Method) []*Field {
 }
 
 // insertRequired reports whether a column must be present in a create
-// body: NOT NULL without a default (identity/generated columns are not
-// input columns at all).
+// body: NOT NULL without a default, identity or generation.
 func insertRequired(c *introspect.Column) bool {
-	return c.NotNull && !c.HasDefault && !c.Generated
+	return !c.OmittableOnInsert()
 }
 
 // inputSchema renders <name>.insert / .update / .upsert: the accepted body

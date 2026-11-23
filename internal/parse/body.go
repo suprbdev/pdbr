@@ -361,7 +361,7 @@ func requiredColumns(res *api.Resource, obj map[string]any, nested map[string]*p
 	}
 	var missing []string
 	for _, c := range res.Table.Columns {
-		if !c.NotNull || c.HasDefault || c.Generated || covered[c.Name] || hiddenColumn(res, c.Name) {
+		if c.OmittableOnInsert() || covered[c.Name] || hiddenColumn(res, c.Name) {
 			continue
 		}
 		if _, ok := obj[c.Name]; !ok {

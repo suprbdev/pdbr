@@ -338,7 +338,7 @@ where noted):
 | polymorphic (`anyelement`, `anyarray`, `anycompatible…`, …) without a resolving `@anyelement` / `@anycompatible` tag | no concrete type to cast to (`info` log line); see [polymorphic functions](#polymorphic-functions) |
 | aggregate / window / procedure (`prokind` ≠ `f`) | not a plain function (pdbcore) |
 | `@omit` smart comment on the function | user opt-out (`smart-comments` plugin, M5) |
-| overloads (same schema + name, different signature) | keep-first by `oid`, warn — later overloads are unreachable |
+| overloads (same schema + name, different signature) | keep-first, warn — later overloads are unreachable; the first is the one with the fewest input parameters, ties broken by parameter types (type schema, then name), the same on every run and database |
 | function returns a table that is not an exposed resource (`SETOF`/row) | no resource to compile the row against → excluded with warning |
 | row-type argument (or array of rows) of a table that is not an exposed resource | no row shape to accept (`info` log line) |
 | result, argument or `OUT`/`TABLE` column whose type is, or holds through a domain, a composite attribute or an array (recursively), the row of a table hidden by a bare `@omit` or a [schema contract](contracts.md), including through a resolved `@anyelement` / `@anycompatible` tag; or holds, through a domain or composite, the row of a table that is not an exposed resource | the row would be rendered whole as JSON, hidden columns included (`info` log line); table columns of such a type are hidden the same way, and the composite gets no OpenAPI schema |

@@ -58,7 +58,7 @@ Not moved at all (GraphQL-only, listed for completeness): `internal/schema`,
 ### `introspect`
 
 ```go
-const CatalogFormatVersion = 8 // domains; 7 in v0.4.0; 3 at extraction
+const CatalogFormatVersion = 10 // identity kinds, cache writer; 8 with domains; 7 in v0.4.0; 3 at extraction
 type Catalog struct { FormatVersion int; Schemas []string; Tables []*Table; Enums []*Enum; Composites []*Composite; Functions []*Function; Ranges []*RangeType; Domains []*Domain; PostGIS *PostGISInfo }
 type Column struct { …; TypeSchema, PGType, BaseTypeSchema, Domain string; … } // BaseTypeSchema: schema of the resolved base type (domains unwrapped); Domain: "schema.name" of the outermost domain
 type Domain struct { Schema, Name, BaseType, BaseTypeSchema, Parent, Default, Comment string; IsArrayBase, NotNull bool; Checks []string } // Catalog.Domain / DomainByRef / DomainChain

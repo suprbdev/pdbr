@@ -106,7 +106,7 @@ prefixed:
   `<field>Distance` / `<field>Similarity` / `<field>CosineDistance` fields
   ([postgis.md](postgis.md#selecting-the-distance),
   [contrib.md](contrib.md#scores)).
-- Overloaded functions and duplicate route names: keep-first + warning.
+- Overloaded functions and duplicate route names: keep-first + warning (of several overloads, the one with the fewest input parameters, see [rpc.md](rpc.md)).
 
 Route precedence between `/{schema}/{table}` and `/{table}/{pk}` (decided
 in M1, as built in `api.Built.Match`): a first segment equal to a configured
@@ -431,9 +431,10 @@ POST /api/rpc/search_posts            {"q": "hello"}
   composite attributes in declaration order), `json` columns come back as stored, `float8`
   uses PostgreSQL's float output (`1e+20`), and the text has PostgreSQL's spacing
   (`{"id" : 1}`): compare bodies as JSON, never byte for byte.
-- Body validation: unknown key → `400 invalid_body`; generated/identity
-  columns → `400 column_readonly`; on create, `NOT NULL` columns without a
-  default are required; on `PATCH` everything is optional.
+- Body validation: unknown key → `400 invalid_body`; generated and identity
+  `ALWAYS` columns → `400 column_readonly` (identity `BY DEFAULT` columns
+  are writable); on create, `NOT NULL` columns without a default, identity
+  or generation are required; on `PATCH` everything is optional.
 - `select=` applies to mutation responses (compiled against the `__mut` CTE,
   embeds work; `RETURNING` lists only referenced columns).
 - Nested writes on `POST` and single-row `PATCH` (plugin

@@ -43,7 +43,7 @@ func TestSchemaCheckRejectsBadCacheBeforeConnecting(t *testing.T) {
 	corrupt := filepath.Join(dir, "corrupt.cache")
 	os.WriteFile(corrupt, []byte("not gzip"), 0o644)
 	_, err = runCLI(t, append(base, "--cache", corrupt)...)
-	if err == nil || !strings.Contains(err.Error(), "not a schema cache") {
+	if !errors.Is(err, cache.ErrCorrupt) {
 		t.Errorf("corrupt cache: %v", err)
 	}
 
@@ -54,7 +54,8 @@ func TestSchemaCheckRejectsBadCacheBeforeConnecting(t *testing.T) {
 	zw.Close()
 	f.Close()
 	_, err = runCLI(t, append(base, "--cache", stale)...)
-	if err == nil || !strings.Contains(err.Error(), "format version") {
+	var fv *cache.FormatVersionError
+	if !errors.As(err, &fv) || fv.Got != introspect.CatalogFormatVersion-1 {
 		t.Errorf("stale format: %v", err)
 	}
 }

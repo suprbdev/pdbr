@@ -275,7 +275,7 @@ func TestErrorCodesNeedingConfig(t *testing.T) {
 			t.Fatal(err)
 		}
 		path := filepath.Join(t.TempDir(), "schema.cache")
-		if err := cache.Save(path, cat); err != nil {
+		if err := cache.Save(path, cat, cache.Writer{Product: "pdbr", Version: "test"}); err != nil {
 			t.Fatal(err)
 		}
 		srv := testServer(t, func(c *config.Config) {

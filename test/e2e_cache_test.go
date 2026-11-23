@@ -28,7 +28,7 @@ func dumpCache(t *testing.T, dbURL string) (string, string) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(t.TempDir(), "schema.cache")
-	if err := cache.Save(path, cat); err != nil {
+	if err := cache.Save(path, cat, cache.Writer{Product: "pdbr", Version: "test"}); err != nil {
 		t.Fatal(err)
 	}
 	hash, _ := cat.Hash()

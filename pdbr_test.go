@@ -145,7 +145,7 @@ func TestSwapKeepsInFlightRequests(t *testing.T) {
 func cacheBootConfig(t *testing.T) config.Config {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "schema.cache")
-	if err := cache.Save(path, testutil.FixtureCatalog()); err != nil {
+	if err := cache.Save(path, testutil.FixtureCatalog(), cache.Writer{Product: "pdbr", Version: "test"}); err != nil {
 		t.Fatal(err)
 	}
 	cfg := config.DefaultConfig()

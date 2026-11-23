@@ -79,7 +79,7 @@ func goldenCatalog() *introspect.Catalog {
 		&introspect.Table{
 			Schema: "audit", Name: "log", Kind: introspect.RelTable,
 			Columns: []*introspect.Column{
-				{Name: "id", Position: 1, PGType: "int8", NotNull: true, Generated: true},
+				{Name: "id", Position: 1, PGType: "int8", NotNull: true, GeneratedKind: introspect.GeneratedIdentityAlways},
 				{Name: "action", Position: 2, PGType: "text", NotNull: true},
 				{Name: "at", Position: 3, PGType: "timestamptz", NotNull: true, HasDefault: true},
 			},
@@ -155,7 +155,7 @@ func temporalTables(priv introspect.Privileges) []*introspect.Table {
 		return &introspect.Column{Name: name, Position: pos, PGType: typ, TypeSchema: pg, NotNull: true}
 	}
 	ident := col(1, "id", "int4")
-	ident.HasDefault, ident.Generated, ident.GeneratedKind = true, true, introspect.GeneratedIdentity
+	ident.GeneratedKind = introspect.GeneratedIdentityAlways
 	return []*introspect.Table{
 		{
 			Schema: "public", Name: "tk_rooms", Kind: introspect.RelTable,

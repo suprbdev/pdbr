@@ -438,13 +438,13 @@ func (b *Builder) addResources() {
 				continue
 			}
 			keys[key] = true
-			f := &Field{Column: c, Key: key, ReadOnly: c.Generated, Description: description(c.Comment)}
+			f := &Field{Column: c, Key: key, ReadOnly: c.GeneratedAlways(), Description: description(c.Comment)}
 			if postgis.IsRaster(strings.TrimPrefix(c.PGType, "_")) {
 				r.Rasters = append(r.Rasters, f)
 			} else {
 				r.Columns = append(r.Columns, f)
 			}
-			if !c.Generated {
+			if !c.GeneratedAlways() {
 				r.InputColumns[key] = c
 			}
 		}
@@ -1091,15 +1091,15 @@ func (b *Builder) Build() (*Built, error) {
 }
 
 // keyedMethods drops PUT from a single-row route whose key has a column a
-// PUT body may not write (generated, identity, @omit create or update): the
-// upsert would insert the path value into it.
+// PUT body may not write (generated, identity ALWAYS, @omit create or
+// update): the upsert would insert the path value into it.
 func keyedMethods(r *Resource, methods []Method, key []string) []Method {
 	writable := map[string]bool{}
 	for _, c := range r.InputColumnsFor(MethodPut) {
 		writable[c.Name] = true
 	}
 	for _, name := range key {
-		if c := r.Table.Column(name); c == nil || c.Generated || !writable[name] {
+		if c := r.Table.Column(name); c == nil || c.GeneratedAlways() || !writable[name] {
 			out := make([]Method, 0, len(methods))
 			for _, m := range methods {
 				if m != MethodPut {

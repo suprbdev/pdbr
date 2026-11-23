@@ -370,7 +370,7 @@ func (g *chain) requireColumns(in rowIn) error {
 	}
 	var missing []string
 	for _, c := range in.res.Table.Columns {
-		if !c.NotNull || c.HasDefault || c.Generated || covered[c.Name] {
+		if c.OmittableOnInsert() || covered[c.Name] {
 			continue
 		}
 		if _, ok := in.cols[c.Name]; !ok {

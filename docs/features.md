@@ -166,7 +166,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] `Prefer: return=minimal` → `204` (or `201` + `Location` on create) (new)
 - [x] `select=` and embeds on mutation responses; `RETURNING` lists only referenced columns (parity)
 - [x] Mutation-response embeds back to the mutated table see it as it stands after the statement (created and updated rows included, deleted rows excluded) via a `__vis` visibility CTE, emitted only when an embed reads the table (parity)
-- [x] Body validation: unknown key → 400 `invalid_body`; generated/identity → 400 `column_readonly`; required = `NOT NULL && !HasDefault` on create; PATCH all optional (parity)
+- [x] Body validation: unknown key → 400 `invalid_body`; generated/identity `ALWAYS` → 400 `column_readonly` (identity `BY DEFAULT` is writable); required = `NOT NULL` without default, identity or generation on create; PATCH all optional (parity)
 - [x] Composite-typed columns accept nested objects (and arrays of them) (parity)
 - [x] Privilege-gated routes (no INSERT grant → no `POST` → `405` + `Allow`) (parity)
 - [x] Views / matviews → write methods absent → `405` + `Allow` (new)
@@ -262,7 +262,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] `components.schemas`: one per resource (`users` / `audit.users`), `<name>.insert`, `<name>.update`, `<name>.upsert` (new)
 - [x] Nested-input schema variants when `nested-mutations` is on (new) — the plugin publishes `Surface.NestedKeys`, `Surface.NestedSchema` and `<name>.connect` schemas; the core renders the `.insert` and `.update` properties (only the operations each key offers there; forward `create`/`connect` exactly-one on `.insert`, FK columns optional)
 - [x] One schema per enum and per composite; `GeoJSON`; `Problem` (new) — `GeoJSON` (+ spatial columns `$ref`, read-only pseudo-column properties, `oneOf [GeoJSON, string]` inputs) by the `postgis` plugin; enum/composite/`Problem` core
-- [x] Type map per "Type mapping" section; nullable via `type: [T, "null"]`; `readOnly` for generated columns; `deprecated: true` + `x-deprecation-reason` from `@deprecated`; descriptions from pg comments (tags stripped) (new)
+- [x] Type map per "Type mapping" section; nullable via `type: [T, "null"]`; `readOnly` for generated and identity `ALWAYS` columns; `deprecated: true` + `x-deprecation-reason` from `@deprecated`; descriptions from pg comments (tags stripped) (new)
 - [x] `paths`: list path (GET/HEAD/POST/PUT) with all query params — one param per filterable column with op vocabulary in its description, plus `select`, `order`, `limit`, `offset`, `after`, `before`, `count`, `distinct`, `and`/`or`/`not.and`/`not.or`, `near` (new)
 - [x] `/{table}/{pk}` (GET/HEAD/PATCH/DELETE) and one concrete path per unique constraint (`/users/by/email/{email}`) (new)
 - [x] RPC paths (GET/POST per volatility) with arg params / request body (new)
@@ -368,7 +368,7 @@ these are the deliberate departures (each documented in its topic page):
   `PUT` semantics (unprovided columns keep their values on update), takes
   the key from the path (body key columns optional, `400 invalid_body` when
   they differ — PostgREST `PGRST115`), offers `PUT` only on paths whose
-  key columns a `PUT` body may write (no identity/generated or
+  key columns a `PUT` body may write (no identity `ALWAYS`/generated or
   `@omit create|update` keys), and answers `If-Match` with
   `400 if_match_unsupported`.
 - **`POST` with `resolution=`**: always `201` (as PostgREST), but a
