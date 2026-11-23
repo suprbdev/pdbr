@@ -334,7 +334,7 @@ func (e *Executor) run(ctx context.Context, op *Operation, stmt *compile.Stateme
 	scan := func(row pgx.Row) error {
 		err := scanRow(row)
 		if err == nil && rollsBack(op) {
-			return errRollback
+			return pgexec.ErrRollback
 		}
 		return err
 	}
@@ -359,7 +359,7 @@ func (e *Executor) run(ctx context.Context, op *Operation, stmt *compile.Stateme
 			Claims:       op.Claims,
 			ClaimsPrefix: e.Opts.ClaimsPrefix,
 		}, append(tzStmt, pgexec.Stmt{SQL: stmt.SQL, Args: stmt.Args, Scan: scan})...)
-		if errors.Is(err, errRollback) {
+		if errors.Is(err, pgexec.ErrRollback) {
 			err = nil
 		}
 	} else {
@@ -391,10 +391,6 @@ func (e *Executor) run(ctx context.Context, op *Operation, stmt *compile.Stateme
 	}
 	return res
 }
-
-// errRollback is the sentinel a Scan returns to make QueryTx roll the
-// transaction back; run maps it to success.
-var errRollback = errors.New("exec: rollback requested")
 
 // rollsBack reports that the operation runs in a transaction that is rolled
 // back (server.tx_end or Prefer: tx=rollback).
