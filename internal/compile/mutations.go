@@ -296,22 +296,40 @@ func (s *stmt) keyedDML() (cur, dml string, err error) {
 	return cur, fmt.Sprintf("UPDATE %s\nSET %s\nWHERE %s", tableRef(t), strings.Join(sets, ", "), where), nil
 }
 
-// bulkDML renders the UPDATE / DELETE of a list route: the root filter of
-// the query string compiled against an aliased target (no WHERE at all when
-// server.allow_unfiltered_mutations let an unfiltered request through).
+// bulkDML renders the UPDATE / DELETE of a list route over exactly the rows
+// the same GET would list: the root filter plus one EXISTS per !inner embed,
+// compiled against an aliased target (no WHERE at all when
+// server.allow_unfiltered_mutations let an unrestricted request through).
 func (s *stmt) bulkDML() (string, error) {
 	p := s.plan
 	t := p.Resource.Table
 	alias := s.alias("m")
-	where := ""
+	var conds []string
 	if p.Filter != nil {
 		cond, err := s.filterSQL(p.Filter, alias)
 		if err != nil {
 			return "", err
 		}
-		if cond != "" {
-			where = "\nWHERE " + cond
+		if cond == "" {
+			return "", fmt.Errorf("compile: %s filter on %s rendered no condition", p.Method, t.Name)
 		}
+		conds = append(conds, cond)
+	}
+	node := s.rootNode()
+	for i := range node.Embeds {
+		e := &node.Embeds[i]
+		if !e.Inner || e.Relation == nil {
+			continue
+		}
+		cond, err := s.innerExists(e, alias)
+		if err != nil {
+			return "", err
+		}
+		conds = append(conds, cond)
+	}
+	where := ""
+	if len(conds) > 0 {
+		where = "\nWHERE " + strings.Join(conds, " AND ")
 	}
 	if p.Method == plan.DELETE {
 		return fmt.Sprintf("DELETE FROM %s %s%s", tableRef(t), alias, where), nil

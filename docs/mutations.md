@@ -187,25 +187,27 @@ FROM (
 
 | Rule | Behaviour |
 |---|---|
-| no root filter | `400 unfiltered_mutation` before any SQL runs, unless `server.allow_unfiltered_mutations: true` (then the DML has no `WHERE`; RLS still applies). Per-embed filters (`posts.title=…` with `posts(...)` in `select=`) shape the response only and do not count — alias the embed (`author:users(email)`) to use `users.email=` as a relation filter instead |
+| row set | exactly the rows the same `GET` would list: the root filters plus one `EXISTS` per `!inner` embed in `select=` (`DELETE /posts?select=id,users!inner(id)&users.email=eq.x` deletes only that author's posts) |
+| no restriction | neither a root filter nor an `!inner` embed → `400 unfiltered_mutation` before any SQL runs, unless `server.allow_unfiltered_mutations: true` (then the DML has no `WHERE`; RLS still applies). The guard checks that a restriction is **present**, not how selective it is: a match-all filter (`id=gt.0`, `or=(id.is.null,id.not.is.null)`) passes, as with PostgREST's `pg-safeupdate`. Cap the blast radius with `Prefer: handling=strict, max-affected=N`. Per-embed filters on a plain embed (`users.email=…` with `users(...)` in `select=`) shape the response only and do not count — use `users!inner(...)`, or alias the embed (`author:users(email)`) so `users.email=` becomes a relation filter |
 | body | `PATCH`: one JSON object (arrays → `400 invalid_body`), set on every matching row; `{}` → `400 invalid_body`. `DELETE` never reads a body |
 | response | `200` + JSON array of the written rows (`select=` and embeds apply, compiled against `__mut`); `[]` when nothing matched — never `404`. `Prefer: return=minimal` / `headers-only` → `204` |
 | `limit`, `offset`, `order`, `count`, `distinct`, `after`/`before`, `on_conflict` | `400 invalid_filter` (PostgREST's ordered "limited update/delete" is not supported) |
-| `If-Match` | ignored (keyed paths only) |
+| `If-Match` | `400 if_match_unsupported` (with `server.etags` on; ETags address single rows) |
 | `Prefer: max-affected=N` | with `handling=strict`: more than `N` rows → `400 max_affected_exceeded`, nothing written ([below](#prefer)) |
-| availability | wherever the keyed `PATCH`/`DELETE` exists (UPDATE / DELETE privilege, no `@omit update|delete`); PK-less tables included; views and read-only mode → `405` |
+| availability | wherever the keyed `PATCH`/`DELETE` exists (UPDATE / DELETE privilege, no `@omit update|delete`) **and** the collection is listable: `@omit read` / `@omit all` remove bulk writes too (they would otherwise count hidden rows and, with `return=representation`, return them); PK-less tables included; views and read-only mode → `405` |
 
 The DML target is aliased (`m0`) so relation filters correlate on it
 (`EXISTS (SELECT 1 FROM "public"."users" r1 WHERE r1."id" = m0."author_id" …)`)
 and the narrow-`RETURNING` scan (`t1."col"` / `__mut."col"`) never sees filter
 columns. Golden files: `bulk_patch`, `bulk_patch_minimal`,
 `bulk_patch_computed`, `bulk_delete_embed`, `bulk_delete_relation`,
-`bulk_unfiltered`.
+`bulk_delete_inner`, `bulk_unfiltered`, `bulk_if_match`.
 
 ## `Prefer`
 
 `Prefer` tokens are comma-separated, case-insensitive, may span several
-headers, and the last occurrence of a token wins. Every honoured token is
+headers, and the last occurrence of a token wins — `handling=` included
+(`handling=strict, handling=lenient` is lenient). Every honoured token is
 echoed in `Preference-Applied` (header order, e.g. `Preference-Applied:
 return=minimal, handling=strict, max-affected=10`).
 

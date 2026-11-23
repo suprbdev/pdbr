@@ -255,8 +255,8 @@ func TestOmitTableActions(t *testing.T) {
 		list, row, unique     string
 		filterable, orderable bool
 	}{
-		{"@omit read", "POST, PUT, PATCH, DELETE", "PATCH, DELETE", "PATCH, DELETE", true, true},
-		{"@omit all", "POST, PUT, PATCH, DELETE", "GET, HEAD, PATCH, DELETE", "GET, HEAD, PATCH, DELETE", true, true},
+		{"@omit read", "POST, PUT", "PATCH, DELETE", "PATCH, DELETE", true, true},
+		{"@omit all", "POST, PUT", "GET, HEAD, PATCH, DELETE", "GET, HEAD, PATCH, DELETE", true, true},
 		{"@omit create", "GET, HEAD, PATCH, DELETE", "GET, HEAD, PATCH, DELETE", "GET, HEAD, PATCH, DELETE", true, true},
 		{"@omit update", "GET, HEAD, POST, DELETE", "GET, HEAD, DELETE", "GET, HEAD, DELETE", true, true},
 		{"@omit delete", "GET, HEAD, POST, PUT, PATCH", "GET, HEAD, PATCH", "GET, HEAD, PATCH", true, true},

@@ -1,0 +1,2 @@
+-- request: PATCH /api/posts?id=eq.1
+-- error: 400 if_match_unsupported: If-Match applies to single-row paths only; PATCH on the collection path cannot honour it

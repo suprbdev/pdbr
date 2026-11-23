@@ -59,7 +59,8 @@ has a `code`, see the note below the table):
 | `column_readonly` | 400 | generated / identity-`ALWAYS` column in a write body |
 | `read_only` | 405 | write attempted while `server.read_only` (config or `App.SetReadOnly`) |
 | `etag_mismatch` | 412 | `If-Match` did not match the current row hash |
-| (`unfiltered_mutation`) | 400 | bulk `PATCH`/`DELETE` on a collection path without a root filter while `server.allow_unfiltered_mutations` is off |
+| (`unfiltered_mutation`) | 400 | bulk `PATCH`/`DELETE` on a collection path without a root filter or `!inner` embed while `server.allow_unfiltered_mutations` is off |
+| (`if_match_unsupported`) | 400 | `If-Match` on a write that cannot honour it (bulk `PATCH`/`DELETE` on a collection path) while `server.etags` is on |
 | (`invalid_preference`) | 400 | `Prefer: handling=strict` with an unknown token or a malformed value (PostgREST `PGRST122`) |
 | (`max_affected_exceeded`) | 400 | `Prefer: handling=strict, max-affected=N` and the write touched more than `N` rows; rolled back (PostgREST `PGRST124`) |
 | `not_acceptable` | 406 | `Accept` unsatisfiable (incl. `text/csv` with embeds or on non-list responses) |
@@ -84,7 +85,8 @@ minimum needed so every response has a `code` (`unknown_relation` and
 (`unknown_column`, `keyset_unsupported`, `invalid_body`) or emitting no
 `code` on 405/413/500/503/504 was rejected because clients branch on `code`.
 The PostgREST-parity codes (`unfiltered_mutation`, `invalid_preference`,
-`max_affected_exceeded`) were added later under the same rule.
+`max_affected_exceeded`, `if_match_unsupported`) were added later under the
+same rule.
 
 Codes are stable across releases; new codes may be added in minor versions,
 existing ones are never renamed.
@@ -238,7 +240,8 @@ static per path until a hot swap):
 `If-Match` on `PATCH`/`DELETE` single-row paths ([mutations.md](mutations.md#if-match-on-patch--delete)):
 row exists and hash differs → `412 etag_mismatch`, transaction rolled back,
 no body change. Row missing → `404` (takes precedence over `412`).
-`If-Match` on other routes is ignored. `If-None-Match` on single-row `GET`
+`If-Match` on bulk `PATCH`/`DELETE` is `400 if_match_unsupported`; on other
+routes it is ignored. `If-None-Match` on single-row `GET`
 match → `304` (no body, not a problem document).
 
 ## `413`

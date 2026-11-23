@@ -50,7 +50,7 @@ type preference struct {
 }
 
 // parsePrefer reads the Prefer header(s) per docs/mutations.md "Prefer". Tokens
-// are case-insensitive and may repeat (the last wins). Under the default
+// are case-insensitive and may repeat (the last wins, handling= included). Under the default
 // handling=lenient anything unknown or malformed is ignored; handling=strict
 // turns it into 400 invalid_preference and enables max-affected.
 func (p *parser) parsePrefer(headers []string) error {
@@ -72,8 +72,8 @@ func (p *parser) parsePrefer(headers []string) error {
 		}
 	}
 	for _, pr := range prefs {
-		if pr.key == "handling" && pr.val == "strict" {
-			p.req.Prefer.Strict = true
+		if pr.key == "handling" && (pr.val == "strict" || pr.val == "lenient") {
+			p.req.Prefer.Strict = pr.val == "strict"
 		}
 	}
 	pf := &p.req.Prefer

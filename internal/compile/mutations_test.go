@@ -267,4 +267,7 @@ func TestBulkMutationShapes(t *testing.T) {
 	if err := f.compileErr(&plan.Request{Method: plan.PATCH, Resource: users, Body: &plan.Body{Object: map[string]any{}}}); err == nil {
 		t.Error("empty bulk PATCH compiled")
 	}
+	if err := f.compileErr(&plan.Request{Method: plan.DELETE, Resource: users, Filter: plan.And{}}); err == nil {
+		t.Error("a filter rendering no condition compiled to an unrestricted DELETE")
+	}
 }

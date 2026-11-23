@@ -173,6 +173,7 @@ func TestErrorCodeVocabulary(t *testing.T) {
 		{name: "unknown_argument", path: "/api/rpc/best_mood?nope=1", status: 400, code: "unknown_argument"},
 		{name: "missing_argument", path: "/api/rpc/describe_mood", status: 400, code: "missing_argument", check: detailIs(`function "describe_mood": missing required argument(s): m`)},
 		{name: "unfiltered_mutation", method: "DELETE", path: "/api/users", status: 400, code: "unfiltered_mutation"},
+		{name: "if_match_unsupported", method: "DELETE", path: "/api/users?id=eq.999999", hdr: map[string]string{"If-Match": `W/"x"`}, status: 400, code: "if_match_unsupported"},
 		{name: "invalid_preference", method: "DELETE", path: "/api/users/999999", hdr: map[string]string{"Prefer": "handling=strict, tx=commit"}, status: 400, code: "invalid_preference"},
 		{name: "max_affected_exceeded", method: "PATCH", path: "/api/users?id=gt.0", body: `{"full_name":"x"}`, hdr: map[string]string{"Prefer": "handling=strict, max-affected=1"}, status: 400, code: "max_affected_exceeded"},
 		{name: "pg sqlstate", path: "/api/users?settings=jpe.$[", status: 400, code: "pg:42601", check: func(t *testing.T, _ *http.Response, p problem) {

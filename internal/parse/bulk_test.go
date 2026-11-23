@@ -39,6 +39,16 @@ func TestBulkWrites(t *testing.T) {
 		_, err := doParse(t, b, r, allOn)
 		wantCode(t, err, CodeUnfilteredMutation)
 	}
+	if p, err := doParse(t, b, req{method: "DELETE", url: "/api/posts?select=id,users!inner(id)&users.email=eq.a@b.c"}, allOn); err != nil || p.Filter != nil {
+		t.Fatalf("!inner embed restricts like a filter: %+v %v", p, err)
+	}
+	_, err = doParse(t, b, req{method: "DELETE", url: "/api/posts?id=eq.1", header: map[string]string{"If-Match": `W/"x"`}}, allOn)
+	wantCode(t, err, CodeIfMatchUnsupported)
+	noEtags := allOn
+	noEtags.Etags = false
+	if _, err := doParse(t, b, req{method: "DELETE", url: "/api/posts?id=eq.1", header: map[string]string{"If-Match": `W/"x"`}}, noEtags); err != nil {
+		t.Fatalf("If-Match is ignored without server.etags: %v", err)
+	}
 	open := allOn
 	open.AllowUnfilteredMutations = true
 	if p, err := doParse(t, b, req{method: "DELETE", url: "/api/posts"}, open); err != nil || p.Filter != nil {
@@ -83,6 +93,8 @@ func TestPrefer(t *testing.T) {
 		{"/api/users?id=gt.1", "max-affected=3", "representation", false, -1, nil},
 		{"/api/users?id=gt.1", "max-affected=3, handling=strict", "representation", true, 3, []string{"max-affected=3", "handling=strict"}},
 		{"/api/users?id=gt.1", "handling=lenient, tx=rollback, return=nope, max-affected=-1", "representation", false, -1, []string{"handling=lenient"}},
+		{"/api/users?id=gt.1", "handling=strict, max-affected=2, handling=lenient", "representation", false, -1, []string{"handling=lenient"}},
+		{"/api/users?id=gt.1", "handling=lenient, handling=strict, max-affected=2", "representation", true, 2, []string{"handling=strict", "max-affected=2"}},
 	}
 	for _, tc := range cases {
 		p, err := patch(tc.url, tc.prefer)

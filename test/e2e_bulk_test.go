@@ -66,6 +66,8 @@ func TestBulkPatchDelete(t *testing.T) {
 	wantProblem(t, res, body, 400, "column_not_filterable")
 	res, body = send(t, "DELETE", srv.URL+"/api/users?"+sel+"&limit=1", "", nil)
 	wantProblem(t, res, body, 400, "invalid_filter")
+	res, body = send(t, "PATCH", srv.URL+"/api/users?"+sel, `{"mood":"ok"}`, map[string]string{"If-Match": `W/"x"`})
+	wantProblem(t, res, body, 400, "if_match_unsupported")
 
 	email := prefix + "-0@example.com"
 	var author []row
@@ -73,10 +75,25 @@ func TestBulkPatchDelete(t *testing.T) {
 	if len(author) != 1 {
 		t.Fatalf("author = %v", author)
 	}
-	sendJSON(t, "POST", srv.URL+"/api/posts", fmt.Sprintf(`[{"author_id":%d,"title":"M3 bulk a"},{"author_id":%d,"title":"M3 bulk b"}]`, rowID(t, author[0]), rowID(t, author[0])), 201, nil)
+	sendJSON(t, "POST", srv.URL+"/api/posts", fmt.Sprintf(`[{"author_id":%d,"title":"M3 bulk a"},{"author_id":%d,"title":"M3 bulk b"},{"author_id":1,"title":"M3 bulk other"}]`, rowID(t, author[0]), rowID(t, author[0])), 201, nil)
 	rows = nil
 	res, body = send(t, "DELETE", srv.URL+"/api/posts?users.email=eq."+url.QueryEscape(email)+"&select=title,users(email)", "", nil)
 	wantProblem(t, res, body, 400, "unfiltered_mutation")
+	rows = nil
+	sendJSON(t, "PATCH", srv.URL+"/api/posts?title=like.M3*&select=title,users!inner(email)&users.email=eq."+url.QueryEscape(email), `{"body":"inner"}`, 200, &rows)
+	if len(rows) != 2 {
+		t.Fatalf("!inner-restricted PATCH must touch only the author's posts: %v", rows)
+	}
+	var others []row
+	getJSON(t, srv.URL+"/api/posts?title=eq."+url.QueryEscape("M3 bulk other")+"&select=body", &others)
+	if len(others) != 1 || others[0]["body"] == "inner" {
+		t.Fatalf("!inner restriction leaked to other rows: %v", others)
+	}
+	var listed []row
+	getJSON(t, srv.URL+"/api/posts?select=id,users!inner(email)&users.email=eq."+url.QueryEscape(email), &listed)
+	if len(listed) != 2 {
+		t.Fatalf("GET with the same restriction lists %d rows", len(listed))
+	}
 	sendJSON(t, "DELETE", srv.URL+"/api/posts?users.email=eq."+url.QueryEscape(email)+"&select=title,author:users(email)", "", 200, &rows)
 	if len(rows) != 2 || rows[0]["author"].(map[string]any)["email"] != email {
 		t.Fatalf("relation-filtered DELETE = %v", rows)

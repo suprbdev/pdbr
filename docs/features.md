@@ -301,7 +301,9 @@ these are the deliberate departures (each documented in its topic page):
   `minimal`.
 - **Unfiltered bulk writes are refused** (`400 unfiltered_mutation`) unless
   `server.allow_unfiltered_mutations` is on; PostgREST leaves this to
-  `pg-safeupdate`.
+  `pg-safeupdate`. Like `pg-safeupdate`, the guard checks presence, not
+  selectivity. Bulk writes are not offered on collections hidden by
+  `@omit read|all`, and `If-Match` on them is `400 if_match_unsupported`.
 - **Bulk `PATCH`/`DELETE` take no `limit`/`order`** (PostgREST's limited
   update/delete) and answer `200` + array / `204` — never `404` — when
   nothing matches.

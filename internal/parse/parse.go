@@ -57,6 +57,7 @@ const (
 	CodeMethodNotAllowed     = "method_not_allowed"
 	CodeInvalidPreference    = "invalid_preference"
 	CodeUnfilteredMutation   = "unfiltered_mutation"
+	CodeIfMatchUnsupported   = "if_match_unsupported"
 )
 
 // Options tune the parser; zero values fall back to the documented defaults
@@ -180,8 +181,13 @@ func Parse(built *api.Built, m *api.Match, r *http.Request, opts Options) (*plan
 		if err := p.parseBody(r); err != nil {
 			return nil, err
 		}
-		if p.isBulkWrite() && req.Filter == nil && !opts.AllowUnfilteredMutations {
-			return nil, errf(CodeUnfilteredMutation, "%s on %q without a filter would affect every row; add a filter (or enable server.allow_unfiltered_mutations)", method, resName(m.Resource))
+		if p.isBulkWrite() {
+			if req.Filter == nil && !hasInnerEmbed(req.Select) && !opts.AllowUnfilteredMutations {
+				return nil, errf(CodeUnfilteredMutation, "%s on %q without a filter would affect every row; add a filter (or enable server.allow_unfiltered_mutations)", method, resName(m.Resource))
+			}
+			if req.IfMatch != "" {
+				return nil, errf(CodeIfMatchUnsupported, "If-Match applies to single-row paths only; %s on the collection path cannot honour it", method)
+			}
 		}
 	}
 	if err := p.negotiateAccept(r); err != nil {
@@ -217,6 +223,20 @@ func parseMethod(m string) (plan.Method, error) {
 		return plan.DELETE, nil
 	}
 	return "", errf(CodeMethodNotAllowed, "method %s is not supported", m)
+}
+
+// hasInnerEmbed reports a root-level !inner embed, which restricts the root
+// rows like a filter does.
+func hasInnerEmbed(n *plan.Node) bool {
+	if n == nil {
+		return false
+	}
+	for i := range n.Embeds {
+		if n.Embeds[i].Inner {
+			return true
+		}
+	}
+	return false
 }
 
 // isList reports whether the request addresses a list of rows (list route
