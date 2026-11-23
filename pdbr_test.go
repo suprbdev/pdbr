@@ -6,9 +6,15 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/suprbdev/pdbcore/cache"
 	"github.com/suprbdev/pdbcore/inflect"
+	"github.com/suprbdev/pdbcore/metrics"
 	"github.com/suprbdev/pdbcore/testutil"
 
 	"github.com/suprbdev/pdbr/internal/api"
@@ -133,5 +139,94 @@ func TestSwapKeepsInFlightRequests(t *testing.T) {
 	}
 	if got := res2.Header.Get("X-Runtime"); got != "2" {
 		t.Errorf("post-swap request answered by runtime %q, want 2", got)
+	}
+}
+
+func cacheBootConfig(t *testing.T) config.Config {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "schema.cache")
+	if err := cache.Save(path, testutil.FixtureCatalog()); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.DefaultConfig()
+	cfg.RLS.Enabled = false
+	cfg.Schema.CachePath = path
+	cfg.Database.URL = "postgres://nobody@127.0.0.1:1/none"
+	return cfg
+}
+
+func TestMetricsWiring(t *testing.T) {
+	quiet := WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	cfg := cacheBootConfig(t)
+	if app := New(cfg, quiet); app.Metrics() != nil {
+		t.Fatal("Metrics() must be nil with metrics.enabled=false")
+	}
+
+	cfg.Metrics.Enabled = true
+	app := New(cfg, quiet)
+	defer app.Close()
+	if app.Metrics() == nil {
+		t.Fatal("Metrics() is nil with metrics.enabled=true")
+	}
+	h, err := app.Handler(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"/api/users?select=id", "/api/users?select=id,posts(id,title,comments(id))"} {
+		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, p, nil))
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/metrics = %d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, s := range []string{
+		"\npdbr_cost_limit_rejections_total 1\n",
+		"\npdbr_aggregate_requests_total 0\n",
+		"\npdbr_db_pool_max_conns 10\n",
+		`pdbr_http_requests_total{method="GET",route="resource",status_class="5xx"} 1`,
+		`pdbr_http_requests_total{method="GET",route="resource",status_class="4xx"} 1`,
+		"\ngo_goroutines ",
+	} {
+		if !strings.Contains(body, s) {
+			t.Errorf("metrics missing %q", s)
+		}
+	}
+}
+
+func TestWithMetrics(t *testing.T) {
+	quiet := WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	reg := prometheus.NewRegistry()
+	m, err := metrics.New(metrics.Options{Namespace: "pdbr", Registerer: reg, ConstLabels: prometheus.Labels{"instance_name": "a"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := cacheBootConfig(t)
+	app := New(cfg, quiet, WithMetrics(m))
+	defer app.Close()
+	if app.Metrics() != m {
+		t.Fatal("WithMetrics instance not used")
+	}
+	h, err := app.Handler(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("/metrics with metrics.enabled=false = %d, want 404", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	m.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if s := `pdbr_http_requests_total{instance_name="a",method="GET",route="health",status_class="2xx"} 1`; !strings.Contains(rec.Body.String(), s) {
+		t.Errorf("embedder registry missing %s", s)
+	}
+
+	second := New(cfg, quiet, WithMetrics(m))
+	defer second.Close()
+	if _, err := second.Handler(context.Background()); err == nil || !strings.Contains(err.Error(), "cost_limit_rejections_total") {
+		t.Errorf("second App on one Metrics: err = %v, want a duplicate registration error", err)
 	}
 }

@@ -50,9 +50,10 @@ compiler never sees `*http.Request`, and the server never sees SQL.
 ## Package layout
 
 ```
-pdbr.go            App: New / WithPlugins / WithLogger / WithVersion / Connect / LoadCatalog /
-                   BuildAPI / Runtime / Serve / Handler / CompileSQL / SetReadOnly; watch-mode
-                   wiring (pdbcore/watch → BuildAPI → Runtime → Server.Swap). Registers built-in plugins.
+pdbr.go            App: New / WithPlugins / WithLogger / WithVersion / WithMetrics / Connect /
+                   LoadCatalog / BuildAPI / Runtime / Serve / Handler / CompileSQL / SetReadOnly /
+                   Metrics; watch-mode wiring (pdbcore/watch → BuildAPI → Runtime → Server.Swap).
+                   Registers built-in plugins.
 facade.go          Type aliases that form the public embedding contract (Config sections,
                    hook interfaces, plan/compile/exec types); implementation stays internal.
 cmd/pdbr/          cobra CLI: serve, request, schema, config, plugins, completion, --version.
@@ -463,9 +464,11 @@ body is assembled in `server` from `Result.Problem`.
 - **Headers**: `ETag`/`If-None-Match` → 304 (single-row GET), `Prefer:
   return=minimal|representation`, `Location` on 201, `X-Total-Count`,
   `X-Next-Cursor`, `X-Prev-Cursor`, `Link` built from the request URL.
-- **Middleware order** (outermost first): recover → timeout
+- **Middleware order** (outermost first): metrics (pdbcore/metrics, when
+  enabled: route class, method, status class) → recover → timeout
   (`server.request_timeout` → 504 problem) → CORS (pdbcore/httpx) → gzip
   (opt-in) → max body (413) → auth (pdbcore/auth; 401 problem) → router.
+  `{base}/openapi.json` and `metrics.path` are answered before the timeout.
 - `/healthz`, `/readyz` are mounted at root, outside `base_path`.
 
 ## api.Built model

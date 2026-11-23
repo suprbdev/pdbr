@@ -145,7 +145,7 @@ func TestWatchEventTrigger(t *testing.T) {
 			t.Log(logs.String())
 		}
 	})
-	srv := watchServer(t, dbURL, logs, nil)
+	srv := watchServer(t, dbURL, logs, func(c *config.Config) { c.Metrics.Enabled = true })
 	if res, _ := get(t, srv.URL+"/api/watch_probe"); res.StatusCode != 404 {
 		t.Fatalf("watch_probe before create = %d", res.StatusCode)
 	}
@@ -173,6 +173,13 @@ func TestWatchEventTrigger(t *testing.T) {
 	getJSON(t, srv.URL+"/api/watch_probe?select=id,name,note", &rows)
 	if len(rows) != 1 || rows[0]["name"] != "a" || rows[0]["note"] != nil {
 		t.Fatalf("rows after alter = %v", rows)
+	}
+	out := scrapeMetrics(t, srv.URL+"/metrics")
+	if got := metricValue(out, `pdbr_schema_rebuilds_total{result="success"}`); got < 2 {
+		t.Errorf("pdbr_schema_rebuilds_total{result=\"success\"} = %v, want >= 2", got)
+	}
+	if got := metricValue(out, `pdbr_schema_last_rebuild_timestamp_seconds`); got <= 0 {
+		t.Errorf("pdbr_schema_last_rebuild_timestamp_seconds = %v, want > 0", got)
 	}
 
 	// The event trigger and its function are pdbr's own names (shared DBs

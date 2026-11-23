@@ -17,10 +17,12 @@ import (
 	"strings"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
 	"github.com/suprbdev/pdbcore/jwtmint"
+	"github.com/suprbdev/pdbcore/metrics"
 	"github.com/suprbdev/pdbcore/pgexec"
 
 	"github.com/suprbdev/pdbr/internal/api"
@@ -117,6 +119,16 @@ type Options struct {
 	// Mint signs the results of rls.auth.jwt_type-returning functions.
 	Mint   jwtmint.Options
 	Logger *slog.Logger
+	// Metrics records database operation durations and errors and the
+	// compile time of every request; nil records nothing.
+	Metrics *metrics.Metrics
+	// CostRejections is incremented for every request MaxCost rejects;
+	// nil records nothing.
+	CostRejections *metrics.Counter
+	// AggregateRequests is incremented for every executed request whose
+	// select= uses an aggregate function anywhere in its tree; nil records
+	// nothing.
+	AggregateRequests *metrics.Counter
 }
 
 // Executor runs operations against a pool.
@@ -154,6 +166,9 @@ func New(db DB, built *api.Built, compileFn compile.Func, hooks []RequestHook, o
 
 // Execute runs one operation end to end and never returns nil.
 func (e *Executor) Execute(ctx context.Context, op *Operation) *Result {
+	if op.Plan != nil && op.Plan.Select.Aggregates() {
+		e.Opts.AggregateRequests.Inc()
+	}
 	ctx, stmt, err := e.prepare(ctx, op)
 	var res *Result
 	if err != nil {
@@ -189,15 +204,18 @@ func (e *Executor) prepare(ctx context.Context, op *Operation) (context.Context,
 			Detail: "server is in read-only mode: writes are disabled"}
 	}
 	if cost := compile.Cost(op.Plan, e.Opts.MaxPageSize); cost > e.Opts.MaxCost {
+		e.Opts.CostRejections.Inc()
 		return ctx, nil, &Error{Status: http.StatusBadRequest, Code: compile.CodeCostExceeded,
 			Detail: fmt.Sprintf("request cost %d exceeds server.max_cost %d", cost, e.Opts.MaxCost)}
 	}
+	start := time.Now()
 	stmt, err := e.Compile(ctx, &compile.Request{
 		Plan:          op.Plan,
 		Built:         e.Built,
 		MaxEmbedDepth: e.Opts.MaxEmbedDepth,
 		MaxPageSize:   e.Opts.MaxPageSize,
 	})
+	e.Opts.Metrics.ObserveCompile(time.Since(start))
 	if err != nil {
 		return ctx, nil, e.compileError(err)
 	}
@@ -311,13 +329,21 @@ func (e *Executor) run(ctx context.Context, op *Operation, stmt *compile.Stateme
 			RLS:              e.Opts.RLS,
 			ScanBeforeCommit: maxAffected(op) != nil,
 			Log:              e.Opts.Logger,
+			Observer:         e.Opts.Metrics.DBObserver(),
 		}, pgexec.Identity{
 			Role:         op.Role,
 			Claims:       op.Claims,
 			ClaimsPrefix: e.Opts.ClaimsPrefix,
 		}, pgexec.Stmt{SQL: stmt.SQL, Args: stmt.Args, Scan: scan})
 	} else {
+		start := time.Now()
 		err = scan(e.DB.QueryRow(ctx, stmt.SQL, stmt.Args...))
+		dbErr := err
+		var xe *Error
+		if errors.As(err, &xe) {
+			dbErr = nil
+		}
+		pgexec.Observe(ctx, e.Opts.Metrics.DBObserver(), "query", start, dbErr)
 	}
 	if err != nil {
 		var xe *Error

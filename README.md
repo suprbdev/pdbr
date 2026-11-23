@@ -120,6 +120,7 @@ See [docs/quickstart.md](docs/quickstart.md) for the full tour.
 | [docs/plugins.md](docs/plugins.md) | Hook surfaces, writing a plugin, built-ins as worked examples |
 | [docs/caching.md](docs/caching.md) | Schema cache and CI/CD gates |
 | [docs/deployment.md](docs/deployment.md) | Docker image, health checks, production checklist |
+| [docs/metrics.md](docs/metrics.md) | Prometheus `/metrics`: enabling, separate listener, metric and route-class reference, scrape config |
 | [docs/architecture.md](docs/architecture.md) | Pipeline, `plan.Request`, compiler contract, invariants, gotchas |
 | [docs/pdbcore.md](docs/pdbcore.md) | The shared pdbcore module (pdbq ↔ pdbr) and the dependency bump procedure |
 

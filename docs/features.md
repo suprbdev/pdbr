@@ -225,7 +225,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Read-only mode (`server.read_only`, runtime toggle) (parity)
 - [x] Atomic runtime hot-swap (in-flight requests finish on the old `api.Built`) (parity)
 - [x] No embedded UI, no CDN assets (bring your own OpenAPI tooling) — by decision (new)
-- [ ] `/metrics` (Prometheus) endpoint (parity)
+- [x] `/metrics` (Prometheus) endpoint: HTTP, database, pool, schema-rebuild and compile metrics by fixed route class, cost-limit and aggregate counters, main or separate listener (`metrics.*`) — see [metrics.md](metrics.md) (parity)
 - [x] `Content-Range` response header on list pages and bulk writes (new)
 - [ ] `Range` request header (new)
 

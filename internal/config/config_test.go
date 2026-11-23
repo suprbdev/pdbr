@@ -47,6 +47,9 @@ func TestDefaults(t *testing.T) {
 		"transactions.isolation":            "read_committed",
 		"transactions.max_retries":          0,
 		"errors.detail":                     "prod",
+		"metrics.enabled":                   false,
+		"metrics.path":                      "/metrics",
+		"metrics.addr":                      "",
 	}
 	got := map[string]any{
 		"server.addr":                       cfg.Server.Addr,
@@ -71,6 +74,9 @@ func TestDefaults(t *testing.T) {
 		"transactions.isolation":            cfg.TX.Isolation,
 		"transactions.max_retries":          cfg.TX.MaxRetries,
 		"errors.detail":                     cfg.Errors.Detail,
+		"metrics.enabled":                   cfg.Metrics.Enabled,
+		"metrics.path":                      cfg.Metrics.Path,
+		"metrics.addr":                      cfg.Metrics.Addr,
 	}
 	for k, w := range want {
 		if !reflect.DeepEqual(got[k], w) {
@@ -117,6 +123,20 @@ func TestValidateRules(t *testing.T) {
 		"18a claims prefix":      {func(c *Config) { c.RLS.ClaimsPrefix = "plpgsql.claims" }, "rls.claims_prefix"},
 		"18b claims prefix pg_":  {func(c *Config) { c.RLS.ClaimsPrefix = "pg_x.claims" }, "rls.claims_prefix"},
 		"18c claims prefix syn":  {func(c *Config) { c.RLS.ClaimsPrefix = "a..b" }, "rls.claims_prefix"},
+		"19a metrics path":       {func(c *Config) { c.Metrics.Path = "metrics" }, "metrics.path"},
+		"19b metrics path root":  {func(c *Config) { c.Metrics.Path = "/" }, "metrics.path"},
+		"19c metrics path query": {func(c *Config) { c.Metrics.Path = "/metrics?x=1" }, "metrics.path"},
+		"20a metrics addr":       {func(c *Config) { c.Metrics.Addr = "9090" }, "metrics.addr"},
+		"20b metrics addr main":  {func(c *Config) { c.Metrics.Addr = ":8080" }, "metrics.addr"},
+		"21a metrics healthz":    {func(c *Config) { c.Metrics.Enabled = true; c.Metrics.Path = "/healthz" }, "collides"},
+		"21b metrics readyz":     {func(c *Config) { c.Metrics.Enabled = true; c.Metrics.Path = "/readyz" }, "collides"},
+		"21c metrics base_path":  {func(c *Config) { c.Metrics.Enabled = true; c.Metrics.Path = "/api" }, "collides"},
+		"21d metrics under base": {func(c *Config) { c.Metrics.Enabled = true; c.Metrics.Path = "/api/metrics" }, "collides"},
+		"21e metrics openapi": {func(c *Config) {
+			c.Metrics.Enabled = true
+			c.Server.BasePath = ""
+			c.Metrics.Path = "/openapi.json"
+		}, "collides"},
 	}
 	for name, tc := range cases {
 		cfg := valid()
@@ -136,6 +156,15 @@ func TestValidateRules(t *testing.T) {
 		"strict":          func(c *Config) { c.Errors.Detail = "strict" },
 		"rls off no jwt":  func(c *Config) { c.RLS.Enabled = false; c.RLS.Auth.JWTSecret = "" },
 		"mode none":       func(c *Config) { c.RLS.Auth.Mode = "none"; c.RLS.Auth.JWTSecret = "" },
+		"metrics on":      func(c *Config) { c.Metrics.Enabled = true },
+		"metrics apiish":  func(c *Config) { c.Metrics.Enabled = true; c.Metrics.Path = "/apis/metrics" },
+		"metrics own addr": func(c *Config) {
+			c.Metrics.Enabled = true
+			c.Metrics.Addr = "127.0.0.1:9090"
+			c.Metrics.Path = "/api/metrics"
+		},
+		"metrics root api": func(c *Config) { c.Metrics.Enabled = true; c.Server.BasePath = "" },
+		"metrics off path": func(c *Config) { c.Metrics.Path = "/healthz" },
 	}
 	for name, mutate := range ok {
 		cfg := valid()
