@@ -137,7 +137,8 @@ func TestPreferCount(t *testing.T) {
 	}{
 		{req{url: "/api/users", header: map[string]string{"Prefer": "count=exact"}}, true, plan.CountExact, []string{"count=exact"}},
 		{req{url: "/api/users", header: map[string]string{"Prefer": "count=planned"}}, true, plan.CountPlanned, []string{"count=planned"}},
-		{req{method: "HEAD", url: "/api/posts?select=id", header: map[string]string{"Prefer": "count=estimated"}}, true, plan.CountEstimated, []string{"count=estimated"}},
+		{req{method: "HEAD", url: "/api/users?select=id", header: map[string]string{"Prefer": "count=estimated"}}, true, plan.CountEstimated, []string{"count=estimated"}},
+		{req{method: "HEAD", url: "/api/posts?select=id", header: map[string]string{"Prefer": "count=estimated"}}, true, plan.CountExact, []string{"count=exact"}},
 		{req{url: "/api/users?mood=eq.ok", header: map[string]string{"Prefer": "count=planned"}}, true, plan.CountExact, []string{"count=exact"}},
 		{req{url: "/api/users?distinct=mood", header: map[string]string{"Prefer": "count=estimated"}}, true, plan.CountExact, []string{"count=exact"}},
 		{req{url: "/api/users?select=id,posts!inner(id)&limit=1", header: map[string]string{"Prefer": "count=planned"}}, true, plan.CountExact, []string{"count=exact"}},

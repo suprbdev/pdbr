@@ -460,10 +460,11 @@ func (s *stmt) list() (*Statement, error) {
 
 // CountPlannable reports whether a list request's total can come from the
 // planner statistics (Prefer: count=planned|estimated): an unfiltered scan of
-// a table or materialized view, without distinct= or !inner embeds. Anything
-// else is counted exactly.
+// a table or materialized view without row-level security (the statistic
+// would reveal how many rows the policies hide), distinct= or !inner embeds.
+// Anything else is counted exactly.
 func CountPlannable(p *plan.Request) bool {
-	if p == nil || p.RPC != nil || p.Resource == nil || p.Filter != nil || len(p.Distinct) > 0 {
+	if p == nil || p.RPC != nil || p.Resource == nil || p.Filter != nil || len(p.Distinct) > 0 || p.Resource.Table.RLSEnabled {
 		return false
 	}
 	switch p.Resource.Table.Kind {
@@ -484,11 +485,13 @@ func hasInner(n *plan.Node) bool {
 }
 
 // totalSQL renders the list total per Request.CountMode: planned reads
-// pg_class.reltuples (falling back to the exact count while the table has
-// never been analysed, reltuples = -1); estimated counts exactly up to
-// max_page_size rows and switches to the statistic above. The fallback and
-// the exact branches are uncorrelated subqueries, which PostgreSQL only
-// evaluates when the CASE reaches them.
+// pg_class.reltuples — summed over the leaf partitions of a partitioned
+// table — and falls back to the exact count while any of them has never been
+// analysed (reltuples = -1), for a leaf that is not a plain table, and for a
+// legacy inheritance parent (its statistic excludes the children a scan
+// returns); estimated counts exactly up to max_page_size rows and switches
+// to the statistic above. The exact branches are uncorrelated subqueries,
+// which PostgreSQL only evaluates when the CASE reaches them.
 func (s *stmt) totalSQL(node *plan.Node, dcols []*introspect.Column) (string, error) {
 	mode := s.plan.CountMode
 	if mode != plan.CountPlanned && mode != plan.CountEstimated || !CountPlannable(s.plan) {
@@ -500,8 +503,11 @@ func (s *stmt) totalSQL(node *plan.Node, dcols []*introspect.Column) (string, er
 	}
 	t := s.plan.Resource.Table
 	cls := s.alias("pc")
-	planned := fmt.Sprintf("(SELECT CASE WHEN %s.reltuples >= 0 THEN %s.reltuples::bigint ELSE %s END FROM pg_catalog.pg_class %s WHERE %s.oid = %s::regclass)",
-		cls, cls, exact, cls, cls, quoteLiteral(tableRef(t)))
+	leaf, tree := s.alias("pl"), s.alias("pt")
+	leaves := fmt.Sprintf("(SELECT CASE WHEN bool_and(%s.relkind = 'r' AND %s.reltuples >= 0) THEN sum(%s.reltuples)::bigint END FROM pg_catalog.pg_partition_tree(%s.oid) %s JOIN pg_catalog.pg_class %s ON %s.oid = %s.relid WHERE %s.isleaf)",
+		leaf, leaf, leaf, cls, tree, leaf, leaf, tree, tree)
+	planned := fmt.Sprintf("(SELECT CASE WHEN %s.relkind = 'p' THEN coalesce(%s, %s) WHEN %s.relhassubclass OR %s.reltuples < 0 THEN %s ELSE %s.reltuples::bigint END FROM pg_catalog.pg_class %s WHERE %s.oid = %s::regclass)",
+		cls, leaves, exact, cls, cls, exact, cls, cls, cls, quoteLiteral(tableRef(t)))
 	if mode == plan.CountPlanned {
 		return planned, nil
 	}

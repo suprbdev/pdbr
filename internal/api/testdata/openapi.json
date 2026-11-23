@@ -197,7 +197,7 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
             "schema": {
               "type": "string"
             }
@@ -441,7 +441,7 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
             "schema": {
               "type": "string"
             }
@@ -1677,7 +1677,7 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
             "schema": {
               "type": "string"
             }
@@ -1903,7 +1903,7 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
             "schema": {
               "type": "string"
             }
@@ -3051,7 +3051,7 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
             "schema": {
               "type": "string"
             }
@@ -3213,7 +3213,7 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
             "schema": {
               "type": "string"
             }
@@ -3441,7 +3441,7 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
             "schema": {
               "type": "string"
             }
@@ -3689,7 +3689,7 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
             "schema": {
               "type": "string"
             }
@@ -4955,7 +4955,7 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
             "schema": {
               "type": "string"
             }
@@ -5203,7 +5203,7 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
             "schema": {
               "type": "string"
             }
@@ -7498,7 +7498,7 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
             "schema": {
               "type": "string"
             }
@@ -7713,7 +7713,7 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
             "schema": {
               "type": "string"
             }
@@ -8381,7 +8381,7 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
             "schema": {
               "type": "string"
             }
@@ -8691,7 +8691,7 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+            "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
             "schema": {
               "type": "string"
             }

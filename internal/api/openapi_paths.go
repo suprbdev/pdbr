@@ -521,7 +521,7 @@ func preferParam(maxAffected, count bool) *Parameter {
 // countPreferParam documents Prefer: count= on list reads.
 func countPreferParam() *Parameter {
 	return &Parameter{Name: "Prefer", In: "header", Schema: &Schema{Type: "string"},
-		Description: "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences."}
+		Description: "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences."}
 }
 
 // contentRangeHeader documents Content-Range on list responses.

@@ -1,2 +1,2 @@
-GET /api/posts?select=id
+GET /api/users?select=id
 Prefer: count=estimated

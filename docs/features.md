@@ -116,7 +116,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **As built (v0.1.0): ev
 - [x] `X-Next-Cursor` / `X-Prev-Cursor` headers when a next/prev page exists (v1) (new)
 - [x] `Link: <…>; rel="next", <…>; rel="prev"` built from the request URL (`after=`/`before=`, or `offset=` for offset-only resources) (v1) (new)
 - [x] Cost limit `server.max_cost` (1 + Σ mult × child; `@costMultiplier` lowers) → 400 `cost_exceeded` (v1) (parity)
-- [x] `Prefer: count=exact|planned|estimated` (planned = `pg_class.reltuples`, estimated = exact up to `server.max_page_size` rows; filtered/distinct/view/function requests count exactly) and `Content-Range: 0-24/*|N` on list pages, alongside `X-Total-Count` (v1.x) (new)
+- [x] `Prefer: count=exact|planned|estimated` (planned = `pg_class.reltuples`, summed over leaf partitions; estimated = exact up to `server.max_page_size` rows; filtered/distinct/RLS/view/function requests count exactly) and `Content-Range: 0-24/*|N` on list pages, alongside `X-Total-Count` (v1.x) (new)
 - [ ] `Range` request header pagination and `206 Partial Content` (PostgREST style) (stretch) (new)
 
 ## Mutations
@@ -316,7 +316,7 @@ these are the deliberate departures (each documented in its topic page):
 - **`count=planned` reads `pg_class.reltuples`** instead of running
   `EXPLAIN` (a second statement); it and `count=estimated` (threshold
   `server.max_page_size`, PostgREST's `db-max-rows`) apply to unfiltered
-  table scans only and fall back to `exact` otherwise
+  scans of tables without RLS only and fall back to `exact` otherwise
   (`Preference-Applied` says so).
 - **Counted list responses stay `200`** (PostgREST: `206 Partial Content`);
   keyset pages carry no `Content-Range`; the `Range` request header is not

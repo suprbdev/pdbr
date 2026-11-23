@@ -167,16 +167,19 @@ total of `Content-Range`; `Preference-Applied` names the mode actually used.
 | Mode | Total | SQL (same statement) |
 |---|---|---|
 | `count=exact` | exact, after filters, distinct-aware | the `count(*)` subquery above |
-| `count=planned` | `pg_class.reltuples` of the table — the planner's row statistic, as current as the last `ANALYZE` / autovacuum | `(SELECT CASE WHEN pc.reltuples >= 0 THEN pc.reltuples::bigint ELSE <exact> END FROM pg_catalog.pg_class pc WHERE pc.oid = '"public"."posts"'::regclass)`; a never-analysed table (`reltuples = -1`) falls back to the exact count |
+| `count=planned` | `pg_class.reltuples` of the table — the planner's row statistic, as current as the last `ANALYZE` / autovacuum; for a partitioned table the sum over its leaf partitions (`pg_partition_tree`) | `(SELECT CASE WHEN pc.relkind = 'p' THEN coalesce(<sum of leaf reltuples>, <exact>) WHEN pc.relhassubclass OR pc.reltuples < 0 THEN <exact> ELSE pc.reltuples::bigint END FROM pg_catalog.pg_class pc WHERE pc.oid = '"public"."users"'::regclass)`; the exact count is used when the table (or any leaf partition) was never analysed (`reltuples = -1`), when a leaf is not a plain table (foreign / partitioned), and for legacy inheritance parents, whose statistic excludes the children a scan returns |
 | `count=estimated` | exact while the table has at most `server.max_page_size` rows, planned above (never below `max_page_size + 1`) | a bounded `count(*)` over `LIMIT max_page_size + 1` rows, then the planned expression |
 
 `planned`/`estimated` need an unfiltered scan of a table or materialized
-view: with filters, `distinct=`, `!inner` embeds, on views and on functions
-pdbr counts exactly and answers `Preference-Applied: count=exact`.
+view **without row-level security**: with filters, `distinct=`, `!inner`
+embeds, on RLS-enabled tables (the statistic would reveal how many rows the
+policies hide), on views and on functions pdbr counts exactly and answers
+`Preference-Applied: count=exact`. The in-SQL fallbacks of the table above
+(never analysed, inheritance parent) still report `count=planned`.
 PostgREST runs `EXPLAIN` as a second statement for `planned`, which pdbr's
 one-statement rule forbids (SQL cannot read a plan estimate inside a
 query), so pdbr uses the table statistic and only where it is the right
-number. The statistic ignores RLS, like `EXPLAIN` row estimates.
+number.
 
 `Content-Range` is `<offset>-<offset + rows - 1>/<total or *>` and `*/<total
 or *>` for an empty page; keyset pages (`after=`/`before=`) carry none
