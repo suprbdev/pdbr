@@ -53,6 +53,7 @@ See [cli.md](cli.md) for details.
 | `server.addr` | string | `:8080` | listen address |
 | `server.base_path` | string | `/api` | prefix for every API route; `""` mounts at the root. `/healthz` and `/readyz` are never prefixed |
 | `server.openapi` | bool | `true` | serve `GET {base}/openapi.json`; see [openapi.md](openapi.md) |
+| `server.openapi_domains` | bool | `true` | each domain over a built-in type gets a named component schema (`components/schemas/<domain>`) referenced by columns, arguments and results; `false` inlines the base type's schema. See [openapi.md](openapi.md#domains) |
 | `server.request_timeout` | duration | `30s` | overall HTTP request timeout; expiry → `504` problem |
 | `server.max_body_bytes` | int | 1048576 | maximum request body size (1 MiB); over → `413` |
 | `server.max_embed_depth` | int | 5 | maximum `select=` embed nesting; over → `400 embed_depth_exceeded` |

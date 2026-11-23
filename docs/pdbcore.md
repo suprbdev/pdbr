@@ -58,9 +58,10 @@ Not moved at all (GraphQL-only, listed for completeness): `internal/schema`,
 ### `introspect`
 
 ```go
-const CatalogFormatVersion = 7 // v0.4.0; 3 at extraction
-type Catalog struct { FormatVersion int; Schemas []string; Tables []*Table; Enums []*Enum; Composites []*Composite; Functions []*Function; Ranges []*RangeType; PostGIS *PostGISInfo }
-type Column struct { …; TypeSchema, PGType, BaseTypeSchema string; … } // BaseTypeSchema: schema of the resolved base type (domains unwrapped)
+const CatalogFormatVersion = 8 // domains; 7 in v0.4.0; 3 at extraction
+type Catalog struct { FormatVersion int; Schemas []string; Tables []*Table; Enums []*Enum; Composites []*Composite; Functions []*Function; Ranges []*RangeType; Domains []*Domain; PostGIS *PostGISInfo }
+type Column struct { …; TypeSchema, PGType, BaseTypeSchema, Domain string; … } // BaseTypeSchema: schema of the resolved base type (domains unwrapped); Domain: "schema.name" of the outermost domain
+type Domain struct { Schema, Name, BaseType, BaseTypeSchema, Parent, Default, Comment string; IsArrayBase, NotNull bool; Checks []string } // Catalog.Domain / DomainByRef / DomainChain
 type Table struct { Schema, Name string; Kind RelKind; Columns []*Column; PrimaryKey *Constraint; Uniques []*Constraint; ForeignKeys []*ForeignKey; Indexes []*Index; Privileges Privileges; RLSEnabled bool; Comment string }
 func Introspect(ctx context.Context, q Querier, schemas []string) (*Catalog, error)
 func (c *Catalog) Table(schema, name string) *Table

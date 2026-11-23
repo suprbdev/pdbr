@@ -40,6 +40,7 @@ type Server struct {
 	Addr                     string        `koanf:"addr" doc:"Listen address for the HTTP server."`
 	BasePath                 string        `koanf:"base_path" doc:"Prefix for every API route (\"\" mounts at the root). /healthz and /readyz are never prefixed."`
 	OpenAPI                  bool          `koanf:"openapi" doc:"Serve the OpenAPI 3.1 document at GET {base_path}/openapi.json (on by default; it reveals every table, column, relation and function to unauthenticated callers)."`
+	OpenAPIDomains           bool          `koanf:"openapi_domains" doc:"Document each domain over a built-in type as a named component schema (its base type's schema, the domain's comment and constraints, pattern/minimum/maximum when a CHECK is a simple comparison) that columns, arguments and results reference. Off inlines the base type's schema."`
 	RequestTimeout           time.Duration `koanf:"request_timeout" doc:"Overall HTTP request timeout; expiry answers 504."`
 	MaxBodyBytes             int64         `koanf:"max_body_bytes" doc:"Maximum accepted request body size in bytes; over answers 413."`
 	MaxEmbedDepth            int           `koanf:"max_embed_depth" doc:"Maximum select= embed nesting depth; deeper answers 400 embed_depth_exceeded."`
@@ -72,6 +73,7 @@ func DefaultConfig() Config {
 			Addr:           ":8080",
 			BasePath:       "/api",
 			OpenAPI:        true,
+			OpenAPIDomains: true,
 			RequestTimeout: 30 * time.Second,
 			MaxBodyBytes:   1 << 20,
 			MaxEmbedDepth:  5,

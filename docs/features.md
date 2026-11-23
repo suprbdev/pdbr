@@ -22,7 +22,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Composite types read into the catalog (parity)
 - [x] Composite-type columns mapped to OpenAPI object schemas (nested objects in bodies; composite arrays included) (parity)
 - [x] `CatalogFormatVersion` shared with pdbq; cache files interchangeable (new)
-- [ ] Domains surfaced as named schemas (currently resolved to the base type) (parity)
+- [x] Domains surfaced as named schemas (`server.openapi_domains`, on by default: one component per domain over a built-in type, `pattern`/bounds from simple `CHECK`s; see [openapi.md](openapi.md#domains)) (parity)
 - [x] Function argument default values / variadic args (`FuncArg.HasDefault`, `Function.Variadic`) (parity)
 - [x] Functions with `OUT`/`INOUT` parameters / `RETURNS TABLE` (`Function.ReturnColumns`) (parity)
 - [ ] Anonymous `record` returns (no output parameters: no shape to describe) (parity)

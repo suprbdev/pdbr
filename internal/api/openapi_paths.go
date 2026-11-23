@@ -659,7 +659,7 @@ func (b *Builder) pathParams(r *Resource, cols []string) []*Parameter {
 			out = append(out, &Parameter{Name: c, In: "path", Required: true, Schema: &Schema{Type: "string"}})
 			continue
 		}
-		s := b.typeSchema(f.Column.PGType, f.Column.TypeSchema, f.Column.EnumRef)
+		s := b.colTypeSchema(f.Column)
 		out = append(out, &Parameter{Name: f.Key, In: "path", Required: true, Schema: s, Description: "Percent-encoded value; composite keys are comma-separated in key order."})
 	}
 	return out
@@ -669,17 +669,17 @@ func (b *Builder) pathParams(r *Resource, cols []string) []*Parameter {
 // scalars keep their type, structured values (composites, arrays, json,
 // GeoJSON) travel as JSON text, hstore as its literal text.
 func (b *Builder) argParam(a introspect.FuncArg) *Parameter {
-	pgType := a.PGType
+	col := ArgColumn(b.Catalog, a)
 	if a.Variadic() {
-		pgType = strings.TrimPrefix(pgType, "_")
+		col.PGType, col.IsArray = strings.TrimPrefix(col.PGType, "_"), false
 	}
-	s := b.typeSchema(pgType, a.TypeSchema, "")
+	s := b.colTypeSchema(col)
 	desc := "Argument (" + a.PGType + ")" + argDefaultProse(a)
 	switch {
 	case s.Type == "object":
 		s = &Schema{Type: "string"}
 		desc += " As literal text (hstore: a=>1, b=>2)."
-	case s.Ref != "" && b.enumByRef(s.Ref) == nil || s.Type == "array" || (s.Type == nil && s.Ref == ""):
+	case s.Ref != "" && b.enumByRef(s.Ref) == nil && b.domainByRef(s.Ref) == nil || s.Type == "array" || (s.Type == nil && s.Ref == ""):
 		s = &Schema{Type: "string"}
 		desc += " Structured value as JSON text (spatial: GeoJSON or WKT)."
 	}
@@ -704,6 +704,19 @@ func argDefaultProse(a introspect.FuncArg) string {
 	return "; optional (has a default)."
 }
 
+// domainByRef returns the domain whose component a $ref names, or nil;
+// only a domain over a scalar base type qualifies, an array-valued one
+// travels as JSON text like other arrays.
+func (b *Builder) domainByRef(ref string) *Domain {
+	name := strings.TrimPrefix(ref, "#/components/schemas/")
+	for _, d := range b.Domains {
+		if d.Name == name && !d.Domain.IsArrayBase {
+			return d
+		}
+	}
+	return nil
+}
+
 func (b *Builder) enumByRef(ref string) *Enum {
 	name := strings.TrimPrefix(ref, "#/components/schemas/")
 	for _, e := range b.Enums {
@@ -717,7 +730,7 @@ func (b *Builder) enumByRef(ref string) *Enum {
 func (b *Builder) rpcBodySchema(rpc *RPC) *Schema {
 	s := &Schema{Type: "object", Properties: map[string]*Schema{}, AdditionalProperties: boolPtr(false)}
 	for _, a := range rpc.Args {
-		prop := *Nullable(b.inputTypeSchema(a.PGType, a.TypeSchema, "", ""))
+		prop := *Nullable(b.colInputTypeSchema(ArgColumn(b.Catalog, a)))
 		if a.HasDefault {
 			prop.Description = strings.TrimPrefix(argDefaultProse(a), "; ")
 		} else {
@@ -781,9 +794,9 @@ func (b *Builder) rpcResponses(rpc *RPC, get bool) map[string]*Response {
 	case ReturnSetOfComposite:
 		return list(SchemaRef(rpc.Composite.Name), nil)
 	case ReturnSetOfScalar:
-		return list(b.typeSchema(f.ReturnType, f.ReturnTypeSchema, ""), nil)
+		return list(b.returnTypeSchema(f), nil)
 	default:
-		return ok(Nullable(b.typeSchema(f.ReturnType, f.ReturnTypeSchema, "")))
+		return ok(Nullable(b.returnTypeSchema(f)))
 	}
 }
 

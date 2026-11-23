@@ -46,6 +46,9 @@ type Options struct {
 	AuthMode string
 	// CSV is server.csv (text/csv on list responses).
 	CSV bool
+	// Domains is server.openapi_domains: domains over built-in types get a
+	// named component schema that columns, arguments and results reference.
+	Domains bool
 	// Aggregates is server.aggregates: the list select= parameters
 	// document the aggregate grammar.
 	Aggregates bool
@@ -85,7 +88,9 @@ type Builder struct {
 	Enums map[string]*Enum
 	// Composites maps "schema.name" -> composite.
 	Composites map[string]*Composite
-	Extra      OpenAPIExtras
+	// Domains maps "schema.name" -> domain with a named schema.
+	Domains map[string]*Domain
+	Extra   OpenAPIExtras
 	// Surface is the query-grammar surface plugins switch on (advanced-filters,
 	// postgis); parse rejects the corresponding syntax while a flag is off so
 	// disabling a plugin removes its feature end to end.
@@ -141,6 +146,7 @@ func New(cat *introspect.Catalog, inflector coreinflect.Next, opts Options) *Bui
 		RPCs:         map[string]*RPC{},
 		Enums:        map[string]*Enum{},
 		Composites:   map[string]*Composite{},
+		Domains:      map[string]*Domain{},
 		Extra:        OpenAPIExtras{Schemas: map[string]*Schema{}, Types: map[string]*Schema{}, FilterOps: map[string][]string{}, InputTypes: map[string]*Schema{}},
 		log:          opts.Logger,
 		schemaNames:  map[string]bool{},
@@ -153,6 +159,7 @@ func New(cat *introspect.Catalog, inflector coreinflect.Next, opts Options) *Bui
 	b.addRelations()
 	b.addEnums()
 	b.addComposites()
+	b.addDomains()
 	b.addFunctions()
 	return b
 }
@@ -712,7 +719,8 @@ func (b *Builder) recordResource(f *introspect.Function) *Resource {
 		Description:     "Result row of " + f.Schema + "." + f.Name + ".",
 	}
 	for i, a := range f.ReturnColumns {
-		c := &introspect.Column{Name: a.Name, Position: i + 1, PGType: a.PGType, TypeSchema: a.TypeSchema, IsArray: strings.HasPrefix(a.PGType, "_")}
+		c := ArgColumn(b.Catalog, a)
+		c.Position = i + 1
 		t.Columns = append(t.Columns, c)
 		r.Columns = append(r.Columns, &Field{Column: c, Key: a.Name})
 		if b.Catalog.Composite(c.TypeSchema, strings.TrimPrefix(c.PGType, "_")) == nil {
@@ -834,9 +842,10 @@ type Built struct {
 	// RPCs maps "schema.function" -> rpc; RPCByPath maps its path key.
 	RPCs      map[string]*RPC
 	RPCByPath map[string]*RPC
-	// Enums / Composites are keyed by "schema.name".
+	// Enums / Composites / Domains are keyed by "schema.name".
 	Enums      map[string]*Enum
 	Composites map[string]*Composite
+	Domains    map[string]*Domain
 	// Routes is the deterministic router table.
 	Routes []*Route
 	// OpenAPI is built once; render with (*Document).JSON.
@@ -866,6 +875,7 @@ func (b *Builder) Build() (*Built, error) {
 		RPCByPath:  map[string]*RPC{},
 		Enums:      b.Enums,
 		Composites: b.Composites,
+		Domains:    b.Domains,
 		Surface:    b.Surface,
 		Extra:      b.Extra,
 		Warnings:   append([]string(nil), b.Warnings...),
