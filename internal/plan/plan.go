@@ -109,6 +109,10 @@ type FieldSel struct {
 	// Args are spatial projection args: "transform" (int SRID) and/or
 	// "simplify" (float64 tolerance). Nil when absent.
 	Args map[string]any
+	// CallArgs are the extra-argument values of a computed column
+	// (select=key(k=v)), keyed by argument name; absent arguments keep
+	// their DEFAULT.
+	CallArgs map[string]any
 	// Node is the nested select= of a SETOF <table> computed column
 	// (Computed.SetOf != nil); nil means "*".
 	Node *Node

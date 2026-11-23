@@ -1,0 +1,1 @@
+GET /api/users/1?select=id,recent_posts(n=2,id,title)

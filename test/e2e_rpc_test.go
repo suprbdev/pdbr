@@ -449,17 +449,33 @@ func TestComputedColumns(t *testing.T) {
 	if len(rows) != 3 || rows[0]["post_count"] != "2" || rows[2]["post_count"] != "1" {
 		t.Errorf("list post_count = %v", rows)
 	}
-	// Computed columns never appear in * and are select-only; recent_posts
-	// (extra argument) and excerpt are not exposed in v1.
+	// Computed columns never appear in * and are select-only.
 	getJSON(t, srv.URL+"/api/users/1", &u)
 	if _, ok := u["post_count"]; ok {
 		t.Error("computed column leaked into *")
 	}
-	for _, path := range []string{"/api/users/1?select=recent_posts", "/api/posts/1?select=excerpt", "/api/users/1?select=post_count(len=1)"} {
+	for path, code := range map[string]string{
+		"/api/users/1?select=recent_posts":         "missing_argument",
+		"/api/posts/1?select=excerpt":              "missing_argument",
+		"/api/posts/1?select=excerpt(len=1)":       "unknown_argument",
+		"/api/posts/1?select=excerpt(max_chars=x)": "invalid_filter",
+		"/api/users/1?select=post_count(len=1)":    "unknown_argument",
+		"/api/posts?select=excerpt&excerpt=eq.a":   "column_not_filterable",
+	} {
 		res, body, _ := rpcCall(t, "GET", srv.URL+path, "", nil)
-		if res.StatusCode != 400 {
-			t.Errorf("GET %s = %d %s, want 400", path, res.StatusCode, body)
-		}
+		wantProblem(t, res, body, 400, code)
+	}
+	var pr row
+	getJSON(t, srv.URL+"/api/posts/1?select=id,excerpt(max_chars=5),short:excerpt(max_chars=\"3\")", &pr)
+	if e, _ := pr["excerpt"].(string); len(e) != 5 {
+		t.Errorf("excerpt(max_chars=5) = %v", pr)
+	}
+	if e, _ := pr["short"].(string); len(e) != 3 {
+		t.Errorf("short:excerpt(max_chars=3) = %v", pr)
+	}
+	getJSON(t, srv.URL+"/api/users/1?select=id,recent_posts(n=1,id,title)", &u)
+	if rp, _ := u["recent_posts"].([]any); len(rp) != 1 || len(rp[0].(map[string]any)) != 2 {
+		t.Errorf("recent_posts(n=1,id,title) = %v", u["recent_posts"])
 	}
 	// A computed column selected on a mutation response is evaluated over the
 	// RETURNING row (ROW(...)::table cast).

@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/suprbdev/pdbcore/introspect"
 	"github.com/suprbdev/pdbcore/postgis"
 
 	"github.com/suprbdev/pdbr/internal/api"
@@ -21,9 +22,9 @@ type selectItem struct {
 	outCast  string // type after a closing parenthesis: fn()::type
 }
 
-// splitTop splits s on sep at nesting depth 0 (parentheses, braces and
+// splitTop splits s on commas at nesting depth 0 (parentheses, braces and
 // double quotes are respected); ok is false on unbalanced input.
-func splitTop(s string, sep byte) (parts []string, ok bool) {
+func splitTop(s string) (parts []string, ok bool) {
 	var out []string
 	depth := 0
 	inQuote := false
@@ -46,7 +47,7 @@ func splitTop(s string, sep byte) (parts []string, ok bool) {
 			if depth < 0 {
 				return nil, false
 			}
-		case c == sep && depth == 0:
+		case c == ',' && depth == 0:
 			out = append(out, s[start:i])
 			start = i + 1
 		}
@@ -117,7 +118,7 @@ func (p *parser) parseSelect(s string, res *api.Resource, depth int) (*plan.Node
 		node.Star = true
 		return node, nil
 	}
-	items, ok := splitTop(s, ',')
+	items, ok := splitTop(s)
 	if !ok {
 		return nil, errf(CodeInvalidSelect, "unbalanced parentheses or quotes in select")
 	}
@@ -172,13 +173,25 @@ func (p *parser) resolveSelectItem(node *plan.Node, it selectItem, depth int) er
 		}
 		return errf(CodeUnknownColumn, "unknown column %q on %q", it.name, res.Path)
 	}
-	if it.hasInner {
+	inner := it.inner
+	if fs.Computed != nil && it.hasInner {
+		args, rest, err := p.computedArgs(fs.Computed, it.inner)
+		if err != nil {
+			return err
+		}
+		fs.CallArgs = args
+		inner = rest
+		if fs.Computed.SetOf == nil && rest != "" {
+			return errf(CodeInvalidSelect, "computed column %q takes only arguments (k=v), got %q", it.name, strings.TrimSpace(rest))
+		}
+	}
+	if it.hasInner && (fs.Computed == nil || fs.Computed.SetOf != nil && inner != "") {
 		switch {
 		case fs.Computed != nil && fs.Computed.SetOf != nil:
 			if depth+1 > p.opts.maxEmbedDepth() {
 				return errf(CodeEmbedDepthExceeded, "select nesting exceeds max_embed_depth %d", p.opts.maxEmbedDepth())
 			}
-			sub, err := p.parseSelect(it.inner, fs.Computed.SetOf, depth+1)
+			sub, err := p.parseSelect(inner, fs.Computed.SetOf, depth+1)
 			if err != nil {
 				return err
 			}
@@ -199,6 +212,69 @@ func (p *parser) resolveSelectItem(node *plan.Node, it selectItem, depth int) er
 	}
 	node.Fields = append(node.Fields, fs)
 	return nil
+}
+
+// computedArgs splits the parenthesised part of a computed-column item into
+// its k=v arguments (validated and coerced against the function's extra
+// arguments) and the remaining items, the nested select of a SETOF <table>
+// column. A value is bare text or a double-quoted string.
+func (p *parser) computedArgs(c *api.Computed, inner string) (map[string]any, string, error) {
+	items, ok := splitTop(inner)
+	if !ok {
+		return nil, "", errf(CodeInvalidSelect, "unbalanced parentheses or quotes in select")
+	}
+	byName := make(map[string]introspect.FuncArg, len(c.Args))
+	for _, a := range c.Args {
+		byName[a.Name] = a
+	}
+	var args map[string]any
+	var rest []string
+	for _, raw := range items {
+		name, val, isArg := cutArg(raw)
+		if !isArg {
+			if strings.TrimSpace(raw) != "" {
+				rest = append(rest, raw)
+			}
+			continue
+		}
+		a, ok := byName[name]
+		if !ok {
+			return nil, "", errf(CodeUnknownArgument, "computed column %q has no argument %q", c.Key, name)
+		}
+		if _, dup := args[name]; dup {
+			return nil, "", errf(CodeInvalidSelect, "duplicate argument %q", name)
+		}
+		v, uerr := p.coerceText(p.typeOf(api.ArgColumn(p.built.Catalog, a)), val)
+		if uerr != nil {
+			return nil, "", errf(CodeInvalidFilter, "argument %q: %s", name, uerr.Detail)
+		}
+		if args == nil {
+			args = map[string]any{}
+		}
+		args[name] = v
+	}
+	return args, strings.Join(rest, ","), nil
+}
+
+// cutArg splits "name=value" with an identifier name; a double-quoted value
+// is unquoted (\" and \\ escape). Anything else is not an argument.
+func cutArg(raw string) (name, val string, ok bool) {
+	k, v, found := strings.Cut(strings.TrimSpace(raw), "=")
+	if !found || k == "" || strings.ContainsAny(k, "():\"!. ") {
+		return "", "", false
+	}
+	if len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"' {
+		var b strings.Builder
+		q := v[1 : len(v)-1]
+		for i := 0; i < len(q); i++ {
+			if q[i] == '\\' && i+1 < len(q) {
+				i++
+			}
+			b.WriteByte(q[i])
+		}
+		v = b.String()
+	}
+	return k, v, true
 }
 
 func (p *parser) resolveEmbed(node *plan.Node, it selectItem, depth int) error {

@@ -147,6 +147,8 @@ type Computed struct {
 	Key      string
 	Function *introspect.Function
 	Resource *Resource
+	// Args are the arguments after the row, passed as select=key(k=v).
+	Args []introspect.FuncArg
 	// SetOf is the resource returned by SETOF <table> computed columns.
 	SetOf *Resource
 	// Filterable / Orderable admit the column to filters / order= (advanced-

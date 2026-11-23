@@ -3515,7 +3515,7 @@
         "operationId": "posts.list",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.9c45b2df"
+            "$ref": "#/components/parameters/query.select.b895bf87"
           },
           {
             "$ref": "#/components/parameters/query.order.d783c508"
@@ -3646,7 +3646,7 @@
         "operationId": "posts.list.head",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.9c45b2df"
+            "$ref": "#/components/parameters/query.select.b895bf87"
           },
           {
             "$ref": "#/components/parameters/query.order.d783c508"
@@ -3769,7 +3769,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the created row(s) to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the created row(s) to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Computed (select explicitly): excerpt(max_chars=<int4>). Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -3894,7 +3894,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the affected row(s) to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the affected row(s) to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Computed (select explicitly): excerpt(max_chars=<int4>). Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -4038,7 +4038,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the updated rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the updated rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Computed (select explicitly): excerpt(max_chars=<int4>). Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -4170,7 +4170,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the deleted rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the deleted rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Computed (select explicitly): excerpt(max_chars=<int4>). Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -4284,7 +4284,7 @@
         "operationId": "posts.get",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.9c45b2df"
+            "$ref": "#/components/parameters/query.select.b895bf87"
           },
           {
             "$ref": "#/components/parameters/header.If-None-Match"
@@ -4346,7 +4346,7 @@
         "operationId": "posts.get.head",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.9c45b2df"
+            "$ref": "#/components/parameters/query.select.b895bf87"
           },
           {
             "$ref": "#/components/parameters/header.If-None-Match"
@@ -4403,7 +4403,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the updated row to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the updated row to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Computed (select explicitly): excerpt(max_chars=<int4>). Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -4507,7 +4507,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the deleted row to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the deleted row to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Computed (select explicitly): excerpt(max_chars=<int4>). Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -5602,7 +5602,7 @@
             "$ref": "#/components/parameters/query.term"
           },
           {
-            "$ref": "#/components/parameters/query.select.f1e6cf5e"
+            "$ref": "#/components/parameters/query.select.09478157"
           },
           {
             "$ref": "#/components/parameters/query.order.d783c508"
@@ -5709,7 +5709,7 @@
             "$ref": "#/components/parameters/query.term"
           },
           {
-            "$ref": "#/components/parameters/query.select.f1e6cf5e"
+            "$ref": "#/components/parameters/query.select.09478157"
           },
           {
             "$ref": "#/components/parameters/query.order.d783c508"
@@ -5803,7 +5803,7 @@
         "operationId": "rpc.search_posts.post",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.f1e6cf5e"
+            "$ref": "#/components/parameters/query.select.09478157"
           },
           {
             "$ref": "#/components/parameters/query.order.d783c508"
@@ -6092,7 +6092,7 @@
         "operationId": "users.list",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.52dc571a"
+            "$ref": "#/components/parameters/query.select.7d578cb5"
           },
           {
             "$ref": "#/components/parameters/query.order.dfacfa84"
@@ -6232,7 +6232,7 @@
         "operationId": "users.list.head",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.52dc571a"
+            "$ref": "#/components/parameters/query.select.7d578cb5"
           },
           {
             "$ref": "#/components/parameters/query.order.dfacfa84"
@@ -6364,7 +6364,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the created row(s) to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the created row(s) to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, recent_posts(n=<int4>), tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -6494,7 +6494,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the affected row(s) to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the affected row(s) to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, recent_posts(n=<int4>), tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -6643,7 +6643,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the updated rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the updated rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, recent_posts(n=<int4>), tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -6784,7 +6784,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the deleted rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the deleted rows to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, recent_posts(n=<int4>), tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -6907,7 +6907,7 @@
         "operationId": "users.by_email",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.52dc571a"
+            "$ref": "#/components/parameters/query.select.7d578cb5"
           },
           {
             "$ref": "#/components/parameters/header.If-None-Match"
@@ -6969,7 +6969,7 @@
         "operationId": "users.by_email.head",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.52dc571a"
+            "$ref": "#/components/parameters/query.select.7d578cb5"
           },
           {
             "$ref": "#/components/parameters/header.If-None-Match"
@@ -7026,7 +7026,7 @@
           {
             "name": "select",
             "in": "query",
-            "description": "Columns and embeds of the row to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+            "description": "Columns and embeds of the row to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, recent_posts(n=<int4>), tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
             "schema": {
               "type": "string"
             }
@@ -7212,7 +7212,7 @@
         "operationId": "users.by_email.update",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.10a6eb69"
+            "$ref": "#/components/parameters/query.select.477fc8ec"
           },
           {
             "$ref": "#/components/parameters/header.If-Match"
@@ -7311,7 +7311,7 @@
         "operationId": "users.by_email.delete",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.b05d04bd"
+            "$ref": "#/components/parameters/query.select.c8dbe8c4"
           },
           {
             "$ref": "#/components/parameters/header.If-Match"
@@ -7406,7 +7406,7 @@
         "operationId": "users.get",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.52dc571a"
+            "$ref": "#/components/parameters/query.select.7d578cb5"
           },
           {
             "$ref": "#/components/parameters/header.If-None-Match"
@@ -7468,7 +7468,7 @@
         "operationId": "users.get.head",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.52dc571a"
+            "$ref": "#/components/parameters/query.select.7d578cb5"
           },
           {
             "$ref": "#/components/parameters/header.If-None-Match"
@@ -7523,7 +7523,7 @@
         "operationId": "users.update",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.10a6eb69"
+            "$ref": "#/components/parameters/query.select.477fc8ec"
           },
           {
             "$ref": "#/components/parameters/header.If-Match"
@@ -7622,7 +7622,7 @@
         "operationId": "users.delete",
         "parameters": [
           {
-            "$ref": "#/components/parameters/query.select.b05d04bd"
+            "$ref": "#/components/parameters/query.select.c8dbe8c4"
           },
           {
             "$ref": "#/components/parameters/header.If-Match"
@@ -8200,6 +8200,14 @@
               "$ref": "#/components/schemas/comments"
             }
           },
+          "excerpt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Computed (public.posts_excerpt). Select explicitly: select=excerpt(max_chars=<int4>). Arguments: max_chars (int4, required).",
+            "readOnly": true
+          },
           "id": {
             "type": "integer",
             "format": "int32",
@@ -8392,6 +8400,14 @@
             "items": {
               "$ref": "#/components/schemas/address"
             }
+          },
+          "recent_posts": {
+            "type": "array",
+            "description": "Computed (public.users_recent_posts). Select explicitly: select=recent_posts(n=<int4>). Arguments: n (int4, required).",
+            "items": {
+              "$ref": "#/components/schemas/posts"
+            },
+            "readOnly": true
           },
           "settings": {},
           "tag_words": {
@@ -9083,10 +9099,10 @@
           "isdistinct"
         ]
       },
-      "query.select.10a6eb69": {
+      "query.select.09478157": {
         "name": "select",
         "in": "query",
-        "description": "Columns and embeds of the updated row to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+        "description": "Columns and embeds of the returned rows. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Computed (select explicitly): excerpt(max_chars=<int4>). Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
         "schema": {
           "type": "string"
         }
@@ -9099,10 +9115,10 @@
           "type": "string"
         }
       },
-      "query.select.52dc571a": {
+      "query.select.477fc8ec": {
         "name": "select",
         "in": "query",
-        "description": "Columns and embeds to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+        "description": "Columns and embeds of the updated row to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, recent_posts(n=<int4>), tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
         "schema": {
           "type": "string"
         }
@@ -9115,18 +9131,10 @@
           "type": "string"
         }
       },
-      "query.select.9c45b2df": {
+      "query.select.7d578cb5": {
         "name": "select",
         "in": "query",
-        "description": "Columns and embeds to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
-        "schema": {
-          "type": "string"
-        }
-      },
-      "query.select.b05d04bd": {
-        "name": "select",
-        "in": "query",
-        "description": "Columns and embeds of the deleted row to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+        "description": "Columns and embeds to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, recent_posts(n=<int4>), tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
         "schema": {
           "type": "string"
         }
@@ -9139,18 +9147,26 @@
           "type": "string"
         }
       },
-      "query.select.c914e03b": {
+      "query.select.b895bf87": {
         "name": "select",
         "in": "query",
-        "description": "Columns and embeds to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, owner_id, name, location, area. Embeds: users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+        "description": "Columns and embeds to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Computed (select explicitly): excerpt(max_chars=<int4>). Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
         "schema": {
           "type": "string"
         }
       },
-      "query.select.f1e6cf5e": {
+      "query.select.c8dbe8c4": {
         "name": "select",
         "in": "query",
-        "description": "Columns and embeds of the returned rows. Comma list of items; item = column | alias:column | embed | *. Columns: id, author_id, title, body, published. Embeds: comments, users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+        "description": "Columns and embeds of the deleted row to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, email, full_name, mood, settings, tags, balance, created_at, address, prev_addresses, moods. Computed (select explicitly): post_count, recent_posts(n=<int4>), tag_words. Embeds: places, posts (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "query.select.c914e03b": {
+        "name": "select",
+        "in": "query",
+        "description": "Columns and embeds to return. Comma list of items; item = column | alias:column | embed | *. Columns: id, owner_id, name, location, area. Embeds: users (rel(...) with a nested select; rel!inner(...) drops parents without a match; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>).",
         "schema": {
           "type": "string"
         }

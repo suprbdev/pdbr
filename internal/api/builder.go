@@ -777,6 +777,17 @@ func (b *Builder) resolveReturn(rpc *RPC) bool {
 	}
 }
 
+// extraArgsSupported reports whether every argument after the first (the
+// row) is a plain IN parameter, which select=field(k=v) can pass by name.
+func extraArgsSupported(f *introspect.Function) bool {
+	for _, a := range f.Args[1:] {
+		if a.Variadic() || a.Mode == introspect.ArgModeInOut {
+			return false
+		}
+	}
+	return true
+}
+
 // extraArgsDefaulted reports whether every argument after the first (the
 // row) has a DEFAULT, so the function can be called with the row alone.
 func extraArgsDefaulted(f *introspect.Function) bool {
@@ -789,8 +800,9 @@ func extraArgsDefaulted(f *introspect.Function) bool {
 }
 
 // addComputed exposes a stable/immutable function whose first argument is
-// t's row type, and whose other arguments all have defaults, as a computed
-// column on t's resource.
+// t's row type as a computed column on t's resource. Extra arguments are
+// passed with select=key(k=v); filters and order= only admit columns whose
+// extra arguments all have defaults.
 func (b *Builder) addComputed(t *introspect.Table, f *introspect.Function) {
 	fkey := f.Schema + "." + f.Name
 	r := b.Resource(t.Schema, t.Name)
@@ -804,8 +816,8 @@ func (b *Builder) addComputed(t *introspect.Table, f *introspect.Function) {
 	case f.ReturnType == "void":
 		b.log.Debug("skipping computed column: void return", "function", fkey)
 		return
-	case !extraArgsDefaulted(f):
-		b.log.Debug("skipping computed column: extra arguments without defaults are not supported", "function", fkey)
+	case !extraArgsSupported(f):
+		b.log.Debug("skipping computed column: variadic and INOUT extra arguments are not supported", "function", fkey)
 		return
 	}
 	key := b.Inflect(inflect.KindComputedField, coreinflect.Input{Schema: f.Schema, Table: t.Name, Function: f.Name})
@@ -819,7 +831,9 @@ func (b *Builder) addComputed(t *introspect.Table, f *introspect.Function) {
 	}
 	c := &Computed{
 		Key: key, Function: f, Resource: r, Description: description(f.Comment),
-		Filterable: !f.ReturnsSet, Orderable: !f.ReturnsSet,
+		Args:       f.Args[1:],
+		Filterable: !f.ReturnsSet && extraArgsDefaulted(f),
+		Orderable:  !f.ReturnsSet && extraArgsDefaulted(f),
 	}
 	if f.ReturnsSet && b.Catalog.Table(f.ReturnTypeSchema, f.ReturnType) != nil {
 		c.SetOf = b.Resource(f.ReturnTypeSchema, f.ReturnType)

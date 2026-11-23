@@ -1,6 +1,7 @@
 package compile
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -106,7 +107,7 @@ func (s *stmt) fieldJSON(r *api.Resource, f *plan.FieldSel, alias string, depth 
 		if key == "" {
 			key = f.Computed.Key
 		}
-		expr, err := s.computedJSON(f.Computed, f.Node, alias, depth+1)
+		expr, err := s.computedJSON(f.Computed, f.Node, f.CallArgs, alias, depth+1)
 		return key, expr, err
 	case f.Pseudo != nil:
 		key := f.Alias
@@ -265,9 +266,9 @@ func derivedFor(accessor string) (postgis.Derived, bool) {
 // variable is an anonymous record the function would reject). Set-returning
 // functions aggregate into an array (SETOF <scalar>) or an array of fully
 // projected rows (SETOF <table>).
-func (s *stmt) computedJSON(c *api.Computed, node *plan.Node, alias string, depth int) (string, error) {
+func (s *stmt) computedJSON(c *api.Computed, node *plan.Node, args map[string]any, alias string, depth int) (string, error) {
 	fn := c.Function
-	call := s.computedCallSQL(fn, c.Resource.Table, alias)
+	call := s.computedCallSQL(fn, c.Resource.Table, alias, args)
 	ret := fnReturnColumn(fn)
 	if fn.ReturnsSet {
 		if c.SetOf != nil {
@@ -319,15 +320,29 @@ func rowParamSQL(t *introspect.Table, alias string) string {
 }
 
 // computedCallSQL renders a computed-column function called on the current
-// row: the row is its first argument and every other argument is left to
-// its DEFAULT (api only exposes functions whose extra arguments have one).
-func (s *stmt) computedCallSQL(fn *introspect.Function, t *introspect.Table, alias string) string {
+// row: the row is its first argument, the extra arguments present in args
+// are bound as typed parameters and the rest are left to their DEFAULT. A
+// required argument that is absent fails the request (missing_argument).
+func (s *stmt) computedCallSQL(fn *introspect.Function, t *introspect.Table, alias string, args map[string]any) string {
 	call, err := fn.CallSQL(func(a introspect.FuncArg) (string, bool, error) {
 		if a.Name == fn.Args[0].Name {
 			return rowParamSQL(t, alias), true, nil
 		}
-		return "", false, nil
+		v, ok := args[a.Name]
+		if !ok {
+			return "", false, nil
+		}
+		if v == nil {
+			return "NULL::" + argTypeSQL(a, s.c.Built), true, nil
+		}
+		p, err := s.argParam(a, v)
+		return p, true, err
 	})
+	var missing *introspect.MissingArgsError
+	if errors.As(err, &missing) {
+		s.fail(errUser(CodeMissingArgument, "computed column %q: missing required argument(s): %s", fn.Name, strings.Join(missing.Args, ", ")))
+		return "NULL"
+	}
 	if err != nil {
 		s.fail(fmt.Errorf("compile: computed column %s.%s: %w", fn.Schema, fn.Name, err))
 		return "NULL"

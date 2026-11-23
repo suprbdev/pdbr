@@ -1,0 +1,1 @@
+GET /api/posts?select=id,excerpt(max_chars=40)

@@ -275,8 +275,8 @@ CREATE FUNCTION users_post_count(u users) RETURNS bigint LANGUAGE sql STABLE AS 
 | set-returning (`SETOF <scalar>` / `SETOF <table>`) | array field; `SETOF <table>` accepts a nested `select=` like an embed: `select=id,recent_posts(id,title)` |
 | `int8` result (`count(*)`) | serialized as string like `int8` columns |
 | volatile / `void` | skipped |
-| extra arguments after the row | allowed when every one has a `DEFAULT` (the call passes only the row, so PostgreSQL applies the defaults); any extra argument without one → skipped |
-| filter / order (`post_count=gt.3`, `order=post_count.desc`) | `advanced-filters` plugin (bypasses the index policy by nature; `@omit filter|order` respected) |
+| extra arguments after the row | passed as `select=field(k=v,…)` (see below); omitted ones take their `DEFAULT`, an omitted one without a default → `400 missing_argument`; `VARIADIC` and `INOUT` extras → the function is skipped |
+| filter / order (`post_count=gt.3`, `order=post_count.desc`) | `advanced-filters` plugin, only for columns whose extra arguments all have defaults (called with the defaults) (bypasses the index policy by nature; `@omit filter|order` respected) |
 | RPC route | none — a function whose first arg is a row type is a computed column, not an RPC (pdbq parity); a row-type arg in any other position excludes the function entirely |
 | RETURNING (mutations) | selecting a computed column forces every column of the table into `RETURNING` ([mutations.md](mutations.md#rls-caveats-for-returning)) |
 | OpenAPI | listed as a `readOnly` property of the resource schema, absent from `.insert`/`.update` |
@@ -297,13 +297,18 @@ LIMIT 1
 `computed_field`, `computed_set`, `computed_on_mutation` pin the field, the
 `SETOF` array and the `__mut` mutation-response cases.)
 
-**Passing extra arguments is not yet supported.** Functions with additional
-named args without a default after the row arg (`posts_excerpt(p posts, len
-int4)`) are skipped as computed columns (and are not RPCs either, because of
-the row arg); defaulted extra args always take their default. The `select=` grammar reserves `field(k=v,…)` for them:
-`select=id,excerpt(len=80)`; currently the parenthesised form is only valid for
-PostGIS projection args (`geom(transform=4326)`), and using it on a computed
-column → `400`.
+**Extra arguments** go in the select item: `posts_excerpt(p posts, max_chars
+int4)` is `select=id,excerpt(max_chars=80)`. Each `k=v` is validated against the
+function's arguments (unknown → `400 unknown_argument`), coerced by the
+argument's pg type (`400 invalid_filter` on a bad value) and bound as a typed
+parameter; the call uses named notation and passes only the arguments present,
+so the SQL text depends on which arguments are given, never on their values
+(golden `computed_args`). A required argument that is absent → `400
+missing_argument` (also for a bare `select=excerpt`). Values may be
+double-quoted to carry `,` `)` or `=`. A `SETOF <table>` column takes `k=v`
+items and its nested select in the same parentheses:
+`recent_posts(n=2,id,title)`. The OpenAPI property description of each
+computed column lists its arguments with type, required/optional and default.
 
 ## `schema.functions: false`
 

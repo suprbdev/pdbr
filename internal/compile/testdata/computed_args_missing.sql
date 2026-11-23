@@ -1,0 +1,2 @@
+-- request: GET /api/posts?select=id,excerpt
+-- error: 400 missing_argument: computed column "posts_excerpt": missing required argument(s): max_chars

@@ -163,6 +163,28 @@ func TestSelect(t *testing.T) {
 			t.Fatalf("fields = %+v", f)
 		}
 	})
+	t.Run("computed arguments", func(t *testing.T) {
+		p := mustParse(t, b, `/api/posts?select=id,short:excerpt(max_chars="12"),excerpt(max_chars=3)`)
+		f := p.Select.Fields
+		if len(f) != 3 || f[1].Alias != "short" || f[1].CallArgs["max_chars"] != int64(12) || f[2].CallArgs["max_chars"] != int64(3) {
+			t.Fatalf("fields = %+v", f)
+		}
+		p = mustParse(t, b, "/api/users?select=recent_posts(n=2,id,title)")
+		f = p.Select.Fields
+		if f[0].CallArgs["n"] != int64(2) || f[0].Node == nil || len(f[0].Node.Fields) != 2 {
+			t.Fatalf("setof = %+v", f[0])
+		}
+		for u, code := range map[string]string{
+			"/api/posts?select=excerpt(nope=1)":                  CodeUnknownArgument,
+			"/api/posts?select=excerpt(max_chars=x)":             CodeInvalidFilter,
+			"/api/posts?select=excerpt(max_chars=1,max_chars=2)": CodeInvalidSelect,
+			"/api/posts?select=excerpt(id)":                      CodeInvalidSelect,
+			"/api/users?select=post_count(len=1)":                CodeUnknownArgument,
+		} {
+			_, err := doParse(t, b, req{url: u}, allOn)
+			wantCode(t, err, code)
+		}
+	})
 	t.Run("star plus computed", func(t *testing.T) {
 		p := mustParse(t, b, "/api/users?select=*,post_count")
 		if !p.Select.Star || len(p.Select.Fields) != 1 {

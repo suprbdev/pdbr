@@ -173,7 +173,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Computed columns: stable/immutable row-type functions → `select=` fields, key = function name minus `<table>_` prefix, `@name` override (via the inflector; smart-comments plugin M5), real column wins on collision (parity)
 - [x] Set-returning computed columns → array fields (parity)
 - [x] `schema.functions: false` disables RPC + computed columns (parity)
-- [ ] Computed-column extra args `field(k=v)` (grammar reserved) (parity)
+- [x] Computed-column extra args `select=field(k=v,…)`: validated against the function's arguments, bound as parameters, `400 missing_argument` when a required one is absent; select only (filters/order need all-defaulted args); documented in OpenAPI (parity)
 - [ ] Functions with table-valued arguments or polymorphic types (parity)
 
 ## Errors
