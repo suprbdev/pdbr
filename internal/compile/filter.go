@@ -527,16 +527,20 @@ func (s *stmt) scalarParam(col *introspect.Column, v any) string {
 
 // jsonParam adds a json/jsonb operand: raw JSON text (string / RawMessage)
 // passes through, anything else is marshalled.
-func (s *stmt) jsonParam(v any) string {
+func (s *stmt) jsonParam(v any) string { return s.param(jsonText(v)) }
+
+// jsonText renders a JSON value as text: strings and raw bytes are taken
+// as JSON text already, anything else is marshalled.
+func jsonText(v any) string {
 	switch x := v.(type) {
 	case string:
-		return s.param(x)
+		return x
 	case json.RawMessage:
-		return s.param(string(x))
+		return string(x)
 	case []byte:
-		return s.param(string(x))
+		return string(x)
 	}
-	return s.param(toJSONParam(v))
+	return toJSONParam(v)
 }
 
 // listParam adds a list-valued operand (in, array ops) as one typed array

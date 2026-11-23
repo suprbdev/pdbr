@@ -1,0 +1,4 @@
+POST /api/rpc/rename_user
+Content-Type: application/json
+
+{"u": {"id": 1}, "new_name": "Ada"}

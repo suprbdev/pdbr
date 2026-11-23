@@ -19,6 +19,8 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/suprbdev/pdbcore/introspect"
+	"github.com/suprbdev/pdbcore/plugin"
+	smartcatalog "github.com/suprbdev/pdbcore/smartcomments/catalog"
 	"github.com/suprbdev/pdbcore/testutil"
 
 	"github.com/suprbdev/pdbr/internal/api"
@@ -116,6 +118,9 @@ func goldenCatalog() *introspect.Catalog {
 			{Name: "nums", PGType: "_int4", TypeSchema: pg, Mode: introspect.ArgModeVariadic},
 		},
 	})
+	if err := plugin.NewRegistry(smartcatalog.New()).TransformCatalog(context.Background(), nil, cat); err != nil {
+		panic(err)
+	}
 	return testcatalog.Contrib(cat)
 }
 

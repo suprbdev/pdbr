@@ -423,6 +423,9 @@ func (b *Builder) openAPI(built *Built) *Document {
 		if rpc.Record {
 			doc.Components.Schemas[rpc.Resource.Path] = b.resourceSchema(rpc.Resource)
 		}
+		for _, r := range rpc.RowArgs {
+			doc.Components.Schemas[r.Path+".row"] = b.rowInputSchema(r)
+		}
 	}
 	for _, e := range b.Enums {
 		doc.Components.Schemas[e.Name] = &Schema{Type: "string", Enum: append([]string(nil), e.Values...), Description: e.Description}

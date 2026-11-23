@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"log/slog"
 	"os"
@@ -12,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/suprbdev/pdbcore/introspect"
+	"github.com/suprbdev/pdbcore/plugin"
+	smartcatalog "github.com/suprbdev/pdbcore/smartcomments/catalog"
 	"github.com/suprbdev/pdbcore/testutil"
 
 	"github.com/suprbdev/pdbr/internal/inflect"
@@ -275,17 +278,21 @@ func TestRPCExclusions(t *testing.T) {
 		&introspect.Function{Schema: "public", Name: "poly", Args: []introspect.FuncArg{{Name: "x", PGType: "anyelement", TypeSchema: pg}}, ReturnType: "anyelement", ReturnTypeSchema: pg, Volatility: introspect.VolatilityImmutable},
 		&introspect.Function{Schema: "public", Name: "as_record", ReturnType: "record", ReturnTypeSchema: pg, ReturnsSet: true, Volatility: introspect.VolatilityStable},
 		&introspect.Function{Schema: "public", Name: "handler", ReturnType: "language_handler", ReturnTypeSchema: pg, Volatility: introspect.VolatilityVolatile},
-		&introspect.Function{Schema: "public", Name: "row_arg_second", Args: []introspect.FuncArg{{Name: "n", PGType: "int4", TypeSchema: pg}, {Name: "u", PGType: "users", TypeSchema: "public"}}, ReturnType: "int4", ReturnTypeSchema: pg, Volatility: introspect.VolatilityStable},
+		&introspect.Function{Schema: "public", Name: "row_arg_hidden", Args: []introspect.FuncArg{{Name: "n", PGType: "int4", TypeSchema: pg}, {Name: "h", PGType: "_hidden", TypeSchema: "public"}}, ReturnType: "int4", ReturnTypeSchema: pg, Volatility: introspect.VolatilityStable},
+		&introspect.Function{Schema: "public", Name: "users_with_row_extra", Args: []introspect.FuncArg{{Name: "u", PGType: "users", TypeSchema: "public"}, {Name: "p", PGType: "posts", TypeSchema: "public"}}, ReturnType: "int4", ReturnTypeSchema: pg, Volatility: introspect.VolatilityStable},
 		&introspect.Function{Schema: "public", Name: "returns_hidden", ReturnType: "hidden", ReturnTypeSchema: "public", Volatility: introspect.VolatilityStable},
 		&introspect.Function{Schema: "public", Name: "unnamed", Args: []introspect.FuncArg{{Name: "", PGType: "int4", TypeSchema: pg}}, ReturnType: "int4", ReturnTypeSchema: pg, Volatility: introspect.VolatilityStable},
 	)
 	cat.Tables = append(cat.Tables, &introspect.Table{Schema: "public", Name: "hidden", Kind: introspect.RelTable,
 		Columns: []*introspect.Column{{Name: "id", Position: 1, PGType: "int4", NotNull: true}}})
 	b := build(t, cat, defaultOptions())
-	for _, name := range []string{"poly", "as_record", "handler", "row_arg_second", "returns_hidden", "unnamed"} {
+	for _, name := range []string{"poly", "as_record", "handler", "row_arg_hidden", "returns_hidden", "unnamed", "users_with_row_extra", "pick_first", "array_first"} {
 		if _, ok := b.RPCByPath[name]; ok {
 			t.Errorf("function %s should be excluded", name)
 		}
+	}
+	if b.ByPath["users"].Computed["with_row_extra"] != nil {
+		t.Error("a computed column with a row-typed extra argument cannot be called")
 	}
 	if !hasWarning(b.Warnings, "not exposed") {
 		t.Errorf("returns_hidden should warn: %v", b.Warnings)
@@ -646,5 +653,74 @@ func TestPartitions(t *testing.T) {
 		if _, ok := built.Match("/orders_2026"); ok != expose {
 			t.Errorf("expose=%v: partition routed = %v", expose, ok)
 		}
+	}
+}
+
+func TestRowTypeArguments(t *testing.T) {
+	b := fixture(t)
+	for name, want := range map[string]struct {
+		args     string
+		mutation bool
+	}{
+		"user_greeting":      {"u", false},
+		"total_title_length": {"ps", false},
+		"rename_user":        {"u", true},
+	} {
+		rpc := b.RPCByPath[name]
+		if rpc == nil {
+			t.Errorf("rpc %s missing", name)
+			continue
+		}
+		if len(rpc.RowArgs) != 1 || rpc.RowArgs[want.args] == nil || rpc.Mutation != want.mutation {
+			t.Errorf("rpc %s: row args %v, mutation %v", name, rpc.RowArgs, rpc.Mutation)
+		}
+	}
+	if b.RPCByPath["rename_user"].Methods[MethodGet] {
+		t.Error("rename_user is volatile: POST only")
+	}
+	if b.RPCByPath["user_greeting"].RowArgs["u"] != b.ByPath["users"] || b.RPCByPath["total_title_length"].RowArgs["ps"] != b.ByPath["posts"] {
+		t.Error("row args must map to their resources")
+	}
+	if rpc := b.RPCByPath["address_cities"]; rpc == nil || len(rpc.RowArgs) != 0 {
+		t.Errorf("address_cities takes a composite array, not rows: %+v", rpc)
+	}
+	if _, ok := b.RPCByPath["users_post_count"]; ok {
+		t.Error("stable leading-row functions stay computed columns only")
+	}
+}
+
+func TestRowTypeArgumentsDropWithResource(t *testing.T) {
+	bl := New(testutil.FixtureCatalog(), inflect.Default, defaultOptions())
+	bl.RemoveResource("public", "posts")
+	b, err := bl.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := b.RPCByPath["total_title_length"]; ok {
+		t.Error("an rpc taking rows of a removed resource must go with it")
+	}
+	if _, ok := b.RPCByPath["user_greeting"]; !ok {
+		t.Error("user_greeting does not depend on posts")
+	}
+}
+
+func TestPolymorphicArgumentsResolvedBySmartComments(t *testing.T) {
+	cat := testutil.FixtureCatalog()
+	if err := plugin.NewRegistry(smartcatalog.New()).TransformCatalog(context.Background(), nil, cat); err != nil {
+		t.Fatal(err)
+	}
+	b := build(t, cat, defaultOptions())
+	for name, typ := range map[string]string{"pick_first": "text", "larger_of": "numeric", "range_lower": "int4range"} {
+		rpc := b.RPCByPath[name]
+		if rpc == nil {
+			t.Errorf("rpc %s missing", name)
+			continue
+		}
+		if rpc.Args[0].PGType != typ || rpc.Methods[MethodPost] != true || rpc.Methods[MethodGet] != true {
+			t.Errorf("rpc %s: %+v", name, rpc.Args[0])
+		}
+	}
+	if _, ok := b.RPCByPath["array_first"]; ok {
+		t.Error("array_first has no tag and must stay skipped")
 	}
 }

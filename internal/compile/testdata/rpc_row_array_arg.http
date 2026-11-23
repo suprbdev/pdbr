@@ -1,0 +1,4 @@
+POST /api/rpc/total_title_length
+Content-Type: application/json
+
+{"ps": [{"title": "abc"}, null, {"id": 2, "title": "de"}]}

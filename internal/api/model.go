@@ -239,8 +239,13 @@ type RPC struct {
 	Resource *Resource
 	Record   bool
 	// Composite is set for composite returns.
-	Composite         *Composite
-	Args              []introspect.FuncArg
+	Composite *Composite
+	Args      []introspect.FuncArg
+	// RowArgs maps the name of each argument typed as a table's row type
+	// (or an array of one) to that table's resource. The argument takes a
+	// JSON object (array of objects) keyed by the resource's readable
+	// columns ([Resource.Columns]), all optional.
+	RowArgs           map[string]*Resource
 	Description       string
 	Deprecated        bool
 	DeprecationReason string

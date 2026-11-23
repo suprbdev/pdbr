@@ -73,6 +73,7 @@ Disable everything with `plugins.disabled: [smart-comments]` (see
 | `@foreignKey (…) references …` | view / table | embeds both ways, relation filters/order, nested-mutation keys |
 | `@enum` / `@enumDescription` | table / column | lookup table becomes an OpenAPI enum; resource disappears |
 | `@costMultiplier n` | FK | cost estimate for the backward embed |
+| `@anyelement t` / `@anycompatible t` | function | concrete type of a polymorphic signature: the function becomes an RPC typed with `t` |
 | `@behavior -tokens` | any of the above | aliases for `@omit` actions |
 
 ## Tag reference
@@ -146,6 +147,7 @@ nested create becomes `POST /posts {"title": "…", "author": {"connect": {"id":
 | `@deprecated [reason]` | `deprecated: true` on the RPC operations, or on the computed column's OpenAPI property. |
 | `@omit filter` / `@omit order` on a computed column | Keep the field in `select=`, drop its `advanced-filters` filter param / `order=` value. |
 | `@filterable` (alias `@sortable`) | Opt the computed column in when `advanced-filters` runs in opt-in mode. |
+| `@anyelement <type>` / `@anycompatible <type>` | Resolve a polymorphic function: its `anyelement` family (`anyarray`, `anyrange`, … derived from it) or `anycompatible` family takes `<type>` (`@anyelement integer`, `@anycompatible numeric`, `@anyelement public.mood`), so it becomes callable; without it the function is skipped. See [rpc.md](rpc.md#polymorphic-functions). |
 
 ### Enums (`COMMENT ON TYPE`)
 

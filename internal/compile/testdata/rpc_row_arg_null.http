@@ -1,0 +1,4 @@
+POST /api/rpc/user_greeting
+Content-Type: application/json
+
+{"greeting": "Hi", "u": null}

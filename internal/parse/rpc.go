@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/suprbdev/pdbcore/introspect"
 
@@ -52,6 +53,9 @@ func (p *parser) parseRPC(r *http.Request) error {
 					return false, nil
 				}
 				return false, errf(CodeUnknownArgument, "function %q has no argument %q", rpc.Function.Name, key)
+			}
+			if row := rpc.RowArgs[key]; row != nil {
+				return true, p.rowArgText(a, row, args, val)
 			}
 			t := p.typeOf(api.ArgColumn(p.built.Catalog, a))
 			if a.Variadic() {
@@ -105,6 +109,14 @@ func (p *parser) parseRPCBody(r *http.Request, argByName map[string]introspect.F
 		if !ok {
 			return errf(CodeUnknownArgument, "function %q has no argument %q", p.match.RPC.Function.Name, k)
 		}
+		if row := p.match.RPC.RowArgs[k]; row != nil {
+			val, rerr := p.rowArg(a, row, v, strings.HasPrefix(a.PGType, "_"), CodeInvalidBody)
+			if rerr != nil {
+				return rerr
+			}
+			args[k] = val
+			continue
+		}
 		t := p.typeOf(api.ArgColumn(p.built.Catalog, a))
 		val, cerr := p.coerceJSON(t, v)
 		if cerr != nil {
@@ -112,5 +124,30 @@ func (p *parser) parseRPCBody(r *http.Request, argByName map[string]introspect.F
 		}
 		args[k] = val
 	}
+	return nil
+}
+
+// rowArgText parses a row-typed argument from the query string: the JSON
+// object (array of objects) as text, or for a VARIADIC argument one JSON
+// object per repetition.
+func (p *parser) rowArgText(a introspect.FuncArg, res *api.Resource, args map[string]any, text string) error {
+	v, ok := decodeJSONArg(text)
+	if !ok {
+		return errf(CodeInvalidFilter, "argument %q: %q is not valid JSON", a.Name, text)
+	}
+	if a.Variadic() {
+		row, err := p.rowObject(a, res, v, CodeInvalidFilter)
+		if err != nil {
+			return err
+		}
+		list, _ := args[a.Name].([]any)
+		args[a.Name] = append(list, row)
+		return nil
+	}
+	val, err := p.rowArg(a, res, v, strings.HasPrefix(a.PGType, "_"), CodeInvalidFilter)
+	if err != nil {
+		return err
+	}
+	args[a.Name] = val
 	return nil
 }

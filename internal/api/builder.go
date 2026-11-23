@@ -206,6 +206,11 @@ func (b *Builder) RemoveResource(schema, table string) {
 		if rpc.Resource == r {
 			delete(b.RPCs, key)
 		}
+		for _, arg := range rpc.RowArgs {
+			if arg == r {
+				delete(b.RPCs, key)
+			}
+		}
 	}
 }
 
@@ -641,6 +646,42 @@ func (b *Builder) rowTypeArg(f *introspect.Function) (int, *introspect.Table) {
 	return -1, nil
 }
 
+// rowTypeArgFrom returns the index of the first argument at or after from
+// whose type is a table's row type or an array of one, or -1.
+func (b *Builder) rowTypeArgFrom(f *introspect.Function, from int) int {
+	for i := from; i < len(f.Args); i++ {
+		a := f.Args[i]
+		if b.Catalog.Table(a.TypeSchema, strings.TrimPrefix(a.PGType, "_")) != nil {
+			return i
+		}
+	}
+	return -1
+}
+
+// rowArgResources maps every argument of f typed as a table's row type, or
+// an array of one, to that table's resource. ok is false (logged) when such
+// a table is not exposed: its row has no API shape to accept.
+func (b *Builder) rowArgResources(f *introspect.Function) (map[string]*Resource, bool) {
+	var out map[string]*Resource
+	for _, a := range f.Args {
+		elem := strings.TrimPrefix(a.PGType, "_")
+		if b.Catalog.Table(a.TypeSchema, elem) == nil {
+			continue
+		}
+		r := b.Resource(a.TypeSchema, elem)
+		if r == nil {
+			b.log.Info("skipping function: row-type argument of a table that is not exposed",
+				"function", f.Schema+"."+f.Name, "arg", a.Name, "table", a.TypeSchema+"."+elem)
+			return nil, false
+		}
+		if out == nil {
+			out = map[string]*Resource{}
+		}
+		out[a.Name] = r
+	}
+	return out, true
+}
+
 func (b *Builder) addFunctions() {
 	if !b.Options.Functions {
 		return
@@ -652,15 +693,25 @@ func (b *Builder) addFunctions() {
 			b.log.Debug("skipping function: unnamed argument", "function", fkey)
 			continue
 		}
-		if what := pseudoTyped(f); what != "" {
-			b.log.Debug("skipping function: pseudo-type or polymorphic signature", "function", fkey, "position", what)
+		if fams := f.PolymorphicFamilies(); len(fams) > 0 {
+			b.log.Info("skipping function: polymorphic signature without a resolvable type (tag it with @anyelement <type> or @anycompatible <type>)",
+				"function", fkey, "families", fams)
 			continue
 		}
-		if i, t := b.rowTypeArg(f); i == 0 {
+		if what := pseudoTyped(f); what != "" {
+			b.log.Debug("skipping function: pseudo-type signature", "function", fkey, "position", what)
+			continue
+		}
+		if i, t := b.rowTypeArg(f); i == 0 && f.Volatility != introspect.VolatilityVolatile {
+			if j := b.rowTypeArgFrom(f, 1); j > 0 {
+				b.log.Debug("skipping computed column: row-type extra argument", "function", fkey, "arg", f.Args[j].Name)
+				continue
+			}
 			b.addComputed(t, f)
 			continue
-		} else if i > 0 {
-			b.log.Debug("skipping function: row-type argument not in first position", "function", fkey, "arg", f.Args[i].Name)
+		}
+		rowArgs, ok := b.rowArgResources(f)
+		if !ok {
 			continue
 		}
 		rpc := &RPC{
@@ -669,6 +720,7 @@ func (b *Builder) addFunctions() {
 			Mutation:    f.Volatility == introspect.VolatilityVolatile,
 			Mint:        b.Options.JWTType != "" && f.ReturnTypeSchema+"."+f.ReturnType == b.Options.JWTType,
 			Args:        f.Args,
+			RowArgs:     rowArgs,
 			Description: description(f.Comment),
 		}
 		if !rpc.Mutation {

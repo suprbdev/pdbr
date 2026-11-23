@@ -306,7 +306,29 @@ func FuzzFilter(f *testing.F) {
 		}
 		return stmt
 	}
+	compileRowArgs := func(t testing.TB, e, tag string, n int64) *compile.Statement {
+		t.Helper()
+		row := map[string]any{"email": e, "full_name": tag, "id": n, "tags": []any{e, tag}}
+		var st *compile.Statement
+		for _, req := range []*plan.Request{
+			rpcReq(fx, "user_greeting", map[string]any{"greeting": e, "u": row}),
+			rpcReq(fx, "total_title_length", map[string]any{"ps": []any{row, nil, map[string]any{"title": tag}}}),
+		} {
+			stmt, err := fx.c.Compile(context.Background(), &compile.Request{Plan: req, Built: fx.built})
+			if err != nil {
+				t.Fatalf("row argument compile error on valid input: %v", err)
+			}
+			if st == nil {
+				st = stmt
+			} else {
+				st.SQL += "\n" + stmt.SQL
+				st.Args = append(st.Args, stmt.Args...)
+			}
+		}
+		return st
+	}
 	baseline := compileWith(f, "a@example.com", "admin", 5)
+	rowArgsBaseline := compileRowArgs(f, "a@example.com", "admin", 5)
 	aliasBaseline := compileAlias(f, "a@example.com", "admin", 5)
 	aliasAggBaseline := compileAliasAgg(f, "a@example.com", "admin", 5)
 	spreadBaseline := compileSpread(f, "a@example.com", "admin", 5)
@@ -336,6 +358,7 @@ func FuzzFilter(f *testing.F) {
 			{compileSpreadAgg(t, e, tag, n), spreadAggBaseline},
 			{compileAlias(t, e, tag, n), aliasBaseline},
 			{compileAliasAgg(t, e, tag, n), aliasAggBaseline},
+			{compileRowArgs(t, e, tag, n), rowArgsBaseline},
 		} {
 			if c.stmt == nil {
 				continue

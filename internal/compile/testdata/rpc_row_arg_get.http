@@ -1,0 +1,1 @@
+GET /api/rpc/user_greeting?greeting=Hi&u=%7B%22email%22%3A%22ada%40example.com%22%7D

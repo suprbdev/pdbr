@@ -1,0 +1,2 @@
+-- request: GET /api/rpc/array_first?arr=%7B1%7D
+-- error: 404 not_found: no such route
