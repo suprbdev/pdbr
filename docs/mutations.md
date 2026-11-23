@@ -985,8 +985,10 @@ its returned rows, or by the operation's own lookup when it changed every
 such key) and adds the returned rows; the guards are evaluated in a
 materialized CTE scanned as the outer side of a lateral join with the
 response, so they run even when the response is empty, and a failing guard
-raises inside the statement (`22P02` carrying `pdbr guard: …`, which the
-executor answers as `404 not_found`):
+raises inside the statement (`22P02` carrying `pdbr guard <token>: …`,
+which the executor answers as `404 not_found`; `<token>` is a random
+per-process secret, masked in `--print-sql` and goldens, so a `22P02`
+quoting a client or stored value can never pass for a failed guard):
 
 ```http
 PATCH /api/users/1?select=id,full_name,places(id,name)
@@ -1027,10 +1029,10 @@ __vis_1 AS NOT MATERIALIZED (
   UNION ALL SELECT "id", "owner_id", "name" FROM __c_3
 ),
 __guard AS MATERIALIZED (
-  SELECT (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard: row of "users": matched ', count(*), ' rows')::boolean END FROM __mut)
-    AND (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard: nested "places.connect[0]": matched ', count(*), ' rows')::boolean END FROM __c_1)
-    AND (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard: nested "places.delete[0]": matched ', count(*), ' rows')::boolean END FROM __c_2)
-    AND (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard: nested "places.update[0]": matched ', count(*), ' rows')::boolean END FROM __c_3) AS ok
+  SELECT (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard <token>: row of "users": matched ', count(*), ' rows')::boolean END FROM __mut)
+    AND (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard <token>: nested "places.connect[0]": matched ', count(*), ' rows')::boolean END FROM __c_1)
+    AND (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard <token>: nested "places.delete[0]": matched ', count(*), ' rows')::boolean END FROM __c_2)
+    AND (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard <token>: nested "places.update[0]": matched ', count(*), ' rows')::boolean END FROM __c_3) AS ok
 )
 SELECT __guarded.data
 FROM __guard

@@ -3,6 +3,7 @@ package compile
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // RenderGolden renders a compiled statement in the golden / --print-sql
@@ -19,5 +20,5 @@ func RenderGolden(method, path string, stmt *Statement) string {
 	if stmt.Args == nil {
 		args = []byte("[]")
 	}
-	return fmt.Sprintf("-- request: %s %s\n%s\n-- args: %s\n", method, path, stmt.SQL, args)
+	return fmt.Sprintf("-- request: %s %s\n%s\n-- args: %s\n", method, path, strings.ReplaceAll(stmt.SQL, guardToken, guardMask), args)
 }

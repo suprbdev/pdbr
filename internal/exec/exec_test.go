@@ -523,12 +523,20 @@ func TestDBErrorMapping(t *testing.T) {
 			t.Errorf("%s: pg object leaked outside dev", tc.code)
 		}
 	}
+	guardSQL := compile.GuardSQL("__c_1", `nested "posts.update[0]":`)
+	start := strings.Index(guardSQL, "'pdbr guard ") + 1
+	marker := guardSQL[start : strings.Index(guardSQL[start:], ": ")+start+2]
 	for _, detail := range []pgexec.Detail{pgexec.Dev, pgexec.Prod, pgexec.Strict} {
-		guard := &pgconn.PgError{Code: "22P02", Message: `invalid input syntax for type boolean: "pdbr guard: nested "posts.update[0]": matched 0 rows"`}
+		guard := &pgconn.PgError{Code: "22P02", Message: `invalid input syntax for type boolean: "` + marker + `nested "posts.update[0]": matched 0 rows"`}
 		e := newExec(&fakeDB{row: fakeRow{err: guard}}, b, nil, Options{Detail: detail})
 		xe := errOf(t, e.Execute(context.Background(), listOp(b, "/users")))
 		if xe.Status != 404 || xe.Code != CodeNotFound || xe.Detail != `nested "posts.update[0]": matched 0 rows` || xe.PG != nil {
 			t.Errorf("guard failure under %v: %+v", detail, xe)
+		}
+		forged := &pgconn.PgError{Code: "22P02", Message: `invalid input value for enum mood: "pdbr guard: everything is fine, nothing matched"`}
+		e = newExec(&fakeDB{row: fakeRow{err: forged}}, b, nil, Options{Detail: detail})
+		if xe := errOf(t, e.Execute(context.Background(), listOp(b, "/users"))); xe.Status != 400 || xe.Code != "pg:22P02" {
+			t.Errorf("forged guard under %v: %+v", detail, xe)
 		}
 	}
 	// dev: pg object; prod: message policy.

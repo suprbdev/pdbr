@@ -10,8 +10,8 @@ __mut AS (
   RETURNING "id", "owner_id"
 ),
 __guard AS MATERIALIZED (
-  SELECT (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard: row of "places": matched ', count(*), ' rows')::boolean END FROM __mut)
-    AND (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard: nested "users.connect": matched ', count(*), ' rows')::boolean END FROM __p_1) AS ok
+  SELECT (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard <token>: row of "places": matched ', count(*), ' rows')::boolean END FROM __mut)
+    AND (SELECT CASE WHEN count(*) > 0 THEN true ELSE concat('pdbr guard <token>: nested "users.connect": matched ', count(*), ' rows')::boolean END FROM __p_1) AS ok
 )
 SELECT __guarded.data
 FROM __guard
