@@ -1,5 +1,5 @@
 -- request: GET /api/posts?select=published,...users(newest:created_at.max(),n:count())
-SELECT json_build_object('has_next', coalesce(bool_or(s3.__rn > $4), false), 'has_prev', false, 'n', count(*) FILTER (WHERE s3.__rn <= $4), 'rows', coalesce(json_agg(s3.data ORDER BY s3.__rn ASC) FILTER (WHERE s3.__rn <= $4), '[]'::json)) AS data
+SELECT json_build_object('has_next', coalesce(bool_or(s3.__rn > $3), false), 'has_prev', false, 'n', count(*) FILTER (WHERE s3.__rn <= $3), 'rows', coalesce(json_agg(s3.data ORDER BY s3.__rn ASC) FILTER (WHERE s3.__rn <= $3), '[]'::json)) AS data
 FROM (
   SELECT json_build_object('published', g1."__k0", $1::text, to_json(g1."__a0"), $2::text, to_json(g1."__a1")) AS data, row_number() OVER (ORDER BY g1."__k0" ASC) AS __rn
   FROM (
@@ -9,6 +9,6 @@ FROM (
     GROUP BY 1
   ) g1
   ORDER BY g1."__k0" ASC
-  LIMIT $3
+  LIMIT 101
 ) s3
--- args: ["newest","n",101,100]
+-- args: ["newest","n",100]

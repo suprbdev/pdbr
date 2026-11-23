@@ -373,6 +373,11 @@ func (s *stmt) keyConds(t *introspect.Table, cols []string, vals []any, alias st
 // and would follow plan-dependent scan order), and the outer aggregate trims
 // the detection row with a FILTER on __rn. `before` reverses the scan and the
 // outer aggregate re-reverses, so rows is always in the requested order.
+// When the rows embed relations (and distinct= is absent), the page is cut
+// in a subquery reading only the columns the selection needs, and the embed
+// laterals join onto that page, so they run once per returned row rather
+// than for every row the sort reads. LIMIT is a literal, which lets
+// PostgreSQL reuse a generic plan for the prepared statement.
 func (s *stmt) list() (*Statement, error) {
 	r := s.plan.Resource
 	t := r.Table
@@ -417,7 +422,7 @@ func (s *stmt) list() (*Statement, error) {
 		rnName = "__rn0"
 	}
 	orderSQL := s.renderOrder(terms, alias, pp.reversed)
-	selectCols = append(selectCols, "row_number() OVER ("+strings.TrimPrefix(orderSQL, "\n")+") AS "+rnName)
+	rn := "row_number() OVER (" + strings.TrimPrefix(orderSQL, "\n") + ") AS " + rnName
 
 	var conds []string
 	if pp.hasAfter {
@@ -438,7 +443,7 @@ func (s *stmt) list() (*Statement, error) {
 	if err != nil {
 		return nil, err
 	}
-	limit := "\nLIMIT " + s.param(pp.limit+1)
+	limit := "\nLIMIT " + strconv.Itoa(pp.limit+1)
 	if pp.offset > 0 {
 		limit += "\nOFFSET " + s.param(pp.offset)
 	}
@@ -450,9 +455,27 @@ func (s *stmt) list() (*Statement, error) {
 		}
 		distinct = "DISTINCT ON (" + strings.Join(refs, ", ") + ") "
 	}
-	inner := fmt.Sprintf("SELECT %s%s\nFROM %s %s%s%s%s%s",
-		distinct, strings.Join(selectCols, ", "), s.rootRef(t, alias), alias,
-		joinLaterals(laterals), where, orderSQL, limit)
+	var pageCols []string
+	if len(laterals) > 0 && distinct == "" {
+		pageCols = referencedColumns(t, strings.Join(selectCols, ", ")+joinLaterals(laterals), []string{alias})
+	}
+	var inner string
+	if len(pageCols) > 0 {
+		refs := make([]string, 0, len(pageCols)+1)
+		for _, c := range pageCols {
+			refs = append(refs, colRef(alias, c))
+		}
+		page := fmt.Sprintf("SELECT %s\nFROM %s %s%s%s%s",
+			strings.Join(append(refs, rn), ", "), s.rootRef(t, alias), alias, where, orderSQL, limit)
+		selectCols = append(selectCols, alias+"."+rnName)
+		inner = fmt.Sprintf("SELECT %s\nFROM (\n%s\n) %s%s",
+			strings.Join(selectCols, ", "), indent(page), alias, joinLaterals(laterals))
+	} else {
+		selectCols = append(selectCols, rn)
+		inner = fmt.Sprintf("SELECT %s%s\nFROM %s %s%s%s%s%s",
+			distinct, strings.Join(selectCols, ", "), s.rootRef(t, alias), alias,
+			joinLaterals(laterals), where, orderSQL, limit)
+	}
 	if len(dcols) > 0 {
 		w := s.alias("d")
 		inner = fmt.Sprintf("SELECT %s.*, row_number() OVER (ORDER BY %s.__rn0) AS __rn\nFROM (\n%s\n) %s", w, w, indent(inner), w)
@@ -563,7 +586,7 @@ func (s *stmt) totalSQL(node *plan.Node, dcols []*introspect.Column) (string, er
 	if mode == plan.CountPlanned {
 		return planned, nil
 	}
-	threshold := s.param(s.maxPageSize)
+	threshold := strconv.Itoa(s.maxPageSize)
 	inner := s.alias("c")
 	bounded := fmt.Sprintf("(SELECT count(*) FROM (SELECT 1 FROM %s %s LIMIT %s + 1) %s)", s.rootRef(t, inner), inner, threshold, s.alias("b"))
 	est := s.alias("e")

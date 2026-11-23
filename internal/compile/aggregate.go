@@ -374,7 +374,7 @@ func (s *stmt) aggList(node *plan.Node) (*Statement, error) {
 		return nil, err
 	}
 	orderSQL := s.renderOrder(terms, g.alias, false)
-	limit := "\nLIMIT " + s.param(pp.limit+1)
+	limit := "\nLIMIT " + strconv.Itoa(pp.limit+1)
 	if pp.offset > 0 {
 		limit += "\nOFFSET " + s.param(pp.offset)
 	}
@@ -400,7 +400,7 @@ func (s *stmt) aggListInner(node *plan.Node, filter plan.Expr, order []plan.Orde
 	if err != nil {
 		return "", err
 	}
-	pageSQL := "\nLIMIT " + s.param(limit)
+	pageSQL := "\nLIMIT " + strconv.Itoa(limit)
 	if page.Offset > 0 {
 		pageSQL += "\nOFFSET " + s.param(page.Offset)
 	}

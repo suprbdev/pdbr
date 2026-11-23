@@ -30,7 +30,7 @@ LEFT JOIN LATERAL (
     FROM __vis_1 t1
     WHERE t1."author_id" = t0."id"
     ORDER BY t1."id" ASC
-    LIMIT $5
+    LIMIT 100
   ) s2
 ) l3 ON true
--- args: ["new@b.c","One","Two","b",100]
+-- args: ["new@b.c","One","Two","b"]

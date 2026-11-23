@@ -27,8 +27,8 @@ FROM (
       ) l3 ON true
       WHERE t1."author_id" = t0."id"
       ORDER BY t1."id" ASC
-      LIMIT $5
+      LIMIT 100
     ) s4
   ) l5 ON true
 ) s6
--- args: ["a@b.c","Ada","d@e.f","Dee",100]
+-- args: ["a@b.c","Ada","d@e.f","Dee"]

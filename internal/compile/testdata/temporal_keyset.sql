@@ -1,10 +1,10 @@
 -- request: GET /api/tk_bookings?after=WyJwdWJsaWMudGtfYm9va2luZ3MiLDEsIlsyMDI2LTAxLTAxLDIwMjYtMDEtMDUpIl0
-SELECT json_build_object('has_next', coalesce(bool_or(s1.__rn > $4), false), 'has_prev', true, 'first', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $4))->0, 'last', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $4))->-1, 'n', count(*) FILTER (WHERE s1.__rn <= $4), 'rows', coalesce(json_agg(s1.data ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $4), '[]'::json)) AS data
+SELECT json_build_object('has_next', coalesce(bool_or(s1.__rn > $3), false), 'has_prev', true, 'first', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $3))->0, 'last', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $3))->-1, 'n', count(*) FILTER (WHERE s1.__rn <= $3), 'rows', coalesce(json_agg(s1.data ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $3), '[]'::json)) AS data
 FROM (
   SELECT json_build_object('room_id', t0."room_id", 'valid_at', t0."valid_at", 'guest', t0."guest") AS data, jsonb_build_array(t0."room_id", t0."valid_at") AS __key, row_number() OVER (ORDER BY t0."room_id" ASC, t0."valid_at" ASC) AS __rn
   FROM "public"."tk_bookings" t0
   WHERE (t0."room_id", t0."valid_at") > ($1, $2)
   ORDER BY t0."room_id" ASC, t0."valid_at" ASC
-  LIMIT $3
+  LIMIT 101
 ) s1
--- args: [1,"[2026-01-01,2026-01-05)",101,100]
+-- args: [1,"[2026-01-01,2026-01-05)",100]

@@ -23,7 +23,7 @@ LEFT JOIN LATERAL (
     FROM __vis_1 t1
     WHERE t1."room_id" = t0."room_id" AND t1."valid_at" && t0."valid_at"
     ORDER BY t1."room_id" ASC, t1."valid_at" ASC
-    LIMIT $6
+    LIMIT 100
   ) s2
 ) l3 ON true
--- args: [1,"[2026-03-01,2026-03-05)","cy","[2026-03-01,2026-03-10)","x",100]
+-- args: [1,"[2026-03-01,2026-03-05)","cy","[2026-03-01,2026-03-10)","x"]

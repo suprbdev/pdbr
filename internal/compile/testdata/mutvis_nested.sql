@@ -35,7 +35,7 @@ LEFT JOIN LATERAL (
           FROM __vis_1 t3
           WHERE t3."author_id" = t2."id"
           ORDER BY t3."id" ASC
-          LIMIT $3
+          LIMIT 100
         ) s4
       ) l5 ON true
       WHERE t2."id" = t1."author_id"
@@ -43,7 +43,7 @@ LEFT JOIN LATERAL (
     ) l6 ON true
     WHERE t1."author_id" = t0."id"
     ORDER BY t1."id" ASC
-    LIMIT $4
+    LIMIT 100
   ) s7
 ) l8 ON true
--- args: ["n@b.c","One",100,100]
+-- args: ["n@b.c","One"]
