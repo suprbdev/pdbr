@@ -112,7 +112,7 @@ func (s *stmt) argParam(a introspect.FuncArg, v any) (string, error) {
 		}
 		return fmt.Sprintf("jsonb_populate_record(NULL::%s, %s::jsonb)", typeRef(a.TypeSchema, base), s.jsonParam(v)), nil
 	case postgis.IsSpatial(base) && !col.IsArray:
-		expr, err := s.spatialOperand(postgis.FlavourOf(base), v)
+		expr, err := s.spatialOperand(postgis.FlavourOf(base), 0, v)
 		if err != nil {
 			return "", err
 		}

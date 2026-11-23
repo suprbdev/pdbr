@@ -234,7 +234,7 @@ func (p *parser) spatialOperand(t colType, o operand) (any, error) {
 		if len(items) < 2 || len(items) > 3 {
 			return nil, errf(CodeInvalidFilter, "%s takes (geometry,distance[,spheroid])", o.op)
 		}
-		geom, err := p.coerceSpatial(t.flavour, items[0])
+		geom, err := p.coerceSpatial(t, items[0])
 		if err != nil {
 			return nil, err
 		}
@@ -277,7 +277,7 @@ func (p *parser) spatialOperand(t colType, o operand) (any, error) {
 		}
 		return b, nil
 	}
-	v, err := p.coerceSpatial(t.flavour, o.value)
+	v, err := p.coerceSpatial(t, o.value)
 	if err != nil {
 		return nil, err
 	}

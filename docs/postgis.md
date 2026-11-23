@@ -43,25 +43,32 @@ GeoJSON `Feature` and `FeatureCollection` documents are unwrapped
 automatically (a `FeatureCollection` becomes a `GeometryCollection`), so a
 value pasted straight out of a map library works without editing.
 
-**SRIDs.** GeoJSON is WGS84 (4326) per RFC 7946, so GeoJSON input is tagged
-`ST_SetSRID(..., 4326)` unless it carries an explicit legacy `crs` member.
-EWKT (`SRID=3857;POINT(...)`) carries its own SRID and is passed through
-unchanged. Bare WKT on a `geography` column is tagged 4326, since geography
-requires a real CRS.
+**SRIDs.** Every spatial value — filter operand, `near=`, body value — is
+parsed for the column it targets (`pdbcore/postgis.ParseFor` with the
+column's typmod SRID). GeoJSON is WGS84 (4326) per RFC 7946, so GeoJSON input
+is tagged `ST_SetSRID(..., 4326)` unless it carries an explicit legacy `crs`
+member; on a `geometry` column declared with a different SRID (say
+`geometry(Point, 3857)`) it is then reprojected with
+`ST_Transform(…, 3857)`. EWKT (`SRID=3857;POINT(...)`) carries its own SRID
+and is passed through unchanged. Bare WKT is tagged with the column's SRID
+(`geometry(Point, 4326)` → `ST_SetSRID(…, 4326)`); on a `geography` column it
+is tagged 4326, since geography requires a real CRS.
 
-Bare WKT on a `geometry` column keeps PostGIS's own default, SRID 0; a
-column declared `geometry(Point, 4326)` then rejects it (`ST_Intersects:
-Operation on mixed SRID geometries` for filters, `22023` → `400 pg:22023` for
-writes), so send EWKT (`SRID=4326;POINT(…)`) or GeoJSON to SRID-constrained
-geometry columns. Type modifiers are enforced by PostgreSQL as well: a
-`LineString` into `geometry(Point, 4326)` is `400 pg:22023`.
+Bare WKT on an unconstrained `geometry` column keeps PostGIS's own default,
+SRID 0. EWKT whose SRID differs from the column's is not reprojected: a
+filter fails with `ST_Intersects: Operation on mixed SRID geometries` and a
+write with `22023` →
+`400 pg:22023`. Type modifiers are enforced by PostgreSQL as well: a
+`LineString` into `geometry(Point, 4326)` is `400 pg:22023`. Function
+arguments carry no typmod, so RPC arguments follow the unconstrained rules.
 
 **One parameter, one constructor.** Every spatial value reaches SQL as a
 single bind parameter wrapped in exactly one constructor —
 `ST_GeomFromGeoJSON($n)` or `ST_GeomFromEWKT($n)`, optionally inside
-`ST_SetSRID(…, <srid>)` and `(…)::geography` — chosen from the *shape* of the
-input (GeoJSON / EWKT / bare WKT), never its content. Parsing, unwrapping and
-constructor selection live in `pdbcore/postgis` (`Parse`, `Value.SQL`), shared
+`ST_SetSRID(…, <srid>)`, `ST_Transform(…, <srid>)` and `(…)::geography` —
+chosen from the *shape* of the input (GeoJSON / EWKT / bare WKT) and the
+column's catalog SRID, never its content. Parsing, unwrapping and
+constructor selection live in `pdbcore/postgis` (`ParseFor`, `Value.SQL`), shared
 with pdbq. A value that is neither valid GeoJSON nor plausible WKT is rejected
 with `400 invalid_filter` / `400 invalid_body` before any SQL is built.
 
@@ -202,10 +209,8 @@ GET /api/places?select=name&location=st_dwithin.("POINT(-0.1281 51.508)",5000,tr
 ```
 
 compiles the predicate as
-`ST_DWithin("location"::geography, (ST_GeomFromEWKT($1))::geography, $2)`
-(a bare-WKT operand keeps SRID 0, which the geography cast reads as WGS84; on
-a `geography` column the same operand is tagged
-`ST_SetSRID(…, 4326)` first).
+`ST_DWithin("location"::geography, (ST_SetSRID(ST_GeomFromEWKT($1), 4326))::geography, $2)`
+(the bare-WKT operand is tagged with the column's SRID, 4326).
 
 ## Derived accessors (pseudo-columns)
 
@@ -310,8 +315,8 @@ unparseable value) is a `400 invalid_filter`
 sorted but is not (pdbq silently drops the term and falls back to primary-key
 order; pdbr deliberately fails). One `near=` serves every `.dist` term in the
 request, including per-embed `places.order=location.dist.desc` terms, and is
-cast to each term's column flavour (`(…)::geography` for a geography column,
-so the KNN distance is metres there); the PK tiebreaker is appended after the
+parsed for each term's column (its SRID, and `(…)::geography` for a
+geography column, so the KNN distance is metres there); the PK tiebreaker is appended after the
 distance term as for any order, and keyset cursors (`after=`/`before=`) walk
 the distance order. A `near=` with no `.dist` term is ignored. Plain
 `order=location.asc` on a spatial column is `400 column_not_orderable`;

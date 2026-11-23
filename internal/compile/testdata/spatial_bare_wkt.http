@@ -1,0 +1,1 @@
+GET /api/places?select=id&location=st_dwithin.("POINT(-0.1281%2051.508)",0.01)&order=location.dist,id&near=POINT(-0.1281%2051.508)&limit=3

@@ -617,12 +617,13 @@ func TestFilterSpatial(t *testing.T) {
 		want string
 		n    int
 	}{
-		{"intersects-wkt", cond(loc, "st_intersects", "POINT(1 2)"), `WHERE ST_Intersects(t0."location", ST_GeomFromEWKT($1))`, 1},
+		{"intersects-wkt", cond(loc, "st_intersects", "POINT(1 2)"), `WHERE ST_Intersects(t0."location", ST_SetSRID(ST_GeomFromEWKT($1), 4326))`, 1},
+		{"intersects-ewkt", cond(loc, "st_intersects", "SRID=3857;POINT(1 2)"), `WHERE ST_Intersects(t0."location", ST_GeomFromEWKT($1))`, 1},
 		{"within-geojson", cond(loc, "st_within", map[string]any{"type": "Point", "coordinates": []any{1.0, 2.0}}), `WHERE ST_Within(t0."location", ST_SetSRID(ST_GeomFromGeoJSON($1), 4326))`, 1},
-		{"not.within", plan.Cond{Column: loc, Op: "st_within", Value: "POINT(1 2)", Negate: true}, `WHERE NOT (ST_Within(t0."location", ST_GeomFromEWKT($1)))`, 1},
-		{"dwithin-list", cond(loc, "st_dwithin", []any{"POINT(1 2)", "5000", "true"}), `WHERE ST_DWithin(t0."location"::geography, (ST_GeomFromEWKT($1))::geography, $2)`, 2},
+		{"not.within", plan.Cond{Column: loc, Op: "st_within", Value: "POINT(1 2)", Negate: true}, `WHERE NOT (ST_Within(t0."location", ST_SetSRID(ST_GeomFromEWKT($1), 4326)))`, 1},
+		{"dwithin-list", cond(loc, "st_dwithin", []any{"POINT(1 2)", "5000", "true"}), `WHERE ST_DWithin(t0."location"::geography, (ST_SetSRID(ST_GeomFromEWKT($1), 4326))::geography, $2)`, 2},
 		{"dwithin-geog", cond(area, "st_dwithin", []any{"POINT(1 2)", 5000.0}), `WHERE ST_DWithin(t0."area", (ST_SetSRID(ST_GeomFromEWKT($1), 4326))::geography, $2)`, 2},
-		{"beyond", cond(loc, "st_beyond", map[string]any{"geometry": "POINT(1 2)", "distance": 1}), `WHERE NOT ST_DWithin(t0."location", ST_GeomFromEWKT($1), $2)`, 2},
+		{"beyond", cond(loc, "st_beyond", map[string]any{"geometry": "POINT(1 2)", "distance": 1}), `WHERE NOT ST_DWithin(t0."location", ST_SetSRID(ST_GeomFromEWKT($1), 4326), $2)`, 2},
 		{"bbox", cond(loc, "bbox_intersects", []any{"-0.5", "51.3", "0.3", "51.7"}), `WHERE t0."location" && ST_MakeEnvelope($1, $2, $3, $4, 4326)`, 4},
 		{"bbox-srid", cond(loc, "bbox_containedby", []any{1, 2, 3, 4, 3857}), `WHERE t0."location" @ ST_MakeEnvelope($1, $2, $3, $4, 3857)`, 4},
 		// ~ / @ have no geography overload: both sides fall back to geometry.
@@ -652,6 +653,40 @@ func TestFilterSpatial(t *testing.T) {
 	userErr(t, f.compileErr(p), compile.CodeInvalidFilter)
 	p.Filter = cond(loc, "st_intersects", "not a geometry")
 	userErr(t, f.compileErr(p), compile.CodeInvalidFilter)
+}
+
+func TestSpatialColumnSRID(t *testing.T) {
+	f := newFixture(t)
+	places := f.res("places")
+	merc := *f.col("places", "location")
+	merc.Spatial = &introspect.SpatialType{Subtype: introspect.SpatialPoint, SRID: 3857}
+	point := map[string]any{"type": "Point", "coordinates": []any{-0.1281, 51.508}}
+	cases := []struct {
+		name  string
+		value any
+		want  string
+	}{
+		{"geojson-reprojected", point, `ST_Intersects(t0."location", ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326), 3857))`},
+		{"wkt-tagged", "POINT(1 2)", `ST_Intersects(t0."location", ST_SetSRID(ST_GeomFromEWKT($1), 3857))`},
+		{"ewkt-kept", "SRID=4326;POINT(1 2)", `ST_Intersects(t0."location", ST_GeomFromEWKT($1))`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := list(places)
+			p.Select = fields(places, "id")
+			p.Filter = cond(&merc, "st_intersects", tc.value)
+			if stmt := f.compile(p); !strings.Contains(stmt.SQL, tc.want) {
+				t.Errorf("want %s\n%s", tc.want, stmt.SQL)
+			}
+		})
+	}
+	p := list(places)
+	p.Select = fields(places, "id")
+	p.Order = []plan.OrderTerm{{Distance: &merc}}
+	p.Near = point
+	if stmt := f.compile(p); !strings.Contains(stmt.SQL, `t0."location" <-> ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326), 3857)`) {
+		t.Errorf("near reprojected:\n%s", stmt.SQL)
+	}
 }
 
 // ---- order ----
@@ -1009,7 +1044,7 @@ func TestHooksHelpers(t *testing.T) {
 		t.Error("ParamSet")
 	}
 	expr, err := ps.SpatialValue(f.col("places", "location"), "POINT(1 2)")
-	if err != nil || expr != "ST_GeomFromEWKT($3)" {
+	if err != nil || expr != "ST_SetSRID(ST_GeomFromEWKT($3), 4326)" {
 		t.Errorf("SpatialValue: %s %v", expr, err)
 	}
 	if _, err := ps.SpatialValue(f.col("users", "id"), "x"); err == nil {

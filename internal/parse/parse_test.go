@@ -746,7 +746,7 @@ func TestOrder(t *testing.T) {
 	if p.Order[0].Distance == nil || p.Order[0].Distance.Name != "location" || p.Near == nil {
 		t.Fatalf("order = %+v near=%v", p.Order, p.Near)
 	}
-	if p.Near.(postgis.Value).Param != "SRID=4326;POINT(-0.1281 51.508)" {
+	if p.Near != "SRID=4326;POINT(-0.1281 51.508)" {
 		t.Fatalf("near = %+v", p.Near)
 	}
 	_, err := doParse(t, b, req{url: "/api/places?order=location.dist"}, allOn)

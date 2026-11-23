@@ -21,7 +21,9 @@
 //   - Page.Limit is always resolved (request and every embed).
 //   - Key.Values and Page.After/Before hold PK-typed Go values (int64,
 //     string, bool, float64, ...), positional to the constraint columns.
-//   - Near is a postgis.Value when any order term uses .dist.
+//   - Near is the validated near= input when any order term uses .dist:
+//     a decoded GeoJSON object or a WKT/EWKT string, parsed per distance
+//     column by the compiler so each gets its own SRID.
 package parse
 
 import (

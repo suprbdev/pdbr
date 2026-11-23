@@ -206,10 +206,10 @@ func (p *parser) resolveNear(near string, hasNear bool) error {
 	if !hasNear {
 		return errf(CodeInvalidFilter, "order by %s.dist requires near=<GeoJSON or WKT>", dist.Name)
 	}
-	v, err := p.coerceSpatial(postgis.FlavourOf(dist.PGType), near)
-	if err != nil {
+	if _, err := p.coerceSpatial(p.typeOf(dist), near); err != nil {
 		return errf(CodeInvalidFilter, "near: %s", err.Detail)
 	}
+	v, _ := spatialInput(near)
 	p.req.Near = v
 	return nil
 }
