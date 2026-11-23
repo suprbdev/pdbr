@@ -221,6 +221,7 @@ func (p *parser) resolveSelectItem(node *plan.Node, it selectItem, depth int) er
 		if err != nil {
 			return err
 		}
+		h.MaxDocument = p.opts.MaxHeadlineDocument
 		fs.Headline = h
 		p.headlines = append(p.headlines, headlineUse{node: node, pc: fs.Pseudo, h: h})
 	}

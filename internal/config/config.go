@@ -15,6 +15,7 @@ import (
 	flag "github.com/spf13/pflag"
 
 	"github.com/suprbdev/pdbcore/confx"
+	"github.com/suprbdev/pdbcore/contrib"
 )
 
 // EnvPrefix is the environment-variable prefix (PDBR_DATABASE_URL, ...).
@@ -49,6 +50,7 @@ type Server struct {
 	MaxEmbedDepth            int           `koanf:"max_embed_depth" doc:"Maximum select= embed nesting depth; deeper answers 400 embed_depth_exceeded."`
 	MaxCost                  int           `koanf:"max_cost" doc:"Maximum estimated cost (1 + list multipliers) per request; over answers 400 cost_exceeded. A list counts the rows the SQL can fetch: its limit, else max_page_size (to-many embeds included). @costMultiplier smart comments tune the estimate."`
 	MaxPageSize              int           `koanf:"max_page_size" doc:"Largest accepted limit (larger answers 400 page_size_exceeded); also the page size when limit is absent."`
+	MaxHeadlineDocument      int           `koanf:"max_headline_document" doc:"Characters of a document a full-text headline (<col>_headline) reads: a text document is cut to its first max_headline_document characters, a json or jsonb document longer than that gives a null headline. ts_headline re-parses its document on every call, so each headline costs 10 per started 8192 characters of this bound in max_cost."`
 	CORSOrigins              []string      `koanf:"cors_origins" doc:"Allowed CORS origins (exact match, or '*' for any). Empty disables CORS headers and preflight entirely."`
 	Compression              bool          `koanf:"compression" doc:"Gzip responses for clients that send Accept-Encoding: gzip (off by default)."`
 	ReadOnly                 bool          `koanf:"read_only" doc:"Answer every write with 405 (code read_only) for read replicas, maintenance or demos. Also toggleable at runtime when embedding pdbr as a library (App.SetReadOnly)."`
@@ -87,6 +89,7 @@ func DefaultConfig() Config {
 			MaxEmbedDepth:       5,
 			MaxCost:             100000,
 			MaxPageSize:         100,
+			MaxHeadlineDocument: contrib.MaxHeadlineDocument,
 			Etags:               true,
 			CSV:                 true,
 			CSVEscapeFormulas:   true,
@@ -217,6 +220,9 @@ func validateServer(s Server) []string {
 	}
 	if s.MaxEmbedDepth < 1 {
 		errs = append(errs, "server.max_embed_depth must be >= 1")
+	}
+	if s.MaxHeadlineDocument < 1 {
+		errs = append(errs, "server.max_headline_document must be >= 1")
 	}
 	if s.PartialBulkMaxItems < 1 {
 		errs = append(errs, "server.partial_bulk_max_items must be >= 1")

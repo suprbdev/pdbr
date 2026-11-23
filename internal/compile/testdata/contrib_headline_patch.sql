@@ -7,7 +7,7 @@ WITH __mut AS (
 )
 SELECT json_build_object('n', count(*), 'rows', coalesce(json_agg(s2.data), '[]'::json)) AS data
 FROM (
-  SELECT json_build_object('id', t1."id", 'body_headline', ts_headline(t1."body", to_tsquery($3::text), $4::text)) AS data
+  SELECT json_build_object('id', t1."id", 'body_headline', ts_headline(left(t1."body", $4::int4), to_tsquery($3::text), $5::text)) AS data
   FROM __mut t1
 ) s2
--- args: ["cat","x","cat",""]
+-- args: ["cat","x","cat",65536,""]

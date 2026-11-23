@@ -3,6 +3,7 @@ package compile
 import (
 	"fmt"
 
+	"github.com/suprbdev/pdbcore/contrib"
 	"github.com/suprbdev/pdbcore/postgis"
 
 	"github.com/suprbdev/pdbr/internal/api"
@@ -87,7 +88,11 @@ func (s *stmt) headlineSQL(p *api.PseudoColumn, h *plan.Headline, alias string) 
 		return "", errUser(CodeInvalidFilter, "%s: %s", cf.Name, err.Error())
 	}
 	phs := s.params(params)
-	expr := cf.Op.HeadlineSQL(colRef(alias, h.Document.Name), s.param(h.Options), phs...)
+	doc := colRef(alias, h.Document.Name)
+	if bounded := contrib.HeadlineDocumentSQL(doc, h.Document.PGType, s.param(int64(headlineDocument(h)))); bounded != "" {
+		doc = bounded
+	}
+	expr := cf.Op.HeadlineSQL(doc, s.param(h.Options), phs...)
 	if expr == "" {
 		return "", fmt.Errorf("compile: %s rejected %d parameters", cf.Name, len(params))
 	}

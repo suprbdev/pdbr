@@ -15,6 +15,7 @@ import (
 
 	"github.com/suprbdev/pdbcore/cache"
 	"github.com/suprbdev/pdbcore/confx"
+	"github.com/suprbdev/pdbcore/contrib"
 	"github.com/suprbdev/pdbcore/introspect"
 
 	"github.com/suprbdev/pdbr"
@@ -54,6 +55,7 @@ func configFlags(cmd *cobra.Command) {
 	fs.Bool("server.compression", false, "gzip responses when the client accepts it")
 	fs.Bool("server.read_only", false, "answer every write with 405 (read-only mode)")
 	fs.Bool("server.allow_unfiltered_mutations", false, "allow PATCH/DELETE on a collection without a filter")
+	fs.Int("server.max_headline_document", contrib.MaxHeadlineDocument, "characters of a document a full-text headline reads")
 	fs.Bool("server.aggregates", false, "allow aggregate functions in select= (count(), col.sum(), ...)")
 	fs.Bool("server.partial_bulk_writes", false, "let a bulk POST/PUT opt in (Prefer: partial=items) to per-element savepoints")
 	fs.Int("server.partial_bulk_max_items", 1000, "most elements a Prefer: partial=items bulk body may carry")

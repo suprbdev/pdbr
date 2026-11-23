@@ -100,6 +100,10 @@ type Options struct {
 	// PartialBulkMaxItems is server.partial_bulk_max_items: the most
 	// elements a Prefer: partial=items body may carry (0 means no limit).
 	PartialBulkMaxItems int
+	// MaxHeadlineDocument is server.max_headline_document: the characters
+	// of a document a headline reads (plan.Headline.MaxDocument; <= 0:
+	// contrib.MaxHeadlineDocument).
+	MaxHeadlineDocument int
 	// TxEnd is server.tx_end: commit (default, "" too), commit-allow-override,
 	// rollback or rollback-allow-override. It decides whether a write's
 	// transaction is rolled back and whether Prefer: tx= is honoured.
