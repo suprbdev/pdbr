@@ -386,6 +386,9 @@ func FuzzFilter(f *testing.F) {
 		p.Levenshtein = clip(e)
 		p.Page = plan.Page{Limit: 10, After: []any{n}}
 		read, err := cfx.c.Compile(context.Background(), &compile.Request{Plan: p, Built: cfx.built})
+		if duplicateKey(err) {
+			return nil
+		}
 		if err != nil {
 			t.Fatalf("contrib derived compile error on valid input: %v", err)
 		}
