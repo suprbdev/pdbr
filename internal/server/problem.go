@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+
+	"github.com/suprbdev/pdbr/internal/exec"
 )
 
 // Problem is an RFC 9457 problem-details body with pdbr's code extension.
@@ -27,6 +29,7 @@ const (
 	CodeTimeout          = "timeout"
 	CodeInternal         = "internal"
 	CodeNotImplemented   = "not_implemented"
+	CodeUnavailable      = exec.CodeUnavailable
 )
 
 // ContentTypeProblem is the media type of every error response.

@@ -28,8 +28,8 @@ Any subcommand works as the container command:
 `docker run ghcr.io/suprbdev/pdbr:0.1.0 schema dump -o /out/schema.cache`.
 
 Distroless has no shell, so run health checks from the orchestrator against
-`GET /healthz` (`/readyz` is an alias). Both return `{"status":"ok"}` and
-live at the **root**, never under `server.base_path`:
+`GET /healthz` (liveness) and `GET /readyz` (readiness). Both return
+`{"status":"ok"}` and live at the **root**, never under `server.base_path`:
 
 ```yaml
 # kubernetes
@@ -37,10 +37,11 @@ livenessProbe:  { httpGet: { path: /healthz, port: 8080 } }
 readinessProbe: { httpGet: { path: /readyz,  port: 8080 } }
 ```
 
-`/readyz` is a liveness alias (mirrors pdbq): it reports the process is
-serving, not that the database answers — the pool connects lazily, so a bad
-`database.url` shows up as `503 unavailable` on the first data request. A
-pool-ping readiness check is a possible future addition.
+`/healthz` only reports that the process is serving. `/readyz` also pings the
+database pool, bounded by `server.readyz_timeout` (default `2s`); when the
+ping fails or times out it answers `503` problem+json with code
+`unavailable`, so an orchestrator stops routing to an instance that cannot
+reach PostgreSQL without restarting it.
 
 ## Local stack (compose)
 

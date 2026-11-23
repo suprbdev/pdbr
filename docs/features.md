@@ -216,7 +216,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 ## Server & protocol
 
 - [x] `server.base_path` (default `/api`; `""` = root) (new)
-- [x] `GET /healthz` / `/readyz` outside base_path (parity)
+- [x] `GET /healthz` (liveness) / `/readyz` (bounded pool ping, `server.readyz_timeout`, `503 unavailable` when the database is unreachable) outside base_path (parity)
 - [x] `GET {base}/openapi.json` (`server.openapi`, default true) (new)
 - [x] Content negotiation: JSON default; `text/csv`; `415` non-JSON body; `406` unsatisfiable `Accept` (new)
 - [x] CORS configuration (`server.cors_origins`: exact allowlist or `*`) + preflight (parity)

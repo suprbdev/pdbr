@@ -24,6 +24,8 @@ server:
   openapi_domains: true
   # Overall HTTP request timeout; expiry answers 504.
   request_timeout: "30s"
+  # Timeout of the database ping behind GET /readyz; an unreachable or slow database answers 503 unavailable. /healthz stays a liveness check.
+  readyz_timeout: "2s"
   # Maximum accepted request body size in bytes; over answers 413.
   max_body_bytes: 1048576
   # Maximum select= embed nesting depth; deeper answers 400 embed_depth_exceeded.

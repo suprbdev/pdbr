@@ -98,6 +98,7 @@ type Server struct {
 
 	metrics    *metrics.Metrics
 	metricsCfg confx.Metrics
+	ping       func(context.Context) error
 }
 
 // Route classes of the pdbr_http_* metrics' route label.
@@ -131,6 +132,24 @@ func (s *Server) SetMetrics(m *metrics.Metrics, cfg confx.Metrics) {
 	s.metrics, s.metricsCfg = m, cfg
 }
 
+// SetReadiness makes GET /readyz call ping with a server.readyz_timeout
+// deadline and answer 503 unavailable when it fails; nil (the default)
+// leaves /readyz a liveness alias. Call it before Handler.
+func (s *Server) SetReadiness(ping func(context.Context) error) { s.ping = ping }
+
+func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
+	if s.ping != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), s.cfg.ReadyzTimeout)
+		defer cancel()
+		if err := s.ping(ctx); err != nil {
+			s.log.Warn("readyz: database ping failed", "err", err)
+			WriteProblem(w, r, http.StatusServiceUnavailable, CodeUnavailable, "database unavailable")
+			return
+		}
+	}
+	httpx.Healthz(w, r)
+}
+
 // Swap atomically replaces the runtime (watch mode).
 func (s *Server) Swap(rt *Runtime) { s.rt.Store(rt) }
 
@@ -142,7 +161,7 @@ func (s *Server) Handler() http.Handler {
 	base := s.cfg.BasePath
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", readOnlyRoute(httpx.Healthz))
-	mux.HandleFunc("/readyz", readOnlyRoute(httpx.Healthz))
+	mux.HandleFunc("/readyz", readOnlyRoute(s.handleReadyz))
 	apiRouter := s.withAuth(http.HandlerFunc(s.handleAPI))
 	if base == "" {
 		mux.Handle("/", apiRouter)
