@@ -67,7 +67,7 @@ has a `code`, see the note below the table):
 | (`if_match_unsupported`) | 400 | `If-Match` on a write that cannot honour it (bulk `PATCH`/`DELETE` on a collection path, `PUT` on a single-row path, a `PATCH` carrying nested-mutation keys) while `server.etags` is on |
 | (`invalid_preference`) | 400 | `Prefer: handling=strict` with an unknown token or a malformed value (PostgREST `PGRST122`); `resolution=merge-duplicates` on a resource without `PUT`; `tx=` while `server.tx_end` has no override; `partial=` while `server.partial_bulk_writes` is off or with a value other than `items`; an unknown `timezone=` |
 | (`max_affected_exceeded`) | 400 | `Prefer: handling=strict, max-affected=N` and the write touched more than `N` rows; rolled back (PostgREST `PGRST124`) |
-| `not_acceptable` | 406 | `Accept` unsatisfiable (incl. `text/csv` with embeds or on non-list responses) |
+| `not_acceptable` | 406 | `Accept` unsatisfiable (incl. `text/csv` with embeds or on non-list responses, `application/geo+json` without a spatial column in the selection) |
 | `unsupported_media_type` | 415 | request body `Content-Type` is not `application/json` |
 | `role_not_allowed` | 403 | credential valid, but the resolved role is not in `rls.allowed_roles`, or is `none`, `public`, a `pg_*` role or not `[A-Za-z0-9_]+` |
 | `invalid_token` | 401 | JWT/headers present but invalid (signature, exp, iss/aud, JWKS miss or unavailable, malformed; a claim header misspelt, repeated, folding onto another claim or outside `rls.auth.header_claims`) |
@@ -237,7 +237,10 @@ static per path until a hot swap):
   `application/problem+json`, `*/*`, `application/*` nor (where supported)
   `text/csv` is acceptable. `text/csv` is supported on list GETs and
   set-returning RPC GETs only; requesting it elsewhere, or with embeds in
-  `select=`, or with `server.csv: false` → `406`. Error bodies are always
+  `select=`, or with `server.csv: false` → `406`. `application/geo+json` is
+  supported on `GET`/`HEAD` reads of table rows over a spatial column;
+  without one in `select=`, with aggregates or on a mutation → `406`
+  ([PostGIS](postgis.md#accept-applicationgeojson)). Error bodies are always
   `application/problem+json` even when the client only accepted `text/csv`.
 
 ## `412`

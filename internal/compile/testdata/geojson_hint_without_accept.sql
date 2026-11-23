@@ -1,0 +1,2 @@
+-- request: GET /api/places?geometry=location
+-- error: 400 invalid_filter: geometry= only applies to Accept: application/geo+json

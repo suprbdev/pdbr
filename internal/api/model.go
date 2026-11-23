@@ -7,6 +7,7 @@ package api
 
 import (
 	"github.com/suprbdev/pdbcore/introspect"
+	"github.com/suprbdev/pdbcore/postgis"
 )
 
 // Method is an HTTP method a resource or RPC route accepts.
@@ -487,4 +488,15 @@ func methodList(m map[Method]bool, allowed ...Method) []Method {
 		}
 	}
 	return out
+}
+
+// HasSpatial reports whether the resource exposes a scalar geometry or
+// geography column, the precondition for application/geo+json output.
+func (r *Resource) HasSpatial() bool {
+	for _, f := range r.Columns {
+		if postgis.IsSpatial(f.Column.PGType) && !f.Column.IsArray {
+			return true
+		}
+	}
+	return false
 }

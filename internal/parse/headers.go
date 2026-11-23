@@ -234,14 +234,17 @@ type mediaRange struct {
 	pos      int
 }
 
-// negotiateAccept picks JSON or CSV. CSV needs server.csv, a GET/HEAD list
-// (list route or set-returning RPC) and no embeds in select=; anything
-// else that is not JSON-compatible is 406.
+// negotiateAccept picks JSON, CSV or GeoJSON. CSV needs server.csv, a
+// GET/HEAD list (list route or set-returning RPC) and no embeds in select=;
+// GeoJSON needs a GET/HEAD read of table rows (list, key lookup, SETOF
+// <table> or single-row RPC) over a resource with a spatial column;
+// anything else that is not JSON-compatible is 406. geometry= only
+// accompanies GeoJSON.
 func (p *parser) negotiateAccept(r *http.Request) error {
 	p.req.Accept = plan.AcceptJSON
 	accept := strings.TrimSpace(strings.Join(r.Header.Values("Accept"), ","))
 	if accept == "" {
-		return nil
+		return p.geometryHintCheck()
 	}
 	var ranges []mediaRange
 	for i, part := range strings.Split(accept, ",") {
@@ -273,7 +276,7 @@ func (p *parser) negotiateAccept(r *http.Request) error {
 		return specificity(ranges[i]) > specificity(ranges[j])
 	})
 	csvOK := p.csvAllowed()
-	csvWanted := false
+	csvWanted, geoWanted := false, false
 	for _, mr := range ranges {
 		if mr.q <= 0 {
 			continue
@@ -282,7 +285,13 @@ func (p *parser) negotiateAccept(r *http.Request) error {
 		case mr.typ == "*" && mr.sub == "*",
 			mr.typ == "application" && (mr.sub == "*" || mr.sub == "json" || mr.sub == "problem+json"):
 			p.req.Accept = plan.AcceptJSON
-			return nil
+			return p.geometryHintCheck()
+		case mr.typ == "application" && mr.sub == "geo+json":
+			if p.geoJSONRejection() == "" {
+				p.req.Accept = plan.AcceptGeoJSON
+				return nil
+			}
+			geoWanted = true
 		case mr.typ == "text" && (mr.sub == "csv" || mr.sub == "*"):
 			if csvOK {
 				p.req.Accept = plan.AcceptCSV
@@ -291,10 +300,42 @@ func (p *parser) negotiateAccept(r *http.Request) error {
 			csvWanted = csvWanted || mr.sub == "csv"
 		}
 	}
+	if geoWanted {
+		return errf(CodeNotAcceptable, "%s", p.geoJSONRejection())
+	}
 	if csvWanted {
 		return p.csvRejection(accept)
 	}
-	return errf(CodeNotAcceptable, "Accept header %q is not satisfiable; supported: application/json, text/csv", accept)
+	return errf(CodeNotAcceptable, "Accept header %q is not satisfiable; supported: application/json, application/geo+json, text/csv", accept)
+}
+
+// geometryHintCheck rejects geometry= on a response that is not GeoJSON.
+func (p *parser) geometryHintCheck() error {
+	if p.req.Geometry != "" {
+		return errf(CodeInvalidFilter, "geometry= only applies to Accept: application/geo+json")
+	}
+	return nil
+}
+
+// geoJSONRejection explains why application/geo+json is unavailable on this
+// request, or returns "" when it can be served.
+func (p *parser) geoJSONRejection() string {
+	res := p.match.Resource
+	switch {
+	case p.method != plan.GET && p.method != plan.HEAD:
+		return "application/geo+json is only available on GET requests"
+	case p.match.RPC != nil:
+		res = p.match.RPC.Resource
+		if res == nil || (p.match.RPC.Returns != api.ReturnSetOfRows && p.match.RPC.Returns != api.ReturnRow) {
+			return "application/geo+json is only available on functions returning table rows"
+		}
+	case res == nil:
+		return "application/geo+json is only available on table resources"
+	}
+	if !res.HasSpatial() {
+		return "application/geo+json needs a geometry or geography column; " + res.Path + " has none"
+	}
+	return ""
 }
 
 func specificity(m mediaRange) int {

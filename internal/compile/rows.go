@@ -3,6 +3,7 @@ package compile
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -48,12 +49,21 @@ func (l *pairList) add(key, keySQL, val string) error {
 }
 
 // object renders the members as one json object.
-func (l *pairList) object() string {
+func (l *pairList) object() string { return l.objectExcept(-1) }
+
+// objectExcept renders every member but the one at index skip.
+func (l *pairList) objectExcept(skip int) string {
 	pairs := make([]string, 0, 2*len(l.vals))
 	for i := range l.vals {
-		pairs = append(pairs, l.keySQL[i], l.vals[i])
+		if i != skip {
+			pairs = append(pairs, l.keySQL[i], l.vals[i])
+		}
 	}
 	return buildJSONObject(pairs)
+}
+
+func plainSpatial(c *introspect.Column) bool {
+	return c != nil && postgis.IsSpatial(c.PGType) && !c.IsArray
 }
 
 // rowJSON compiles a projection node over its resource into a json
@@ -64,6 +74,74 @@ func (s *stmt) rowJSON(node *plan.Node, alias string, depth int) (string, []stri
 		return "", nil, err
 	}
 	return pl.object(), laterals, nil
+}
+
+// rootJSON renders the root row of a read: the plain row object, or under
+// Accept: application/geo+json a GeoJSON Feature whose geometry is the
+// chosen spatial select item and whose properties are the remaining items,
+// embeds included.
+func (s *stmt) rootJSON(node *plan.Node, alias string) (string, []string, error) {
+	if s.plan.Accept != plan.AcceptGeoJSON {
+		return s.rowJSON(node, alias, 0)
+	}
+	cands := geoCandidates(node)
+	key := s.plan.Geometry
+	switch {
+	case key == "" && len(cands) > 0:
+		key = cands[0]
+	case key == "":
+		return "", nil, errNotAcceptable("application/geo+json needs a geometry or geography column in select=")
+	case !slices.Contains(cands, key):
+		return "", nil, errUser(CodeInvalidSelect, "geometry=%s is not a spatial column in select=", key)
+	}
+	s.geoKey = &key
+	pl, laterals, err := s.rowPairs(node, alias, 0)
+	s.geoKey = nil
+	if err != nil {
+		return "", nil, err
+	}
+	i := pl.pos[key]
+	feature := buildJSONObject([]string{
+		"'type'", "'Feature'",
+		"'geometry'", pl.vals[i],
+		"'properties'", pl.objectExcept(i),
+	})
+	return feature, laterals, nil
+}
+
+// geoCandidates lists, in selection order, the response keys of the plain
+// spatial columns a Feature geometry can come from: arrays, JSON paths,
+// casts, computed columns and derived accessors never qualify.
+func geoCandidates(node *plan.Node) []string {
+	var keys []string
+	add := func(k string) {
+		if !slices.Contains(keys, k) {
+			keys = append(keys, k)
+		}
+	}
+	if node.Star {
+		for _, f := range node.Resource.Columns {
+			if plainSpatial(f.Column) {
+				add(f.Key)
+			}
+		}
+	}
+	for i := range node.Fields {
+		f := &node.Fields[i]
+		if !plainSpatial(f.Column) || len(f.Path) > 0 || f.Cast != nil {
+			continue
+		}
+		add(f.Key(node.Resource))
+	}
+	return keys
+}
+
+// featureCollection wraps the aggregated page rows of a GeoJSON response.
+func (s *stmt) featureCollection(features string) string {
+	if s.plan.Accept != plan.AcceptGeoJSON {
+		return features
+	}
+	return buildJSONObject([]string{"'type'", "'FeatureCollection'", "'features'", features})
 }
 
 // rowPairs is rowJSON before the object is built: the members of a
@@ -99,7 +177,11 @@ func (s *stmt) rowPairs(node *plan.Node, alias string, depth int) (*pairList, []
 		if err != nil {
 			return nil, nil, err
 		}
-		if err := pl.add(key, s.pairKey(f, key), expr); err != nil {
+		keySQL := ""
+		if depth != 0 || s.geoKey == nil || key != *s.geoKey {
+			keySQL = s.pairKey(f, key)
+		}
+		if err := pl.add(key, keySQL, expr); err != nil {
 			return nil, nil, err
 		}
 	}

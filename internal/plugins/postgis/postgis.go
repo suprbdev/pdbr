@@ -108,6 +108,12 @@ func (p *Plugin) TransformAPI(_ context.Context, b *api.Builder) error {
 	if _, ok := b.Extra.Schemas[SchemaName]; !ok {
 		b.Extra.Schemas[SchemaName] = GeoJSONSchema()
 	}
+	if _, ok := b.Extra.Schemas[api.GeoJSONFeature]; !ok {
+		b.Extra.Schemas[api.GeoJSONFeature] = FeatureSchema()
+	}
+	if _, ok := b.Extra.Schemas[api.GeoJSONFeatureCollection]; !ok {
+		b.Extra.Schemas[api.GeoJSONFeatureCollection] = FeatureCollectionSchema()
+	}
 	ops := []string{"is"}
 	if p.filters {
 		ops = FilterOps()
@@ -256,6 +262,35 @@ func GeoJSONSchema() *api.Schema {
 			"geometries":  {Type: "array", Items: api.SchemaRef(SchemaName)},
 		},
 		Required: []string{"type"},
+	}
+}
+
+// FeatureSchema is the components.schemas.GeoJSONFeature entry: the row
+// representation of Accept: application/geo+json.
+func FeatureSchema() *api.Schema {
+	return &api.Schema{
+		Type:        "object",
+		Description: "GeoJSON Feature (RFC 7946) of one row: geometry is the chosen spatial column, properties the other selected columns and embeds.",
+		Properties: map[string]*api.Schema{
+			"type":       {Type: "string", Enum: []string{"Feature"}},
+			"geometry":   api.Nullable(api.SchemaRef(SchemaName)),
+			"properties": {Type: "object"},
+		},
+		Required: []string{"type", "geometry", "properties"},
+	}
+}
+
+// FeatureCollectionSchema is the components.schemas.GeoJSONFeatureCollection
+// entry: the list representation of Accept: application/geo+json.
+func FeatureCollectionSchema() *api.Schema {
+	return &api.Schema{
+		Type:        "object",
+		Description: "GeoJSON FeatureCollection (RFC 7946): one Feature per row of the page.",
+		Properties: map[string]*api.Schema{
+			"type":     {Type: "string", Enum: []string{"FeatureCollection"}},
+			"features": {Type: "array", Items: api.SchemaRef(api.GeoJSONFeature)},
+		},
+		Required: []string{"type", "features"},
 	}
 }
 

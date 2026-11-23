@@ -251,7 +251,7 @@ func (s *stmt) rpcNode(r *api.Resource) *plan.Node {
 func (s *stmt) rpcRow(rpc *api.RPC, call string) (*Statement, error) {
 	node := s.rpcNode(rpc.Resource)
 	alias := s.alias("t")
-	jsonExpr, laterals, err := s.rowJSON(node, alias, 0)
+	jsonExpr, laterals, err := s.rootJSON(node, alias)
 	if err != nil {
 		return nil, err
 	}

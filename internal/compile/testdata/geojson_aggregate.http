@@ -1,0 +1,2 @@
+GET /api/places?select=count()
+Accept: application/geo+json

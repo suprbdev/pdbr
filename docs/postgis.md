@@ -82,6 +82,58 @@ constructor selection live in `pdbcore/postgis` (`ParseFor`, `Value.SQL`), share
 with pdbq. A value that is neither valid GeoJSON nor plausible WKT is rejected
 with `400 invalid_filter` / `400 invalid_body` before any SQL is built.
 
+## `Accept: application/geo+json`
+
+`GET`/`HEAD` reads answer in GeoJSON (RFC 7946) when the client asks for
+`application/geo+json` — a `FeatureCollection` on list routes and `SETOF
+<table>` RPCs, a single `Feature` on key lookups (`/places/1`,
+`/places/by/…`) and single-row RPCs. It is the PostgREST behaviour
+(`ST_AsGeoJSON(record)`), and map clients (Leaflet, MapLibre) consume it
+directly.
+
+```
+GET /api/places?select=id,name,location&limit=2
+Accept: application/geo+json
+```
+```json
+{"type": "FeatureCollection", "features": [
+  {"type": "Feature",
+   "geometry": {"type": "Point", "coordinates": [-0.1281, 51.508]},
+   "properties": {"id": 1, "name": "Trafalgar Square"}}]}
+```
+
+- **Geometry.** The first plain spatial column of the selection, in
+  `select=` order (the resource's column order for `*` or no `select=`),
+  becomes the Feature `geometry`; `geometry=<key>` picks another one by its
+  response key (alias or column name): `?select=id,location,area&geometry=area`.
+  A key that is not a plain spatial select item is `400 invalid_select`.
+  `geometry=` is rejected (`400 invalid_filter`) on any other media type, and
+  is an ordinary filter parameter on a resource that has a column or computed
+  column named `geometry`. Arrays, JSON paths, casts, computed columns and
+  derived accessors are never the geometry. `transform=` / `simplify=` apply
+  to the geometry item like anywhere else; a `NULL` geometry is
+  `"geometry": null`.
+- **Properties.** Every other select item, under its response key and in the
+  JSON rendering of the normal response — further spatial columns stay GeoJSON
+  objects, embeds (including spreads) are nested arrays/objects, 64-bit
+  integers and `numeric` are strings. The geometry item is not repeated.
+  A selection of only the geometry gives `"properties": {}`.
+- **Everything else is the normal read.** `select=`, filters (spatial ones
+  included), `order=`, `limit`/`offset`, keyset cursors, `count=` /
+  `Prefer: count=`, `Range`, `Content-Range`, `X-Total-Count`, `Link`, `206`
+  and `416`, `ETag` on key lookups, `404` for a missing key and RLS behave
+  as for JSON; only the body and `Content-Type: application/geo+json` differ.
+  An empty page is `{"type":"FeatureCollection","features":[]}`. The
+  Features are built in the single SQL statement
+  (`json_build_object('type','Feature','geometry',…,'properties',…)`, wrapped
+  in a `FeatureCollection` around the aggregated page); the statement text
+  depends only on the request shape.
+- **`406 not_acceptable`** when the selection has no plain spatial column,
+  the resource has no spatial column at all, the select has aggregate
+  functions, the request is not a `GET`/`HEAD` (mutation responses are JSON
+  only) or the route is a scalar/composite RPC. Media ranges rank by `q`
+  like CSV: `application/geo+json;q=0.5, application/json` is JSON.
+
 ## Filtering
 
 Spatial columns take **only** the operators below (plus `is.null` /
@@ -430,6 +482,13 @@ COMMENT ON COLUMN places.secret_location IS '@omit filter,order';
   `Built.TypeSchema`). Request-body schemas (`.insert`/`.update`/`.upsert`
   and RPC `POST` bodies) use `oneOf: [GeoJSON, string]` to admit WKT/EWKT
   (`Builder.Extra.InputTypes`, `postgis.InputSchema()`).
+- `components.schemas.GeoJSONFeature` and `GeoJSONFeatureCollection`
+  (`postgis.FeatureSchema` / `FeatureCollectionSchema`) describe the
+  `application/geo+json` bodies. Resources with a plain spatial column list
+  `application/geo+json` in the `200` (and `206`) content of the list route
+  (`FeatureCollection`), the key routes and single-row RPCs (`Feature`) and
+  `SETOF <table>` RPCs, extend the `Accept` header parameter enum and
+  document a `geometry` query parameter.
 - Pseudo-columns are `readOnly` properties on the resource schema (not on
   `.insert`/`.update`/`.upsert`), typed from `PseudoColumn.Schema` (`number`,
   `integer`, `string`, `boolean`, or `GeoJSON`), each described with its

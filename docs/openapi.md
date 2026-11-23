@@ -228,12 +228,15 @@ computed columns that are filterable under `Built.Surface` and the plugin's
 **Header parameters**: `Prefer` (`return=representation|minimal`, enum) on
 `POST`/`PUT`/`PATCH`/`DELETE`; `If-None-Match` on single-row `GET`/`HEAD` and
 `If-Match` on `PATCH`/`DELETE` (only when `server.etags`); `Accept`
-(`application/json` | `text/csv`, enum) on list `GET`/`HEAD` and set-returning
-rpc `GET`/`HEAD` when `server.csv`.
+(`application/json` | `application/geo+json` | `text/csv`, enum; the geo type only on resources with a spatial column) on list `GET`/`HEAD` and set-returning
+rpc `GET`/`HEAD` when `server.csv` (`text/csv`), and on key lookups and single-row rpc `GET`s over a spatial resource (geo+json only).
 
 **Responses**: success responses carry `application/json` (`$ref` to the
 resource schema, or an array of it; `oneOf` object|array on `POST`/`PUT`) and,
-for lists and set-returning rpc `GET`s under `server.csv`, `text/csv`. Response
+for lists and set-returning rpc `GET`s under `server.csv`, `text/csv`, and
+`application/geo+json` (`GeoJSONFeatureCollection` / `GeoJSONFeature`, postgis
+plugin) on lists, key lookups, `SETOF <table>` and single-row rpc `GET`s of a
+resource with a spatial column. Response
 headers are documented where they occur: `X-Total-Count`, `Link` on lists
 and `SETOF <table>` rpc, `X-Next-Cursor`/`X-Prev-Cursor` on keyset-capable
 lists; `ETag` on single-row `200`; `Location` on `201`; `Allow` on `405`

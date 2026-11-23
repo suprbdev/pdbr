@@ -129,6 +129,33 @@ func TestHandlerList(t *testing.T) {
 	}
 }
 
+func TestHandlerGeoJSON(t *testing.T) {
+	fc := `{"type": "FeatureCollection", "features": [{"type": "Feature", "geometry": {"type": "Point", "coordinates": [1, 2]}, "properties": {"id": 1}}]}`
+	db := (&scriptedDB{}).on(`FROM "public"."places"`, `{"has_next":false,"has_prev":false,"first":[1],"last":[1],"total":1,"n":1,"rows":`+fc+`}`, nil)
+	srv, _ := handlerServer(t, db, nil)
+	hdr := map[string]string{"Accept": "application/geo+json"}
+	res, body := do(t, "GET", srv.URL+"/api/places?select=id,location&count=true", hdr)
+	if res.StatusCode != 200 || res.Header.Get("Content-Type") != ContentTypeGeoJSON || body != fc {
+		t.Fatalf("geojson: %d %q %q", res.StatusCode, res.Header.Get("Content-Type"), body)
+	}
+	if res.Header.Get("X-Total-Count") != "1" || res.Header.Get("Content-Range") != "0-0/1" {
+		t.Errorf("headers = %v", res.Header)
+	}
+	if !strings.Contains(db.seen[0], "'FeatureCollection'") {
+		t.Errorf("sql = %s", db.seen[0])
+	}
+	head, hb := do(t, "HEAD", srv.URL+"/api/places?select=id,location", hdr)
+	if head.StatusCode != 200 || head.Header.Get("Content-Type") != ContentTypeGeoJSON || len(hb) != 0 {
+		t.Fatalf("HEAD: %d %v %q", head.StatusCode, head.Header, hb)
+	}
+	for _, u := range []string{"/api/users", "/api/places?select=id,name"} {
+		res, body = do(t, "GET", srv.URL+u, hdr)
+		if p := problem(t, body); res.StatusCode != 406 || p.Code != "not_acceptable" || res.Header.Get("Content-Type") != ContentTypeProblem {
+			t.Errorf("%s: %d %+v", u, res.StatusCode, p)
+		}
+	}
+}
+
 func TestHandlerHeadParity(t *testing.T) {
 	db := (&scriptedDB{}).on(`FROM "public"."users"`, pageJSON, nil)
 	srv, _ := handlerServer(t, db, nil)

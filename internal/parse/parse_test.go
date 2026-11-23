@@ -1199,6 +1199,55 @@ func TestCoerceJSON(t *testing.T) {
 	}
 }
 
+func TestGeoJSONNegotiation(t *testing.T) {
+	b := buildFixture(t, true)
+	const geo = "application/geo+json"
+	for _, tc := range []struct {
+		method, url, accept string
+		want                plan.Accept
+		code                string
+	}{
+		{"GET", "/api/places", geo, plan.AcceptGeoJSON, ""},
+		{"HEAD", "/api/places", geo, plan.AcceptGeoJSON, ""},
+		{"GET", "/api/places/1", geo, plan.AcceptGeoJSON, ""},
+		{"GET", "/api/places", geo + "; q=0.5, application/json", plan.AcceptJSON, ""},
+		{"GET", "/api/places", "application/json;q=0.5, " + geo, plan.AcceptGeoJSON, ""},
+		{"GET", "/api/places", "application/*", plan.AcceptJSON, ""},
+		{"GET", "/api/places", geo + ";q=0", "", CodeNotAcceptable},
+		{"GET", "/api/users", geo, "", CodeNotAcceptable},
+		{"GET", "/api/users", geo + ", application/json;q=0.1", plan.AcceptJSON, ""},
+		{"POST", "/api/places", geo, "", CodeNotAcceptable},
+		{"GET", "/api/rpc/add_numbers?a=1", geo, "", CodeNotAcceptable},
+	} {
+		r := req{method: tc.method, url: tc.url, header: map[string]string{"Accept": tc.accept}}
+		if tc.method == "POST" {
+			r.body = `{"name":"x"}`
+			r.header["Content-Type"] = "application/json"
+		}
+		p, err := doParse(t, b, r, allOn)
+		if tc.code != "" {
+			var ue *compile.UserError
+			if !errors.As(err, &ue) || ue.Code != tc.code || ue.Status != 406 {
+				t.Errorf("%s %s %s: got %v", tc.method, tc.url, tc.accept, err)
+			}
+			continue
+		}
+		if err != nil || p.Accept != tc.want {
+			t.Errorf("%s %s %s: accept=%v err=%v", tc.method, tc.url, tc.accept, p, err)
+		}
+	}
+	p, err := doParse(t, b, req{url: "/api/places?geometry=area", header: map[string]string{"Accept": geo}}, allOn)
+	if err != nil || p.Geometry != "area" {
+		t.Errorf("geometry hint: %+v %v", p, err)
+	}
+	_, err = doParse(t, b, req{url: "/api/places?geometry=area"}, allOn)
+	wantCode(t, err, CodeInvalidFilter)
+	_, err = doParse(t, b, req{url: "/api/places?geometry=area&geometry=location", header: map[string]string{"Accept": geo}}, allOn)
+	wantCode(t, err, CodeInvalidFilter)
+	_, err = doParse(t, b, req{url: "/api/users?geometry=area", header: map[string]string{"Accept": geo}}, allOn)
+	wantCode(t, err, CodeInvalidFilter)
+}
+
 func TestParseArrayLiteral(t *testing.T) {
 	deref := func(items []*string) []any {
 		out := make([]any, len(items))

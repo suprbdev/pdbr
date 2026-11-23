@@ -1,0 +1,2 @@
+GET /api/places?order=id
+Accept: application/geo+json

@@ -1,0 +1,2 @@
+GET /api/users
+Accept: application/geo+json

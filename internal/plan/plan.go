@@ -64,6 +64,10 @@ type Request struct {
 	IfNoneMatch string
 	Prefer      Prefer
 	Accept      Accept
+	// Geometry is the geometry= hint: the response key of the select item
+	// that becomes the Feature geometry under AcceptGeoJSON ("" = the first
+	// spatial column).
+	Geometry string
 }
 
 // Key is a single-row selector.
@@ -704,4 +708,6 @@ type Accept string
 const (
 	AcceptJSON Accept = "json"
 	AcceptCSV  Accept = "csv"
+	// AcceptGeoJSON is application/geo+json: rows become GeoJSON Features.
+	AcceptGeoJSON Accept = "geojson"
 )

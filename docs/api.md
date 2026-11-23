@@ -432,6 +432,8 @@ POST /api/rpc/search_posts            {"q": "hello"}
 | no `Accept`, `*/*`, `application/*`, `application/json` | JSON |
 | `Accept: text/csv` (or `text/*`) on a list `GET`/`HEAD` or set-returning RPC `GET`/`HEAD` | CSV, `Content-Type: text/csv; charset=utf-8` |
 | `Accept: text/csv` with an embed in `select=`, on a single-row path, on a mutation, on a non-set RPC, or with `server.csv: false` | `406 not_acceptable` (the `detail` says which) |
+| `Accept: application/geo+json` on a `GET`/`HEAD` of a resource with a spatial column (list, key lookup, `SETOF <table>` or single-row RPC) | GeoJSON `FeatureCollection` / `Feature`, `Content-Type: application/geo+json`; `geometry=<key>` picks the geometry item — see [PostGIS](postgis.md#accept-applicationgeojson) |
+| `Accept: application/geo+json` without a spatial column in `select=`, with aggregates, on a mutation or a non-row RPC | `406 not_acceptable` |
 | any other `Accept` | `406 not_acceptable` |
 
 Media ranges are ranked by `q` then specificity, so `text/csv;q=0.5,
@@ -528,7 +530,7 @@ List responses carry no `ETag`.
 | `Location` | `201` from a single-object `POST` (or inserting `PUT`) on a resource with a single-column PK | `{base}/{table}/{pk}` |
 | `Preference-Applied` | a request whose `Prefer` tokens were honoured | the honoured tokens, comma-separated (`return=minimal, handling=strict`) |
 | `Allow` | every `405` (API routes, `/openapi.json`, `/healthz`, `/readyz`) | methods that exist on the path; empty when none does (a volatile function's route under `server.read_only`) |
-| `Content-Type` | always | `application/json; charset=utf-8`, `text/csv; charset=utf-8`, or `application/problem+json` |
+| `Content-Type` | always | `application/json; charset=utf-8`, `text/csv; charset=utf-8`, `application/geo+json`, or `application/problem+json` |
 
 Cursor and `Link` details: [pagination.md](pagination.md).
 

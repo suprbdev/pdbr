@@ -290,6 +290,22 @@ func TestOpenAPI(t *testing.T) {
 	if ops := built.Extra.FilterOps["geometry"]; !reflect.DeepEqual(ops, FilterOps()) || len(ops) != len(corepostgis.Ops) {
 		t.Errorf("FilterOps = %v", ops)
 	}
+	if built.OpenAPI.Components.Schemas[api.GeoJSONFeature] == nil || built.OpenAPI.Components.Schemas[api.GeoJSONFeatureCollection] == nil {
+		t.Error("Feature schemas missing")
+	}
+	list := doc.Paths["/places"].Get
+	if mt := list.Responses["200"].Content["application/geo+json"]; mt == nil || mt.Schema.Ref != "#/components/schemas/GeoJSONFeatureCollection" {
+		t.Errorf("list geo+json content = %+v", list.Responses["200"].Content)
+	}
+	if mt := doc.Paths["/places/{id}"].Get.Responses["200"].Content["application/geo+json"]; mt == nil || mt.Schema.Ref != "#/components/schemas/GeoJSONFeature" {
+		t.Errorf("row geo+json content = %+v", mt)
+	}
+	if !hasParam(list.Parameters, "geometry", "query") || !hasParam(list.Parameters, "Accept", "header") {
+		t.Errorf("list parameters lack geometry/Accept")
+	}
+	if users := doc.Paths["/users"].Get; users.Responses["200"].Content["application/geo+json"] != nil || hasParam(users.Parameters, "geometry", "query") {
+		t.Errorf("users must not advertise geo+json")
+	}
 	_, off := build(t, testutil.FixtureCatalog(), New(map[string]any{"filters": false}))
 	if ops := off.Extra.FilterOps["geography"]; !reflect.DeepEqual(ops, []string{"is"}) {
 		t.Errorf("filters=false FilterOps = %v", ops)
@@ -392,4 +408,13 @@ func TestParseGates(t *testing.T) {
 			}
 		}
 	}
+}
+
+func hasParam(ps []*api.Parameter, name, in string) bool {
+	for _, p := range ps {
+		if p.Name == name && p.In == in {
+			return true
+		}
+	}
+	return false
 }

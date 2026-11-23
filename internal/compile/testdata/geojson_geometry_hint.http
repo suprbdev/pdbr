@@ -1,0 +1,2 @@
+GET /api/places?select=id,location,area&geometry=area&order=id
+Accept: application/geo+json

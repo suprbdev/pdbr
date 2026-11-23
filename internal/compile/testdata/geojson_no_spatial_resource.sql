@@ -1,0 +1,2 @@
+-- request: GET /api/users
+-- error: 406 not_acceptable: application/geo+json needs a geometry or geography column; users has none

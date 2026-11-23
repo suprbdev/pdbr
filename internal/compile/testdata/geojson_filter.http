@@ -1,0 +1,2 @@
+GET /api/places?select=id,location&location=bbox_intersects.(-1,51,1,52)&order=id
+Accept: application/geo+json

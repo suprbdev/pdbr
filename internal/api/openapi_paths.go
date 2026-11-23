@@ -14,6 +14,7 @@ const (
 	rangeNotSatisfiableResponse = "RangeNotSatisfiable"
 	mediaJSON                   = "application/json"
 	mediaCSV                    = "text/csv"
+	mediaGeoJSON                = "application/geo+json"
 )
 
 // Error status sets per operation kind (docs/errors.md "Status mapping"):
@@ -106,6 +107,14 @@ func headOf(get *Operation, id string) *Operation {
 	return &h
 }
 
+// Component schema names of the GeoJSON Feature and FeatureCollection
+// documents application/geo+json answers with (registered by the postgis
+// plugin next to the GeoJSON geometry schema).
+const (
+	GeoJSONFeature           = "GeoJSONFeature"
+	GeoJSONFeatureCollection = "GeoJSONFeatureCollection"
+)
+
 func jsonBody(s *Schema, required bool, desc string) *RequestBody {
 	return &RequestBody{Required: required, Description: desc, Content: map[string]*MediaType{mediaJSON: {Schema: s}}}
 }
@@ -119,13 +128,14 @@ func (b *Builder) listItem(item *PathItem, rt *Route) {
 	r := rt.Resource
 	if rt.Allows(MethodGet) {
 		get := b.operation(rt, r.Path+".list", "List "+r.Path, readStatuses)
-		get.Parameters = append(append(b.listParams(r, false), b.acceptParam()...), countPreferParam())
+		get.Parameters = append(append(b.listParams(r, false), b.acceptParam(true, r)...), countPreferParam())
 		get.Parameters = append(get.Parameters, rangeParams()...)
 		appendDescription(get, b.filterProse(r))
 		ok := &Response{Description: "OK", Headers: b.listHeaders(r.Keyset), Content: map[string]*MediaType{
 			mediaJSON: {Schema: &Schema{Type: "array", Items: SchemaRef(r.Path)}},
 		}}
 		b.addCSV(ok)
+		b.addGeoJSON(ok, r, GeoJSONFeatureCollection)
 		get.Responses["200"] = ok
 		get.Responses["206"] = partialOf(ok)
 		get.Responses["416"] = rangeNotSatisfiable()
@@ -233,8 +243,12 @@ func (b *Builder) rowItem(item *PathItem, rt *Route) {
 	item.Parameters = b.pathParams(r, cols)
 	if rt.Allows(MethodGet) {
 		get := b.operation(rt, getID, "Get one "+r.Path+" "+what, rowStatuses)
-		get.Parameters = []*Parameter{b.selectParam(r, "Columns and embeds to return.")}
+		get.Parameters = append([]*Parameter{b.selectParam(r, "Columns and embeds to return.")}, b.acceptParam(false, r)...)
+		if g := b.geometryParam(r); g != nil {
+			get.Parameters = append(get.Parameters, g)
+		}
 		ok := &Response{Description: "OK", Content: map[string]*MediaType{mediaJSON: {Schema: SchemaRef(r.Path)}}}
+		b.addGeoJSON(ok, r, GeoJSONFeature)
 		if r.Etag {
 			get.Parameters = append(get.Parameters, &Parameter{Name: "If-None-Match", In: "header", Schema: &Schema{Type: "string"},
 				Description: "Weak ETag(s) (or *) from an earlier response; a match answers 304."})
@@ -295,8 +309,15 @@ func (b *Builder) rpcItem(item *PathItem, rt *Route) {
 		}
 		get.Parameters = append(get.Parameters, b.rpcListParams(rpc, argNames)...)
 		if setOf {
-			get.Parameters = append(get.Parameters, b.acceptParam()...)
+			get.Parameters = append(get.Parameters, b.acceptParam(true, rpc.Resource)...)
 			get.Parameters = append(get.Parameters, rangeParams()...)
+		} else if rpc.Returns == ReturnRow {
+			get.Parameters = append(get.Parameters, b.acceptParam(false, rpc.Resource)...)
+		}
+		if rpc.Resource != nil && (setOfRows || rpc.Returns == ReturnRow) && !rpc.hasArg("geometry") {
+			if g := b.geometryParam(rpc.Resource); g != nil {
+				get.Parameters = append(get.Parameters, g)
+			}
 		}
 		if setOfRows {
 			get.Parameters = append(get.Parameters, countPreferParam())
@@ -357,6 +378,9 @@ func (b *Builder) listParams(r *Resource, rpc bool) []*Parameter {
 			Description: "Comma list of orderable columns: DISTINCT ON those columns (they lead the ORDER BY). Not combinable with cursors."})
 	}
 	out = append(out, b.logicParams()...)
+	if g := b.geometryParam(r); g != nil && !rpc {
+		out = append(out, g)
+	}
 	if near := b.nearParam(r); near != nil {
 		out = append(out, near)
 	}
@@ -607,12 +631,48 @@ func (b *Builder) uniqueProse(r *Resource) string {
 	return "Unique column sets: " + strings.Join(sets, "; ") + "."
 }
 
-func (b *Builder) acceptParam() []*Parameter {
-	if !b.Options.CSV {
+// acceptParam documents the Accept header of a read: text/csv on lists when
+// server.csv is on, application/geo+json when res has a spatial column.
+func (b *Builder) acceptParam(list bool, res *Resource) []*Parameter {
+	csv := list && b.Options.CSV
+	geo := b.geoJSONAvailable(res)
+	if !csv && !geo {
 		return nil
 	}
-	return []*Parameter{{Name: "Accept", In: "header", Schema: &Schema{Type: "string", Enum: []string{mediaJSON, mediaCSV}},
-		Description: "text/csv streams the rows as RFC 4180 CSV (header row in select= order; arrays/json/composites as JSON text; NULL empty); not available with embeds in select= (406)."}}
+	enum := []string{mediaJSON}
+	var desc []string
+	if geo {
+		enum = append(enum, mediaGeoJSON)
+		desc = append(desc, "application/geo+json answers a GeoJSON FeatureCollection (a single Feature on a row route): the first spatial select item (or geometry=) is the geometry, the other items are the properties; 406 without a spatial select item.")
+	}
+	if csv {
+		enum = append(enum, mediaCSV)
+		desc = append(desc, "text/csv streams the rows as RFC 4180 CSV (header row in select= order; arrays/json/composites as JSON text; NULL empty); not available with embeds in select= (406).")
+	}
+	return []*Parameter{{Name: "Accept", In: "header", Schema: &Schema{Type: "string", Enum: enum}, Description: strings.Join(desc, " ")}}
+}
+
+// geoJSONAvailable reports whether application/geo+json is advertised for
+// res: it has a spatial column and the postgis plugin contributed the
+// Feature schemas.
+func (b *Builder) geoJSONAvailable(res *Resource) bool {
+	return res != nil && res.HasSpatial() && b.Extra.Schemas[GeoJSONFeature] != nil && b.Extra.Schemas[GeoJSONFeatureCollection] != nil
+}
+
+// geometryParam documents geometry=, the choice of the Feature geometry.
+func (b *Builder) geometryParam(r *Resource) *Parameter {
+	if !b.geoJSONAvailable(r) || r.NameTaken("geometry") {
+		return nil
+	}
+	return &Parameter{Name: "geometry", In: "query", Schema: &Schema{Type: "string"},
+		Description: "With Accept: application/geo+json: the response key of the spatial select item to use as the Feature geometry (default: the first spatial item); the other items become properties."}
+}
+
+// addGeoJSON adds the application/geo+json representation to a read response.
+func (b *Builder) addGeoJSON(r *Response, res *Resource, schema string) {
+	if r.Content != nil && b.geoJSONAvailable(res) {
+		r.Content[mediaGeoJSON] = &MediaType{Schema: SchemaRef(schema)}
+	}
 }
 
 func (b *Builder) ifMatchParam(r *Resource) []*Parameter {
@@ -912,6 +972,12 @@ func (b *Builder) rpcResponses(rpc *RPC, get bool) map[string]*Response {
 		}
 		return out
 	}
+	geo := func(out map[string]*Response, schema string) map[string]*Response {
+		if get {
+			b.addGeoJSON(out["200"], rpc.Resource, schema)
+		}
+		return out
+	}
 	if rpc.Mint {
 		jwtSchema := &Schema{Type: "string", Format: "jwt", Description: "Signed HS256 JWT minted from the returned " + rpc.Function.ReturnType + " row."}
 		if rpc.Returns == ReturnSetOfComposite {
@@ -924,15 +990,15 @@ func (b *Builder) rpcResponses(rpc *RPC, get bool) map[string]*Response {
 		return map[string]*Response{"204": {Description: "No Content (void function)."}}
 	case ReturnRow:
 		if rpc.Record {
-			return ok(SchemaRef(rpc.Resource.Path))
+			return geo(ok(SchemaRef(rpc.Resource.Path)), GeoJSONFeature)
 		}
-		return ok(Nullable(SchemaRef(rpc.Resource.Path)))
+		return geo(ok(Nullable(SchemaRef(rpc.Resource.Path))), GeoJSONFeature)
 	case ReturnSetOfRows:
-		return list(SchemaRef(rpc.Resource.Path), map[string]*Header{
+		return geo(list(SchemaRef(rpc.Resource.Path), map[string]*Header{
 			"X-Total-Count": {Schema: &Schema{Type: "integer"}, Description: "Total rows after filters; present with count=true or Prefer: count=."},
 			"Content-Range": contentRangeHeader(),
 			"Link":          {Schema: &Schema{Type: "string"}, Description: `offset= links: <url>; rel="next", <url>; rel="prev".`},
-		})
+		}), GeoJSONFeatureCollection)
 	case ReturnComposite:
 		return ok(Nullable(SchemaRef(rpc.Composite.Name)))
 	case ReturnSetOfComposite:
@@ -1038,4 +1104,13 @@ func modifiableOps(ops []string) []string {
 		}
 	}
 	return out
+}
+
+func (r *RPC) hasArg(name string) bool {
+	for _, a := range r.Args {
+		if a.Name == name {
+			return true
+		}
+	}
+	return false
 }
