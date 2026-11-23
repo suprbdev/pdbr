@@ -1,2 +1,2 @@
--- request: GET /api/kb/sites?order=loc.earth_dist
--- error: 400 invalid_parameter: order by loc.earth_dist requires latlon=<lat>,<lon>
+-- request: GET /api/kb/sites?order=loc.earth_distance
+-- error: 400 invalid_parameter: order by loc.earth_distance requires ~latlon=<lat>,<lon>

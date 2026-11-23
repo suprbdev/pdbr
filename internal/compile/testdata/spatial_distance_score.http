@@ -1,1 +1,1 @@
-GET /api/places?select=id,location_distance,metres:location_distance(spheroid=true),area_distance&order=location.dist&near=SRID%3D4326%3BPOINT(-0.12%2051.5)&limit=3
+GET /api/places?select=id,~location_st_distance,metres:~location_st_distance(spheroid=true),~area_st_distance&order=location.st_distance&~near=SRID%3D4326%3BPOINT(-0.12%2051.5)&limit=3

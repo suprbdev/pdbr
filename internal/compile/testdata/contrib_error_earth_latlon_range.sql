@@ -1,2 +1,2 @@
--- request: GET /api/kb/sites?order=loc.earth_dist&latlon=95,0
--- error: 400 invalid_parameter: latlon: lat must be between -90 and 90
+-- request: GET /api/kb/sites?order=loc.earth_distance&~latlon=95,0
+-- error: 400 invalid_parameter: ~latlon: lat must be between -90 and 90

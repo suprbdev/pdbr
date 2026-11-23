@@ -52,7 +52,7 @@ limits:
   max_cost: 100000
   # Largest accepted limit (larger answers 400 page_size_exceeded); also the page size when limit is absent.
   max_page_size: 100
-  # Characters of a document a full-text headline (<col>_headline) reads: a text document is cut to its first max_headline_document characters, a json or jsonb document longer than that gives a null headline. ts_headline re-parses its document on every call, so each headline costs 10 per started 8192 characters of this bound in max_cost.
+  # Characters of a document a full-text headline (~<col>_headline) reads: a text document is cut to its first max_headline_document characters, a json or jsonb document longer than that gives a null headline. ts_headline re-parses its document on every call, so each headline costs 10 per started 8192 characters of this bound in max_cost.
   max_headline_document: 65536
 
 schema:
@@ -176,11 +176,11 @@ plugins:
       computed_opt_in: false
     # postgis plugin: the spatial query surface of geometry, geography and raster columns.
     postgis:
-      # Spatial filter operators (st_*, bbox_*) on spatial columns and the intersects filter on raster columns.
+      # Spatial filter operators (st_*, bbox_*) on spatial columns and the st_intersects filter on raster columns.
       filters: true
-      # Derived pseudo-columns: <col>_area, <col>_centroid, ... on spatial columns, <col>_width, <col>_value, <col>_summary_stats, ... on raster columns.
+      # Derived pseudo-columns: ~<col>_area, ~<col>_centroid, ... on spatial columns, ~<col>_width, ~<col>_value, ~<col>_summary_stats, ... on raster columns.
       derived: true
-      # Distance ordering (order=<col>.dist.asc|desc) and the <col>_distance score, both with near=.
+      # Distance ordering (order=<col>.st_distance.asc|desc) and the ~<col>_st_distance score, both with ~near=.
       ordering: true
       # select= projection arguments: col(transform=...,simplify=...,buffer=...,precision=...).
       projection: true

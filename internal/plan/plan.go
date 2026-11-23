@@ -54,19 +54,19 @@ type Request struct {
 	// Near is the reference geometry for distance ordering (postgis plugin).
 	Near any
 	// Trgm is the reference text (a string) for trigram distance ordering
-	// (trgm=; nil when absent).
+	// (~trgm=; nil when absent).
 	Trgm any
 	// Vec is the reference vector for pgvector and cube distance ordering,
-	// scores and thresholds (vec=; a []any of numbers, or of two lists of
+	// scores and thresholds (~vec=; a []any of numbers, or of two lists of
 	// numbers for a cube box, from a JSON array, or the type's text form as
 	// a string; nil when absent).
 	Vec any
 	// LatLon is the reference location for the earthdistance orderings,
-	// scores and thresholds (latlon=<lat>,<lon>; a map[string]any with
+	// scores and thresholds (~latlon=<lat>,<lon>; a map[string]any with
 	// float64 "lat" and "lon" in degrees; nil when absent).
 	LatLon any
 	// Levenshtein is the reference text (a string) for Levenshtein
-	// distance ordering, scores and thresholds (levenshtein=; nil when
+	// distance ordering, scores and thresholds (~levenshtein=; nil when
 	// absent).
 	Levenshtein any
 	IfMatch     string // raw ETag from If-Match ("" = absent)
@@ -125,7 +125,7 @@ type FieldSel struct {
 	Alias    string             // response key ("" = key of the selected item)
 	Column   *introspect.Column // real column
 	Computed *api.Computed      // computed column (row-type function)
-	Pseudo   *api.PseudoColumn  // derived pseudo-column (<col>_<accessor>, scores)
+	Pseudo   *api.PseudoColumn  // derived pseudo-column (~<col>_<accessor>, scores)
 	// Args are spatial projection args: "transform" (int SRID),
 	// "simplify" (float64 tolerance), "buffer" (float64 distance) and
 	// "precision" (int64 decimal digits); a geometry distance score's
@@ -155,7 +155,7 @@ type FieldSel struct {
 	Headline *Headline
 }
 
-// Headline is a selected <col>_headline: ts_headline over Document against
+// Headline is a selected ~<col>_headline: ts_headline over Document against
 // the query of Filter, the single non-negated full-text condition on the
 // pseudo-column's column among the conjuncts of the item's scope (the root
 // filters, or the embed's).
@@ -448,9 +448,9 @@ type Not struct{ Term Expr }
 //     hk_any, *_any); map[string]any (decoded JSON object) or a range
 //     literal string for range operands; map[string]any or an hstore
 //     literal string for hstore cs/cd; a float64 distance for the vec_*_lt
-//     thresholds (pgvector and cube), earth_lt and earth_miles_lt, and an
-//     int64 one for levenshtein_lt (their references are vec=, latlon= and
-//     levenshtein=); for cube cs/cd/ov a []any decoded from a JSON array
+//     thresholds (pgvector and cube), earth_distance_lt and earth_miles_distance_lt, and an
+//     int64 one for levenshtein_distance_lt (their references are ~vec=, ~latlon= and
+//     ~levenshtein=); for cube cs/cd/ov a []any decoded from a JSON array
 //     (a point, or a pair of corner lists) or the cube text form as a
 //     string; the text for hk_def, soundex, metaphone, dmetaphone and
 //     query_int.
@@ -463,7 +463,7 @@ type Cond struct {
 	Path     JSONPath
 	Computed *api.Computed // computed-column filter (advanced_filters)
 	// Pseudo is a filterable (integer) contrib pseudo-column of the current
-	// resource (<col>_nlevel, <col>_icount).
+	// resource (~<col>_nlevel, ~<col>_icount).
 	Pseudo   *api.PseudoColumn
 	Relation *RelationPath // relation filter (advanced_filters)
 	Op       Op            // eq, neq, ..., st_intersects, exists
@@ -492,7 +492,7 @@ type DWithin struct {
 	Spheroid *bool
 }
 
-// BBox is the operand of bbox_intersects / bbox_contains / bbox_containedby.
+// BBox is the operand of bbox_intersects / bbox_contains / bbox_contained_by.
 // The other bbox_* operators take a geometry (postgis.Value) and compare
 // against its bounding box.
 type BBox struct {
@@ -542,80 +542,84 @@ const (
 	OpNxl        Op = "nxl"
 	OpAdj        Op = "adj"
 
-	OpStIntersects       Op = "st_intersects"
-	OpStDisjoint         Op = "st_disjoint"
-	OpStContains         Op = "st_contains"
-	OpStContainsProperly Op = "st_containsproperly"
-	OpStWithin           Op = "st_within"
-	OpStCovers           Op = "st_covers"
-	OpStCoveredBy        Op = "st_coveredby"
-	OpStCrosses          Op = "st_crosses"
-	OpStOverlaps         Op = "st_overlaps"
-	OpStTouches          Op = "st_touches"
-	OpStEquals           Op = "st_equals"
-	OpStDWithin          Op = "st_dwithin"
-	OpStBeyond           Op = "st_beyond"
-	OpBBoxIntersects     Op = "bbox_intersects"
-	OpBBoxContains       Op = "bbox_contains"
-	OpBBoxContainedBy    Op = "bbox_containedby"
+	OpStIntersects        Op = "st_intersects"
+	OpStDisjoint          Op = "st_disjoint"
+	OpStContains          Op = "st_contains"
+	OpStContainsProperly  Op = "st_contains_properly"
+	OpStWithin            Op = "st_within"
+	OpStCovers            Op = "st_covers"
+	OpStCoveredBy         Op = "st_covered_by"
+	OpStCrosses           Op = "st_crosses"
+	OpStOverlaps          Op = "st_overlaps"
+	OpStTouches           Op = "st_touches"
+	OpStEquals            Op = "st_equals"
+	OpStDWithin           Op = "st_dwithin"
+	OpStBeyond            Op = "st_beyond"
+	OpBBoxIntersects      Op = "bbox_intersects"
+	OpBBoxContains        Op = "bbox_contains"
+	OpBBoxContainedBy     Op = "bbox_contained_by"
+	OpBBoxLeftOf          Op = "bbox_left_of"
+	OpBBoxRightOf         Op = "bbox_right_of"
+	OpBBoxBelow           Op = "bbox_below"
+	OpBBoxAbove           Op = "bbox_above"
+	OpBBoxOverlapsOrLeft  Op = "bbox_overlaps_or_left_of"
+	OpBBoxOverlapsOrRight Op = "bbox_overlaps_or_right_of"
+	OpBBoxOverlapsOrBelow Op = "bbox_overlaps_or_below"
+	OpBBoxOverlapsOrAbove Op = "bbox_overlaps_or_above"
+	OpBBoxEquals          Op = "bbox_equals"
+	OpStExactlyEquals     Op = "st_exactly_equals"
+	OpSt3DIntersects      Op = "st_3d_intersects"
+	OpBBoxIntersectsND    Op = "bbox_intersects_nd"
 
-	OpBBoxLeftOf            Op = "bbox_leftof"
-	OpBBoxRightOf           Op = "bbox_rightof"
-	OpBBoxBelow             Op = "bbox_below"
-	OpBBoxAbove             Op = "bbox_above"
-	OpBBoxOverlapsOrLeftOf  Op = "bbox_overlapsorleftof"
-	OpBBoxOverlapsOrRightOf Op = "bbox_overlapsorrightof"
-	OpBBoxOverlapsOrBelow   Op = "bbox_overlapsorbelow"
-	OpBBoxOverlapsOrAbove   Op = "bbox_overlapsorabove"
-	OpBBoxEquals            Op = "bbox_equals"
-	OpStExactlyEquals       Op = "st_exactlyequals"
-	OpStOrderingEquals      Op = "st_orderingequals"
-	OpStIntersects3D        Op = "st_intersects3d"
-	OpBBoxIntersectsND      Op = "bbox_intersectsnd"
-	OpBBoxIntersects2D      Op = "bbox_intersects2d"
+	// OpBBoxIntersectsGeom is bbox_intersects with a geometry operand (its
+	// bounding box) instead of an envelope; the parser picks it from the
+	// operand's form, so it has no URL spelling of its own.
+	OpBBoxIntersectsGeom Op = "bbox_intersects(geometry)"
 
-	// OpRasterIntersects is the raster filter (postgis plugin): the raster's
-	// convex hull intersects a geometry (postgis.RasterIntersectsSQL).
-	OpRasterIntersects Op = "intersects"
+	// OpRasterIntersects is st_intersects on a raster column (postgis
+	// plugin): the raster's convex hull intersects a geometry
+	// (postgis.RasterIntersectsSQL). The parser picks it from the column's
+	// type, so it has no URL spelling of its own.
+	OpRasterIntersects Op = "st_intersects(raster)"
 )
 
-// SpatialOps maps the URL spelling of every spatial operator to the
-// pdbcore/postgis Op name (postgis.OpByName). The URL spelling is the
-// pdbcore name lower-cased with a "bbox_" prefix for the bounding-box
-// operators (bboxLeftOf -> bbox_leftof) and "st_" for the rest
-// (exactlyEquals -> st_exactlyequals).
+// SpatialOps maps every spatial operator to its pdbcore/postgis Op name
+// (postgis.OpByName). The URL spelling is snake_case with a "bbox_" prefix
+// for the bounding-box operators and "st_" for the rest, after the PostGIS
+// function where there is one (containsProperly -> st_contains_properly,
+// intersects3D -> st_3d_intersects, bboxOverlapsOrLeftOf ->
+// bbox_overlaps_or_left_of). pdbcore's orderingEquals is not exposed: it
+// matches exactly the rows st_exactly_equals (=) does.
 var SpatialOps = map[Op]string{
-	OpStIntersects:       "intersects",
-	OpStDisjoint:         "disjoint",
-	OpStContains:         "contains",
-	OpStContainsProperly: "containsProperly",
-	OpStWithin:           "within",
-	OpStCovers:           "covers",
-	OpStCoveredBy:        "coveredBy",
-	OpStCrosses:          "crosses",
-	OpStOverlaps:         "overlaps",
-	OpStTouches:          "touches",
-	OpStEquals:           "equals",
-	OpStDWithin:          "dwithin",
-	OpStBeyond:           "beyond",
-	OpBBoxIntersects:     "bboxIntersects",
-	OpBBoxContains:       "bboxContains",
-	OpBBoxContainedBy:    "bboxContainedBy",
-
-	OpBBoxLeftOf:            "bboxLeftOf",
-	OpBBoxRightOf:           "bboxRightOf",
-	OpBBoxBelow:             "bboxBelow",
-	OpBBoxAbove:             "bboxAbove",
-	OpBBoxOverlapsOrLeftOf:  "bboxOverlapsOrLeftOf",
-	OpBBoxOverlapsOrRightOf: "bboxOverlapsOrRightOf",
-	OpBBoxOverlapsOrBelow:   "bboxOverlapsOrBelow",
-	OpBBoxOverlapsOrAbove:   "bboxOverlapsOrAbove",
-	OpBBoxEquals:            "bboxEquals",
-	OpStExactlyEquals:       "exactlyEquals",
-	OpStOrderingEquals:      "orderingEquals",
-	OpStIntersects3D:        "intersects3D",
-	OpBBoxIntersectsND:      "bboxIntersectsND",
-	OpBBoxIntersects2D:      "bboxIntersects2D",
+	OpStIntersects:        "intersects",
+	OpStDisjoint:          "disjoint",
+	OpStContains:          "contains",
+	OpStContainsProperly:  "containsProperly",
+	OpStWithin:            "within",
+	OpStCovers:            "covers",
+	OpStCoveredBy:         "coveredBy",
+	OpStCrosses:           "crosses",
+	OpStOverlaps:          "overlaps",
+	OpStTouches:           "touches",
+	OpStEquals:            "equals",
+	OpStDWithin:           "dwithin",
+	OpStBeyond:            "beyond",
+	OpBBoxIntersects:      "bboxIntersects",
+	OpBBoxContains:        "bboxContains",
+	OpBBoxContainedBy:     "bboxContainedBy",
+	OpBBoxLeftOf:          "bboxLeftOf",
+	OpBBoxRightOf:         "bboxRightOf",
+	OpBBoxBelow:           "bboxBelow",
+	OpBBoxAbove:           "bboxAbove",
+	OpBBoxOverlapsOrLeft:  "bboxOverlapsOrLeftOf",
+	OpBBoxOverlapsOrRight: "bboxOverlapsOrRightOf",
+	OpBBoxOverlapsOrBelow: "bboxOverlapsOrBelow",
+	OpBBoxOverlapsOrAbove: "bboxOverlapsOrAbove",
+	OpBBoxEquals:          "bboxEquals",
+	OpStExactlyEquals:     "exactlyEquals",
+	OpSt3DIntersects:      "intersects3D",
+	OpBBoxIntersectsND:    "bboxIntersectsND",
+	OpBBoxIntersectsGeom:  "bboxIntersects2D",
 }
 
 // Quantifier selects how a relation filter applies over related rows.
@@ -650,10 +654,10 @@ type OrderTerm struct {
 	// Path is the JSON path applied to Column (order=data->a.desc).
 	Path       JSONPath
 	Computed   *api.Computed
-	Pseudo     *api.PseudoColumn  // orderable contrib pseudo-column (<col>_nlevel, <col>_icount)
+	Pseudo     *api.PseudoColumn  // orderable contrib pseudo-column (~<col>_nlevel, ~<col>_icount)
 	Relation   *RelationOrder     // users(name) — forward: scalar subquery, backward: MIN/MAX
-	Distance   *introspect.Column // spatial column for `.dist` (uses Request.Near)
-	Contrib    *ContribOrder      // .rank / .rank_cd / .trgm_dist / .vec_l2 ... (pdbcore/contrib)
+	Distance   *introspect.Column // spatial column for `.st_distance` (uses Request.Near)
+	Contrib    *ContribOrder      // .rank / .rank_cd / .trgm_distance / .l2_distance ... (pdbcore/contrib)
 	Desc       bool
 	NullsFirst bool // both directions default to NULLS LAST
 }
@@ -665,7 +669,7 @@ type OrderTerm struct {
 // Request.Levenshtein (Expr set).
 type ContribOrder struct {
 	Column *introspect.Column
-	// Name is the order modifier (rank, rank_cd, trgm_dist, vec_l2, ...).
+	// Name is the order modifier (rank, rank_cd, trgm_distance, l2_distance, ...).
 	Name string
 	// Rank is "ts_rank" or "ts_rank_cd" for a relevance term.
 	Rank string

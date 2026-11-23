@@ -1,2 +1,2 @@
--- request: GET /api/kb/docs?select=path_subpath(offset=x)
--- error: 400 invalid_select: argument "offset" of "path_subpath" must be an integer, got "x"
+-- request: GET /api/kb/docs?select=~path_subpath(offset=x)
+-- error: 400 invalid_select: argument "offset" of "~path_subpath" must be an integer, got "x"

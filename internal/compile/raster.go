@@ -11,7 +11,7 @@ import (
 
 // rasterPseudoSQL renders a raster pseudo-column of the row at alias: a
 // header-only metadata accessor (the envelope with precision= decimal
-// digits when given), the pixel value at near= or the summary statistics
+// digits when given), the pixel value at ~near= or the summary statistics
 // of a band. The band (default 1) and the point are bind parameters, so
 // the SQL text does not depend on whether band= is given.
 func (s *stmt) rasterPseudoSQL(p *api.PseudoColumn, args map[string]any, alias string) (string, error) {
@@ -31,7 +31,7 @@ func (s *stmt) rasterPseudoSQL(p *api.PseudoColumn, args map[string]any, alias s
 		return postgis.OutputJSONPrecisionSQL("ST_Envelope("+ref+")", digits), nil
 	case rv.Value:
 		if s.plan.Near == nil {
-			return "", errUser(CodeInvalidParameter, "%s requires near=", p.Key)
+			return "", errUser(CodeInvalidParameter, "%s requires ~near=", p.Key)
 		}
 		geom, err := s.spatialOperand(postgis.Geometry, 0, s.plan.Near)
 		if err != nil {
@@ -54,7 +54,7 @@ func rasterBand(args map[string]any) int64 {
 }
 
 // rasterCondSQL renders a filter on a raster column: is.null / not.is.null,
-// or intersects with a geometry operand (bound once, without a typmod SRID:
+// or st_intersects with a geometry operand (bound once, without a typmod SRID:
 // it must be in the raster's SRID).
 func (s *stmt) rasterCondSQL(ref string, c *plan.Cond) (string, error) {
 	switch c.Op {
@@ -67,5 +67,5 @@ func (s *stmt) rasterCondSQL(ref string, c *plan.Cond) (string, error) {
 		}
 		return negate(postgis.RasterIntersectsSQL(ref, geom), c.Negate), nil
 	}
-	return "", errUser(CodeInvalidFilter, "operator %q is not valid for raster columns (intersects, is)", c.Op)
+	return "", errUser(CodeInvalidFilter, "operator %q is not valid for raster columns (st_intersects, is)", c.Op)
 }

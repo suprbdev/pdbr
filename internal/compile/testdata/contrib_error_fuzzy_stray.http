@@ -1,1 +1,1 @@
-GET /api/kb/docs?select=id&levenshtein=x
+GET /api/kb/docs?select=id&~levenshtein=x

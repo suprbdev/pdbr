@@ -1,1 +1,1 @@
-GET /api/kb/articles?select=id,search_headline(document=meta2)&search=fts.cat
+GET /api/kb/articles?select=id,~search_headline(document=meta2)&search=fts.cat

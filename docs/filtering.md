@@ -1,9 +1,8 @@
 # Filtering
 
 Any query parameter that is not reserved (`select`, `order`, `limit`,
-`offset`, `after`, `before`, `count`, `distinct`, `on_conflict`, and `near`
-/ `trgm` / `vec` / `latlon` / `levenshtein` unless the resource has a column
-or argument of that name) is a
+`offset`, `after`, `before`, `count`, `distinct`, `on_conflict`, and every
+name starting with `~`, see [api.md](api.md#the--namespace)) is a
 filter. Filters AND together, become `WHERE` predicates in the single compiled
 statement, and every operand travels as a bind parameter — the SQL text never
 varies with input values (an invariant enforced by fuzz tests).
@@ -48,10 +47,10 @@ compile time (`400 invalid_filter` when it does not parse) and passed as
 | `cs`, `cd`, `ov` | `@>`, `<@`, `&&` | arrays (`{a,b}` literal); `cs`/`cd` also jsonb (JSON literal); ranges, hstore, ltree, inet — see [contrib.md](contrib.md) |
 | `fts`, `plfts`, `phfts`, `wfts` (optional `(config)`) | `@@ to_tsquery` / `plainto_tsquery` / `phraseto_tsquery` / `websearch_to_tsquery` | `tsvector`; text-like through `to_tsvector` — [contrib.md](contrib.md#full-text-search-postgrest) |
 | `sl`, `sr`, `nxr`, `nxl`, `adj` | `<<`, `>>`, `&<`, `&>`, `-\|-` (range literal or JSON object operand) | ranges, multiranges — [contrib.md](contrib.md#ranges-and-multiranges-postgrest) |
-| contrib (pdbr) | `trgm_sim`, `trgm_wsim`, `trgm_swsim` (pg_trgm); `unaccent_eq`, `unaccent_ilike`, `unaccent_sw`, `unaccent_includes` (unaccent, text-like columns); `levenshtein_lt`, `soundex`, `metaphone`, `dmetaphone` (fuzzystrmatch, text-like columns); `query_int` (intarray, `int4[]`); `cs`, `cd`, `ov`, `vec_l2_lt`, `vec_l1_lt`, `vec_chebyshev_lt` (cube); `earth_lt` (earthdistance `earth`), `earth_miles_lt` (`point` with earthdistance); `intersects` (PostGIS raster, [postgis.md](postgis.md#rasters)); `hk_all`, `hk_any`, `hk_def` (hstore); `ancestor`, `descendant`, `ancestor_any`, `descendant_any`, `lquery`, `lquery_any`, `ltxtquery` (ltree); `cs_strict`, `cd_strict` (inet) — see [contrib.md](contrib.md) | extension types, gated on the installed extension |
+| contrib (pdbr) | `trgm_sim`, `trgm_wsim`, `trgm_swsim` (pg_trgm); `unaccent_eq`, `unaccent_ilike`, `unaccent_sw`, `unaccent_includes` (unaccent, text-like columns); `levenshtein_distance_lt`, `soundex`, `metaphone`, `dmetaphone` (fuzzystrmatch, text-like columns); `query_int` (intarray, `int4[]`); `cs`, `cd`, `ov`, `l2_distance_lt`, `l1_distance_lt`, `chebyshev_distance_lt` (cube); `earth_distance_lt` (earthdistance `earth`), `earth_miles_distance_lt` (`point` with earthdistance); `intersects` (PostGIS raster, [postgis.md](postgis.md#rasters)); `hk_all`, `hk_any`, `hk_def` (hstore); `ancestor`, `descendant`, `ancestor_any`, `descendant_any`, `lquery`, `lquery_any`, `ltxtquery` (ltree); `cs_strict`, `cd_strict` (inet) — see [contrib.md](contrib.md) | extension types, gated on the installed extension |
 | `hk` | `?` (has key) | jsonb, hstore |
 | `jpe`, `jpm` | `@?`, `@@` — value is a SQL/JSON path | jsonb |
-| spatial (`postgis` plugin) | `st_intersects`, `st_disjoint`, `st_contains`, `st_containsproperly`, `st_within`, `st_covers`, `st_coveredby`, `st_crosses`, `st_overlaps`, `st_touches`, `st_equals`, `st_exactlyequals`, `st_orderingequals`, `st_intersects3d`, `bbox_leftof`, `bbox_rightof`, `bbox_below`, `bbox_above`, `bbox_overlapsorleftof`, `bbox_overlapsorrightof`, `bbox_overlapsorbelow`, `bbox_overlapsorabove`, `bbox_equals`, `bbox_intersectsnd`, `bbox_intersects2d` (value = GeoJSON or WKT/EWKT); `st_dwithin.(geom,dist[,spheroid])`, `st_beyond.(…)`; `bbox_intersects.(minx,miny,maxx,maxy[,srid])`, `bbox_contains`, `bbox_containedby` — plus `is.null`; scalar ops on a spatial column are `400 invalid_filter`, spatial ops on a scalar column too; off (`invalid_filter`) with `plugins.settings.postgis.filters: false` or the plugin disabled — see [postgis.md](postgis.md) | geometry / geography |
+| spatial (`postgis` plugin) | `st_intersects`, `st_disjoint`, `st_contains`, `st_contains_properly`, `st_within`, `st_covers`, `st_covered_by`, `st_crosses`, `st_overlaps`, `st_touches`, `st_equals`, `st_exactly_equals`, `st_ordering_equals`, `st_3d_intersects`, `bbox_left_of`, `bbox_right_of`, `bbox_below`, `bbox_above`, `bbox_overlaps_or_left_of`, `bbox_overlaps_or_right_of`, `bbox_overlaps_or_below`, `bbox_overlaps_or_above`, `bbox_equals`, `bbox_intersects_nd`, `bbox_intersects` (value = GeoJSON or WKT/EWKT); `st_dwithin.(geom,dist[,spheroid])`, `st_beyond.(…)`; `bbox_intersects.(minx,miny,maxx,maxy[,srid])`, `bbox_contains`, `bbox_contained_by` — plus `is.null`; scalar ops on a spatial column are `400 invalid_filter`, spatial ops on a scalar column too; off (`invalid_filter`) with `plugins.settings.postgis.filters: false` or the plugin disabled — see [postgis.md](postgis.md) | geometry / geography |
 | relation (`advanced_filters` plugin) | `EXISTS` subqueries — see [Relation filters](#relation-filters) | FKs |
 | computed (`advanced_filters` plugin) | `fn(t) op $n` — see [Computed columns](#computed-columns) | computed columns |
 
@@ -386,7 +385,7 @@ semantics under short URL names:
 | `condition: {col: v}` | plain `col=eq.v` (no separate shorthand) |
 | `posts: {some\|none\|every: {…}}` | `posts.col=…`, `posts!none.col=…`, `posts!every.col=…` |
 | `postsExist: true`, `authorExists: false` | `posts=exists.true`, `users=exists.false` |
-| `bboxIntersects`, `intersects`, `dwithin`, `bboxLeftOf`, `exactlyEquals`, `intersects3D`, … | `bbox_intersects.(…)`, `st_intersects`, `st_dwithin.(…)`, `bbox_leftof`, `st_exactlyequals`, `st_intersects3d`, … (lower-cased, `bbox_`/`st_` prefix — [postgis.md](postgis.md#filtering)) |
+| `bboxIntersects`, `intersects`, `dwithin`, `bboxLeftOf`, `exactlyEquals`, `intersects3D`, … | `bbox_intersects.(…)`, `st_intersects`, `st_dwithin.(…)`, `bbox_left_of`, `st_exactly_equals`, `st_3d_intersects`, … (snake_case, `bbox_`/`st_` prefix — [postgis.md](postgis.md#filtering)) |
 | relation keys `author` / `postsByAuthorId` | table names `users` / `posts` (+ `!hint`) |
 | enum values `HAPPY` | labels verbatim `happy` |
 

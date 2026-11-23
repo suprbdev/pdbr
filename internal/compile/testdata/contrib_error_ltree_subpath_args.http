@@ -1,1 +1,1 @@
-GET /api/kb/docs?select=path_subpath(offset=x)
+GET /api/kb/docs?select=~path_subpath(offset=x)

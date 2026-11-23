@@ -1,4 +1,4 @@
--- request: GET /api/kb/embeddings?select=id,chunks(id,emb)&chunks.order=emb.vec_cos&chunks.limit=3&order=id&vec=%5B1%2C2%2C3%5D&limit=5
+-- request: GET /api/kb/embeddings?select=id,chunks(id,emb)&chunks.order=emb.cosine_distance&chunks.limit=3&order=id&~vec=%5B1%2C2%2C3%5D&limit=5
 SELECT json_build_object('has_next', coalesce(bool_or(s4.__rn > $2), false), 'has_prev', false, 'first', (json_agg(s4.__key ORDER BY s4.__rn ASC) FILTER (WHERE s4.__rn <= $2))->0, 'last', (json_agg(s4.__key ORDER BY s4.__rn ASC) FILTER (WHERE s4.__rn <= $2))->-1, 'n', count(*) FILTER (WHERE s4.__rn <= $2), 'rows', coalesce(json_agg(s4.data ORDER BY s4.__rn ASC) FILTER (WHERE s4.__rn <= $2), '[]'::json)) AS data
 FROM (
   SELECT json_build_object('id', t0."id", 'chunks', l3.data) AS data, jsonb_build_array(t0."id") AS __key, t0.__rn

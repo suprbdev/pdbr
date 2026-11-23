@@ -122,12 +122,12 @@ func TestGeoJSONList(t *testing.T) {
 		t.Errorf("null area property = %v", props2["area"])
 	}
 
-	fc, _ = geoGet(t, srv+"/api/places?select=id,location,area&geometry=area&order=id", 200, nil)
+	fc, _ = geoGet(t, srv+"/api/places?select=id,location,area&~geometry=area&order=id", 200, nil)
 	if fc.Features[0].Geometry["type"] != "Polygon" || fc.Features[1].Geometry != nil {
-		t.Errorf("geometry=area: %+v", fc.Features)
+		t.Errorf("~geometry=area: %+v", fc.Features)
 	}
 	if loc, _ := fc.Features[0].Properties["location"].(map[string]any); loc["type"] != "Point" || len(fc.Features[0].Properties) != 2 {
-		t.Errorf("geometry=area properties = %v", fc.Features[0].Properties)
+		t.Errorf("~geometry=area properties = %v", fc.Features[0].Properties)
 	}
 
 	fc, _ = geoGet(t, srv+"/api/places?select=id,pos:location(transform=3857)&id=eq.1", 200, nil)
@@ -216,9 +216,9 @@ func TestGeoJSONRejections(t *testing.T) {
 	geoProblem(t, srv+"/api/places?select=id,name", acc, 406, "not_acceptable")
 	agg := testServer(t, func(c *config.Config) { c.Aggregates.Enabled = true }).URL
 	geoProblem(t, agg+"/api/places?select=count()", acc, 406, "not_acceptable")
-	geoProblem(t, srv+"/api/places?select=id,location&geometry=name", acc, 400, "invalid_select")
-	geoProblem(t, srv+"/api/places?select=id,location&geometry=nope", acc, 400, "invalid_select")
-	geoProblem(t, srv+"/api/places?geometry=location", nil, 400, "invalid_parameter")
+	geoProblem(t, srv+"/api/places?select=id,location&~geometry=name", acc, 400, "invalid_select")
+	geoProblem(t, srv+"/api/places?select=id,location&~geometry=nope", acc, 400, "invalid_select")
+	geoProblem(t, srv+"/api/places?~geometry=location", nil, 400, "invalid_parameter")
 
 	res, body := send(t, "POST", srv+"/api/places", `{"name":"geo-reject"}`, map[string]string{"Accept": geoJSON, "Content-Type": "application/json"})
 	if res.StatusCode != 406 {

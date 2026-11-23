@@ -1,2 +1,2 @@
 -- request: GET /api/kb/tiles?rast=eq.x
--- error: 400 invalid_filter: operator "eq" is not supported on raster column "rast" (intersects.<geometry> and is.null only)
+-- error: 400 invalid_filter: operator "eq" is not supported on raster column "rast" (st_intersects.<geometry> and is.null only)

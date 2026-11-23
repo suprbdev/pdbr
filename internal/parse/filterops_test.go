@@ -16,11 +16,11 @@ import (
 // filterable column of the fixture plus the contrib-typed kb tables (the
 // cube, earth, point and raster ones with the postgis plugin applied),
 // under both filter policies, and every operator (core, contrib and the
-// raster intersects), the request parses iff the operator is documented for
+// raster st_intersects), the request parses iff the operator is documented for
 // the column.
 func TestFilterOpsMatchParser(t *testing.T) {
 	all := []string{"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct",
-		"like", "ilike", "sw", "ew", "match", "imatch", "cs", "cd", "ov", "hk", "jpe", "jpm", "intersects"}
+		"like", "ilike", "sw", "ew", "match", "imatch", "cs", "cd", "ov", "hk", "jpe", "jpm"}
 	for _, name := range api.ContribFilterNames() {
 		if !slices.Contains(all, name) {
 			all = append(all, name)
@@ -49,12 +49,12 @@ func TestFilterOpsMatchParser(t *testing.T) {
 						val := sampleValue(op, f.Column)
 						u := "/api/" + strings.ReplaceAll(path, ".", "/") + "?" + f.Key + "=" + op + "." + url.QueryEscape(val)
 						switch api.ThresholdParam(op) {
-						case "vec":
-							u = "/api/" + strings.ReplaceAll(path, ".", "/") + "?" + f.Key + "=" + op + ".0.5&vec=" + url.QueryEscape(sampleVector(f.Column))
-						case "levenshtein":
-							u = "/api/" + strings.ReplaceAll(path, ".", "/") + "?" + f.Key + "=" + op + ".2&levenshtein=x"
-						case "latlon":
-							u = "/api/" + strings.ReplaceAll(path, ".", "/") + "?" + f.Key + "=" + op + ".2&latlon=1,2"
+						case api.ParamVec:
+							u = "/api/" + strings.ReplaceAll(path, ".", "/") + "?" + f.Key + "=" + op + ".0.5&~vec=" + url.QueryEscape(sampleVector(f.Column))
+						case api.ParamLevenshtein:
+							u = "/api/" + strings.ReplaceAll(path, ".", "/") + "?" + f.Key + "=" + op + ".2&~levenshtein=x"
+						case api.ParamLatLon:
+							u = "/api/" + strings.ReplaceAll(path, ".", "/") + "?" + f.Key + "=" + op + ".2&~latlon=1,2"
 						}
 						_, err := doParse(t, built, req{url: u}, allOn)
 						if (err == nil) != documented[op] {
@@ -71,8 +71,8 @@ func TestFilterOpsMatchParser(t *testing.T) {
 // (api.Built.ContribOrders, rendered into the order parameter) to the
 // parser.
 func TestContribOrdersMatchParser(t *testing.T) {
-	mods := []string{"rank", "rank_cd", "trgm_dist", "trgm_wdist", "trgm_swdist", "vec_l2", "vec_ip", "vec_cos", "vec_l1", "vec_chebyshev",
-		"vec_hamming", "vec_jaccard", "levenshtein", "earth_dist", "earth_miles"}
+	mods := []string{"rank", "rank_cd", "trgm_distance", "trgm_word_distance", "trgm_strict_word_distance", "l2_distance", "negative_inner_product", "cosine_distance", "l1_distance", "chebyshev_distance",
+		"hamming_distance", "jaccard_distance", "levenshtein_distance", "earth_distance", "earth_miles_distance"}
 	for _, indexedOnly := range []bool{false, true} {
 		for _, set := range []struct {
 			built *api.Built
@@ -93,16 +93,17 @@ func TestContribOrdersMatchParser(t *testing.T) {
 					}
 					for _, mod := range mods {
 						q := "order=" + f.Key + "." + mod + ".desc"
-						switch {
-						case strings.HasPrefix(mod, "vec_"):
-							q += "&vec=" + url.QueryEscape(sampleVector(f.Column))
-						case mod == "levenshtein":
-							q += "&levenshtein=x"
-						case strings.HasPrefix(mod, "earth_"):
-							q += "&latlon=1,2"
-						case !strings.HasPrefix(mod, "rank"):
-							q += "&trgm=x"
-						case res.FilterColumns[f.Key]:
+						switch api.DistanceParam(mod) {
+						case api.ParamVec:
+							q += "&~vec=" + url.QueryEscape(sampleVector(f.Column))
+						case api.ParamLevenshtein:
+							q += "&~levenshtein=x"
+						case api.ParamLatLon:
+							q += "&~latlon=1,2"
+						case api.ParamTrgm:
+							q += "&~trgm=x"
+						}
+						if strings.HasPrefix(mod, "rank") && res.FilterColumns[f.Key] {
 							q += "&" + f.Key + "=fts.x"
 						}
 						_, err := doParse(t, built, req{url: "/api/" + strings.ReplaceAll(path, ".", "/") + "?" + q}, allOn)
@@ -116,7 +117,7 @@ func TestContribOrdersMatchParser(t *testing.T) {
 	}
 }
 
-// sampleVector is a vec= reference for column c: a bit string for bit
+// sampleVector is a ~vec= reference for column c: a bit string for bit
 // columns, a JSON array otherwise.
 func sampleVector(c *introspect.Column) string {
 	if c.PGType == "bit" || c.PGType == "varbit" {

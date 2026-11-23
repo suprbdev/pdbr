@@ -1,1 +1,1 @@
-GET /api/kb/embeddings?order=half.vec_l1&vec=%5B1%5D
+GET /api/kb/embeddings?order=half.l1_distance&~vec=%5B1%5D

@@ -1,2 +1,2 @@
--- request: GET /api/kb/docs?order=title.trgm_dist
--- error: 400 invalid_parameter: order by title.trgm_dist requires trgm=<text>
+-- request: GET /api/kb/docs?order=title.trgm_distance
+-- error: 400 invalid_parameter: order by title.trgm_distance requires ~trgm=<text>

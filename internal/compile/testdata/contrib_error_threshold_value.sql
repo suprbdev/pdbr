@@ -1,2 +1,2 @@
--- request: GET /api/kb/embeddings?select=id&emb=vec_cos_lt.near&vec=%5B1%2C0%2C0%5D
--- error: 400 invalid_filter: vec_cos_lt takes a finite number (the distance threshold; the vector is vec=), got "near"
+-- request: GET /api/kb/embeddings?select=id&emb=cosine_distance_lt.near&~vec=%5B1%2C0%2C0%5D
+-- error: 400 invalid_filter: cosine_distance_lt takes a finite number (the distance threshold; the vector is ~vec=), got "near"

@@ -1,1 +1,1 @@
-GET /api/kb/docs?select=id,title_similarity
+GET /api/kb/docs?select=id,~title_trgm_similarity

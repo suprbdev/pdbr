@@ -1,2 +1,2 @@
--- request: GET /api/kb/embeddings?select=id&emb=vec_cos_lt.0.3
--- error: 400 invalid_parameter: filter vec_cos_lt on emb requires vec=<vector>
+-- request: GET /api/kb/embeddings?select=id&emb=cosine_distance_lt.0.3
+-- error: 400 invalid_parameter: filter cosine_distance_lt on emb requires ~vec=<vector>

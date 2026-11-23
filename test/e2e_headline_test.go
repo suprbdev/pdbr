@@ -117,22 +117,22 @@ func TestHeadlines(t *testing.T) {
 		want   []any
 	}{
 		{"tsvector over title", "articles",
-			[]string{"select=id,h:search_headline(document=title,start_sel=[,stop_sel=])", "search=fts(english).cat"}, "h",
+			[]string{"select=id,h:~search_headline(document=title,start_sel=[,stop_sel=])", "search=fts(english).cat"}, "h",
 			[]any{"[Cats] at night"}},
 		{"tsvector over body with options", "articles",
-			[]string{`select=id,h:search_headline(document=body,max_words=4,min_words=2,start_sel="<mark>",stop_sel="</mark>")`, "search=plfts(english).fat cat"}, "h",
+			[]string{`select=id,h:~search_headline(document=body,max_words=4,min_words=2,start_sel="<mark>",stop_sel="</mark>")`, "search=plfts(english).fat cat"}, "h",
 			[]any{"<mark>fat</mark> <mark>cat</mark>"}},
 		{"text column itself", "articles",
-			[]string{"select=id,body_headline", "body=wfts(english).cheese"}, "body_headline",
+			[]string{"select=id,~body_headline", "body=wfts(english).cheese"}, "~body_headline",
 			[]any{"A fat rat ate the <b>cheese</b>"}},
 		{"jsonb document", "articles",
-			[]string{`select=id,meta_headline(start_sel="*",stop_sel="*")`, "meta=fts(english).story"}, "meta_headline",
+			[]string{`select=id,~meta_headline(start_sel="*",stop_sel="*")`, "meta=fts(english).story"}, "~meta_headline",
 			[]any{map[string]any{"summary": "A *story* about cats", "tags": []any{"cats", "pets"}, "n": float64(7)}}},
 		{"json document", "articles",
-			[]string{"select=id,raw_headline(highlight_all=true)", "raw=fts.rats"}, "raw_headline",
+			[]string{"select=id,~raw_headline(highlight_all=true)", "raw=fts.rats"}, "~raw_headline",
 			[]any{map[string]any{"note": "<b>rats</b> and cats"}}},
 		{"null document", "articles",
-			[]string{"select=id,search_headline(document=body)", "search=fts.dog", "order=id"}, "search_headline",
+			[]string{"select=id,~search_headline(document=body)", "search=fts.dog", "order=id"}, "~search_headline",
 			[]any{"The fat cat sat on the mat while the <b>dog</b> slept", nil}},
 	}
 	for _, tc := range cases {
@@ -152,15 +152,15 @@ func TestHeadlines(t *testing.T) {
 	}
 
 	var writers []row
-	getJSON(t, hlURL(srv+"/api", "writers", "select=name,articles(id,search_headline(document=title))", "articles.search=fts(english).cats",
+	getJSON(t, hlURL(srv+"/api", "writers", "select=name,articles(id,~search_headline(document=title))", "articles.search=fts(english).cats",
 		"articles.order=id", "articles.limit=5", "order=id"), &writers)
-	if len(writers) != 2 || !sameJSON(mustJSON(t, writers[0]["articles"]), `[{"id":1,"search_headline":"<b>Cats</b> at night"}]`) ||
+	if len(writers) != 2 || !sameJSON(mustJSON(t, writers[0]["articles"]), `[{"id":1,"~search_headline":"<b>Cats</b> at night"}]`) ||
 		!sameJSON(mustJSON(t, writers[1]["articles"]), `[]`) {
 		t.Errorf("embedded headlines: %v", writers)
 	}
 	var arts []row
-	getJSON(t, hlURL(srv+"/api", "articles", "select=id,writers(name,search_headline(document=bio))", "writers.search=fts(english).poet", "order=id"), &arts)
-	if len(arts) != 3 || !sameJSON(mustJSON(t, arts[0]["writers"]), `{"name":"Ada","search_headline":"A <b>poet</b> who writes about cats and the sea"}`) ||
+	getJSON(t, hlURL(srv+"/api", "articles", "select=id,writers(name,~search_headline(document=bio))", "writers.search=fts(english).poet", "order=id"), &arts)
+	if len(arts) != 3 || !sameJSON(mustJSON(t, arts[0]["writers"]), `{"name":"Ada","~search_headline":"A <b>poet</b> who writes about cats and the sea"}`) ||
 		arts[1]["writers"] != nil {
 		t.Errorf("forward embed headlines: %v", arts)
 	}
@@ -169,27 +169,27 @@ func TestHeadlines(t *testing.T) {
 		params []string
 		code   string
 	}{
-		{[]string{"select=id,search_headline(document=title)"}, "invalid_filter"},
-		{[]string{"select=id,search_headline(document=title)", "or=(search.fts.cat,id.eq.1)"}, "invalid_filter"},
-		{[]string{"select=id,search_headline(document=title)", "search=fts.cat", "and=(search.fts.fat)"}, "invalid_filter"},
-		{[]string{"select=id,search_headline", "search=fts.cat"}, "invalid_select"},
-		{[]string{"select=id,search_headline(document=secret)", "search=fts.cat"}, "invalid_select"},
-		{[]string{"select=id,search_headline(document=writer_id)", "search=fts.cat"}, "invalid_select"},
-		{[]string{"select=id,search_headline(document=title,max_words=0)", "search=fts.cat"}, "invalid_select"},
-		{[]string{"select=id,search_headline(document=title,max_words=10)", "search=fts.cat"}, "invalid_select"},
-		{[]string{`select=id,search_headline(document=title,start_sel="a\"b")`, "search=fts.cat"}, "invalid_select"},
-		{[]string{"select=id,search_headline(document=title,colour=red)", "search=fts.cat"}, "unknown_argument"},
-		{[]string{"select=id,body_headline(document=title)", "body=fts.cat"}, "invalid_select"},
-		{[]string{"select=id,secret_headline", "search=fts.cat"}, "unknown_column"},
+		{[]string{"select=id,~search_headline(document=title)"}, "invalid_filter"},
+		{[]string{"select=id,~search_headline(document=title)", "or=(search.fts.cat,id.eq.1)"}, "invalid_filter"},
+		{[]string{"select=id,~search_headline(document=title)", "search=fts.cat", "and=(search.fts.fat)"}, "invalid_filter"},
+		{[]string{"select=id,~search_headline", "search=fts.cat"}, "invalid_select"},
+		{[]string{"select=id,~search_headline(document=secret)", "search=fts.cat"}, "invalid_select"},
+		{[]string{"select=id,~search_headline(document=writer_id)", "search=fts.cat"}, "invalid_select"},
+		{[]string{"select=id,~search_headline(document=title,max_words=0)", "search=fts.cat"}, "invalid_select"},
+		{[]string{"select=id,~search_headline(document=title,max_words=10)", "search=fts.cat"}, "invalid_select"},
+		{[]string{`select=id,~search_headline(document=title,start_sel="a\"b")`, "search=fts.cat"}, "invalid_select"},
+		{[]string{"select=id,~search_headline(document=title,colour=red)", "search=fts.cat"}, "unknown_argument"},
+		{[]string{"select=id,~body_headline(document=title)", "body=fts.cat"}, "invalid_select"},
+		{[]string{"select=id,~secret_headline", "search=fts.cat"}, "unknown_column"},
 	} {
 		res, body := get(t, hlURL(srv+"/api", "articles", tc.params...))
 		wantProblem(t, res, body, 400, tc.code)
 	}
 
 	var patched []row
-	sendJSON(t, "PATCH", hlURL(srv+"/api", "articles", "search=fts(english).rat", "select=id,search_headline(document=title)"),
+	sendJSON(t, "PATCH", hlURL(srv+"/api", "articles", "search=fts(english).rat", "select=id,~search_headline(document=title)"),
 		`{"title": "Rats in town"}`, 200, &patched)
-	if len(patched) != 1 || patched[0]["search_headline"] != "<b>Rats</b> in town" {
+	if len(patched) != 1 || patched[0]["~search_headline"] != "<b>Rats</b> in town" {
 		t.Errorf("PATCH response headline: %v", patched)
 	}
 }
@@ -214,16 +214,16 @@ func TestHeadlineOpenAPIAndContracts(t *testing.T) {
 	}
 	getJSON(t, srv+"/api/openapi.json", &doc)
 	props := doc.Components.Schemas["articles"].Properties
-	for _, k := range []string{"search_headline", "body_headline", "meta_headline", "raw_headline"} {
+	for _, k := range []string{"~search_headline", "~body_headline", "~meta_headline", "~raw_headline"} {
 		if props[k] == nil || props[k]["readOnly"] != true {
 			t.Errorf("articles.%s: %v", k, props[k])
 		}
 	}
-	if props["title_headline"] != nil || props["secret_headline"] != nil {
+	if props["~title_headline"] != nil || props["~secret_headline"] != nil {
 		t.Error("headline on a column without a full-text filter")
 	}
-	if d, _ := props["search_headline"]["description"].(string); !strings.Contains(d, "document=<body|meta|raw|title>") {
-		t.Errorf("search_headline description: %s", d)
+	if d, _ := props["~search_headline"]["description"].(string); !strings.Contains(d, "document=<body|meta|raw|title>") {
+		t.Errorf("~search_headline description: %s", d)
 	}
 	var raw any
 	getJSON(t, srv+"/api/openapi.json", &raw)
@@ -261,14 +261,14 @@ func TestHeadlineOpenAPIAndContracts(t *testing.T) {
 	pub := headlineServer(t, func(c *config.Config) {
 		c.Contracts = []confx.Contract{{Name: "internal"}, {Name: "public"}}
 	})
-	res, body := get(t, hlURL(pub+"/api/public", "articles", "select=id,search_headline(document=body)", "search=fts.cat"))
+	res, body := get(t, hlURL(pub+"/api/public", "articles", "select=id,~search_headline(document=body)", "search=fts.cat"))
 	wantProblem(t, res, body, 400, "invalid_select")
 	var rows []row
-	getJSON(t, hlURL(pub+"/api/public", "articles", "select=id,search_headline(document=title)", "search=fts(english).cat"), &rows)
+	getJSON(t, hlURL(pub+"/api/public", "articles", "select=id,~search_headline(document=title)", "search=fts(english).cat"), &rows)
 	if len(rows) != 1 {
 		t.Errorf("public contract headline: %v", rows)
 	}
-	getJSON(t, hlURL(pub+"/api/internal", "articles", "select=id,search_headline(document=body)", "search=fts(english).cat"), &rows)
+	getJSON(t, hlURL(pub+"/api/internal", "articles", "select=id,~search_headline(document=body)", "search=fts(english).cat"), &rows)
 	if len(rows) != 1 {
 		t.Errorf("internal contract headline: %v", rows)
 	}
@@ -279,7 +279,7 @@ func TestHeadlineDocumentBound(t *testing.T) {
 	insert := `INSERT INTO ` + headlineSchema + `.articles (id, title, body, raw) VALUES (4, 'Long', '` + long + `', '{"note": "` + long + `"}')`
 	headlines := func(srv string, id int) row {
 		var rows []row
-		getJSON(t, hlURL(srv+"/api", "articles", "select=id,h:body_headline,r:raw_headline", "body=fts(english).cat", "raw=fts(english).cat", "id=eq."+strconv.Itoa(id)), &rows)
+		getJSON(t, hlURL(srv+"/api", "articles", "select=id,h:~body_headline,r:~raw_headline", "body=fts(english).cat", "raw=fts(english).cat", "id=eq."+strconv.Itoa(id)), &rows)
 		if len(rows) != 1 {
 			t.Fatalf("article %d: rows %v", id, rows)
 		}
@@ -301,7 +301,7 @@ func TestHeadlineDocumentBound(t *testing.T) {
 		t.Errorf("default bound: %v", r)
 	}
 
-	page := []string{"select=id,a:body_headline,b:body_headline(max_words=20)", "body=fts(english).cat", "limit=10"}
+	page := []string{"select=id,a:~body_headline,b:~body_headline(max_words=20)", "body=fts(english).cat", "limit=10"}
 	costly := headlineServer(t, func(cfg *config.Config) { cfg.Limits.MaxCost = 1000 })
 	res, body := get(t, hlURL(costly+"/api", "articles", page...))
 	wantProblem(t, res, body, 400, "cost_exceeded")

@@ -1,1 +1,1 @@
-GET /api/kb/docs?select=id,body_headline&or=(body.fts.cat,id.eq.1)
+GET /api/kb/docs?select=id,~body_headline&or=(body.fts.cat,id.eq.1)

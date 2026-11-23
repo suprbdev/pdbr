@@ -53,6 +53,7 @@ Differences:
 | `count=planned` | `EXPLAIN` estimate | `pg_class.reltuples`, only for unfiltered scans of tables without RLS; otherwise falls back to `exact` and `Preference-Applied` says so |
 | Duplicate response keys | both keys are returned | `400 invalid_select` unless the same column is selected twice |
 | Filterable columns | all | only indexed columns by default (`filters.indexed_only: true`; `filters.allow_columns` and `@filterable` as exceptions), see [filtering.md](filtering.md) |
+| pdbr-only names | — | everything pdbr adds beyond PostgREST's grammar that could collide with a column starts with `~`: reference parameters (`~near=`, `~vec=`, `~trgm=`, …) and derived values (`select=~location_area,~emb_cosine_distance`); they never shadow your columns, see [api.md](api.md#the--namespace) |
 
 Missing today (a request for these is a `400`, `406` or `415`, not a silent
 fallback):

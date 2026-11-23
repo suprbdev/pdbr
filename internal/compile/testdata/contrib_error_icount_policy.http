@@ -1,1 +1,1 @@
-GET /api/kb/labels?order=nums_icount
+GET /api/kb/labels?order=~nums_icount

@@ -1,1 +1,1 @@
-GET /api/kb/embeddings?select=id,title,emb,half,sparse&order=emb.vec_l2&vec=%5B0.1%2C0.2%2C0.3%5D&limit=5
+GET /api/kb/embeddings?select=id,title,emb,half,sparse&order=emb.l2_distance&~vec=%5B0.1%2C0.2%2C0.3%5D&limit=5

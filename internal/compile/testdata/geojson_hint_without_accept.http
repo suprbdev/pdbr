@@ -1,1 +1,1 @@
-GET /api/places?geometry=location
+GET /api/places?~geometry=location

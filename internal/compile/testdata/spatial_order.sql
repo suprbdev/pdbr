@@ -1,4 +1,4 @@
--- request: GET /api/places?select=id,name,users(id,places(id))&order=location.dist.asc,id&near=SRID%3D4326%3BPOINT(-0.1281%2051.508)&users.places.order=area.dist.desc&limit=3
+-- request: GET /api/places?select=id,name,users(id,places(id))&order=location.st_distance.asc,id&~near=SRID%3D4326%3BPOINT(-0.1281%2051.508)&users.places.order=area.st_distance.desc&limit=3
 SELECT json_build_object('has_next', coalesce(bool_or(s6.__rn > $3), false), 'has_prev', false, 'first', (json_agg(s6.__key ORDER BY s6.__rn ASC) FILTER (WHERE s6.__rn <= $3))->0, 'last', (json_agg(s6.__key ORDER BY s6.__rn ASC) FILTER (WHERE s6.__rn <= $3))->-1, 'n', count(*) FILTER (WHERE s6.__rn <= $3), 'rows', coalesce(json_agg(s6.data ORDER BY s6.__rn ASC) FILTER (WHERE s6.__rn <= $3), '[]'::json)) AS data
 FROM (
   SELECT json_build_object('id', t0."id", 'name', t0."name", 'users', l5.data) AS data, jsonb_build_array(t0."id") AS __key, t0.__rn

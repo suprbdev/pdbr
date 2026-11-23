@@ -1,2 +1,2 @@
--- request: GET /api/places?select=id,area_area(precision=3)
--- error: 400 invalid_select: precision applies to GeoJSON values; area_area is not one
+-- request: GET /api/places?select=id,~area_area(precision=3)
+-- error: 400 invalid_select: precision applies to GeoJSON values; ~area_area is not one

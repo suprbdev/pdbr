@@ -1,2 +1,2 @@
 -- request: GET /api/kb/tiles?history=is.null
--- error: 400 column_not_filterable: raster column "history" on "kb.tiles" is not filterable (under filters.indexed_only a raster column needs filters.allow_columns: the GiST index serving intersects is on an expression)
+-- error: 400 column_not_filterable: raster column "history" on "kb.tiles" is not filterable (under filters.indexed_only a raster column needs filters.allow_columns: the GiST index serving st_intersects is on an expression)

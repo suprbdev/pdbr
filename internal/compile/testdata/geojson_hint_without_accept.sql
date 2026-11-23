@@ -1,2 +1,2 @@
--- request: GET /api/places?geometry=location
+-- request: GET /api/places?~geometry=location
 -- error: 400 invalid_parameter: geometry= only applies to Accept: application/geo+json

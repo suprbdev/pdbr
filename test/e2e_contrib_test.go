@@ -87,7 +87,7 @@ AS $$ SELECT (h -> 'a') || ':' || lower(r)::text || ':' || coalesce(array_length
 
 // TestContribKeysAndJoins: citext keys, foreign keys and hstore sort values
 // with the extension schema off the search_path, columns named like the
-// soft-reserved trgm/near parameters, and the JSON forms of RPC arguments
+// columns named like the ~trgm and ~near parameters, and the JSON forms of RPC arguments
 // and array elements.
 func TestContribKeysAndJoins(t *testing.T) {
 	srv := contribServer(t, nil)
@@ -122,7 +122,7 @@ func TestContribKeysAndJoins(t *testing.T) {
 			t.Errorf("%s = %v, want [%d]", col, ids(rows, "id"), want)
 		}
 	}
-	res, out := get(t, srv+"/api/docs?trgm=x")
+	res, out := get(t, srv+"/api/docs?~trgm=x")
 	wantProblem(t, res, out, 400, "invalid_parameter")
 
 	var created row
@@ -362,10 +362,10 @@ func TestContribOrder(t *testing.T) {
 		{[]string{"search=fts(english).cat | dog", "order=search.rank.desc"}, []int{3, 1}},
 		{[]string{"search=fts(english).cat | dog", "order=search.rank"}, []int{1, 3}},
 		{[]string{"body=wfts(english).cat or dog", "order=body.rank_cd.desc"}, []int{3, 1}},
-		{[]string{"order=title.trgm_dist", "trgm=postgres"}, []int{2, 1, 3}},
-		{[]string{"order=title.trgm_dist.desc", "trgm=postgres"}, []int{3, 1, 2}},
-		{[]string{"order=title.trgm_wdist", "trgm=notes"}, []int{3, 2, 1}},
-		{[]string{"title=trgm_sim.postgres", "order=title.trgm_dist,id", "trgm=postgresql"}, []int{1, 2}},
+		{[]string{"order=title.trgm_distance", "~trgm=postgres"}, []int{2, 1, 3}},
+		{[]string{"order=title.trgm_distance.desc", "~trgm=postgres"}, []int{3, 1, 2}},
+		{[]string{"order=title.trgm_word_distance", "~trgm=notes"}, []int{3, 2, 1}},
+		{[]string{"title=trgm_sim.postgres", "order=title.trgm_distance,id", "~trgm=postgresql"}, []int{1, 2}},
 	}
 	for _, c := range cases {
 		var rows []row
@@ -448,9 +448,9 @@ func TestContribErrors(t *testing.T) {
 		{[]string{"pages=cs.x"}, "invalid_filter"},
 		{[]string{"attrs=gt.a=>1"}, "invalid_filter"},
 		{[]string{"attrs=cs.{\"a\":1}"}, "invalid_filter"},
-		{[]string{"order=title.trgm_dist"}, "invalid_parameter"},
+		{[]string{"order=title.trgm_distance"}, "invalid_parameter"},
 		{[]string{"order=search.rank"}, "invalid_filter"},
-		{[]string{"order=email.trgm_dist", "trgm=x"}, "column_not_orderable"},
+		{[]string{"order=email.trgm_distance", "~trgm=x"}, "column_not_orderable"},
 		{[]string{"search=fts(english.x"}, "invalid_filter"},
 		{[]string{"search=fts.fat cat"}, "pg:42601"},
 		{[]string{"search=fts(klingon).x"}, "pg:42704"},
@@ -471,11 +471,11 @@ func TestContribOpenAPI(t *testing.T) {
 		body, doc := fetchOpenAPI(t, srv)
 		validateOpenAPI(t, oasSchema(t), body)
 		params := opParams(pathOp(doc, "/docs", "get"))
-		if params["query:trgm"] == nil {
+		if params["query:~trgm"] == nil {
 			t.Error("trgm param missing")
 		}
 		order, _ := params["query:order"]["description"].(string)
-		if !strings.Contains(order, "search.rank") || !strings.Contains(order, "title.trgm_dist") {
+		if !strings.Contains(order, "search.rank") || !strings.Contains(order, "title.trgm_distance") {
 			t.Errorf("order description = %s", order)
 		}
 		samples := map[string]map[string]string{

@@ -1,1 +1,1 @@
-GET /api/kb/docs?select=path_nlevel(path=a)
+GET /api/kb/docs?select=~path_nlevel(path=a)

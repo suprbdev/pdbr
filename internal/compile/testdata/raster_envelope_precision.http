@@ -1,1 +1,1 @@
-GET /api/kb/tiles?select=id,rast_envelope(precision=3)
+GET /api/kb/tiles?select=id,~rast_envelope(precision=3)

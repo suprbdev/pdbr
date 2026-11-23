@@ -246,13 +246,13 @@ func TestOpenAPISurface(t *testing.T) {
 		t.Errorf("list responses = %v", list["responses"])
 	}
 	places := opParams(pathOp(doc, "/places", "get"))
-	if places["query:near"] == nil {
+	if places["query:~near"] == nil {
 		t.Error("near param missing on /places")
 	}
 	if ops, _ := places["query:location"]["x-pdbr-filter-ops"].([]any); len(ops) < 10 || !strings.Contains(fmtAny(ops), "st_intersects") {
 		t.Errorf("location ops = %v", ops)
 	}
-	if !strings.Contains(places["query:select"]["description"].(string), "location_area") || !strings.Contains(places["query:select"]["description"].(string), "transform=") {
+	if !strings.Contains(places["query:select"]["description"].(string), "~location_area") || !strings.Contains(places["query:select"]["description"].(string), "transform=") {
 		t.Errorf("select description = %q", places["query:select"]["description"])
 	}
 	row := pathOp(doc, "/users/{id}", "get")
@@ -311,11 +311,11 @@ func TestOpenAPIPluginsDisabled(t *testing.T) {
 		if componentSchema(doc, "GeoJSON") != nil {
 			t.Error("GeoJSON schema still present")
 		}
-		if componentSchema(doc, "places")["properties"].(map[string]any)["location_area"] != nil {
+		if componentSchema(doc, "places")["properties"].(map[string]any)["~location_area"] != nil {
 			t.Error("pseudo-column still present")
 		}
 		p := opParams(pathOp(doc, "/places", "get"))
-		if p["query:near"] != nil {
+		if p["query:~near"] != nil {
 			t.Error("near param still present")
 		}
 		if ops, _ := p["query:location"]["x-pdbr-filter-ops"].([]any); len(ops) != 1 || ops[0] != "is" {

@@ -128,7 +128,7 @@ type Surface struct {
 	ComputedFilters bool // computed=op.v
 	RelationOrder   bool // order=rel(col).asc
 	ComputedOrder   bool // order=computed.desc
-	Spatial         bool // st_*/bbox_* ops, .dist+near=, col(transform=,simplify=,buffer=,precision=) all at once
+	Spatial         bool // st_*/bbox_* ops, .st_distance+~near=, col(transform=,simplify=,buffer=,precision=) all at once
 	// SpatialFilters / SpatialOrder / SpatialProjection switch the spatial
 	// halves on individually (postgis settings filters / ordering /
 	// projection); Spatial implies all three. Pseudo-columns need no flag:
@@ -448,6 +448,9 @@ func (b *Builder) addResources() {
 				continue
 			}
 			keys[key] = true
+			if IsReserved(key) {
+				b.Warn("field key starts with the reserved prefix "+ReservedPrefix+": only select=* returns it; select=, filters and order= cannot name it", "table", t.Schema+"."+t.Name, "column", c.Name, "key", key)
+			}
 			f := &Field{Column: c, Key: key, ReadOnly: c.GeneratedAlways(), Description: description(c.Comment)}
 			if postgis.IsRaster(strings.TrimPrefix(c.PGType, "_")) {
 				r.Rasters = append(r.Rasters, f)
@@ -954,6 +957,10 @@ func (b *Builder) addComputed(t *introspect.Table, f *introspect.Function) {
 	key := b.Inflect(inflect.KindComputedField, coreinflect.Input{Schema: f.Schema, Table: t.Name, Function: f.Name})
 	if r.Field(key) != nil {
 		b.Warn("computed column skipped: a real column owns the key", "function", fkey, "key", key)
+		return
+	}
+	if IsReserved(key) {
+		b.Warn("computed column skipped: the key starts with the reserved prefix "+ReservedPrefix, "function", fkey, "key", key)
 		return
 	}
 	if _, dup := r.Computed[key]; dup {

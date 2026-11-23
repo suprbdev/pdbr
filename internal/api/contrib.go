@@ -24,11 +24,13 @@ type ContribFilter struct {
 
 // ContribOrder is one order=<col>.<Name> term a column takes from a
 // pdbcore/contrib vocabulary: full-text relevance (rank, rank_cd), a
-// trigram distance (trgm_dist, trgm_wdist, trgm_swdist), a pgvector
-// distance (vec_l2, vec_ip, vec_cos, vec_l1), a cube distance (vec_l2,
-// vec_l1, vec_chebyshev), an earthdistance distance (earth_dist on earth
-// columns, earth_miles on point columns) or the Levenshtein distance
-// (levenshtein).
+// trigram distance (trgm_distance, trgm_word_distance,
+// trgm_strict_word_distance), a pgvector distance (l2_distance,
+// negative_inner_product, cosine_distance, l1_distance, hamming_distance,
+// jaccard_distance), a cube distance (l2_distance, l1_distance,
+// chebyshev_distance), an earthdistance distance (earth_distance on earth
+// columns, earth_miles_distance on point columns) or the Levenshtein
+// distance (levenshtein_distance).
 type ContribOrder struct {
 	// Name is the order modifier as written after the column.
 	Name string
@@ -37,8 +39,8 @@ type ContribOrder struct {
 	// Expr is the distance expression of a trigram or vector term.
 	Expr contrib.Expr
 	// Param is the query parameter holding the reference value a distance
-	// term measures against: "trgm", "vec", "latlon" or "levenshtein"; ""
-	// for a rank term.
+	// term measures against: ParamTrgm, ParamVec, ParamLatLon or
+	// ParamLevenshtein; "" for a rank term.
 	Param string
 }
 
@@ -92,37 +94,37 @@ var contribSpellings = map[string][]spelling{
 		{"unaccent_sw", "unaccentStartsWith"}, {"unaccent_includes", "unaccentIncludes"},
 	},
 	contrib.VocabVector: {
-		{"vec_l2_lt", "l2DistanceLessThan"}, {"vec_ip_lt", "negativeInnerProductLessThan"},
-		{"vec_cos_lt", "cosineDistanceLessThan"}, {"vec_l1_lt", "l1DistanceLessThan"},
+		{"l2_distance_lt", "l2DistanceLessThan"}, {"negative_inner_product_lt", "negativeInnerProductLessThan"},
+		{"cosine_distance_lt", "cosineDistanceLessThan"}, {"l1_distance_lt", "l1DistanceLessThan"},
 	},
 	contrib.VocabBit: {
-		{"vec_hamming_lt", "hammingDistanceLessThan"}, {"vec_jaccard_lt", "jaccardDistanceLessThan"},
+		{"hamming_distance_lt", "hammingDistanceLessThan"}, {"jaccard_distance_lt", "jaccardDistanceLessThan"},
 	},
 	contrib.VocabFuzzy: {
-		{"levenshtein_lt", "levenshteinDistanceLessThan"},
+		{"levenshtein_distance_lt", "levenshteinDistanceLessThan"},
 		{"soundex", "soundexEqualTo"}, {"metaphone", "metaphoneEqualTo"}, {"dmetaphone", "doubleMetaphoneEqualTo"},
 	},
 	contrib.VocabIntarray: {{"query_int", "matchesQueryInt"}},
 	contrib.VocabCube: {
 		{"cs", "contains"}, {"cd", "containedBy"}, {"ov", "overlaps"},
-		{"vec_l2_lt", "l2DistanceLessThan"}, {"vec_l1_lt", "l1DistanceLessThan"},
-		{"vec_chebyshev_lt", "chebyshevDistanceLessThan"},
+		{"l2_distance_lt", "l2DistanceLessThan"}, {"l1_distance_lt", "l1DistanceLessThan"},
+		{"chebyshev_distance_lt", "chebyshevDistanceLessThan"},
 	},
-	contrib.VocabEarth:      {{"earth_lt", "earthDistanceLessThan"}},
-	contrib.VocabEarthPoint: {{"earth_miles_lt", "earthDistanceMilesLessThan"}},
+	contrib.VocabEarth:      {{"earth_distance_lt", "earthDistanceLessThan"}},
+	contrib.VocabEarthPoint: {{"earth_miles_distance_lt", "earthDistanceMilesLessThan"}},
 }
 
-var trgmOrders = []spelling{{"trgm_dist", "distance"}, {"trgm_wdist", "wordDistance"}, {"trgm_swdist", "strictWordDistance"}}
+var trgmOrders = []spelling{{"trgm_distance", "distance"}, {"trgm_word_distance", "wordDistance"}, {"trgm_strict_word_distance", "strictWordDistance"}}
 
 var vecOrders = []spelling{
-	{"vec_l2", "l2Distance"}, {"vec_ip", "negativeInnerProduct"}, {"vec_cos", "cosineDistance"}, {"vec_l1", "l1Distance"},
+	{"l2_distance", "l2Distance"}, {"negative_inner_product", "negativeInnerProduct"}, {"cosine_distance", "cosineDistance"}, {"l1_distance", "l1Distance"},
 }
 
-var bitOrders = []spelling{{"vec_hamming", "hammingDistance"}, {"vec_jaccard", "jaccardDistance"}}
+var bitOrders = []spelling{{"hamming_distance", "hammingDistance"}, {"jaccard_distance", "jaccardDistance"}}
 
-var fuzzyOrders = []spelling{{"levenshtein", "levenshteinDistance"}}
+var fuzzyOrders = []spelling{{"levenshtein_distance", "levenshteinDistance"}}
 
-var cubeOrders = []spelling{{"vec_l2", "l2Distance"}, {"vec_l1", "l1Distance"}, {"vec_chebyshev", "chebyshevDistance"}}
+var cubeOrders = []spelling{{"l2_distance", "l2Distance"}, {"l1_distance", "l1Distance"}, {"chebyshev_distance", "chebyshevDistance"}}
 
 // distanceOrders maps each vocabulary with distance order terms to them and
 // to the query parameter holding their reference value.
@@ -130,13 +132,13 @@ var distanceOrders = []struct {
 	vocab, param string
 	terms        []spelling
 }{
-	{contrib.VocabTrgm, "trgm", trgmOrders},
-	{contrib.VocabVector, "vec", vecOrders},
-	{contrib.VocabBit, "vec", bitOrders},
-	{contrib.VocabFuzzy, "levenshtein", fuzzyOrders},
-	{contrib.VocabCube, "vec", cubeOrders},
-	{contrib.VocabEarth, "latlon", []spelling{{"earth_dist", "earthDistance"}}},
-	{contrib.VocabEarthPoint, "latlon", []spelling{{"earth_miles", "earthDistanceMiles"}}},
+	{contrib.VocabTrgm, ParamTrgm, trgmOrders},
+	{contrib.VocabVector, ParamVec, vecOrders},
+	{contrib.VocabBit, ParamVec, bitOrders},
+	{contrib.VocabFuzzy, ParamLevenshtein, fuzzyOrders},
+	{contrib.VocabCube, ParamVec, cubeOrders},
+	{contrib.VocabEarth, ParamLatLon, []spelling{{"earth_distance", "earthDistance"}}},
+	{contrib.VocabEarthPoint, ParamLatLon, []spelling{{"earth_miles_distance", "earthDistanceMiles"}}},
 }
 
 var rankOrders = []struct {
@@ -167,10 +169,9 @@ func IsFullTextOp(name string) bool {
 	return false
 }
 
-// IsContribOrder reports whether a modifier is a contrib order term
-// (rank, rank_cd, trgm_dist, trgm_wdist, trgm_swdist, vec_l2, vec_ip,
-// vec_cos, vec_l1, vec_chebyshev, vec_hamming, vec_jaccard, levenshtein,
-// earth_dist, earth_miles).
+// IsContribOrder reports whether a modifier is a contrib order term: rank,
+// rank_cd or one of the <metric>_distance terms (trgm_distance,
+// l2_distance, negative_inner_product, earth_distance, ...).
 func IsContribOrder(name string) bool {
 	for _, r := range rankOrders {
 		if r.name == name {
@@ -181,8 +182,9 @@ func IsContribOrder(name string) bool {
 }
 
 // DistanceParam returns the query parameter a distance order modifier
-// measures against ("trgm" for trgm_*, "vec" for vec_*, "latlon" for
-// earth_dist and earth_miles, "levenshtein" for levenshtein); "" for
+// measures against (ParamTrgm for the trigram distances, ParamVec for the
+// pgvector and cube ones, ParamLatLon for earth_distance and
+// earth_miles_distance, ParamLevenshtein for levenshtein_distance); "" for
 // anything else.
 func DistanceParam(mod string) string {
 	for _, d := range distanceOrders {
@@ -211,7 +213,7 @@ func VectorVocabulary(cat *introspect.Catalog, c *introspect.Column) (contrib.Vo
 }
 
 // DistanceVocabulary returns the vocabulary holding a column's distances
-// from vec=: the vector vocabulary of a vector, halfvec or sparsevec
+// from ~vec=: the vector vocabulary of a vector, halfvec or sparsevec
 // column, pgvector's bit vocabulary of a bit or varbit column, or the cube
 // vocabulary of a cube column.
 func DistanceVocabulary(cat *introspect.Catalog, c *introspect.Column) (contrib.Vocabulary, bool) {
@@ -227,34 +229,58 @@ func DistanceVocabulary(cat *introspect.Catalog, c *introspect.Column) (contrib.
 }
 
 // IsVectorThreshold reports whether a filter operator spelling is a
-// pgvector or cube distance threshold (vec_l2_lt, vec_cos_lt,
-// vec_hamming_lt, vec_chebyshev_lt, ...), which measures against vec=.
-func IsVectorThreshold(name string) bool { return ThresholdParam(name) == "vec" }
+// pgvector or cube distance threshold (l2_distance_lt,
+// cosine_distance_lt, hamming_distance_lt, chebyshev_distance_lt, ...),
+// which measures against ~vec=.
+func IsVectorThreshold(name string) bool { return ThresholdParam(name) == ParamVec }
 
 // ThresholdParam returns the query parameter a distance-threshold filter
-// operator measures against: "vec" for the pgvector and cube thresholds
-// (vec_*_lt), "latlon" for earth_lt and earth_miles_lt, "levenshtein" for
-// levenshtein_lt; "" for every other operator.
+// operator measures against: ParamVec for the pgvector and cube
+// thresholds, ParamLatLon for earth_distance_lt and
+// earth_miles_distance_lt, ParamLevenshtein for levenshtein_distance_lt;
+// "" for every other operator.
 func ThresholdParam(name string) string {
 	switch name {
-	case "levenshtein_lt":
-		return "levenshtein"
-	case "earth_lt", "earth_miles_lt":
-		return "latlon"
+	case "levenshtein_distance_lt":
+		return ParamLevenshtein
+	case "earth_distance_lt", "earth_miles_distance_lt":
+		return ParamLatLon
 	}
 	for _, v := range []string{contrib.VocabVector, contrib.VocabBit, contrib.VocabCube} {
 		for _, sp := range contribSpellings[v] {
 			if sp.url == name && strings.HasSuffix(name, "_lt") {
-				return "vec"
+				return ParamVec
 			}
 		}
 	}
 	return ""
 }
 
-// ScoreKey is the pseudo-column suffix of a score expression: its pdbcore
-// name in snake_case (cosineDistance -> cosine_distance, l2Distance ->
-// l2_distance).
+// scoreNames are the score pseudo-column suffixes that are not their
+// pdbcore expression name in snake_case: the trigram similarities carry
+// the trgm_ metric prefix of their distance order terms, and the miles
+// distance follows the <metric>_distance pattern.
+var scoreNames = map[string]string{
+	"similarity":           "trgm_similarity",
+	"wordSimilarity":       "trgm_word_similarity",
+	"strictWordSimilarity": "trgm_strict_word_similarity",
+	"earthDistanceMiles":   "earth_miles_distance",
+}
+
+// ScoreName is the pseudo-column suffix of a score expression: its
+// pdbcore name in snake_case (cosineDistance -> cosine_distance), with the
+// trigram similarities prefixed trgm_ (similarity -> trgm_similarity) and
+// earthDistanceMiles spelled earth_miles_distance, so every distance
+// score is named like its order term.
+func ScoreName(expr string) string {
+	if n, ok := scoreNames[expr]; ok {
+		return n
+	}
+	return ScoreKey(expr)
+}
+
+// ScoreKey is an expression name in snake_case (cosineDistance ->
+// cosine_distance, l2Distance -> l2_distance).
 func ScoreKey(expr string) string {
 	var sb strings.Builder
 	for _, ch := range expr {
@@ -269,21 +295,19 @@ func ScoreKey(expr string) string {
 }
 
 // addContribScores registers the score pseudo-columns of every resource's
-// columns: <key>_similarity, <key>_word_similarity and
-// <key>_strict_word_similarity (pg_trgm, against trgm=) on text columns the
-// filter policy admits trigram operators on, <key>_levenshtein_distance
-// (fuzzystrmatch, against levenshtein=) on text columns it admits the
-// fuzzystrmatch operators on, <key>_<distance> (pgvector, against vec=) on
-// every vector column and on bit columns an index (or the policy) admits
-// pgvector's distances on, <key>_l2_distance, <key>_l1_distance and
-// <key>_chebyshev_distance (cube, against vec=) on every cube column,
-// <key>_earth_distance (earthdistance, metres from latlon=) on every earth
-// column and <key>_earth_distance_miles (earthdistance, statute miles from
-// latlon=) on point columns the policy admits unindexed surface on (no
-// index serves <@>). A resource with a column or computed column named
-// like the parameter has no such parameter and gets none of its scores; a
-// real, computed or other pseudo-column owning a key keeps it. It runs in
-// Build, after the API hooks removed hidden columns.
+// columns: ~<key>_trgm_similarity, ~<key>_trgm_word_similarity and
+// ~<key>_trgm_strict_word_similarity (pg_trgm, against ~trgm=) on text
+// columns the filter policy admits trigram operators on,
+// ~<key>_levenshtein_distance (fuzzystrmatch, against ~levenshtein=) on
+// text columns it admits the fuzzystrmatch operators on, ~<key>_<distance>
+// (pgvector, against ~vec=) on every vector column and on bit columns an
+// index (or the policy) admits pgvector's distances on, ~<key>_l2_distance,
+// ~<key>_l1_distance and ~<key>_chebyshev_distance (cube, against ~vec=) on
+// every cube column, ~<key>_earth_distance (earthdistance, metres from
+// ~latlon=) on every earth column and ~<key>_earth_miles_distance
+// (earthdistance, statute miles from ~latlon=) on point columns the policy
+// admits unindexed surface on (no index serves <@>). It runs in Build,
+// after the API hooks removed hidden columns.
 func (b *Builder) addContribScores() {
 	for _, r := range sortedResources(b.Resources) {
 		for _, f := range r.Columns {
@@ -294,7 +318,7 @@ func (b *Builder) addContribScores() {
 					if len(v.Ops) == 0 || !indexServes(b.Options, r, f.Column, v.Ops[0].Index, false) {
 						continue
 					}
-					param, desc = "trgm", "pg_trgm score against trgm=, 0 to 1 (higher is more similar)"
+					param, desc = ParamTrgm, "pg_trgm score against ~trgm=, 0 to 1 (higher is more similar)"
 				case contrib.VocabVector, contrib.VocabBit:
 					if v.Name == contrib.VocabBit {
 						var hints []contrib.IndexHint
@@ -305,33 +329,30 @@ func (b *Builder) addContribScores() {
 							continue
 						}
 					}
-					param, desc = "vec", "pgvector distance from vec= (lower is closer)"
+					param, desc = ParamVec, "pgvector distance from ~vec= (lower is closer)"
 				case contrib.VocabFuzzy:
 					if !indexServes(b.Options, r, f.Column, nil, false) {
 						continue
 					}
-					param, desc = "levenshtein", "Levenshtein edit distance from levenshtein= (lower is closer)"
+					param, desc = ParamLevenshtein, "Levenshtein edit distance from ~levenshtein= (lower is closer)"
 				case contrib.VocabCube:
-					param, desc = "vec", "cube distance from vec= (lower is closer)"
+					param, desc = ParamVec, "cube distance from ~vec= (lower is closer)"
 				case contrib.VocabEarth:
-					param, desc = "latlon", "metres from latlon=<lat>,<lon> (lower is closer)"
+					param, desc = ParamLatLon, "metres from ~latlon=<lat>,<lon> (lower is closer)"
 				case contrib.VocabEarthPoint:
 					if !indexServes(b.Options, r, f.Column, nil, false) {
 						continue
 					}
-					param, desc = "latlon", "statute miles from latlon=<lat>,<lon> (lower is closer)"
+					param, desc = ParamLatLon, "statute miles from ~latlon=<lat>,<lon> (lower is closer)"
 				default:
-					continue
-				}
-				if r.NameTaken(param) {
 					continue
 				}
 				for _, e := range v.Exprs {
 					if !e.Score {
 						continue
 					}
-					key := f.Key + "_" + ScoreKey(e.Name)
-					if r.Field(key) != nil || r.Computed[key] != nil || r.Pseudo[key] != nil {
+					key := PseudoKey(f.Key, ScoreName(e.Name))
+					if r.Pseudo[key] != nil {
 						b.Warn("contrib: score pseudo-column skipped: the key is taken", "resource", r.Path, "column", f.Column.Name, "key", key)
 						continue
 					}
@@ -486,8 +507,7 @@ func (b *Built) ContribFilters(r *Resource, c *introspect.Column) []ContribFilte
 // the filter policy: rank and rank_cd wherever a full-text operator is
 // accepted, trigram distances where an ordering index (GiST) serves them,
 // vector distances where an HNSW or IVFFlat index does, or anywhere when
-// filters.indexed_only is off — unless r has a column or computed column
-// named trgm (vec), which takes the trgm= (vec=) parameter's place.
+// filters.indexed_only is off.
 func (b *Built) ContribOrders(r *Resource, c *introspect.Column) []ContribOrder {
 	return contribOrders(b.Catalog, b.Options, r, c)
 }
@@ -503,9 +523,6 @@ func contribFilters(cat *introspect.Catalog, opts Options, r *Resource, c *intro
 				hints = nil
 			}
 			if !ok || seen[sp.url] || !indexServes(opts, r, c, hints, false) {
-				continue
-			}
-			if param := ThresholdParam(sp.url); param != "" && r != nil && r.NameTaken(param) {
 				continue
 			}
 			seen[sp.url] = true
@@ -527,7 +544,7 @@ func contribOrders(cat *introspect.Catalog, opts Options, r *Resource, c *intros
 	}
 	for _, voc := range contrib.ForColumn(cat, c) {
 		for _, d := range distanceOrders {
-			if voc.Name != d.vocab || (r != nil && r.NameTaken(d.param)) {
+			if voc.Name != d.vocab {
 				continue
 			}
 			for _, sp := range d.terms {
@@ -539,13 +556,6 @@ func contribOrders(cat *introspect.Catalog, opts Options, r *Resource, c *intros
 		}
 	}
 	return out
-}
-
-// NameTaken reports whether r has a column (raster columns included) or
-// computed column named key; a soft-reserved query parameter (near, trgm,
-// vec, latlon, levenshtein) of that name is then a filter.
-func (r *Resource) NameTaken(key string) bool {
-	return r.Field(key) != nil || r.Raster(key) != nil || r.Computed[key] != nil
 }
 
 // indexServes applies filters.indexed_only to a contrib operator or
@@ -635,14 +645,14 @@ func (c *ContribValue) Operand(args map[string]any) any {
 }
 
 // addContribPseudos registers the contrib accessor and derived
-// pseudo-columns of every resource's columns: <key>_nlevel, <key>_parent,
-// <key>_lca(path=) and <key>_subpath(offset=,length=) on ltree columns,
-// <key>_lca on ltree[] columns and <key>_icount on int4[] columns with
+// pseudo-columns of every resource's columns: ~<key>_nlevel,
+// ~<key>_parent, ~<key>_lca(path=) and ~<key>_subpath(offset=,length=) on
+// ltree columns, ~<key>_lca on ltree[] columns and ~<key>_icount on int4[]
+// columns with
 // intarray installed. The integer accessors (nlevel, icount) also take
 // filters and order terms where the column does and the filter policy
 // admits them: no index serves them, so under filters.indexed_only only
-// for columns in filters.allow_columns. A real, computed or other
-// pseudo-column owning a key keeps it. It runs in Build, after the API
+// for columns in filters.allow_columns. It runs in Build, after the API
 // hooks removed hidden columns and withdrew filter and order surface.
 func (b *Builder) addContribPseudos() {
 	for _, r := range sortedResources(b.Resources) {
@@ -667,8 +677,8 @@ func (b *Builder) addContribPseudos() {
 						}
 						cv.Accessor, typ, desc = &a, a.Type, a.Description
 					}
-					key := f.Key + "_" + ScoreKey(cp.name)
-					if r.Field(key) != nil || r.Computed[key] != nil || r.Pseudo[key] != nil {
+					key := PseudoKey(f.Key, ScoreKey(cp.name))
+					if r.Pseudo[key] != nil {
 						b.Warn("contrib: pseudo-column skipped: the key is taken", "resource", r.Path, "column", f.Column.Name, "key", key)
 						continue
 					}
@@ -750,12 +760,11 @@ func (h *Headline) HeadlineArgSyntax() string {
 	return "(document=<" + strings.Join(sortedKeys(h.Documents), "|") + ">[,<" + list + ">=<value>...])"
 }
 
-// addContribHeadlines registers <key>_headline on every column that takes a
+// addContribHeadlines registers ~<key>_headline on every column that takes a
 // full-text filter under the filter policy: a text, json or jsonb column
 // highlights itself, a tsvector column the readable document column its
-// document= select argument names (none is registered without one). A
-// real, computed or other pseudo-column owning the key keeps it. It runs in
-// Build, after the API hooks removed hidden columns and withdrew filter
+// document= select argument names (none is registered without one). It
+// runs in Build, after the API hooks removed hidden columns and withdrew filter
 // surface.
 func (b *Builder) addContribHeadlines() {
 	for _, r := range sortedResources(b.Resources) {
@@ -784,8 +793,8 @@ func (b *Builder) addContribHeadlines() {
 			} else if !contrib.IsText(f.Column.PGType) {
 				schema = nil
 			}
-			key := f.Key + "_headline"
-			if r.Field(key) != nil || r.Computed[key] != nil || r.Pseudo[key] != nil {
+			key := PseudoKey(f.Key, "headline")
+			if r.Pseudo[key] != nil {
 				b.Warn("contrib: headline pseudo-column skipped: the key is taken", "resource", r.Path, "column", f.Column.Name, "key", key)
 				continue
 			}

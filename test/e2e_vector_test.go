@@ -83,9 +83,9 @@ func vectorAtLeast(t *testing.T, major, minor int) bool {
 	return maj > major || maj == major && mnr >= minor
 }
 
-// TestVectorOrder: every distance term orders nearest first against vec=
+// TestVectorOrder: every distance term orders nearest first against ~vec=
 // (JSON array, raw or URL-encoded, or the text form), in the root and in
-// embeds; keyset cursors walk the same order; a missing or stray vec= and a
+// embeds; keyset cursors walk the same order; a missing or stray ~vec= and a
 // malformed vector are 400s. An HNSW index scan skips rows whose vector is
 // NULL, so the NULL row (5) is only expected where no index serves the
 // order (sparse); the indexed cases filter it out.
@@ -94,25 +94,25 @@ func TestVectorOrder(t *testing.T) {
 	q := url.QueryEscape("[1,0.1,0]")
 	sq := url.QueryEscape("[1,0.1,0,0,0]")
 	cases := map[string][]int{
-		"emb.vec_l2":      {1, 4, 2, 3},
-		"emb.vec_cos":     {1, 4, 2, 3},
-		"emb.vec_ip":      {4, 1, 2, 3},
-		"half.vec_l2":     {1, 4, 2, 3},
-		"half.vec_cos":    {1, 4, 2, 3},
-		"emb.vec_l2.desc": {3, 2, 4, 1},
-		"sparse.vec_l2":   {1, 4, 2, 3, 5},
-		"sparse.vec_ip":   {4, 1, 2, 3, 5},
-		"sparse.vec_cos":  {1, 4, 2, 3, 5},
+		"emb.l2_distance":               {1, 4, 2, 3},
+		"emb.cosine_distance":           {1, 4, 2, 3},
+		"emb.negative_inner_product":    {4, 1, 2, 3},
+		"half.l2_distance":              {1, 4, 2, 3},
+		"half.cosine_distance":          {1, 4, 2, 3},
+		"emb.l2_distance.desc":          {3, 2, 4, 1},
+		"sparse.l2_distance":            {1, 4, 2, 3, 5},
+		"sparse.negative_inner_product": {4, 1, 2, 3, 5},
+		"sparse.cosine_distance":        {1, 4, 2, 3, 5},
 	}
 	if vectorAtLeast(t, 0, 7) {
-		cases["emb.vec_l1"] = []int{1, 4, 2, 3}
-		cases["sparse.vec_l1"] = []int{1, 4, 2, 3, 5}
+		cases["emb.l1_distance"] = []int{1, 4, 2, 3}
+		cases["sparse.l1_distance"] = []int{1, 4, 2, 3, 5}
 	}
 	query := func(order string) string {
 		if strings.HasPrefix(order, "sparse") {
-			return "/api/items?select=id&order=" + order + "&vec=" + sq
+			return "/api/items?select=id&order=" + order + "&~vec=" + sq
 		}
-		return "/api/items?select=id&id=lt.5&order=" + order + "&vec=" + q
+		return "/api/items?select=id&id=lt.5&order=" + order + "&~vec=" + q
 	}
 	var rows []row
 	for order, want := range cases {
@@ -136,29 +136,29 @@ func TestVectorOrder(t *testing.T) {
 		}
 	}
 	for _, vec := range []string{"[1,0.1,0]", url.QueryEscape("[1, 0.1, 0]")} {
-		getJSON(t, srv+"/api/items?select=id&id=lt.5&order=emb.vec_cos&vec="+vec, &rows)
+		getJSON(t, srv+"/api/items?select=id&id=lt.5&order=emb.cosine_distance&~vec="+vec, &rows)
 		if !eq(ids(rows, "id"), []int{1, 4, 2, 3}) {
-			t.Errorf("vec=%s = %v", vec, ids(rows, "id"))
+			t.Errorf("~vec=%s = %v", vec, ids(rows, "id"))
 		}
 	}
-	getJSON(t, srv+"/api/items?select=id&order=sparse.vec_ip&vec="+url.QueryEscape("{2:1}/5"), &rows)
+	getJSON(t, srv+"/api/items?select=id&order=sparse.negative_inner_product&~vec="+url.QueryEscape("{2:1}/5"), &rows)
 	if got := ids(rows, "id"); !eq(got, []int{2, 4, 1, 3, 5}) {
 		t.Errorf("sparse text vec order = %v", got)
 	}
 
-	getJSON(t, srv+"/api/items?select=id,chunks(id)&id=eq.1&chunks.order=emb.vec_l2&vec="+url.QueryEscape("[0,0,1]"), &rows)
+	getJSON(t, srv+"/api/items?select=id,chunks(id)&id=eq.1&chunks.order=emb.l2_distance&~vec="+url.QueryEscape("[0,0,1]"), &rows)
 	if ch, _ := rows[0]["chunks"].([]any); len(ch) != 3 || ch[0].(map[string]any)["id"] != float64(3) {
 		t.Errorf("embed vector order = %v", rows)
 	}
 
 	for path, code := range map[string]string{
-		"/api/items?order=emb.vec_l2":                                     "invalid_parameter",
-		"/api/items?order=id&vec=" + q:                                    "invalid_parameter",
-		"/api/items?order=emb.vec_l2&vec=" + url.QueryEscape(`[1,"a",0]`): "invalid_parameter",
-		"/api/items?order=emb.vec_l2&vec=" + url.QueryEscape("[1,0]"):     "pg:22000",
-		"/api/items?order=emb.vec_l2&vec=" + url.QueryEscape("nope"):      "pg:22P02",
-		"/api/items?order=emb":                                            "column_not_orderable",
-		"/api/items?emb=eq." + q:                                          "invalid_filter",
+		"/api/items?order=emb.l2_distance":                                      "invalid_parameter",
+		"/api/items?order=id&~vec=" + q:                                         "invalid_parameter",
+		"/api/items?order=emb.l2_distance&~vec=" + url.QueryEscape(`[1,"a",0]`): "invalid_parameter",
+		"/api/items?order=emb.l2_distance&~vec=" + url.QueryEscape("[1,0]"):     "pg:22000",
+		"/api/items?order=emb.l2_distance&~vec=" + url.QueryEscape("nope"):      "pg:22P02",
+		"/api/items?order=emb":                                                  "column_not_orderable",
+		"/api/items?emb=eq." + q:                                                "invalid_filter",
 	} {
 		res, out := get(t, srv+path)
 		wantProblem(t, res, out, 400, code)
@@ -169,16 +169,16 @@ func TestVectorOrder(t *testing.T) {
 	}
 
 	indexed := vectorServer(t, nil)
-	getJSON(t, indexed+"/api/items?select=id&id=lt.5&order=emb.vec_l2&vec="+q, &rows)
+	getJSON(t, indexed+"/api/items?select=id&id=lt.5&order=emb.l2_distance&~vec="+q, &rows)
 	if !eq(ids(rows, "id"), []int{1, 4, 2, 3}) {
-		t.Errorf("indexed emb.vec_l2 = %v", ids(rows, "id"))
+		t.Errorf("indexed emb.l2_distance = %v", ids(rows, "id"))
 	}
-	for _, order := range []string{"emb.vec_cos", "sparse.vec_l2"} {
+	for _, order := range []string{"emb.cosine_distance", "sparse.l2_distance"} {
 		vec := q
 		if strings.HasPrefix(order, "sparse") {
 			vec = sq
 		}
-		res, out := get(t, indexed+"/api/items?order="+order+"&vec="+vec)
+		res, out := get(t, indexed+"/api/items?order="+order+"&~vec="+vec)
 		wantProblem(t, res, out, 400, "column_not_orderable")
 	}
 }
@@ -238,7 +238,7 @@ func TestVectorValues(t *testing.T) {
 }
 
 // TestVectorOpenAPI: the document validates, vectors are arrays of numbers
-// (sparsevec text), bodies take either form, and vec= plus the distance
+// (sparsevec text), bodies take either form, and ~vec= plus the distance
 // terms are documented.
 func TestVectorOpenAPI(t *testing.T) {
 	srv := vectorServer(t, nil)
@@ -258,11 +258,11 @@ func TestVectorOpenAPI(t *testing.T) {
 		t.Errorf("items.insert emb = %s", in)
 	}
 	params := opParams(pathOp(doc, "/items", "get"))
-	if params["query:vec"] == nil {
+	if params["query:~vec"] == nil {
 		t.Error("vec param missing")
 	}
 	order, _ := params["query:order"]["description"].(string)
-	if !strings.Contains(order, "emb.vec_l2") || !strings.Contains(order, "half.vec_cos") || strings.Contains(order, "sparse.vec") {
+	if !strings.Contains(order, "emb.l2_distance") || !strings.Contains(order, "half.cosine_distance") || strings.Contains(order, "sparse.vec") {
 		t.Errorf("order description = %s", order)
 	}
 	if ops, _ := params["query:emb"]["x-pdbr-filter-ops"].([]any); len(ops) != 1 || ops[0] != "is" {

@@ -1,1 +1,1 @@
-GET /api/kb/docs?body=levenshtein_lt.-1&levenshtein=x
+GET /api/kb/docs?body=levenshtein_distance_lt.-1&~levenshtein=x

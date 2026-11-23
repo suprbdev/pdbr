@@ -84,9 +84,9 @@ func FuzzFilter(f *testing.F) {
 		p := list(docs)
 		p.Select = fields(docs, "id")
 		bodyFilter := cond(dc("body"), plan.OpFts, contrib.FullTextQuery{Query: tag})
-		p.Select.Fields = append(p.Select.Fields, plan.FieldSel{Pseudo: docs.Pseudo["title_similarity"]}, plan.FieldSel{Pseudo: docs.Pseudo["title_strict_word_similarity"]},
-			plan.FieldSel{Pseudo: docs.Pseudo["search_headline"], Headline: &plan.Headline{Document: dc("title"), Options: `StartSel="` + e + `"`, Filter: &ftsFilter}},
-			plan.FieldSel{Alias: "b", Pseudo: docs.Pseudo["body_headline"], Headline: &plan.Headline{Document: dc("body"), Options: tag, Filter: &bodyFilter}})
+		p.Select.Fields = append(p.Select.Fields, plan.FieldSel{Pseudo: docs.Pseudo["~title_trgm_similarity"]}, plan.FieldSel{Pseudo: docs.Pseudo["~title_trgm_strict_word_similarity"]},
+			plan.FieldSel{Pseudo: docs.Pseudo["~search_headline"], Headline: &plan.Headline{Document: dc("title"), Options: `StartSel="` + e + `"`, Filter: &ftsFilter}},
+			plan.FieldSel{Alias: "b", Pseudo: docs.Pseudo["~body_headline"], Headline: &plan.Headline{Document: dc("body"), Options: tag, Filter: &bodyFilter}})
 		p.Filter = plan.And{Terms: []plan.Expr{
 			ftsFilter,
 			bodyFilter,
@@ -117,7 +117,7 @@ func FuzzFilter(f *testing.F) {
 		}}
 		p.Order = []plan.OrderTerm{
 			{Contrib: &plan.ContribOrder{Column: dc("search"), Name: "rank", Rank: "ts_rank", Filter: &ftsFilter}, Desc: true},
-			{Contrib: &plan.ContribOrder{Column: dc("title"), Name: "trgm_dist", Expr: "distance"}},
+			{Contrib: &plan.ContribOrder{Column: dc("title"), Name: "trgm_distance", Expr: "distance"}},
 			{Column: dc("email")},
 		}
 		p.Trgm = e
@@ -366,27 +366,27 @@ func FuzzFilter(f *testing.F) {
 		p.Select.Fields = append(p.Select.Fields,
 			plan.FieldSel{Column: dc("attrs"), Path: hp(e, false)},
 			plan.FieldSel{Alias: "v", Column: dc("attrs"), Path: hp(tag, true)},
-			plan.FieldSel{Pseudo: docs.Pseudo["path_nlevel"]},
-			plan.FieldSel{Pseudo: docs.Pseudo["path_parent"]},
-			plan.FieldSel{Pseudo: docs.Pseudo["paths_lca"]},
-			plan.FieldSel{Pseudo: docs.Pseudo["path_lca"], Args: map[string]any{"path": e}},
-			plan.FieldSel{Pseudo: docs.Pseudo["path_subpath"], Args: map[string]any{"offset": off, "length": length}},
-			plan.FieldSel{Alias: "rest", Pseudo: docs.Pseudo["path_subpath"], Args: map[string]any{"offset": off}},
-			plan.FieldSel{Pseudo: docs.Pseudo["body_levenshtein_distance"]},
+			plan.FieldSel{Pseudo: docs.Pseudo["~path_nlevel"]},
+			plan.FieldSel{Pseudo: docs.Pseudo["~path_parent"]},
+			plan.FieldSel{Pseudo: docs.Pseudo["~paths_lca"]},
+			plan.FieldSel{Pseudo: docs.Pseudo["~path_lca"], Args: map[string]any{"path": e}},
+			plan.FieldSel{Pseudo: docs.Pseudo["~path_subpath"], Args: map[string]any{"offset": off, "length": length}},
+			plan.FieldSel{Alias: "rest", Pseudo: docs.Pseudo["~path_subpath"], Args: map[string]any{"offset": off}},
+			plan.FieldSel{Pseudo: docs.Pseudo["~body_levenshtein_distance"]},
 		)
 		p.Filter = plan.And{Terms: []plan.Expr{
 			plan.Cond{Column: dc("attrs"), Path: hp(e, true), Op: plan.OpEq, Value: tag},
 			plan.Cond{Column: dc("attrs"), Path: hp(tag, false), Op: plan.OpLike, Value: e},
 			cond(dc("attrs"), "hk_def", e),
-			plan.Cond{Pseudo: docs.Pseudo["path_nlevel"], Op: plan.OpGte, Value: n},
-			plan.Not{Term: plan.Cond{Pseudo: docs.Pseudo["path_nlevel"], Op: plan.OpIn, Value: []any{n, n + 1}}},
-			cond(dc("body"), "levenshtein_lt", n&0xffff),
+			plan.Cond{Pseudo: docs.Pseudo["~path_nlevel"], Op: plan.OpGte, Value: n},
+			plan.Not{Term: plan.Cond{Pseudo: docs.Pseudo["~path_nlevel"], Op: plan.OpIn, Value: []any{n, n + 1}}},
+			cond(dc("body"), "levenshtein_distance_lt", n&0xffff),
 			cond(dc("body"), "soundex", e),
 			plan.Or{Terms: []plan.Expr{cond(dc("body"), "metaphone", clip(tag)), plan.Not{Term: cond(dc("body"), "dmetaphone", e)}}},
 		}}
 		p.Order = []plan.OrderTerm{
 			{Column: dc("attrs"), Path: hp(tag, false), Desc: true},
-			{Pseudo: docs.Pseudo["path_nlevel"]},
+			{Pseudo: docs.Pseudo["~path_nlevel"]},
 			{Contrib: &plan.ContribOrder{Column: dc("body"), Name: "levenshtein", Expr: "levenshteinDistance"}},
 		}
 		p.Levenshtein = clip(e)
@@ -401,12 +401,12 @@ func FuzzFilter(f *testing.F) {
 		labels := cfx.res("kb.labels")
 		q := list(labels)
 		q.Select = fields(labels, "id")
-		q.Select.Fields = append(q.Select.Fields, plan.FieldSel{Pseudo: labels.Pseudo["tags_icount"]})
+		q.Select.Fields = append(q.Select.Fields, plan.FieldSel{Pseudo: labels.Pseudo["~tags_icount"]})
 		q.Filter = plan.Or{Terms: []plan.Expr{
 			cond(cfx.col("kb.labels", "tags"), "query_int", e),
-			plan.Cond{Pseudo: labels.Pseudo["tags_icount"], Op: plan.OpLt, Value: n},
+			plan.Cond{Pseudo: labels.Pseudo["~tags_icount"], Op: plan.OpLt, Value: n},
 		}}
-		q.Order = []plan.OrderTerm{{Pseudo: labels.Pseudo["tags_icount"], Desc: true}}
+		q.Order = []plan.OrderTerm{{Pseudo: labels.Pseudo["~tags_icount"], Desc: true}}
 		ia, err := cfx.c.Compile(context.Background(), &compile.Request{Plan: q, Built: cfx.built})
 		if err != nil {
 			t.Fatalf("intarray compile error on valid input: %v", err)
@@ -423,13 +423,13 @@ func FuzzFilter(f *testing.F) {
 		}
 		p := list(emb)
 		p.Select = fields(emb, "id", "emb", "half", "sparse")
-		p.Select.Fields = append(p.Select.Fields, plan.FieldSel{Pseudo: emb.Pseudo["emb_cosine_distance"]}, plan.FieldSel{Pseudo: emb.Pseudo["sparse_l1_distance"]})
+		p.Select.Fields = append(p.Select.Fields, plan.FieldSel{Pseudo: emb.Pseudo["~emb_cosine_distance"]}, plan.FieldSel{Pseudo: emb.Pseudo["~sparse_l1_distance"]})
 		p.Filter = plan.And{Terms: []plan.Expr{
 			cond(ec("title"), plan.OpEq, e), plan.Not{Term: cond(ec("emb"), plan.OpIs, nil)},
-			cond(ec("emb"), "vec_cos_lt", float64(n)/3),
-			plan.Not{Term: cond(ec("emb"), "vec_ip_lt", float64(len(tag)))},
+			cond(ec("emb"), "cosine_distance_lt", float64(n)/3),
+			plan.Not{Term: cond(ec("emb"), "negative_inner_product_lt", float64(len(tag)))},
 		}}
-		p.Order = []plan.OrderTerm{vo("emb", "vec_l2", "l2Distance"), vo("half", "vec_cos", "cosineDistance"), vo("sparse", "vec_ip", "negativeInnerProduct")}
+		p.Order = []plan.OrderTerm{vo("emb", "l2_distance", "l2Distance"), vo("half", "cosine_distance", "cosineDistance"), vo("sparse", "negative_inner_product", "negativeInnerProduct")}
 		p.Order[1].Desc = true
 		p.Vec = []any{float64(n), 1.5, float64(len(tag))}
 		p.Page = plan.Page{Limit: 10, After: []any{n}}
@@ -456,15 +456,15 @@ func FuzzFilter(f *testing.F) {
 		}
 		p := list(shapes)
 		p.Select = fields(shapes, "id", "box")
-		p.Select.Fields = append(p.Select.Fields, plan.FieldSel{Pseudo: shapes.Pseudo["box_chebyshev_distance"]}, plan.FieldSel{Pseudo: shapes.Pseudo["pt_l1_distance"]})
+		p.Select.Fields = append(p.Select.Fields, plan.FieldSel{Pseudo: shapes.Pseudo["~box_chebyshev_distance"]}, plan.FieldSel{Pseudo: shapes.Pseudo["~pt_l1_distance"]})
 		p.Filter = plan.And{Terms: []plan.Expr{
 			cond(sc("box"), plan.OpCs, []any{float64(n), 1.5}),
 			cond(sc("box"), plan.OpCd, "("+e+")"),
 			plan.Not{Term: cond(sc("box"), plan.OpOv, []any{[]any{float64(n)}, []any{float64(len(tag))}})},
-			cond(sc("box"), "vec_l2_lt", float64(n)/7),
-			plan.Or{Terms: []plan.Expr{cond(sc("box"), "vec_chebyshev_lt", float64(len(e))), cond(sc("name"), plan.OpEq, tag)}},
+			cond(sc("box"), "l2_distance_lt", float64(n)/7),
+			plan.Or{Terms: []plan.Expr{cond(sc("box"), "chebyshev_distance_lt", float64(len(e))), cond(sc("name"), plan.OpEq, tag)}},
 		}}
-		p.Order = []plan.OrderTerm{co(sc("box"), "vec_l1", "l1Distance"), co(sc("box"), "vec_chebyshev", "chebyshevDistance")}
+		p.Order = []plan.OrderTerm{co(sc("box"), "l1_distance", "l1Distance"), co(sc("box"), "chebyshev_distance", "chebyshevDistance")}
 		p.Order[1].Desc = true
 		p.Vec = []any{float64(n), float64(len(tag))}
 		p.Page = plan.Page{Limit: 10, After: []any{n}}
@@ -474,13 +474,13 @@ func FuzzFilter(f *testing.F) {
 		}
 		q := list(sites)
 		q.Select = fields(sites, "id", "loc", "ll")
-		q.Select.Fields = append(q.Select.Fields, plan.FieldSel{Pseudo: sites.Pseudo["loc_earth_distance"]}, plan.FieldSel{Pseudo: sites.Pseudo["ll_earth_distance_miles"]})
+		q.Select.Fields = append(q.Select.Fields, plan.FieldSel{Pseudo: sites.Pseudo["~loc_earth_distance"]}, plan.FieldSel{Pseudo: sites.Pseudo["~ll_earth_miles_distance"]})
 		q.Filter = plan.And{Terms: []plan.Expr{
-			cond(st("loc"), "earth_lt", float64(n)),
-			plan.Not{Term: cond(st("ll"), "earth_miles_lt", float64(len(e)))},
+			cond(st("loc"), "earth_distance_lt", float64(n)),
+			plan.Not{Term: cond(st("ll"), "earth_miles_distance_lt", float64(len(e)))},
 			cond(st("name"), plan.OpSw, e),
 		}}
-		q.Order = []plan.OrderTerm{co(st("loc"), "earth_dist", "earthDistance"), co(st("ll"), "earth_miles", "earthDistanceMiles")}
+		q.Order = []plan.OrderTerm{co(st("loc"), "earth_distance", "earthDistance"), co(st("ll"), "earth_miles_distance", "earthDistanceMiles")}
 		q.LatLon = map[string]any{"lat": float64(n % 90), "lon": float64(len(tag) % 180)}
 		q.Page = plan.Page{Limit: 10, After: []any{n}}
 		earth, err := cfx.c.Compile(context.Background(), &compile.Request{Plan: q, Built: cfx.built})
@@ -566,19 +566,19 @@ func FuzzSpatial(f *testing.F) {
 		p.Select = fields(places, "id")
 		digits := int64(math.Abs(math.Mod(x, 16)))
 		p.Select.Fields = append(p.Select.Fields,
-			plan.FieldSel{Pseudo: places.Pseudo["location_distance"], Args: map[string]any{"spheroid": true}},
-			plan.FieldSel{Pseudo: places.Pseudo["area_distance"]},
+			plan.FieldSel{Pseudo: places.Pseudo["~location_st_distance"], Args: map[string]any{"spheroid": true}},
+			plan.FieldSel{Pseudo: places.Pseudo["~area_st_distance"]},
 			plan.FieldSel{Alias: "b", Column: places.Table.Column("area"), Args: map[string]any{"buffer": d, "simplify": math.Abs(x), "precision": digits}},
-			plan.FieldSel{Alias: "c", Pseudo: places.Pseudo["area_centroid"], Args: map[string]any{"buffer": x, "precision": digits}})
+			plan.FieldSel{Alias: "c", Pseudo: places.Pseudo["~area_centroid"], Args: map[string]any{"buffer": x, "precision": digits}})
 		p.Filter = plan.And{Terms: []plan.Expr{
 			cond(loc, "st_intersects", wkt),
 			cond(loc, "bbox_intersects", []any{x, x, x, x}),
 			cond(loc, "st_dwithin", []any{wkt, d}),
-			cond(loc, "bbox_leftof", wkt),
-			cond(loc, "st_exactlyequals", wkt),
-			cond(loc, "bbox_intersectsnd", wkt),
-			cond(loc, "bbox_intersects2d", wkt),
-			cond(fx.col("places", "area"), "bbox_intersects2d", wkt),
+			cond(loc, "bbox_left_of", wkt),
+			cond(loc, "st_exactly_equals", wkt),
+			cond(loc, "bbox_intersects_nd", wkt),
+			cond(loc, plan.OpBBoxIntersectsGeom, wkt),
+			cond(fx.col("places", "area"), plan.OpBBoxIntersectsGeom, wkt),
 		}}
 		p.Order = []plan.OrderTerm{{Distance: loc}}
 		p.Near = wkt
@@ -591,12 +591,12 @@ func FuzzSpatial(f *testing.F) {
 		r := list(tiles)
 		r.Select = fields(tiles, "id")
 		r.Select.Fields = append(r.Select.Fields,
-			plan.FieldSel{Pseudo: tiles.Pseudo["rast_width"]},
-			plan.FieldSel{Pseudo: tiles.Pseudo["rast_envelope"]},
-			plan.FieldSel{Pseudo: tiles.Pseudo["rast_envelope"], Alias: "e2", Args: map[string]any{"precision": int64(len(wkt) % 16)}},
-			plan.FieldSel{Pseudo: tiles.Pseudo["rast_value"]},
-			plan.FieldSel{Pseudo: tiles.Pseudo["rast_value"], Alias: "v2", Args: map[string]any{"band": int64(x)}},
-			plan.FieldSel{Pseudo: tiles.Pseudo["rast_summary_stats"], Args: map[string]any{"band": int64(d)}})
+			plan.FieldSel{Pseudo: tiles.Pseudo["~rast_width"]},
+			plan.FieldSel{Pseudo: tiles.Pseudo["~rast_envelope"]},
+			plan.FieldSel{Pseudo: tiles.Pseudo["~rast_envelope"], Alias: "e2", Args: map[string]any{"precision": int64(len(wkt) % 16)}},
+			plan.FieldSel{Pseudo: tiles.Pseudo["~rast_value"]},
+			plan.FieldSel{Pseudo: tiles.Pseudo["~rast_value"], Alias: "v2", Args: map[string]any{"band": int64(x)}},
+			plan.FieldSel{Pseudo: tiles.Pseudo["~rast_summary_stats"], Args: map[string]any{"band": int64(d)}})
 		r.Filter = plan.Or{Terms: []plan.Expr{
 			cond(rast, plan.OpRasterIntersects, wkt),
 			plan.Not{Term: cond(rast, plan.OpRasterIntersects, wkt)},

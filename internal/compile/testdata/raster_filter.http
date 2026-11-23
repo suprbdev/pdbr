@@ -1,1 +1,1 @@
-GET /api/kb/tiles?select=id&rast=intersects.SRID%3D4326%3BPOINT(1%202)&or=(rast.not.intersects."{\"type\":\"Point\",\"coordinates\":[3,4]}",rast.is.null)
+GET /api/kb/tiles?select=id&rast=st_intersects.SRID%3D4326%3BPOINT(1%202)&or=(rast.not.st_intersects."{\"type\":\"Point\",\"coordinates\":[3,4]}",rast.is.null)

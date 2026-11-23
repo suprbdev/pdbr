@@ -1,1 +1,1 @@
-GET /api/kb/sites?order=loc.earth_dist
+GET /api/kb/sites?order=loc.earth_distance

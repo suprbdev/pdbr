@@ -1,2 +1,2 @@
--- request: GET /api/kb/shapes?order=box.vec_chebyshev&vec=%5B%5B1%2C2%5D%2C%5B3%5D%5D
--- error: 400 invalid_parameter: vec: cube box corners must have the same number of coordinates
+-- request: GET /api/kb/shapes?order=box.chebyshev_distance&~vec=%5B%5B1%2C2%5D%2C%5B3%5D%5D
+-- error: 400 invalid_parameter: ~vec: cube box corners must have the same number of coordinates

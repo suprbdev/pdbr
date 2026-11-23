@@ -1,14 +1,14 @@
 // Package postgis is the built-in plugin (priority 160) that turns PostGIS
 // geometry/geography columns into a query surface: spatial filter operators
-// (st_*, bbox_*), derived pseudo-columns (<col>_area, <col>_centroid, ...),
+// (st_*, bbox_*), derived pseudo-columns (~<col>_area, ~<col>_centroid, ...),
 // select= projection arguments (transform=, simplify=, buffer=,
 // precision=), distance ordering
-// (order=<col>.dist with near=) and the <col>_distance score from near=,
+// (order=<col>.st_distance with ~near=) and the ~<col>_st_distance score from ~near=,
 // and the spatial aggregate functions
 // (col.extent(), col.union(), col.collect(), col.centroid(); with
 // aggregates.enabled), and on postgis_raster columns the metadata, pixel
-// value and summary statistics pseudo-columns (<col>_width, ...,
-// <col>_value(band=) at near=, <col>_summary_stats(band=)) and the
+// value and summary statistics pseudo-columns (~<col>_width, ...,
+// ~<col>_value(band=) at ~near=, ~<col>_summary_stats(band=)) and the
 // intersects filter. Reading and writing GeoJSON, and keeping raster
 // values out of every response, is core; the
 // plugin only switches the grammar on (api.Surface), registers the
@@ -30,6 +30,7 @@ import (
 	"github.com/suprbdev/pdbcore/smarttags"
 
 	"github.com/suprbdev/pdbr/internal/api"
+	"github.com/suprbdev/pdbr/internal/plan"
 )
 
 // SchemaName is the OpenAPI component schema for GeoJSON geometries.
@@ -40,9 +41,9 @@ const Name = "postgis"
 
 // Settings is the plugins.settings.postgis section.
 type Settings struct {
-	Filters    bool `koanf:"filters" doc:"Spatial filter operators (st_*, bbox_*) on spatial columns and the intersects filter on raster columns."`
-	Derived    bool `koanf:"derived" doc:"Derived pseudo-columns: <col>_area, <col>_centroid, ... on spatial columns, <col>_width, <col>_value, <col>_summary_stats, ... on raster columns."`
-	Ordering   bool `koanf:"ordering" doc:"Distance ordering (order=<col>.dist.asc|desc) and the <col>_distance score, both with near=."`
+	Filters    bool `koanf:"filters" doc:"Spatial filter operators (st_*, bbox_*) on spatial columns and the st_intersects filter on raster columns."`
+	Derived    bool `koanf:"derived" doc:"Derived pseudo-columns: ~<col>_area, ~<col>_centroid, ... on spatial columns, ~<col>_width, ~<col>_value, ~<col>_summary_stats, ... on raster columns."`
+	Ordering   bool `koanf:"ordering" doc:"Distance ordering (order=<col>.st_distance.asc|desc) and the ~<col>_st_distance score, both with ~near=."`
 	Projection bool `koanf:"projection" doc:"select= projection arguments: col(transform=...,simplify=...,buffer=...,precision=...)."`
 	Aggregates bool `koanf:"aggregates" doc:"Spatial aggregate functions in select= (col.extent(), col.union(), col.collect(), col.centroid()); also needs aggregates.enabled."`
 }
@@ -92,9 +93,9 @@ func (p *Plugin) TransformAPI(_ context.Context, b *api.Builder) error {
 			found = true
 			p.applyOmits(b, r, f)
 			if p.derived {
-				p.addPseudoColumns(b, r, f)
+				addPseudoColumns(r, f)
 			}
-			if p.ordering && !r.NameTaken("near") {
+			if p.ordering {
 				addDistanceColumn(b, r, f)
 			}
 		}
@@ -156,25 +157,24 @@ func (p *Plugin) TransformAPI(_ context.Context, b *api.Builder) error {
 }
 
 // RasterFilterOps lists the filter operators of a raster column for OpenAPI
-// x-pdbr-filter-ops: intersects (with the filters setting) and is.
+// x-pdbr-filter-ops: st_intersects (with the filters setting) and is.
 func RasterFilterOps(filters bool) []string {
 	if filters {
-		return []string{"intersects", "is"}
+		return []string{string(plan.OpStIntersects), "is"}
 	}
 	return []string{"is"}
 }
 
 // addRasterColumns registers the pseudo-columns of a raster column:
-// <key>_<accessor> for each header-only metadata accessor
+// ~<key>_<accessor> for each header-only metadata accessor
 // (postgis.RasterAccessors: width, height, num_bands, srid, pixel_width,
-// pixel_height, envelope), <key>_value(band=) (the pixel value at near=,
-// unless near is a column or computed column of the resource) and
-// <key>_summary_stats(band=). A real, raster, computed or other
-// pseudo-column owning a key keeps it.
+// pixel_height, envelope), ~<key>_value(band=) (the pixel value at ~near=)
+// and ~<key>_summary_stats(band=). Another pseudo-column owning a key keeps
+// it.
 func addRasterColumns(b *api.Builder, r *api.Resource, f *api.Field) {
 	add := func(suffix string, pc *api.PseudoColumn) {
-		key := f.Key + "_" + suffix
-		if r.Field(key) != nil || r.Raster(key) != nil || r.Computed[key] != nil || r.Pseudo[key] != nil {
+		key := api.PseudoKey(f.Key, suffix)
+		if r.Pseudo[key] != nil {
 			b.Warn("postgis: raster pseudo-column skipped: the key is taken", "resource", r.Path, "column", f.Column.Name, "key", key)
 			return
 		}
@@ -192,14 +192,12 @@ func addRasterColumns(b *api.Builder, r *api.Resource, f *api.Field) {
 			Description: a.Description,
 		})
 	}
-	if !r.NameTaken("near") {
-		add("value", &api.PseudoColumn{
-			Raster:      &api.RasterValue{Value: true},
-			Score:       &api.Score{Param: "near"},
-			Schema:      &api.Schema{Type: "number", Format: "double"},
-			Description: "Pixel value (ST_Value) of band band= (default 1) at the near= point, reprojected to the raster's SRID; null for a NODATA pixel, a point outside the raster or a missing band. near= is required to select it.",
-		})
-	}
+	add("value", &api.PseudoColumn{
+		Raster:      &api.RasterValue{Value: true},
+		Score:       &api.Score{Param: api.ParamNear},
+		Schema:      &api.Schema{Type: "number", Format: "double"},
+		Description: "Pixel value (ST_Value) of band band= (default 1) at the ~near= point, reprojected to the raster's SRID; null for a NODATA pixel, a point outside the raster or a missing band. ~near= is required to select it.",
+	})
 	add("summary_stats", &api.PseudoColumn{
 		Raster:      &api.RasterValue{SummaryStats: true},
 		Schema:      SummaryStatsSchema(),
@@ -260,24 +258,16 @@ func Omits(comment string) (skipFilter, skipOrder bool) {
 	return everything || om["filter"], everything || om["order"]
 }
 
-// addPseudoColumns registers <key>_<accessor> for every derived accessor
-// that applies to the column's typmod (see Applies); a real or computed
-// column that already owns the name keeps it.
-func (p *Plugin) addPseudoColumns(b *api.Builder, r *api.Resource, f *api.Field) {
+// addPseudoColumns registers ~<key>_<accessor> for every derived accessor
+// that applies to the column's typmod (see Applies).
+func addPseudoColumns(r *api.Resource, f *api.Field) {
 	for _, d := range postgis.Deriveds {
 		if !Applies(d, f.Column) {
 			continue
 		}
 		acc := Accessor(d)
-		key := f.Key + "_" + acc
-		switch {
-		case r.Field(key) != nil:
-			b.Warn("postgis: pseudo-column skipped: a real column owns the key", "resource", r.Path, "column", f.Column.Name, "key", key)
-			continue
-		case r.Computed[key] != nil:
-			b.Warn("postgis: pseudo-column skipped: a computed column owns the key", "resource", r.Path, "column", f.Column.Name, "key", key)
-			continue
-		case r.Pseudo[key] != nil:
+		key := api.PseudoKey(f.Key, acc)
+		if r.Pseudo[key] != nil {
 			continue
 		}
 		if r.Pseudo == nil {
@@ -293,19 +283,19 @@ func (p *Plugin) addPseudoColumns(b *api.Builder, r *api.Resource, f *api.Field)
 	}
 }
 
-// addDistanceColumn registers the <key>_distance score pseudo-column: the
-// distance of the column from near= (ST_Distance; metres on geography, SRID
-// units on geometry, metres with (spheroid=true) on geometry). It is a
-// projection of the returned rows, so @omit order and the filter policy
-// leave it alone; a real, computed or derived column owning the key keeps
-// it.
+// addDistanceColumn registers the ~<key>_st_distance score pseudo-column:
+// the distance of the column from ~near= (ST_Distance; metres on
+// geography, SRID units on geometry, metres with (spheroid=true) on
+// geometry). It is a projection of the returned rows, so @omit order and
+// the filter policy leave it alone; another pseudo-column owning the key
+// keeps it.
 func addDistanceColumn(b *api.Builder, r *api.Resource, f *api.Field) {
-	key := f.Key + "_distance"
-	if r.Field(key) != nil || r.Computed[key] != nil || r.Pseudo[key] != nil {
+	key := api.PseudoKey(f.Key, api.SpatialDistance)
+	if r.Pseudo[key] != nil {
 		b.Warn("postgis: distance pseudo-column skipped: the key is taken", "resource", r.Path, "column", f.Column.Name, "key", key)
 		return
 	}
-	desc := "Distance from near=, required to select it: "
+	desc := "Distance from ~near=, required to select it: "
 	if postgis.FlavourOf(f.Column.PGType) == postgis.Geography {
 		desc += "metres."
 	} else {
@@ -316,7 +306,7 @@ func addDistanceColumn(b *api.Builder, r *api.Resource, f *api.Field) {
 	}
 	r.Pseudo[key] = &api.PseudoColumn{
 		Key: key, Column: f.Column,
-		Score:       &api.Score{Param: "near"},
+		Score:       &api.Score{Param: api.ParamNear},
 		Schema:      &api.Schema{Type: "number"},
 		Description: desc,
 	}
@@ -433,22 +423,24 @@ func FeatureCollectionSchema() *api.Schema {
 func FilterOps() []string {
 	var out []string
 	for _, op := range postgis.Ops {
-		if op.Kind() == postgis.ArgBoolean {
-			continue
+		if name := OpName(op); name != "" && op.Kind() != postgis.ArgBoolean {
+			out = append(out, name)
 		}
-		out = append(out, OpName(op))
 	}
 	return append(out, "is")
 }
 
 // OpName maps a pdbcore operator (pdbq spelling, e.g. bboxIntersects,
-// dwithin) to pdbr's query-string spelling (bbox_intersects, st_dwithin).
+// dwithin) to pdbr's query-string spelling (bbox_intersects, st_dwithin;
+// see plan.SpatialOps); "" for an operator pdbr does not spell (the
+// geometry form of bbox_intersects, orderingEquals).
 func OpName(op postgis.Op) string {
-	name := op.Name
-	if strings.HasPrefix(name, "bbox") {
-		return "bbox_" + strings.ToLower(strings.TrimPrefix(name, "bbox"))
+	for p, name := range plan.SpatialOps {
+		if name == op.Name && p != plan.OpBBoxIntersectsGeom {
+			return string(p)
+		}
 	}
-	return "st_" + strings.ToLower(name)
+	return ""
 }
 
 // SpatialColumns returns the resource's geometry/geography fields in

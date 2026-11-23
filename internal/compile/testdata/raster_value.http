@@ -1,1 +1,1 @@
-GET /api/kb/tiles?select=id,rast_value,b2:rast_value(band=2),rast_summary_stats,s3:rast_summary_stats(band=3)&near=POINT(1%202)
+GET /api/kb/tiles?select=id,~rast_value,b2:~rast_value(band=2),~rast_summary_stats,s3:~rast_summary_stats(band=3)&~near=POINT(1%202)

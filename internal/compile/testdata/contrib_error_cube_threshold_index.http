@@ -1,1 +1,1 @@
-GET /api/kb/shapes?pt=vec_l2_lt.1&vec=%5B1%5D
+GET /api/kb/shapes?pt=l2_distance_lt.1&~vec=%5B1%5D

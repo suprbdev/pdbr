@@ -200,7 +200,7 @@ For each table/view in `schema.schemas` the connection role can `SELECT`
 | stable/immutable functions | `GET /rpc/{fn}?arg=value` (also `POST`); `SETOF table` results take `select`/filters/`order`/`limit`/`offset`/`count` |
 | volatile functions | `POST /rpc/{fn}` with a JSON body (GET → `405`) |
 | functions taking a row type | computed columns in `select=` (`users_post_count` → `post_count`) |
-| PostGIS columns | GeoJSON in/out, spatial filter ops, `near=` distance ordering, `<col>_area` style pseudo-columns ([postgis.md](postgis.md)) |
+| PostGIS columns | GeoJSON in/out, spatial filter ops, `~near=` distance ordering, `~<col>_area` style pseudo-columns ([postgis.md](postgis.md)) |
 | everything above | `GET /openapi.json` ([openapi.md](openapi.md)) |
 
 One-off requests from the shell, without a running server:

@@ -34,7 +34,7 @@ import (
 //
 // @costMultiplier on an FK replaces a backward embed's multiplier when lower.
 // Filters are not priced (the estimate is the fan-out of what is returned),
-// so neither is the raster intersects filter. exec compares the result to
+// so neither is the raster st_intersects filter. exec compares the result to
 // limits.max_cost before compiling.
 func Cost(req *plan.Request, maxPageSize int) int {
 	if req == nil {

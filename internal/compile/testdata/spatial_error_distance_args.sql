@@ -1,2 +1,2 @@
--- request: GET /api/places?select=id,area_distance(spheroid=true)&near=POINT(0%200)
--- error: 400 invalid_select: "area_distance" takes no arguments
+-- request: GET /api/places?select=id,~area_st_distance(spheroid=true)&~near=POINT(0%200)
+-- error: 400 invalid_select: "~area_st_distance" takes no arguments

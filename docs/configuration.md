@@ -97,7 +97,7 @@ See [cli.md](cli.md) for details.
 | `schema.functions` | bool | `true` | expose functions as `/rpc/{fn}` routes and computed columns ([rpc.md](rpc.md)) |
 | `schema.expose_partitions` | bool | `false` | also expose each partition of a partitioned table as its own resource; off, only the partitioned parent is a resource (its rows already span every partition) — see [api.md](api.md#what-gets-generated) |
 | `filters.indexed_only` | bool | `true` | only indexed/PK/unique columns filterable and orderable; see [filtering.md](filtering.md) |
-| `filters.allow_columns` | map[string][]string | `{}` | per-table extra filterable columns keyed by `schema.table`, overriding `indexed_only`; also the only way to admit operators no index serves (unaccent, fuzzystrmatch, the earthdistance `<@>` surface on point columns) and the raster `intersects` filter, whose GiST index is on an expression |
+| `filters.allow_columns` | map[string][]string | `{}` | per-table extra filterable columns keyed by `schema.table`, overriding `indexed_only`; also the only way to admit operators no index serves (unaccent, fuzzystrmatch, the earthdistance `<@>` surface on point columns) and the raster `st_intersects` filter, whose GiST index is on an expression |
 | `mutations.allow_unfiltered` | bool | `false` | let `PATCH`/`DELETE {base}/{table}` run without a filter (every row the role can see); off → `400 unfiltered_mutation`. The guard checks that a filter (or `!inner` embed) is present, not its selectivity — a match-all filter passes; bound writes with `Prefer: handling=strict, max-affected=N`. See [mutations.md](mutations.md#bulk-patch--delete-by-filter) |
 | `aggregates.enabled` | bool | `false` | aggregate functions in `select=` (`count()`, `col.sum()`, `col.avg()`, `col.max()`, `col.min()`; spatial `col.extent()`/`union()`/`collect()`/`centroid()`), grouped by the other selected items — PostgREST `db-aggregates-enabled`; off → `400 aggregates_disabled`. An aggregate reads every row its filters match (`limit` bounds groups, not the scan), so index what you expose and keep `database.statement_timeout`; see [aggregates.md](aggregates.md) |
 | `auth.mode` | string | `jwt` | credential source: `jwt` (bearer JWT), `headers` (claims from a trusted gateway) or `none` (no credentials); see [rls.md](rls.md#claim-sources-authmode) |
@@ -135,9 +135,9 @@ See [cli.md](cli.md) for details.
 | `plugins.settings.advanced_filters.relation_order` | bool | `true` | ordering by a related column (`order=rel(col).asc`); off when `relations` is |
 | `plugins.settings.advanced_filters.relations_opt_in` | bool | `false` | only FKs tagged `@filterable`/`@sortable` get relation filters and ordering |
 | `plugins.settings.advanced_filters.computed_opt_in` | bool | `false` | only computed functions tagged `@filterable`/`@sortable` get filters and ordering |
-| `plugins.settings.postgis.filters` | bool | `true` | spatial filter operators (`st_*`, `bbox_*`), raster `intersects` |
-| `plugins.settings.postgis.derived` | bool | `true` | derived pseudo-columns (`<col>_area`, …, raster `<col>_width`, …) |
-| `plugins.settings.postgis.ordering` | bool | `true` | `order=<col>.dist` and `<col>_distance` with `near=` |
+| `plugins.settings.postgis.filters` | bool | `true` | spatial filter operators (`st_*`, `bbox_*`), raster `st_intersects` |
+| `plugins.settings.postgis.derived` | bool | `true` | derived pseudo-columns (`~<col>_area`, …, raster `~<col>_width`, …) |
+| `plugins.settings.postgis.ordering` | bool | `true` | `order=<col>.st_distance` and `~<col>_st_distance` with `~near=` |
 | `plugins.settings.postgis.projection` | bool | `true` | `select=col(transform=…,simplify=…,buffer=…,precision=…)` |
 | `plugins.settings.postgis.aggregates` | bool | `true` | spatial aggregates (`col.extent()`, `union()`, `collect()`, `centroid()`; also needs `aggregates.enabled`) |
 | `plugins.settings.nested_mutations.max_depth` | int | `3` | deepest create/update nesting (root = 1); over → `400 embed_depth_exceeded`; must be `>= 1` |

@@ -1,2 +1,2 @@
--- request: GET /api/kb/docs?body=levenshtein_lt.-1&levenshtein=x
--- error: 400 invalid_filter: levenshtein_lt takes a non-negative integer (the distance threshold; the text is levenshtein=), got "-1"
+-- request: GET /api/kb/docs?body=levenshtein_distance_lt.-1&~levenshtein=x
+-- error: 400 invalid_filter: levenshtein_distance_lt takes a non-negative integer (the distance threshold; the text is ~levenshtein=), got "-1"

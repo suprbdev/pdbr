@@ -1,1 +1,1 @@
-GET /api/kb/tiles?select=rast_value
+GET /api/kb/tiles?select=~rast_value

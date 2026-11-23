@@ -256,9 +256,9 @@ are `plugins.settings.advanced-filters` / `nested-mutations` (see
 | `advanced_filters.relation_order` | `true` | ordering by a related column (`order=rel(col).asc`); off when `relations` is |
 | `advanced_filters.relations_opt_in` | `false` | only FKs tagged `@filterable` / `@sortable` get relation filters and ordering |
 | `advanced_filters.computed_opt_in` | `false` | only computed functions tagged `@filterable` / `@sortable` get filters and ordering |
-| `postgis.filters` | `true` | spatial filter operators (`st_*`, `bbox_*`), raster `intersects` |
-| `postgis.derived` | `true` | `<col>_area`, `<col>_centroid`, …, raster `<col>_width`, `<col>_value`, … pseudo-columns |
-| `postgis.ordering` | `true` | `order=<col>.dist` and `<col>_distance` with `near=` |
+| `postgis.filters` | `true` | spatial filter operators (`st_*`, `bbox_*`), raster `st_intersects` |
+| `postgis.derived` | `true` | `~<col>_area`, `~<col>_centroid`, …, raster `~<col>_width`, `~<col>_value`, … pseudo-columns |
+| `postgis.ordering` | `true` | `order=<col>.st_distance` and `~<col>_st_distance` with `~near=` |
 | `postgis.projection` | `true` | `select=col(transform=…,simplify=…,buffer=…,precision=…)` |
 | `postgis.aggregates` | `true` | spatial aggregates `col.extent()`, `union()`, `collect()`, `centroid()` (also need `aggregates.enabled`) |
 | `nested_mutations.max_depth` | `3` | deepest create/update nesting (root = 1) |
@@ -331,17 +331,19 @@ documents relation/computed parameters from the same flags
 ### postgis
 
 Follows exactly the same shape for PostGIS columns: spatial filter operators
-(`st_*`, `bbox_*`), `<col>_<accessor>` pseudo-columns, `select=` projection
-arguments (`transform=`, `simplify=`, `buffer=`, `precision=`), `.dist` ordering with `near=` and the
+(`st_*`, `bbox_*`), `~<col>_<accessor>` pseudo-columns, `select=` projection
+arguments (`transform=`, `simplify=`, `buffer=`, `precision=`), `.st_distance` ordering with `~near=` and the
 spatial aggregate functions (`col.extent()`, …). The
 grammar itself lives in the core parser/compiler behind `api.Surface` gates;
 the plugin flips `SpatialFilters`/`SpatialOrder`/`SpatialProjection`/`SpatialAggregates` from its
-settings, registers `Resource.Pseudo` entries (`derived`; a real or computed
-column owning the name wins, with a warning), applies `@omit filter|order`
+settings, registers `Resource.Pseudo` entries (`derived`; keys
+`~<col>_<accessor>`, so they never collide with real columns), applies
+`@omit filter|order`
 from the column comments itself (no smart_comments dependency), and adds
 the `GeoJSON` component schema, the `geometry`/`geography` type override and
-the spatial `x-pdbr-filter-ops` vocabulary to `Builder.Extra` (the `near`
-parameter and per-column filter params render with M6's parameter work).
+the spatial `x-pdbr-filter-ops` vocabulary to `Builder.Extra` (the `~near`
+parameter and the per-column filter params are rendered by the core
+OpenAPI builder).
 Nothing happens when the model has no spatial column. Reading and writing
 GeoJSON is core (`pdbcore/postgis`), so disabling the plugin only removes the
 query surface. See [postgis.md](postgis.md).
@@ -423,7 +425,7 @@ that introduced it.
 | `Builder.Extra.Types[pgType]` | override the OpenAPI schema of a PostgreSQL type name (`Built.TypeSchema` consults it first; arrays nest) | postgis (`geometry`/`geography` → `$ref GeoJSON`) |
 | `Builder.Extra.FilterOps[pgType]` | the operator vocabulary a column of that type documents in `x-pdbr-filter-ops` (and the parameter description) instead of the scalar ops | postgis (`st_*`, `bbox_*`, `is`) |
 | `Builder.Extra.InputTypes[pgType]` | override the schema of a PostgreSQL type name in request bodies only (`.insert`/`.update`/`.upsert` properties, RPC `POST` bodies); falls back to `Extra.Types` | postgis (`oneOf [GeoJSON, string]` for WKT input) |
-| `Resource.Pseudo[key] = &PseudoColumn{Key, Column, Accessor, Schema, Description}` | a select-only derived field the core compiler renders through `pdbcore/postgis.Deriveds` (`Accessor` = snake-case suffix); `readOnly` property in OpenAPI, excluded from `*`, never filterable/orderable/writable | postgis (`<col>_area`, …) |
+| `Resource.Pseudo[key] = &PseudoColumn{Key, Column, Accessor, Schema, Description}` | a select-only derived field the core compiler renders through `pdbcore/postgis.Deriveds` (`Accessor` = snake-case suffix); `readOnly` property in OpenAPI, excluded from `*`, never filterable/orderable/writable | postgis (`~<col>_area`, …) |
 | `RemoveFilterColumn` / `RemoveOrderColumn` (see above) | also used to honour `@omit filter|order` read straight from the catalog | postgis |
 
 ## Building SQL: the compile helper API

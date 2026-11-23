@@ -208,7 +208,7 @@ func num(v any) float64 {
 
 // TestCube: cube values read and write as JSON lists, cs/cd/ov and the
 // distance thresholds filter, the three distances order nearest first
-// against vec= and come out as scores, and generic comparisons and plain
+// against ~vec= and come out as scores, and generic comparisons and plain
 // ordering are refused.
 func TestCube(t *testing.T) {
 	dbURL := geoSetup(t)
@@ -223,17 +223,17 @@ func TestCube(t *testing.T) {
 	wantIDs(t, srv, "shapes?box=cd.(0,0),(5,5)&order=id", []int{1, 2})
 	wantIDs(t, srv, "shapes?box=ov."+url.QueryEscape("[[0.5,0.5],[2.5,2.5]]")+"&order=id", []int{1, 2})
 	wantIDs(t, srv, "shapes?or=(box.cs.\"(10,10)\",box.is.null)&order=id", []int{3, 4})
-	wantIDs(t, srv, "shapes?box=vec_l2_lt.3&vec="+v+"&order=id", []int{1, 2})
-	wantIDs(t, srv, "shapes?box=not.vec_chebyshev_lt.5&vec="+v+"&order=id", []int{3})
-	wantIDs(t, srv, "shapes?box=vec_l1_lt.1&vec=(0,0)", []int{1})
+	wantIDs(t, srv, "shapes?box=l2_distance_lt.3&~vec="+v+"&order=id", []int{1, 2})
+	wantIDs(t, srv, "shapes?box=not.chebyshev_distance_lt.5&~vec="+v+"&order=id", []int{3})
+	wantIDs(t, srv, "shapes?box=l1_distance_lt.1&~vec=(0,0)", []int{1})
 	for order, want := range map[string][]int{
-		"box.vec_l2": {1, 2, 3, 4}, "box.vec_l1": {1, 2, 3, 4}, "box.vec_chebyshev": {1, 2, 3, 4}, "box.vec_l2.desc": {3, 2, 1, 4},
+		"box.l2_distance": {1, 2, 3, 4}, "box.l1_distance": {1, 2, 3, 4}, "box.chebyshev_distance": {1, 2, 3, 4}, "box.l2_distance.desc": {3, 2, 1, 4},
 	} {
-		wantIDs(t, srv, "shapes?select=id&order="+order+"&vec="+v, want)
+		wantIDs(t, srv, "shapes?select=id&order="+order+"&~vec="+v, want)
 	}
-	getJSON(t, srv+"/api/shapes?select=id,box_l2_distance,box_l1_distance,box_chebyshev_distance,pt_l2_distance&id=eq.2&vec="+v, &rows)
+	getJSON(t, srv+"/api/shapes?select=id,~box_l2_distance,~box_l1_distance,~box_chebyshev_distance,~pt_l2_distance&id=eq.2&~vec="+v, &rows)
 	r := rows[0]
-	if math.Abs(num(r["box_l2_distance"])-math.Sqrt(8)) > 1e-9 || num(r["box_l1_distance"]) != 4 || num(r["box_chebyshev_distance"]) != 2 || math.Abs(num(r["pt_l2_distance"])-math.Sqrt(50)) > 1e-9 {
+	if math.Abs(num(r["~box_l2_distance"])-math.Sqrt(8)) > 1e-9 || num(r["~box_l1_distance"]) != 4 || num(r["~box_chebyshev_distance"]) != 2 || math.Abs(num(r["~pt_l2_distance"])-math.Sqrt(50)) > 1e-9 {
 		t.Errorf("cube scores = %v", r)
 	}
 
@@ -263,17 +263,17 @@ func TestCube(t *testing.T) {
 	wantCode(t, srv, "shapes?box=eq.(0,0)", 400, "invalid_filter")
 	wantCode(t, srv, "shapes?order=box", 400, "column_not_orderable")
 	wantCode(t, srv, "shapes?distinct=box", 400, "invalid_parameter")
-	wantCode(t, srv, "shapes?order=box.vec_l2", 400, "invalid_parameter")
-	wantCode(t, srv, "shapes?order=pt.vec_l2&vec="+v, 400, "column_not_orderable")
-	wantCode(t, srv, "shapes?pt=vec_l2_lt.1&vec="+v, 400, "column_not_filterable")
-	wantCode(t, srv, "shapes?order=box.vec_l2&vec="+url.QueryEscape("[[0],[1,2]]"), 400, "invalid_parameter")
+	wantCode(t, srv, "shapes?order=box.l2_distance", 400, "invalid_parameter")
+	wantCode(t, srv, "shapes?order=pt.l2_distance&~vec="+v, 400, "column_not_orderable")
+	wantCode(t, srv, "shapes?pt=l2_distance_lt.1&~vec="+v, 400, "column_not_filterable")
+	wantCode(t, srv, "shapes?order=box.l2_distance&~vec="+url.QueryEscape("[[0],[1,2]]"), 400, "invalid_parameter")
 
 	open := geoServer(t, dbURL, func(c *config.Config) { c.Filters.IndexedOnly = false })
-	wantIDs(t, open, "shapes?select=id&pt=vec_l2_lt.2&order=pt.vec_l2&vec="+v, []int{1, 3})
+	wantIDs(t, open, "shapes?select=id&pt=l2_distance_lt.2&order=pt.l2_distance&~vec="+v, []int{1, 3})
 }
 
-// TestEarth: earth columns read and write as {lat, lon}, earth_lt is a
-// radius in metres around latlon=, earth_dist orders nearest first (keyset
+// TestEarth: earth columns read and write as {lat, lon}, earth_distance_lt is a
+// radius in metres around ~latlon=, earth_distance orders nearest first (keyset
 // cursors and Link headers walk it) and the score is the great-circle
 // distance; point columns get <@> miles only where the policy admits it.
 func TestEarth(t *testing.T) {
@@ -285,18 +285,18 @@ func TestEarth(t *testing.T) {
 	if math.Abs(num(loc["lat"])-51.5074) > 1e-6 || math.Abs(num(loc["lon"])+0.1278) > 1e-6 || rows[1]["loc"] != nil {
 		t.Errorf("earth output = %v", rows)
 	}
-	london := "latlon=51.5074,-0.1278"
-	wantIDs(t, srv, "sites?loc=earth_lt.100000&order=id&"+london, []int{1, 4})
-	wantIDs(t, srv, "sites?loc=not.earth_lt.400000&order=id&"+london, []int{3})
-	wantIDs(t, srv, "sites?select=id&order=loc.earth_dist&"+london, []int{1, 4, 2, 3, 5})
-	wantIDs(t, srv, "sites?select=id&order=loc.earth_dist.desc&loc=not.is.null&"+london, []int{3, 2, 4, 1})
-	getJSON(t, srv+"/api/sites?select=id,loc_earth_distance&id=eq.2&"+london, &rows)
-	if d := num(rows[0]["loc_earth_distance"]); d < 340000 || d > 347000 {
-		t.Errorf("London-Paris = %v m", rows[0]["loc_earth_distance"])
+	london := "~latlon=51.5074,-0.1278"
+	wantIDs(t, srv, "sites?loc=earth_distance_lt.100000&order=id&"+london, []int{1, 4})
+	wantIDs(t, srv, "sites?loc=not.earth_distance_lt.400000&order=id&"+london, []int{3})
+	wantIDs(t, srv, "sites?select=id&order=loc.earth_distance&"+london, []int{1, 4, 2, 3, 5})
+	wantIDs(t, srv, "sites?select=id&order=loc.earth_distance.desc&loc=not.is.null&"+london, []int{3, 2, 4, 1})
+	getJSON(t, srv+"/api/sites?select=id,~loc_earth_distance&id=eq.2&"+london, &rows)
+	if d := num(rows[0]["~loc_earth_distance"]); d < 340000 || d > 347000 {
+		t.Errorf("London-Paris = %v m", rows[0]["~loc_earth_distance"])
 	}
 
 	var walked []int
-	next := "/api/sites?select=id&order=loc.earth_dist&limit=2&" + london
+	next := "/api/sites?select=id&order=loc.earth_distance&limit=2&" + london
 	for range 5 {
 		res := getJSON(t, srv+next, &rows)
 		walked = append(walked, ids(rows, "id")...)
@@ -312,9 +312,9 @@ func TestEarth(t *testing.T) {
 	}
 
 	var created row
-	sendJSON(t, "POST", srv+"/api/sites?select=id,loc,loc_earth_distance&"+london, `{"id": 9, "name": "Trafalgar", "loc": {"lat": 51.508, "lon": -0.128}, "ll": "(-0.128,51.508)"}`, 201, &created)
+	sendJSON(t, "POST", srv+"/api/sites?select=id,loc,~loc_earth_distance&"+london, `{"id": 9, "name": "Trafalgar", "loc": {"lat": 51.508, "lon": -0.128}, "ll": "(-0.128,51.508)"}`, 201, &created)
 	loc, _ = created["loc"].(map[string]any)
-	if math.Abs(num(loc["lat"])-51.508) > 1e-6 || num(created["loc_earth_distance"]) > 100 {
+	if math.Abs(num(loc["lat"])-51.508) > 1e-6 || num(created["~loc_earth_distance"]) > 100 {
 		t.Errorf("created = %v", created)
 	}
 	for body, code := range map[string]string{
@@ -330,21 +330,21 @@ func TestEarth(t *testing.T) {
 		}
 	}
 
-	wantCode(t, srv, "sites?order=loc.earth_dist", 400, "invalid_parameter")
-	wantCode(t, srv, "sites?order=loc.earth_dist&latlon=95,0", 400, "invalid_parameter")
+	wantCode(t, srv, "sites?order=loc.earth_distance", 400, "invalid_parameter")
+	wantCode(t, srv, "sites?order=loc.earth_distance&~latlon=95,0", 400, "invalid_parameter")
 	wantCode(t, srv, "sites?"+london, 400, "invalid_parameter")
 	wantCode(t, srv, "sites?order=loc", 400, "column_not_orderable")
 	wantCode(t, srv, "sites?loc=eq.x", 400, "invalid_filter")
-	wantCode(t, srv, "sites?order=ll.earth_miles&"+london, 400, "column_not_orderable")
-	wantCode(t, srv, "sites?select=ll_earth_distance_miles&"+london, 400, "unknown_column")
+	wantCode(t, srv, "sites?order=ll.earth_miles_distance&"+london, 400, "column_not_orderable")
+	wantCode(t, srv, "sites?select=~ll_earth_miles_distance&"+london, 400, "unknown_column")
 
 	allowed := geoServer(t, dbURL, func(c *config.Config) {
 		c.Filters.AllowColumns = map[string][]string{geoSchema + ".sites": {"ll"}}
 	})
-	wantIDs(t, allowed, "sites?select=id&ll=earth_miles_lt.100&order=ll.earth_miles&id=neq.9&"+london, []int{1, 4})
-	getJSON(t, allowed+"/api/sites?select=id,ll_earth_distance_miles&id=eq.4&"+london, &rows)
-	if d := num(rows[0]["ll_earth_distance_miles"]); d < 45 || d > 50 {
-		t.Errorf("London-Brighton = %v miles", rows[0]["ll_earth_distance_miles"])
+	wantIDs(t, allowed, "sites?select=id&ll=earth_miles_distance_lt.100&order=ll.earth_miles_distance&id=neq.9&"+london, []int{1, 4})
+	getJSON(t, allowed+"/api/sites?select=id,~ll_earth_miles_distance&id=eq.4&"+london, &rows)
+	if d := num(rows[0]["~ll_earth_miles_distance"]); d < 45 || d > 50 {
+		t.Errorf("London-Brighton = %v miles", rows[0]["~ll_earth_miles_distance"])
 	}
 }
 
@@ -357,12 +357,12 @@ func TestGeoKNNUsesIndex(t *testing.T) {
 	dbURL := geoSetup(t)
 	knn := dbText(t, `SELECT (current_setting('server_version_num')::int >= 170000)::text`) == "true"
 	for target, index := range map[string]string{
-		"/api/sites?select=id&order=loc.earth_dist&limit=2&latlon=51.5,0":                "sites_loc_idx",
-		"/api/sites?select=id&loc=earth_lt.10000&latlon=51.5,0":                          "sites_loc_idx",
-		"/api/shapes?select=id&order=box.vec_l2&limit=2&vec=" + url.QueryEscape("[0,0]"): "shapes_box_idx",
-		"/api/shapes?select=id&order=box.vec_chebyshev&limit=2&vec=(0,0)":                "shapes_box_idx",
-		"/api/shapes?select=id&box=vec_l1_lt.2&vec=(0,0)":                                "shapes_box_idx",
-		"/api/tiles?select=id&rast=intersects.SRID%3D4326%3BPOINT(5%205)":                "tiles_rast_idx",
+		"/api/sites?select=id&order=loc.earth_distance&limit=2&~latlon=51.5,0":                 "sites_loc_idx",
+		"/api/sites?select=id&loc=earth_distance_lt.10000&~latlon=51.5,0":                      "sites_loc_idx",
+		"/api/shapes?select=id&order=box.l2_distance&limit=2&~vec=" + url.QueryEscape("[0,0]"): "shapes_box_idx",
+		"/api/shapes?select=id&order=box.chebyshev_distance&limit=2&~vec=(0,0)":                "shapes_box_idx",
+		"/api/shapes?select=id&box=l1_distance_lt.2&~vec=(0,0)":                                "shapes_box_idx",
+		"/api/tiles?select=id&rast=st_intersects.SRID%3D4326%3BPOINT(5%205)":                   "tiles_rast_idx",
 	} {
 		if strings.Contains(target, "order=") && !knn {
 			continue
@@ -400,39 +400,39 @@ func TestRaster(t *testing.T) {
 	etag := res.Header.Get("ETag")
 
 	var rows []row
-	getJSON(t, srv+"/api/tiles?select=id,rast_width,rast_height,rast_num_bands,rast_srid,rast_pixel_width,rast_pixel_height,rast_envelope&order=id", &rows)
-	if r := rows[0]; num(r["rast_width"]) != 10 || num(r["rast_height"]) != 10 || num(r["rast_num_bands"]) != 2 || num(r["rast_srid"]) != 4326 || num(r["rast_pixel_width"]) != 1 || num(r["rast_pixel_height"]) != 1 {
+	getJSON(t, srv+"/api/tiles?select=id,~rast_width,~rast_height,~rast_num_bands,~rast_srid,~rast_pixel_width,~rast_pixel_height,~rast_envelope&order=id", &rows)
+	if r := rows[0]; num(r["~rast_width"]) != 10 || num(r["~rast_height"]) != 10 || num(r["~rast_num_bands"]) != 2 || num(r["~rast_srid"]) != 4326 || num(r["~rast_pixel_width"]) != 1 || num(r["~rast_pixel_height"]) != 1 {
 		t.Errorf("tile 1 accessors = %v", r)
 	}
-	if env, _ := rows[0]["rast_envelope"].(map[string]any); env["type"] != "Polygon" || rows[2]["rast_envelope"] != nil {
-		t.Errorf("envelopes = %v / %v", rows[0]["rast_envelope"], rows[2]["rast_envelope"])
+	if env, _ := rows[0]["~rast_envelope"].(map[string]any); env["type"] != "Polygon" || rows[2]["~rast_envelope"] != nil {
+		t.Errorf("envelopes = %v / %v", rows[0]["~rast_envelope"], rows[2]["~rast_envelope"])
 	}
-	getJSON(t, srv+"/api/tiles?select=id,e:rast_envelope(precision=0)&id=eq.1", &rows)
+	getJSON(t, srv+"/api/tiles?select=id,e:~rast_envelope(precision=0)&id=eq.1", &rows)
 	if env, _ := rows[0]["e"].(map[string]any); env["type"] != "Polygon" {
 		t.Errorf("envelope with precision = %v", rows[0]["e"])
 	}
-	getJSON(t, srv+"/api/tiles?select=id,rast_value,b2:rast_value(band=2),rast_summary_stats,s2:rast_summary_stats(band=2)&order=id&near=POINT(5%205)", &rows)
-	if num(rows[0]["rast_value"]) != 7 || num(rows[0]["b2"]) != 3 || rows[1]["rast_value"] != nil || rows[1]["b2"] != nil || rows[2]["rast_value"] != nil {
+	getJSON(t, srv+"/api/tiles?select=id,~rast_value,b2:~rast_value(band=2),~rast_summary_stats,s2:~rast_summary_stats(band=2)&order=id&~near=POINT(5%205)", &rows)
+	if num(rows[0]["~rast_value"]) != 7 || num(rows[0]["b2"]) != 3 || rows[1]["~rast_value"] != nil || rows[1]["b2"] != nil || rows[2]["~rast_value"] != nil {
 		t.Errorf("pixel values = %v", rows)
 	}
-	if st, _ := rows[0]["rast_summary_stats"].(map[string]any); num(st["count"]) != 100 || num(st["sum"]) != 700 || num(st["mean"]) != 7 || num(st["min"]) != 7 || num(st["max"]) != 7 {
-		t.Errorf("summary stats = %v", rows[0]["rast_summary_stats"])
+	if st, _ := rows[0]["~rast_summary_stats"].(map[string]any); num(st["count"]) != 100 || num(st["sum"]) != 700 || num(st["mean"]) != 7 || num(st["min"]) != 7 || num(st["max"]) != 7 {
+		t.Errorf("summary stats = %v", rows[0]["~rast_summary_stats"])
 	}
 	if st, _ := rows[0]["s2"].(map[string]any); num(st["mean"]) != 3 || rows[1]["s2"] != nil {
 		t.Errorf("band 2 stats = %v / %v", rows[0]["s2"], rows[1]["s2"])
 	}
 	near := url.QueryEscape(`{"type":"Point","coordinates":[25,5]}`)
-	getJSON(t, srv+"/api/tiles?select=id,rast_value&id=eq.2&near="+near, &rows)
-	if num(rows[0]["rast_value"]) != 1 {
+	getJSON(t, srv+"/api/tiles?select=id,~rast_value&id=eq.2&~near="+near, &rows)
+	if num(rows[0]["~rast_value"]) != 1 {
 		t.Errorf("GeoJSON near value = %v", rows)
 	}
 
-	wantIDs(t, srv, "tiles?select=id&rast=intersects.SRID%3D4326%3BPOINT(5%205)", []int{1})
-	wantIDs(t, srv, "tiles?select=id&rast=not.intersects.SRID%3D4326%3BPOINT(5%205)&order=id", []int{2, 3})
+	wantIDs(t, srv, "tiles?select=id&rast=st_intersects.SRID%3D4326%3BPOINT(5%205)", []int{1})
+	wantIDs(t, srv, "tiles?select=id&rast=not.st_intersects.SRID%3D4326%3BPOINT(5%205)&order=id", []int{2, 3})
 	poly := url.QueryEscape(`{"type":"Polygon","coordinates":[[[-1,-1],[31,-1],[31,11],[-1,11],[-1,-1]]]}`)
-	wantIDs(t, srv, "tiles?select=id&order=id&rast=intersects."+poly, []int{1, 2})
-	wantIDs(t, srv, "tiles?select=id&or=(rast.is.null,rast.intersects.\"SRID%3D4326%3BPOINT(25%205)\")&order=id", []int{2, 3})
-	wantCode(t, srv, "tiles?select=id&rast=intersects.SRID%3D3857%3BPOINT(5%205)", 400, "pg:P0001")
+	wantIDs(t, srv, "tiles?select=id&order=id&rast=st_intersects."+poly, []int{1, 2})
+	wantIDs(t, srv, "tiles?select=id&or=(rast.is.null,rast.st_intersects.\"SRID%3D4326%3BPOINT(25%205)\")&order=id", []int{2, 3})
+	wantCode(t, srv, "tiles?select=id&rast=st_intersects.SRID%3D3857%3BPOINT(5%205)", 400, "pg:P0001")
 
 	var wkb []row
 	getJSON(t, srv+"/api/tiles?select=wkb&id=eq.1", &wkb)
@@ -441,8 +441,8 @@ func TestRaster(t *testing.T) {
 	}
 	hex := dbText(t, `SELECT encode(ST_AsBinary(rast), 'hex') FROM `+geoSchema+`.tiles WHERE id = 2`)
 	var created row
-	sendJSON(t, "POST", srv+"/api/tiles?select=id,rast_width,rast_num_bands", `{"id": 10, "name": "copy", "rast": "`+hex+`"}`, 201, &created)
-	if num(created["rast_width"]) != 10 || num(created["rast_num_bands"]) != 1 {
+	sendJSON(t, "POST", srv+"/api/tiles?select=id,~rast_width,~rast_num_bands", `{"id": 10, "name": "copy", "rast": "`+hex+`"}`, 201, &created)
+	if num(created["~rast_width"]) != 10 || num(created["~rast_num_bands"]) != 1 {
 		t.Errorf("written raster = %v", created)
 	}
 	res, body = send(t, "PATCH", srv+"/api/tiles/1", `{"rast": "`+hex+`"}`, map[string]string{"Prefer": "return=representation"})
@@ -458,13 +458,13 @@ func TestRaster(t *testing.T) {
 	wantCode(t, srv, "tiles?select=history", 400, "invalid_select")
 	wantCode(t, srv, "tiles?order=rast", 400, "column_not_orderable")
 	wantCode(t, srv, "tiles?rast=eq.x", 400, "invalid_filter")
-	wantCode(t, srv, "tiles?select=rast_value", 400, "invalid_parameter")
-	wantCode(t, srv, "tiles?select=rast_value(band=0)&near=POINT(1%201)", 400, "invalid_select")
+	wantCode(t, srv, "tiles?select=~rast_value", 400, "invalid_parameter")
+	wantCode(t, srv, "tiles?select=~rast_value(band=0)&~near=POINT(1%201)", 400, "invalid_select")
 
 	strict := geoServer(t, dbURL, func(c *config.Config) { c.Limits.MaxCost = 5000 })
-	wantCode(t, strict, "tiles?select=rast_summary_stats", 400, "cost_exceeded")
-	wantIDs(t, strict, "tiles?select=id,rast_summary_stats&limit=10&order=id", []int{1, 2, 3, 10})
-	wantCode(t, strict, "tiles?rast=intersects.POINT(1%201)", 400, "column_not_filterable")
+	wantCode(t, strict, "tiles?select=~rast_summary_stats", 400, "cost_exceeded")
+	wantIDs(t, strict, "tiles?select=id,~rast_summary_stats&limit=10&order=id", []int{1, 2, 3, 10})
+	wantCode(t, strict, "tiles?rast=st_intersects.POINT(1%201)", 400, "column_not_filterable")
 }
 
 // TestGeoOmitAndContracts: @omit read on raster, earth and cube columns
@@ -475,15 +475,15 @@ func TestGeoOmitAndContracts(t *testing.T) {
 	dbURL := geoSetup(t)
 	srv := geoServer(t, dbURL, nil)
 	for _, q := range []string{
-		"vault?select=rast_width", "vault?select=loc", "vault?select=loc_earth_distance&latlon=0,0",
-		"vault?select=box_l2_distance&vec=(0,0)", "vault?rast=is.null", "vault?order=loc.earth_dist&latlon=0,0",
+		"vault?select=~rast_width", "vault?select=loc", "vault?select=~loc_earth_distance&~latlon=0,0",
+		"vault?select=~box_l2_distance&~vec=(0,0)", "vault?rast=is.null", "vault?order=loc.earth_distance&~latlon=0,0",
 	} {
 		if res, body := get(t, srv+"/api/"+q); res.StatusCode != 400 {
 			t.Errorf("%s = %d %s", q, res.StatusCode, body)
 		}
 	}
 	_, doc := fetchOpenAPI(t, srv)
-	for _, k := range []string{"rast", "loc", "box", "rast_width", "loc_earth_distance", "box_l2_distance"} {
+	for _, k := range []string{"rast", "loc", "box", "~rast_width", "~loc_earth_distance", "~box_l2_distance"} {
 		if componentSchema(doc, "vault")["properties"].(map[string]any)[k] != nil {
 			t.Errorf("vault schema documents %s", k)
 		}
@@ -496,7 +496,7 @@ func TestGeoOmitAndContracts(t *testing.T) {
 	contracts := geoServer(t, dbURL, func(c *config.Config) {
 		c.Contracts = []confx.Contract{{Name: "internal"}, {Name: "public"}}
 	})
-	for _, q := range []string{"tiles?select=rast_width", "sites?select=loc_earth_distance&latlon=0,0", "sites?order=loc.earth_dist&latlon=0,0"} {
+	for _, q := range []string{"tiles?select=~rast_width", "sites?select=~loc_earth_distance&~latlon=0,0", "sites?order=loc.earth_distance&~latlon=0,0"} {
 		if res, body := get(t, contracts+"/api/public/"+q); res.StatusCode != 400 {
 			t.Errorf("public %s = %d %s", q, res.StatusCode, body)
 		}
@@ -519,26 +519,26 @@ func TestGeoOpenAPI(t *testing.T) {
 	if loc, _ := sites["loc"].(map[string]any); loc == nil || loc["properties"] == nil {
 		t.Errorf("sites.loc schema = %v", sites["loc"])
 	}
-	if sites["loc_earth_distance"] == nil {
-		t.Error("sites lacks loc_earth_distance")
+	if sites["~loc_earth_distance"] == nil {
+		t.Error("sites lacks ~loc_earth_distance")
 	}
 	tiles := componentSchema(doc, "tiles")["properties"].(map[string]any)
-	if tiles["rast"] != nil || tiles["history"] != nil || tiles["rast_summary_stats"] == nil || tiles["rast_value"] == nil {
+	if tiles["rast"] != nil || tiles["history"] != nil || tiles["~rast_summary_stats"] == nil || tiles["~rast_value"] == nil {
 		t.Errorf("tiles schema = %v", keysOf(tiles))
 	}
 	if componentSchema(doc, "tiles.insert")["properties"].(map[string]any)["rast"] == nil {
 		t.Error("tiles.insert lacks rast")
 	}
 	params := opParams(pathOp(doc, "/sites", "get"))
-	if params["query:latlon"] == nil {
+	if params["query:~latlon"] == nil {
 		t.Errorf("sites params = %v", keysOfParams(params))
 	}
 	tp := opParams(pathOp(doc, "/tiles", "get"))
-	if tp["query:near"] == nil || fmtAny(tp["query:rast"]["x-pdbr-filter-ops"]) != fmtAny([]any{"intersects", "is"}) {
+	if tp["query:~near"] == nil || fmtAny(tp["query:rast"]["x-pdbr-filter-ops"]) != fmtAny([]any{"st_intersects", "is"}) {
 		t.Errorf("tiles params = %v / %v", keysOfParams(tp), tp["query:rast"])
 	}
 	sp := opParams(pathOp(doc, "/shapes", "get"))
-	if sp["query:vec"] == nil || !strings.Contains(fmtAny(sp["query:box"]["x-pdbr-filter-ops"]), "vec_chebyshev_lt") {
+	if sp["query:~vec"] == nil || !strings.Contains(fmtAny(sp["query:box"]["x-pdbr-filter-ops"]), "chebyshev_distance_lt") {
 		t.Errorf("shapes params = %v / %v", keysOfParams(sp), sp["query:box"])
 	}
 }

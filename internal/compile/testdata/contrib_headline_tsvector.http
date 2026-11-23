@@ -1,1 +1,1 @@
-GET /api/kb/articles?select=id,search_headline(document=title),m:raw_headline(highlight_all=true),docs(id,title,search_headline(document=body))&search=fts(simple).fat%26cat&raw=plfts.rat&docs.search=phfts(english).fat%20cat&limit=3
+GET /api/kb/articles?select=id,~search_headline(document=title),m:~raw_headline(highlight_all=true),docs(id,title,~search_headline(document=body))&search=fts(simple).fat%26cat&raw=plfts.rat&docs.search=phfts(english).fat%20cat&limit=3

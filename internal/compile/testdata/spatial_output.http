@@ -1,1 +1,1 @@
-GET /api/places?select=name,location,web_mercator:location(transform=3857),coarse:location(simplify=0.01),both:area(transform=3857,simplify=0.5),location_srid,location_geometry_type,sq_m:area_area,area_centroid,c3857:area_centroid(transform=3857),location_is_valid&order=id&limit=5
+GET /api/places?select=name,location,web_mercator:location(transform=3857),coarse:location(simplify=0.01),both:area(transform=3857,simplify=0.5),~location_srid,~location_geometry_type,sq_m:~area_area,~area_centroid,c3857:~area_centroid(transform=3857),~location_is_valid&order=id&limit=5

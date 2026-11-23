@@ -1,1 +1,1 @@
-GET /api/kb/embeddings?select=id,emb_cosine_distance&emb=vec_cos_lt.0.25&or=(emb.vec_l2_lt.2,emb.not.vec_ip_lt.-1)&order=emb.vec_cos&vec=%5B1%2C0.5%2C-2%5D&limit=5
+GET /api/kb/embeddings?select=id,~emb_cosine_distance&emb=cosine_distance_lt.0.25&or=(emb.l2_distance_lt.2,emb.not.negative_inner_product_lt.-1)&order=emb.cosine_distance&~vec=%5B1%2C0.5%2C-2%5D&limit=5

@@ -1,2 +1,2 @@
--- request: GET /api/kb/docs?select=path_lca
--- error: 400 invalid_select: "path_lca" needs arguments: path_lca(path=<string>)
+-- request: GET /api/kb/docs?select=~path_lca
+-- error: 400 invalid_select: "~path_lca" needs arguments: ~path_lca(path=<string>)

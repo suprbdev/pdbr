@@ -30,9 +30,8 @@ type opSpec struct {
 	op plan.Op
 	// list: value is a parenthesised list (in); structural: is; spatial:
 	// postgis; contrib: only a pdbcore/contrib vocabulary serves it (cs, cd,
-	// ov and hk are core operators that some vocabularies also serve);
-	// raster: the postgis_raster filter (intersects).
-	list, structural, spatial, contrib, raster bool
+	// ov and hk are core operators that some vocabularies also serve).
+	list, structural, spatial, contrib bool
 }
 
 func init() {
@@ -54,38 +53,34 @@ var ops = map[string]opSpec{
 	"sw": {op: plan.OpSw}, "ew": {op: plan.OpEw},
 	"cs": {op: plan.OpCs}, "cd": {op: plan.OpCd}, "ov": {op: plan.OpOv},
 	"hk": {op: plan.OpHk}, "jpe": {op: plan.OpJpe}, "jpm": {op: plan.OpJpm},
-	"st_intersects":       {op: plan.OpStIntersects, spatial: true},
-	"st_disjoint":         {op: plan.OpStDisjoint, spatial: true},
-	"st_contains":         {op: plan.OpStContains, spatial: true},
-	"st_containsproperly": {op: plan.OpStContainsProperly, spatial: true},
-	"st_within":           {op: plan.OpStWithin, spatial: true},
-	"st_covers":           {op: plan.OpStCovers, spatial: true},
-	"st_coveredby":        {op: plan.OpStCoveredBy, spatial: true},
-	"st_crosses":          {op: plan.OpStCrosses, spatial: true},
-	"st_overlaps":         {op: plan.OpStOverlaps, spatial: true},
-	"st_touches":          {op: plan.OpStTouches, spatial: true},
-	"st_equals":           {op: plan.OpStEquals, spatial: true},
-	"st_dwithin":          {op: plan.OpStDWithin, spatial: true, list: true},
-	"st_beyond":           {op: plan.OpStBeyond, spatial: true, list: true},
-	"bbox_intersects":     {op: plan.OpBBoxIntersects, spatial: true, list: true},
-	"bbox_contains":       {op: plan.OpBBoxContains, spatial: true, list: true},
-	"bbox_containedby":    {op: plan.OpBBoxContainedBy, spatial: true, list: true},
-
-	"bbox_leftof":            {op: plan.OpBBoxLeftOf, spatial: true},
-	"bbox_rightof":           {op: plan.OpBBoxRightOf, spatial: true},
-	"bbox_below":             {op: plan.OpBBoxBelow, spatial: true},
-	"bbox_above":             {op: plan.OpBBoxAbove, spatial: true},
-	"bbox_overlapsorleftof":  {op: plan.OpBBoxOverlapsOrLeftOf, spatial: true},
-	"bbox_overlapsorrightof": {op: plan.OpBBoxOverlapsOrRightOf, spatial: true},
-	"bbox_overlapsorbelow":   {op: plan.OpBBoxOverlapsOrBelow, spatial: true},
-	"bbox_overlapsorabove":   {op: plan.OpBBoxOverlapsOrAbove, spatial: true},
-	"bbox_equals":            {op: plan.OpBBoxEquals, spatial: true},
-	"st_exactlyequals":       {op: plan.OpStExactlyEquals, spatial: true},
-	"st_orderingequals":      {op: plan.OpStOrderingEquals, spatial: true},
-	"st_intersects3d":        {op: plan.OpStIntersects3D, spatial: true},
-	"bbox_intersectsnd":      {op: plan.OpBBoxIntersectsND, spatial: true},
-	"bbox_intersects2d":      {op: plan.OpBBoxIntersects2D, spatial: true},
-	"intersects":             {op: plan.OpRasterIntersects, raster: true},
+	"st_intersects":             {op: plan.OpStIntersects, spatial: true},
+	"st_disjoint":               {op: plan.OpStDisjoint, spatial: true},
+	"st_contains":               {op: plan.OpStContains, spatial: true},
+	"st_contains_properly":      {op: plan.OpStContainsProperly, spatial: true},
+	"st_within":                 {op: plan.OpStWithin, spatial: true},
+	"st_covers":                 {op: plan.OpStCovers, spatial: true},
+	"st_covered_by":             {op: plan.OpStCoveredBy, spatial: true},
+	"st_crosses":                {op: plan.OpStCrosses, spatial: true},
+	"st_overlaps":               {op: plan.OpStOverlaps, spatial: true},
+	"st_touches":                {op: plan.OpStTouches, spatial: true},
+	"st_equals":                 {op: plan.OpStEquals, spatial: true},
+	"st_dwithin":                {op: plan.OpStDWithin, spatial: true, list: true},
+	"st_beyond":                 {op: plan.OpStBeyond, spatial: true, list: true},
+	"bbox_intersects":           {op: plan.OpBBoxIntersects, spatial: true, list: true},
+	"bbox_contains":             {op: plan.OpBBoxContains, spatial: true, list: true},
+	"bbox_contained_by":         {op: plan.OpBBoxContainedBy, spatial: true, list: true},
+	"bbox_left_of":              {op: plan.OpBBoxLeftOf, spatial: true},
+	"bbox_right_of":             {op: plan.OpBBoxRightOf, spatial: true},
+	"bbox_below":                {op: plan.OpBBoxBelow, spatial: true},
+	"bbox_above":                {op: plan.OpBBoxAbove, spatial: true},
+	"bbox_overlaps_or_left_of":  {op: plan.OpBBoxOverlapsOrLeft, spatial: true},
+	"bbox_overlaps_or_right_of": {op: plan.OpBBoxOverlapsOrRight, spatial: true},
+	"bbox_overlaps_or_below":    {op: plan.OpBBoxOverlapsOrBelow, spatial: true},
+	"bbox_overlaps_or_above":    {op: plan.OpBBoxOverlapsOrAbove, spatial: true},
+	"bbox_equals":               {op: plan.OpBBoxEquals, spatial: true},
+	"st_exactly_equals":         {op: plan.OpStExactlyEquals, spatial: true},
+	"st_3d_intersects":          {op: plan.OpSt3DIntersects, spatial: true},
+	"bbox_intersects_nd":        {op: plan.OpBBoxIntersectsND, spatial: true},
 }
 
 // operand is a parsed "[not.]op[(config)].value".
@@ -151,6 +146,9 @@ func splitOperand(raw string) (operand, *compile.UserError) {
 	if !known && op != "exists" {
 		return o, errf(CodeInvalidFilter, "unknown operator %q", op)
 	}
+	if spec.op == plan.OpBBoxIntersects && !strings.HasPrefix(strings.TrimSpace(val), "(") {
+		spec = opSpec{op: plan.OpBBoxIntersectsGeom, spatial: true}
+	}
 	o.op, o.spec, o.value = op, spec, val
 	return o, nil
 }
@@ -172,6 +170,9 @@ func (p *parser) columnCond(res *api.Resource, key string, o operand) (plan.Expr
 	}
 	if hasJSONPath(key) {
 		return p.pathCond(res, key, o)
+	}
+	if api.IsReserved(key) {
+		return p.pseudoCond(res, key, o)
 	}
 	if f := res.Raster(key); f != nil {
 		return p.rasterCond(res, f, o)
@@ -200,17 +201,26 @@ func (p *parser) columnCond(res *api.Resource, key string, o operand) (plan.Expr
 		}
 		return plan.Cond{Computed: c, Op: o.spec.op, Value: v, Negate: o.negate, Mod: o.mod}, nil
 	}
-	if pc := contribPseudo(res, key); pc != nil {
-		if !pc.Filterable {
-			return nil, errf(CodeColumnNotFilterable, "derived column %q on %q is not filterable (only integer contrib accessors are, and under filters.indexed_only only on columns in filters.allow_columns)", key, res.Path)
-		}
-		v, err := p.coerceOperand(p.typeFor("int4", "pg_catalog", false, ""), key, o)
-		if err != nil {
-			return nil, err
-		}
-		return plan.Cond{Pseudo: pc, Op: o.spec.op, Value: v, Negate: o.negate, Mod: o.mod}, nil
-	}
 	return nil, errf(CodeUnknownColumn, "unknown column %q on %q", key, res.Path)
+}
+
+// pseudoCond builds the condition on a pseudo-column of res (a key with
+// api.ReservedPrefix): only the integer contrib accessors take filters.
+func (p *parser) pseudoCond(res *api.Resource, key string, o operand) (plan.Expr, error) {
+	pc := contribPseudo(res, key)
+	switch {
+	case pc == nil && res.Pseudo[key] != nil:
+		return nil, errf(CodeColumnNotFilterable, "derived column %q on %q is not filterable", key, res.Path)
+	case pc == nil:
+		return nil, errf(CodeUnknownColumn, "unknown column %q on %q", key, res.Path)
+	case !pc.Filterable:
+		return nil, errf(CodeColumnNotFilterable, "derived column %q on %q is not filterable (only integer contrib accessors are, and under filters.indexed_only only on columns in filters.allow_columns)", key, res.Path)
+	}
+	v, err := p.coerceOperand(p.typeFor("int4", "pg_catalog", false, ""), key, o)
+	if err != nil {
+		return nil, err
+	}
+	return plan.Cond{Pseudo: pc, Op: o.spec.op, Value: v, Negate: o.negate, Mod: o.mod}, nil
 }
 
 // pathCond builds the condition on a JSON path of a filterable column:
@@ -227,7 +237,7 @@ func (p *parser) pathCond(res *api.Resource, key string, o operand) (plan.Expr, 
 	if !res.FilterColumns[f.Key] {
 		return nil, errf(CodeColumnNotFilterable, "column %q on %q is not filterable", f.Key, res.Path)
 	}
-	if o.spec.contrib || o.spec.spatial || o.spec.raster {
+	if o.spec.contrib || o.spec.spatial {
 		return nil, errf(CodeInvalidFilter, "operator %q is not supported on JSON path %q", o.op, key)
 	}
 	t := p.pathType(f.Column, path)
@@ -307,9 +317,9 @@ func contribOperand(arg contrib.ArgKind, o operand) (any, *compile.UserError) {
 	case contrib.ArgFullText:
 		return contrib.FullTextQuery{Query: o.value, Config: o.config}, nil
 	case contrib.ArgVectorDistance, contrib.ArgCubeDistance, contrib.ArgLatLonDistance:
-		ref := "the vector is vec="
+		ref := "the vector is ~vec="
 		if arg == contrib.ArgLatLonDistance {
-			ref = "the location is latlon="
+			ref = "the location is ~latlon="
 		}
 		d, err := strconv.ParseFloat(strings.TrimSpace(o.value), 64)
 		if err != nil || math.IsNaN(d) || math.IsInf(d, 0) {
@@ -328,7 +338,7 @@ func contribOperand(arg contrib.ArgKind, o operand) (any, *compile.UserError) {
 	case contrib.ArgTextDistance:
 		d, err := strconv.ParseInt(strings.TrimSpace(o.value), 10, 32)
 		if err != nil || d < 0 {
-			return nil, errf(CodeInvalidFilter, "%s takes a non-negative integer (the distance threshold; the text is levenshtein=), got %q", o.op, o.value)
+			return nil, errf(CodeInvalidFilter, "%s takes a non-negative integer (the distance threshold; the text is ~levenshtein=), got %q", o.op, o.value)
 		}
 		return d, nil
 	case contrib.ArgTextList:
@@ -366,13 +376,10 @@ func (p *parser) coerceOperand(t colType, key string, o operand) (any, error) {
 		return nil, errf(CodeColumnNotFilterable, "composite column %q is not filterable", key)
 	}
 	if t.kind == kindVector && spec.op != plan.OpIs {
-		return nil, errf(CodeInvalidFilter, "operator %q is not supported on %s column %q (is.null only; order by distance with vec=)", o.op, t.name(), key)
+		return nil, errf(CodeInvalidFilter, "operator %q is not supported on %s column %q (is.null only; order by distance with ~vec=)", o.op, t.name(), key)
 	}
 	if t.kind == kindCube && spec.op != plan.OpIs {
 		return nil, errf(CodeInvalidFilter, "operator %q is not supported on %s column %q (is.null and its own operators only; order by distance)", o.op, t.name(), key)
-	}
-	if spec.raster {
-		return nil, errf(CodeInvalidFilter, "operator %q applies to raster columns only, %q is %s", o.op, key, t.name())
 	}
 	if spec.contrib {
 		return nil, errf(CodeInvalidFilter, "operator %q is not supported on %s column %q", o.op, t.name(), key)
@@ -742,14 +749,17 @@ func (p *parser) parseLogicItem(res *api.Resource, item string, depth int) (plan
 // column (raster columns included), a computed column, a filterable contrib
 // pseudo-column or a JSON path.
 func filterKey(res *api.Resource, key string) bool {
+	if api.IsReserved(key) {
+		return res.Pseudo[key] != nil
+	}
 	return res.Field(key) != nil || res.Raster(key) != nil || res.Computed[key] != nil || contribPseudo(res, key) != nil || isPathKey(res, key)
 }
 
 // rasterCond builds a filter on a raster column: is.null / not.is.null, or
-// intersects with a GeoJSON or WKT/EWKT geometry (postgis plugin filters).
+// st_intersects with a GeoJSON or WKT/EWKT geometry (postgis plugin filters).
 func (p *parser) rasterCond(res *api.Resource, f *api.Field, o operand) (plan.Expr, error) {
 	if f.Column.IsArray || !res.FilterColumns[f.Key] {
-		return nil, errf(CodeColumnNotFilterable, "raster column %q on %q is not filterable (under filters.indexed_only a raster column needs filters.allow_columns: the GiST index serving intersects is on an expression)", f.Key, res.Path)
+		return nil, errf(CodeColumnNotFilterable, "raster column %q on %q is not filterable (under filters.indexed_only a raster column needs filters.allow_columns: the GiST index serving st_intersects is on an expression)", f.Key, res.Path)
 	}
 	if o.mod != "" {
 		return nil, errf(CodeInvalidFilter, "%s(%s) is not supported on raster column %q", o.op, o.mod, f.Key)
@@ -760,7 +770,7 @@ func (p *parser) rasterCond(res *api.Resource, f *api.Field, o operand) (plan.Ex
 			return nil, errf(CodeInvalidFilter, "is takes null on raster column %q, got %q", f.Key, o.value)
 		}
 		return plan.Cond{Column: f.Column, Op: plan.OpIs, Negate: o.negate}, nil
-	case plan.OpRasterIntersects:
+	case plan.OpStIntersects:
 		if !p.opts.spatialFilters() {
 			return nil, errf(CodeInvalidFilter, "raster operator %q is not enabled (postgis plugin)", o.op)
 		}
@@ -770,7 +780,7 @@ func (p *parser) rasterCond(res *api.Resource, f *api.Field, o operand) (plan.Ex
 		}
 		return plan.Cond{Column: f.Column, Op: plan.OpRasterIntersects, Value: v, Negate: o.negate}, nil
 	}
-	return nil, errf(CodeInvalidFilter, "operator %q is not supported on raster column %q (intersects.<geometry> and is.null only)", o.op, f.Key)
+	return nil, errf(CodeInvalidFilter, "operator %q is not supported on raster column %q (st_intersects.<geometry> and is.null only)", o.op, f.Key)
 }
 
 // parseRelationFilter parses "<relkey[!hint]*>[.<column>]=<operand>" for a

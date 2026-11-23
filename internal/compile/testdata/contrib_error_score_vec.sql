@@ -1,2 +1,2 @@
--- request: GET /api/kb/embeddings?select=id,emb_l2_distance&vec=%5B1%2C%22a%22%5D
--- error: 400 invalid_parameter: vec: vector value must be a list of numbers
+-- request: GET /api/kb/embeddings?select=id,~emb_l2_distance&~vec=%5B1%2C%22a%22%5D
+-- error: 400 invalid_parameter: ~vec: vector value must be a list of numbers

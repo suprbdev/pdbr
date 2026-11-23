@@ -440,7 +440,7 @@ func (s *stmt) precisionArg(args map[string]any) (string, bool, error) {
 
 // pseudoJSON renders a pseudo-column: a raster accessor, pixel value or
 // summary statistics, a score, a contrib accessor or derived value, a
-// full-text headline, or a derived spatial accessor (<col>_area, …), whose
+// full-text headline, or a derived spatial accessor (~<col>_area, …), whose
 // projection arguments apply to the owning column before the accessor
 // runs.
 func (s *stmt) pseudoJSON(f *plan.FieldSel, alias string) (string, error) {

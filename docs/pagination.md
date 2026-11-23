@@ -266,9 +266,9 @@ Bulk `PATCH`/`DELETE` also carry `Content-Range` for the written rows
 ```
 order  := term ("," term)*
 term   := path [ "." dir ] [ "." nulls ]
-path   := column | column jsonpath | computed | relkey "(" column ")" | spatialcol ".dist"
-        | column ( ".rank" | ".rank_cd" | ".trgm_dist" | ".trgm_wdist" | ".trgm_swdist" )
-        | column ( ".vec_l2" | ".vec_ip" | ".vec_cos" | ".vec_l1" )
+path   := column | column jsonpath | computed | relkey "(" column ")" | spatialcol ".st_distance"
+        | column ( ".rank" | ".rank_cd" | ".trgm_distance" | ".trgm_word_distance" | ".trgm_strict_word_distance" )
+        | column ( ".l2_distance" | ".negative_inner_product" | ".cosine_distance" | ".l1_distance" )
 dir    := "asc" | "desc"
 nulls  := "nullsfirst" | "nullslast"
 ```
@@ -336,36 +336,36 @@ computed columns are not orderable; `@omit order` on the function comment,
 
 ```http
 GET /articles?search=wfts(english).fat%20cat&order=search.rank.desc
-GET /articles?order=title.trgm_dist&trgm=postgres&limit=10
-GET /items?order=embedding.vec_cos&vec=%5B0.1%2C0.2%2C0.3%5D&limit=10
+GET /articles?order=title.trgm_distance&~trgm=postgres&limit=10
+GET /items?order=embedding.cosine_distance&~vec=%5B0.1%2C0.2%2C0.3%5D&limit=10
 ```
 
 `<col>.rank` / `<col>.rank_cd` order by `ts_rank` / `ts_rank_cd` against the
 request's top-level full-text filter on the same column (missing or
-ambiguous → `400 invalid_filter`); `<col>.trgm_dist` (and `trgm_wdist`,
-`trgm_swdist`) by the `pg_trgm` distance to the `trgm=` parameter (missing →
-`400 invalid_parameter`), nearest-first under `asc`; `<col>.vec_l2` (and
-`vec_ip`, `vec_cos`, `vec_l1`) by the pgvector distance to the `vec=`
+ambiguous → `400 invalid_filter`); `<col>.trgm_distance` (and `trgm_word_distance`,
+`trgm_strict_word_distance`) by the `pg_trgm` distance to the `~trgm=` parameter (missing →
+`400 invalid_parameter`), nearest-first under `asc`; `<col>.l2_distance` (and
+`negative_inner_product`, `cosine_distance`, `l1_distance`) by the pgvector distance to the `~vec=`
 parameter in the same way. Details and the index policy in
 [contrib.md](contrib.md#ordering) and [contrib.md](contrib.md#pgvector-pdbr).
 
 ### Distance (`postgis` plugin)
 
 ```http
-GET /places?order=location.dist.asc&near=SRID%3D4326%3BPOINT(-0.1281%2051.508)&limit=10
+GET /places?order=location.st_distance.asc&~near=SRID%3D4326%3BPOINT(-0.1281%2051.508)&limit=10
 ```
 
-`<col>.dist` compiles to the KNN operator `<->` against `near=` (GeoJSON or
+`<col>.st_distance` compiles to the KNN operator `<->` against `~near=` (GeoJSON or
 WKT/EWKT, cast to the column's flavour so geography columns rank in metres),
-which a GiST index answers directly. `near` missing or unparseable → `400
+which a GiST index answers directly. `~near` missing or unparseable → `400
 invalid_parameter` (deliberately stricter than pdbq, which drops the term
-silently); one `near=` serves the root and every per-embed `.dist` term, and
-a `near=` without any `.dist` term is `400 invalid_parameter` too (on a route
-with a column or argument named `near` the name is that filter instead,
-and `.dist` is unavailable). The column follows the
+silently); one `~near=` serves the root and every per-embed `.st_distance` term, and
+a `~near=` without any `.st_distance` term is `400 invalid_parameter` too. A
+column or argument named `near` is unrelated: it is an ordinary filter or
+argument. The column follows the
 indexed-only policy and `@omit order` like any other (`400
 column_not_orderable`); plain `order=<spatialcol>.asc` is
-`column_not_orderable` too, `.dist` on a non-spatial column
+`column_not_orderable` too, `.st_distance` on a non-spatial column
 `invalid_parameter`. Distance ordering is unaffected by the `nulls` modifier
 (NULL geometries sort last); the PK tiebreaker and keyset cursors work as for
 any order. Off with `plugins.settings.postgis.ordering: false` or the plugin

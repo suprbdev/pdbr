@@ -82,7 +82,7 @@ func checkScores(t *testing.T, rows []row, keys []string, want map[int][]float64
 	}
 }
 
-// TestDistanceScores selects <col>_distance against near= on the fixture's
+// TestDistanceScores selects ~<col>_st_distance against ~near= on the fixture's
 // places (root, row path and embed) and compares it with PostGIS: SRID units
 // on geometry, metres on geography and with spheroid=true.
 func TestDistanceScores(t *testing.T) {
@@ -92,26 +92,26 @@ func TestDistanceScores(t *testing.T) {
 		ST_Distance(location::geography, ST_GeomFromEWKT($1)::geography),
 		ST_Distance(area, ST_GeomFromEWKT($1)::geography) FROM places`, ref)
 	var rows []row
-	getJSON(t, srv.URL+"/api/places?select=id,location_distance,m:location_distance(spheroid=true),area_distance&order=location.dist&near="+url.QueryEscape(ref), &rows)
-	checkScores(t, rows, []string{"location_distance", "m", "area_distance"}, want)
+	getJSON(t, srv.URL+"/api/places?select=id,~location_st_distance,m:~location_st_distance(spheroid=true),~area_st_distance&order=location.st_distance&~near="+url.QueryEscape(ref), &rows)
+	checkScores(t, rows, []string{"~location_st_distance", "m", "~area_st_distance"}, want)
 
 	var one row
-	getJSON(t, srv.URL+"/api/places/1?select=id,area_distance&near="+url.QueryEscape(ref), &one)
-	checkScores(t, []row{one}, []string{"area_distance"}, map[int][]float64{1: {want[1][2]}})
+	getJSON(t, srv.URL+"/api/places/1?select=id,~area_st_distance&~near="+url.QueryEscape(ref), &one)
+	checkScores(t, []row{one}, []string{"~area_st_distance"}, map[int][]float64{1: {want[1][2]}})
 
 	var users []struct {
 		Places []row `json:"places"`
 	}
-	getJSON(t, srv.URL+"/api/users?select=id,places(id,location_distance)&near="+url.QueryEscape(ref), &users)
+	getJSON(t, srv.URL+"/api/users?select=id,places(id,~location_st_distance)&~near="+url.QueryEscape(ref), &users)
 	var embedded []row
 	for _, u := range users {
 		embedded = append(embedded, u.Places...)
 	}
-	checkScores(t, embedded, []string{"location_distance"}, want)
+	checkScores(t, embedded, []string{"~location_st_distance"}, want)
 
 	for _, q := range []string{
-		"/api/places?select=id,location_distance",
-		"/api/places?select=id,area_distance(spheroid=true)&near=POINT(0%200)",
+		"/api/places?select=id,~location_st_distance",
+		"/api/places?select=id,~area_st_distance(spheroid=true)&~near=POINT(0%200)",
 	} {
 		if res, body := get(t, srv.URL+q); res.StatusCode != 400 {
 			t.Errorf("%s = %d %s", q, res.StatusCode, body)
@@ -151,30 +151,30 @@ func TestContribScores(t *testing.T) {
 	const g, v = "pdbr_scores_ext", "pdbr_scores_ext"
 	var rows []row
 
-	getJSON(t, srv+"/api/items?select=id,name_similarity,name_word_similarity,name_strict_word_similarity&order=name.trgm_dist&trgm=postgres", &rows)
-	checkScores(t, rows, []string{"name_similarity", "name_word_similarity", "name_strict_word_similarity"}, sqlScores(t, `SELECT id,
+	getJSON(t, srv+"/api/items?select=id,~name_trgm_similarity,~name_trgm_word_similarity,~name_trgm_strict_word_similarity&order=name.trgm_distance&~trgm=postgres", &rows)
+	checkScores(t, rows, []string{"~name_trgm_similarity", "~name_trgm_word_similarity", "~name_trgm_strict_word_similarity"}, sqlScores(t, `SELECT id,
 		`+g+`.similarity(name, 'postgres'), `+g+`.word_similarity('postgres', name), `+g+`.strict_word_similarity('postgres', name)
 		FROM pdbr_scores.items`))
 
 	vec := url.QueryEscape("[1,0.5,0]")
-	vecKeys := []string{"emb_cosine_distance", "emb_l2_distance", "emb_negative_inner_product", "emb_l1_distance"}
-	getJSON(t, srv+"/api/items?select=id,"+strings.Join(vecKeys, ",")+"&order=id&vec="+vec, &rows)
+	vecKeys := []string{"~emb_cosine_distance", "~emb_l2_distance", "~emb_negative_inner_product", "~emb_l1_distance"}
+	getJSON(t, srv+"/api/items?select=id,"+strings.Join(vecKeys, ",")+"&order=id&~vec="+vec, &rows)
 	checkScores(t, rows, vecKeys, sqlScores(t, `SELECT id,
 		emb OPERATOR(`+v+`.<=>) '[1,0.5,0]'::`+v+`.vector, emb OPERATOR(`+v+`.<->) '[1,0.5,0]'::`+v+`.vector,
 		emb OPERATOR(`+v+`.<#>) '[1,0.5,0]'::`+v+`.vector, emb OPERATOR(`+v+`.<+>) '[1,0.5,0]'::`+v+`.vector
 		FROM pdbr_scores.items`))
 
-	getJSON(t, srv+"/api/items?select=id,code_hamming_distance,code_jaccard_distance&order=id&vec=100", &rows)
-	checkScores(t, rows, []string{"code_hamming_distance", "code_jaccard_distance"}, sqlScores(t, `SELECT id,
+	getJSON(t, srv+"/api/items?select=id,~code_hamming_distance,~code_jaccard_distance&order=id&~vec=100", &rows)
+	checkScores(t, rows, []string{"~code_hamming_distance", "~code_jaccard_distance"}, sqlScores(t, `SELECT id,
 		code OPERATOR(`+v+`.<~>) '100'::varbit, code OPERATOR(`+v+`.<%>) '100'::varbit FROM pdbr_scores.items`))
 
 	for q, want := range map[string][]int{
-		"select=id&emb=vec_cos_lt.0.1&order=emb.vec_cos&vec=" + vec:     {3},
-		"select=id&emb=vec_l2_lt.1&order=id&vec=" + vec:                 {1, 3},
-		"select=id&emb=not.vec_l2_lt.1&order=id&vec=" + vec:             {2},
-		"select=id&code=vec_hamming_lt.2&order=id&vec=100":              {1, 3},
-		"select=id&code=not.is.null&order=code.vec_hamming,id&vec=001":  {2, 3, 1},
-		"select=id&or=(emb.vec_cos_lt.0.1,id.eq.2)&order=id&vec=" + vec: {2, 3},
+		"select=id&emb=cosine_distance_lt.0.1&order=emb.cosine_distance&~vec=" + vec: {3},
+		"select=id&emb=l2_distance_lt.1&order=id&~vec=" + vec:                        {1, 3},
+		"select=id&emb=not.l2_distance_lt.1&order=id&~vec=" + vec:                    {2},
+		"select=id&code=hamming_distance_lt.2&order=id&~vec=100":                     {1, 3},
+		"select=id&code=not.is.null&order=code.hamming_distance,id&~vec=001":         {2, 3, 1},
+		"select=id&or=(emb.cosine_distance_lt.0.1,id.eq.2)&order=id&~vec=" + vec:     {2, 3},
 	} {
 		getJSON(t, srv+"/api/items?"+q, &rows)
 		if got := ids(rows, "id"); !eq(got, want) {
@@ -183,11 +183,11 @@ func TestContribScores(t *testing.T) {
 	}
 
 	for _, q := range []string{
-		"select=id,name_similarity",
-		"select=id&emb=vec_cos_lt.0.1",
-		"select=id,emb_l2_distance&vec=%5B1%2C0%5D",
-		"select=id&code=vec_hamming_lt.1&vec=102",
-		"select=id&trgm=x",
+		"select=id,~name_trgm_similarity",
+		"select=id&emb=cosine_distance_lt.0.1",
+		"select=id,~emb_l2_distance&~vec=%5B1%2C0%5D",
+		"select=id&code=hamming_distance_lt.1&~vec=102",
+		"select=id&~trgm=x",
 	} {
 		if res, body := get(t, srv+"/api/items?"+q); res.StatusCode != 400 {
 			t.Errorf("%s = %d %s", q, res.StatusCode, body)
@@ -195,7 +195,7 @@ func TestContribScores(t *testing.T) {
 	}
 
 	strict := testServer(t, func(cfg *config.Config) { cfg.Schema.Schemas = []string{scoresSchema} })
-	if res, body := get(t, strict.URL+"/api/items?select=id&emb=vec_l2_lt.1&vec="+vec); res.StatusCode != 400 || !strings.Contains(string(body), "column_not_filterable") {
+	if res, body := get(t, strict.URL+"/api/items?select=id&emb=l2_distance_lt.1&~vec="+vec); res.StatusCode != 400 || !strings.Contains(string(body), "column_not_filterable") {
 		t.Errorf("threshold without allow_columns = %d %s", res.StatusCode, body)
 	}
 }

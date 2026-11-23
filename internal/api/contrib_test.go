@@ -81,7 +81,7 @@ func TestContribFilterOps(t *testing.T) {
 	cases := map[string][]string{
 		"title": {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew", "match", "imatch", "trgm_sim", "trgm_wsim", "trgm_swsim"},
 		"body": {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew", "match", "imatch", "fts", "plfts", "phfts", "wfts", "trgm_sim", "trgm_wsim", "trgm_swsim", "unaccent_eq", "unaccent_ilike", "unaccent_sw", "unaccent_includes",
-			"levenshtein_lt", "soundex", "metaphone", "dmetaphone"},
+			"levenshtein_distance_lt", "soundex", "metaphone", "dmetaphone"},
 		"search": {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "fts", "plfts", "phfts", "wfts"},
 		"email":  {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew", "match", "imatch"},
 		"attrs":  {"eq", "neq", "in", "is", "isdistinct", "hk", "hk_all", "hk_any", "cs"},
@@ -103,15 +103,15 @@ func TestContribFilterOps(t *testing.T) {
 		t.Errorf("attrs param = %+v", p)
 	}
 	order := paramByName(get.Parameters, "order").Description
-	for _, want := range []string{"body.rank, body.rank_cd, search.rank, search.rank_cd", "title.trgm_dist, title.trgm_wdist, title.trgm_swdist, body.trgm_dist"} {
+	for _, want := range []string{"body.rank, body.rank_cd, search.rank, search.rank_cd", "title.trgm_distance, title.trgm_word_distance, title.trgm_strict_word_distance, body.trgm_distance"} {
 		if !strings.Contains(order, want) {
 			t.Errorf("order description lacks %q: %s", want, order)
 		}
 	}
-	if paramByName(get.Parameters, "trgm") == nil {
+	if paramByName(get.Parameters, "~trgm") == nil {
 		t.Error("kb.docs lacks the trgm param")
 	}
-	if paramByName(b.OpenAPI.Paths["/users"].Get.Parameters, "trgm") != nil {
+	if paramByName(b.OpenAPI.Paths["/users"].Get.Parameters, "~trgm") != nil {
 		t.Error("users documents trgm without a trigram-orderable column")
 	}
 
@@ -219,7 +219,7 @@ func TestContribUnaccent(t *testing.T) {
 }
 
 // TestContribVector: pgvector columns take is only, order by the distances
-// their indexes serve (any distance without the policy), document vec=,
+// their indexes serve (any distance without the policy), document ~vec=,
 // and are arrays of numbers (sparsevec: text) in the schemas.
 func TestContribVector(t *testing.T) {
 	names := func(os []ContribOrder) []string {
@@ -229,7 +229,7 @@ func TestContribVector(t *testing.T) {
 		}
 		return out
 	}
-	all := []string{"vec_l2", "vec_ip", "vec_cos", "vec_l1"}
+	all := []string{"l2_distance", "negative_inner_product", "cosine_distance", "l1_distance"}
 	for _, tc := range []struct {
 		indexedOnly bool
 		col         string
@@ -239,7 +239,7 @@ func TestContribVector(t *testing.T) {
 		{false, "half", all},
 		{false, "sparse", all},
 		{true, "emb", all},
-		{true, "half", []string{"vec_l2", "vec_ip", "vec_cos"}},
+		{true, "half", []string{"l2_distance", "negative_inner_product", "cosine_distance"}},
 		{true, "sparse", nil},
 	} {
 		b := build(t, testcatalog.Contrib(testutil.FixtureCatalog()), contribOptions(tc.indexedOnly))
@@ -251,7 +251,7 @@ func TestContribVector(t *testing.T) {
 		if res.FilterColumns[tc.col] {
 			want := []string{"is"}
 			if !tc.indexedOnly {
-				want = append(want, "vec_l2_lt", "vec_ip_lt", "vec_cos_lt", "vec_l1_lt")
+				want = append(want, "l2_distance_lt", "negative_inner_product_lt", "cosine_distance_lt", "l1_distance_lt")
 			}
 			if got := b.FilterOps(res, c); !reflect.DeepEqual(got, want) {
 				t.Errorf("indexed_only=%v %s ops = %v, want %v", tc.indexedOnly, tc.col, got, want)
@@ -261,14 +261,14 @@ func TestContribVector(t *testing.T) {
 
 	b := build(t, testcatalog.Contrib(testutil.FixtureCatalog()), contribOptions(true))
 	get := b.OpenAPI.Paths["/kb/embeddings"].Get
-	if paramByName(get.Parameters, "vec") == nil {
+	if paramByName(get.Parameters, "~vec") == nil {
 		t.Error("kb.embeddings lacks the vec param")
 	}
-	if paramByName(b.OpenAPI.Paths["/kb/docs"].Get.Parameters, "vec") != nil {
+	if paramByName(b.OpenAPI.Paths["/kb/docs"].Get.Parameters, "~vec") != nil {
 		t.Error("kb.docs documents vec without a vector column")
 	}
 	order := paramByName(get.Parameters, "order").Description
-	if !strings.Contains(order, "emb.vec_l2, emb.vec_ip, emb.vec_cos, emb.vec_l1, half.vec_l2, half.vec_ip, half.vec_cos, code.vec_hamming, code.vec_jaccard.") {
+	if !strings.Contains(order, "emb.l2_distance, emb.negative_inner_product, emb.cosine_distance, emb.l1_distance, half.l2_distance, half.negative_inner_product, half.cosine_distance, code.hamming_distance, code.jaccard_distance.") {
 		t.Errorf("order description: %s", order)
 	}
 	if !strings.Contains(order, "Orderable columns: id, code.") {
@@ -295,10 +295,13 @@ func TestContribVector(t *testing.T) {
 		&introspect.Column{Name: "vec", Position: 6, PGType: "int4", TypeSchema: "pg_catalog"})
 	b = build(t, cat, contribOptions(false))
 	res := b.ByPath["kb.embeddings"]
-	if got := b.ContribOrders(res, res.Table.Column("emb")); len(got) != 0 {
-		t.Errorf("vector orders with a column named vec = %v", names(got))
+	if got := b.ContribOrders(res, res.Table.Column("emb")); len(got) != 4 {
+		t.Errorf("a column named vec changed the vector orders: %v", names(got))
 	}
-	if paramByName(b.OpenAPI.Paths["/kb/embeddings"].Get.Parameters, "vec").XFilterOps == nil {
+	if paramByName(b.OpenAPI.Paths["/kb/embeddings"].Get.Parameters, "~vec") == nil {
+		t.Error("a column named vec removed the ~vec param")
+	}
+	if p := paramByName(b.OpenAPI.Paths["/kb/embeddings"].Get.Parameters, "vec"); p == nil || p.XFilterOps == nil {
 		t.Error("the vec column lost its filter parameter")
 	}
 }
@@ -333,7 +336,7 @@ func TestContribIndexOpClasses(t *testing.T) {
 	for _, o := range b.ContribOrders(res, res.Table.Column("emb")) {
 		got = append(got, o.Name)
 	}
-	if !reflect.DeepEqual(got, []string{"vec_cos"}) {
-		t.Errorf("emb led by a vector_cosine_ops index: orders = %v, want [vec_cos]", got)
+	if !reflect.DeepEqual(got, []string{"cosine_distance"}) {
+		t.Errorf("emb led by a vector_cosine_ops index: orders = %v, want [cosine_distance]", got)
 	}
 }

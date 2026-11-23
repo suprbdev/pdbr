@@ -1,2 +1,2 @@
--- request: GET /api/places?select=id,location&geometry=name
+-- request: GET /api/places?select=id,location&~geometry=name
 -- error: 400 invalid_select: geometry=name is not a spatial column in select=

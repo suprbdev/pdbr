@@ -1,1 +1,1 @@
-GET /api/kb/embeddings?select=id&emb=vec_cos_lt.0.3
+GET /api/kb/embeddings?select=id&emb=cosine_distance_lt.0.3

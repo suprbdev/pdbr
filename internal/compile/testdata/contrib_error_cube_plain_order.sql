@@ -1,2 +1,2 @@
 -- request: GET /api/kb/shapes?order=box
--- error: 400 column_not_orderable: cube column "box" is orderable by distance only (box.vec_l2|vec_l1|vec_chebyshev with vec=)
+-- error: 400 column_not_orderable: cube column "box" is orderable by distance only (box.l2_distance|l1_distance|chebyshev_distance with ~vec=)
