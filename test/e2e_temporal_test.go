@@ -171,8 +171,19 @@ func TestTemporalRoutesAndErrors(t *testing.T) {
 
 	res, body = send(t, "PUT", srv+"/api/tk_bookings", `{"room_id":1,"valid_at":"[2026-01-01,2026-01-05)","guest":"ada"}`, nil)
 	wantProblem(t, res, body, 405, "method_not_allowed")
-	if allow := res.Header.Get("Allow"); allow != "GET, HEAD, POST" {
+	if allow := res.Header.Get("Allow"); allow != "GET, HEAD, POST, PATCH, DELETE" {
 		t.Errorf("tk_bookings Allow = %q", allow)
+	}
+	var list []row
+	sendJSON(t, "PATCH", srv+"/api/tk_bookings?room_id=eq.2", `{"guest":"zed"}`, 200, &list)
+	if len(list) != 1 || list[0]["guest"] != "zed" {
+		t.Errorf("bulk PATCH on a temporal-only table = %v", list)
+	}
+	res, body = send(t, "DELETE", srv+"/api/tk_bookings?guest=eq.bo", "", nil)
+	wantProblem(t, res, body, 409, "pg:23503")
+	sendJSON(t, "DELETE", srv+"/api/tk_bookings?guest=eq.zed", "", 200, &list)
+	if len(list) != 1 {
+		t.Errorf("bulk DELETE on a temporal-only table = %v", list)
 	}
 	res, body = send(t, "PUT", srv+"/api/tk_rates?on_conflict=room_id,valid_at", `{"id":1,"room_id":1,"valid_at":"[2026-01-01,2026-02-01)","price":1}`, nil)
 	wantProblem(t, res, body, 400, "temporal_conflict_target")

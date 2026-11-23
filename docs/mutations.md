@@ -564,7 +564,7 @@ a known path → `405` with an `Allow` header listing what exists:
 | no INSERT privilege | no `POST`, no `PUT` |
 | no UPDATE privilege | no `PATCH`, no `PUT` |
 | no DELETE privilege | no `DELETE` |
-| no PK and no unique constraint | no `/{pk}`, no `/by/…` → no `PATCH`/`DELETE` at all |
+| no PK and no unique constraint | no `/{pk}`, no `/by/…` → `PATCH`/`DELETE` only by filter on the collection |
 | key with an identity / generated column | no `PUT` on that single-row path |
 | only temporal keys (`WITHOUT OVERLAPS`) | same as no key: no `/{pk}`, no `/by/…`, no `PUT` ([api.md](api.md#temporal-keys-and-postgresql-18-foreign-keys)) |
 | `@omit create|update|delete` (smart-comments) | method removed |
