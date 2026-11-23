@@ -1,0 +1,3 @@
+POST /api/posts?select=id,users(posts(id))
+
+[{"author_id": 1, "title": "One"}, {"author_id": 2, "title": "Two"}]

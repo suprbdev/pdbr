@@ -430,7 +430,7 @@ func (s *stmt) oneEmbed(e *plan.Embed, parentAlias string, depth int) (string, s
 	latAlias := s.alias("l")
 	lat := fmt.Sprintf("LEFT JOIN LATERAL (\n%s\n) %s ON true",
 		indent(fmt.Sprintf("SELECT %s AS data\nFROM %s %s%s\nWHERE %s\nLIMIT 1",
-			jsonExpr, s.sourceRef(rel.To.Table), alias, joinLaterals(laterals), strings.Join(conds, " AND "))),
+			jsonExpr, s.sourceRef(rel.To.Table, alias), alias, joinLaterals(laterals), strings.Join(conds, " AND "))),
 		latAlias)
 	return latAlias + ".data", lat, nil
 }
@@ -484,7 +484,7 @@ func (s *stmt) listInner(node *plan.Node, filter plan.Expr, order []plan.OrderTe
 	if page.Offset > 0 {
 		pageSQL += "\nOFFSET " + s.param(page.Offset)
 	}
-	return fmt.Sprintf("SELECT %s AS data\nFROM %s %s%s%s%s%s", jsonExpr, s.sourceRef(t), alias, joinLaterals(laterals), where, orderSQL, pageSQL), nil
+	return fmt.Sprintf("SELECT %s AS data\nFROM %s %s%s%s%s%s", jsonExpr, s.sourceRef(t, alias), alias, joinLaterals(laterals), where, orderSQL, pageSQL), nil
 }
 
 // embedLimit resolves an embed's page size: the cap when absent, rejected

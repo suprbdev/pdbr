@@ -1,0 +1,3 @@
+POST /api/posts?select=id,users(id,posts(id))&users.posts.id=gt.1&users.posts.order=id.desc&users.posts.limit=2
+
+{"author_id": 1, "title": "filtered"}

@@ -177,10 +177,13 @@ type stmt struct {
 	aliasN      int
 	maxDepth    int
 	maxPageSize int
-	// overrides remaps "schema.table" to an alternate row source (a CTE
-	// holding rows inserted earlier in the same statement, which a plain
-	// table scan could not see within one snapshot).
-	overrides map[string]string
+	// vis remaps "schema.table" to a visibility CTE in a mutation response
+	// (the table as it stands after the statement, which a plain table scan
+	// could not see within one snapshot); visOrder lists them in the order
+	// they were first read.
+	vis      map[string]*visSource
+	visOrder []*visSource
+	visN     int
 	// rootSource, when set, replaces the root table scan of a list with a
 	// set-returning function call (RPC SETOF <table>); cursors are off since
 	// function output has no keyset.
@@ -215,20 +218,34 @@ func (s *stmt) alias(prefix string) string {
 	return a
 }
 
-// sourceRef resolves the SQL row source for a table, honouring overrides.
-func (s *stmt) sourceRef(t *introspect.Table) string {
-	if ov, ok := s.overrides[t.Schema+"."+t.Name]; ok {
-		return ov
+// sourceRef resolves the SQL row source for a table read under alias,
+// honouring the visibility CTEs of a mutation response: the first read of
+// one names it, and every read records its alias so the CTE can project
+// exactly the columns the statement references.
+func (s *stmt) sourceRef(t *introspect.Table, alias string) string {
+	v, ok := s.vis[t.Schema+"."+t.Name]
+	if !ok {
+		return tableRef(t)
 	}
-	return tableRef(t)
+	if v.name == "" {
+		if v.root {
+			v.name = visCTE
+		} else {
+			s.visN++
+			v.name = visCTE + "_" + strconv.Itoa(s.visN)
+		}
+		s.visOrder = append(s.visOrder, v)
+	}
+	v.aliases = append(v.aliases, alias)
+	return v.name
 }
 
 // rootRef is sourceRef for the root list scan, honouring rootSource.
-func (s *stmt) rootRef(t *introspect.Table) string {
+func (s *stmt) rootRef(t *introspect.Table, alias string) string {
 	if s.rootSource != "" {
 		return s.rootSource
 	}
-	return s.sourceRef(t)
+	return s.sourceRef(t, alias)
 }
 
 func quoteIdent(s string) string {
@@ -308,7 +325,7 @@ func (s *stmt) rowByKey() (*Statement, error) {
 		sel = fmt.Sprintf("json_build_object('etag', md5(to_jsonb(%s)::text), 'row', %s)", alias, jsonExpr)
 	}
 	sql := fmt.Sprintf("SELECT %s AS data\nFROM %s %s%s\nWHERE %s\nLIMIT 1",
-		sel, s.sourceRef(r.Table), alias, joinLaterals(laterals), strings.Join(conds, " AND "))
+		sel, s.sourceRef(r.Table, alias), alias, joinLaterals(laterals), strings.Join(conds, " AND "))
 	return &Statement{SQL: sql, Args: s.ps.Args(), Shape: shape}, nil
 }
 
@@ -417,7 +434,7 @@ func (s *stmt) list() (*Statement, error) {
 		distinct = "DISTINCT ON (" + strings.Join(refs, ", ") + ") "
 	}
 	inner := fmt.Sprintf("SELECT %s%s\nFROM %s %s%s%s%s%s",
-		distinct, strings.Join(selectCols, ", "), s.rootRef(t), alias,
+		distinct, strings.Join(selectCols, ", "), s.rootRef(t, alias), alias,
 		joinLaterals(laterals), where, orderSQL, limit)
 	if len(dcols) > 0 {
 		w := s.alias("d")
@@ -530,7 +547,8 @@ func (s *stmt) totalSQL(node *plan.Node, dcols []*introspect.Column) (string, er
 		return planned, nil
 	}
 	threshold := s.param(s.maxPageSize)
-	bounded := fmt.Sprintf("(SELECT count(*) FROM (SELECT 1 FROM %s %s LIMIT %s + 1) %s)", s.rootRef(t), s.alias("c"), threshold, s.alias("b"))
+	inner := s.alias("c")
+	bounded := fmt.Sprintf("(SELECT count(*) FROM (SELECT 1 FROM %s %s LIMIT %s + 1) %s)", s.rootRef(t, inner), inner, threshold, s.alias("b"))
 	est := s.alias("e")
 	return fmt.Sprintf("(SELECT CASE WHEN %s.n <= %s THEN %s.n ELSE greatest(%s, %s + 1) END FROM (SELECT %s AS n) %s)",
 		est, threshold, est, planned, threshold, bounded, est), nil
@@ -554,9 +572,9 @@ func (s *stmt) countSQL(node *plan.Node, dcols []*introspect.Column) (string, er
 			refs[i] = colRef(alias, c.Name)
 		}
 		return fmt.Sprintf("(SELECT count(*) FROM (SELECT DISTINCT %s FROM %s %s%s) %s)",
-			strings.Join(refs, ", "), s.rootRef(t), alias, where, s.alias("c")), nil
+			strings.Join(refs, ", "), s.rootRef(t, alias), alias, where, s.alias("c")), nil
 	}
-	return fmt.Sprintf("(SELECT count(*) FROM %s %s%s)", s.rootRef(t), alias, where), nil
+	return fmt.Sprintf("(SELECT count(*) FROM %s %s%s)", s.rootRef(t, alias), alias, where), nil
 }
 
 // keyArraySQL renders the primary key of alias's row as a jsonb array (the
@@ -640,7 +658,7 @@ func (s *stmt) innerExists(e *plan.Embed, parentAlias string) (string, error) {
 		return "", err
 	}
 	conds = append(conds, more...)
-	return fmt.Sprintf("EXISTS (SELECT 1 FROM %s %s WHERE %s)", s.sourceRef(rel.To.Table), sub, strings.Join(conds, " AND ")), nil
+	return fmt.Sprintf("EXISTS (SELECT 1 FROM %s %s WHERE %s)", s.sourceRef(rel.To.Table, sub), sub, strings.Join(conds, " AND ")), nil
 }
 
 // joinConds renders the FK correlation between the embedded row at

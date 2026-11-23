@@ -9,9 +9,6 @@ __c_1 AS (
   SELECT $4, $5, __mut."room_id"
   FROM __mut
   RETURNING *
-),
-__vis_2 AS (
-  SELECT * FROM __c_1
 )
 SELECT json_build_object('room_id', t0."room_id", 'valid_at', t0."valid_at", 'guest', t0."guest") AS data
 FROM __mut t0

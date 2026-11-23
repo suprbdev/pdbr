@@ -68,14 +68,8 @@ type chain struct {
 	ctes  []string
 	n     int
 	// inserted lists the insert CTEs per "schema.table" (parents created and
-	// children), the row sources the response's embeds must read instead of
-	// the table; insertedOrder keeps the map deterministic.
-	inserted      map[string][]string
-	insertedOrder []string
-	// withTable marks the tables whose visibility CTE must also read the
-	// table itself: the parents created through a PERIOD relation, which
-	// the new row may share with existing rows whose periods overlap it.
-	withTable map[string]bool
+	// children), which the response's embeds must read along with the table.
+	inserted map[string][]string
 }
 
 func (g *chain) name(kind string) string {
@@ -85,9 +79,6 @@ func (g *chain) name(kind string) string {
 
 func (g *chain) recordInsert(t *introspect.Table, cte string) {
 	key := t.Schema + "." + t.Name
-	if _, ok := g.inserted[key]; !ok {
-		g.insertedOrder = append(g.insertedOrder, key)
-	}
 	g.inserted[key] = append(g.inserted[key], cte)
 }
 
@@ -275,9 +266,6 @@ func (g *chain) resolveParent(n nestedIn, depth int, path string) (string, error
 	cols, nested, err := g.splitRow(to, row, p)
 	if err != nil {
 		return "", err
-	}
-	if n.rel.FK.Period {
-		g.withTable[to.Table.Schema+"."+to.Table.Name] = true
 	}
 	return g.insertRow(rowIn{res: to, cols: cols, nested: nested, depth: depth + 1, kind: "p", path: p})
 }

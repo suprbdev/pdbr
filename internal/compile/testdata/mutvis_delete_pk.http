@@ -1,0 +1,1 @@
+DELETE /api/posts/5?select=id,users(posts(id))

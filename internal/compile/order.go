@@ -244,7 +244,7 @@ func (s *stmt) relationOrderSQL(term orderTerm, alias string) string {
 		}
 		expr = agg + "(" + expr + ")"
 	}
-	return fmt.Sprintf("(SELECT %s FROM %s %s WHERE %s)", expr, s.sourceRef(rel.Relation.To.Table), sub, s.joinConds(rel.Relation, sub, alias))
+	return fmt.Sprintf("(SELECT %s FROM %s %s WHERE %s)", expr, s.sourceRef(rel.Relation.To.Table, sub), sub, s.joinConds(rel.Relation, sub, alias))
 }
 
 // reorderForDistinct puts the DISTINCT ON columns at the head of the order

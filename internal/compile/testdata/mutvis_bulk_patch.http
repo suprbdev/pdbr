@@ -1,0 +1,3 @@
+PATCH /api/posts?author_id=eq.1&select=id,users(posts(id,title))
+
+{"title": "bulk-probe"}

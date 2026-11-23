@@ -263,16 +263,15 @@ func TestChainSQL(t *testing.T) {
 			`RETURNING *`,
 			`__c_2 AS (`,
 			`SELECT $3, __mut."id"`,
-			`__vis_3 AS (`,
-			`SELECT * FROM __c_1 UNION ALL SELECT * FROM __c_2`,
-			`FROM __vis_3 t1`,
+			"__vis_1 AS NOT MATERIALIZED (\n  SELECT \"id\", \"author_id\", \"title\" FROM \"public\".\"posts\"\n  UNION ALL SELECT \"id\", \"author_id\", \"title\" FROM __c_1\n  UNION ALL SELECT \"id\", \"author_id\", \"title\" FROM __c_2\n)",
+			`FROM __vis_1 t1`,
 		}
 		for _, w := range want {
 			if !strings.Contains(st.SQL, w) {
 				t.Errorf("SQL lacks %q:\n%s", w, st.SQL)
 			}
 		}
-		if strings.Contains(st.SQL, `FROM "public"."posts"`) {
+		if strings.Contains(st.SQL, `FROM "public"."posts" t1`) {
 			t.Errorf("embed reads the table instead of the visibility CTE:\n%s", st.SQL)
 		}
 		if len(st.Args) != 4 || st.Args[0] != "a@b.c" || st.Args[1] != "One" || st.Args[2] != "Two" {
@@ -293,14 +292,14 @@ func TestChainSQL(t *testing.T) {
 			`INSERT INTO "public"."posts" ("title", "author_id")`,
 			`SELECT $2, __p_1."id"`,
 			`FROM __p_1`,
-			"__vis_2 AS (\n  SELECT * FROM __p_1\n)",
-			`FROM __vis_2 t1`,
+			"__vis_1 AS NOT MATERIALIZED (\n  SELECT \"id\", \"email\" FROM \"public\".\"users\"\n  UNION ALL SELECT \"id\", \"email\" FROM __p_1\n)",
+			`FROM __vis_1 t1`,
 		} {
 			if !strings.Contains(st.SQL, w) {
 				t.Errorf("SQL lacks %q:\n%s", w, st.SQL)
 			}
 		}
-		if strings.Contains(st.SQL, `FROM "public"."users"`) {
+		if strings.Contains(st.SQL, `FROM "public"."users" t1`) {
 			t.Errorf("parent embed reads the table:\n%s", st.SQL)
 		}
 	})
@@ -339,7 +338,7 @@ func TestChainSQL(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		order := []string{"__p_1 AS (", `INSERT INTO "public"."users"`, "__c_2 AS (", `INSERT INTO "public"."places"`, "ST_GeomFromGeoJSON($3)", `__p_1."id"`, "__p_3 AS (", `INSERT INTO "public"."posts"`, `__p_1."id"`, "__mut AS (", `__p_3."id"`, "__vis_4 AS (", "SELECT * FROM __p_1", "__vis_5 AS (", "SELECT * FROM __c_2", "__vis_6 AS (", "SELECT * FROM __p_3"}
+		order := []string{"__p_1 AS (", `INSERT INTO "public"."users"`, "__c_2 AS (", `INSERT INTO "public"."places"`, "ST_GeomFromGeoJSON($3)", `__p_1."id"`, "__p_3 AS (", `INSERT INTO "public"."posts"`, `__p_1."id"`, "__mut AS (", `__p_3."id"`, "__vis_1 AS NOT MATERIALIZED (", `UNION ALL SELECT "id" FROM __p_1`, "__vis_2 AS NOT MATERIALIZED (", `UNION ALL SELECT "id", "author_id" FROM __p_3`}
 		pos := 0
 		for _, w := range order {
 			i := strings.Index(st.SQL[pos:], w)
@@ -350,6 +349,9 @@ func TestChainSQL(t *testing.T) {
 		}
 		if len(st.Args) != 5 {
 			t.Errorf("args = %#v", st.Args)
+		}
+		if strings.Contains(st.SQL, "FROM __c_2\n") || strings.Contains(st.SQL, "__vis_3") {
+			t.Errorf("places is not read, yet has a visibility CTE:\n%s", st.SQL)
 		}
 	})
 	t.Run("default values row", func(t *testing.T) {

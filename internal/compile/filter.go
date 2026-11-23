@@ -669,7 +669,7 @@ func (s *stmt) relationExists(steps []*api.Relation, rp *plan.RelationPath, alia
 	if quant == plan.None || quant == plan.Every {
 		prefix = "NOT EXISTS"
 	}
-	return fmt.Sprintf("%s (SELECT 1 FROM %s %s WHERE %s)", prefix, s.sourceRef(rel.To.Table), sub, where), nil
+	return fmt.Sprintf("%s (SELECT 1 FROM %s %s WHERE %s)", prefix, s.sourceRef(rel.To.Table, sub), sub, where), nil
 }
 
 // relationLeaf renders the predicate over the related table: the full

@@ -271,7 +271,7 @@ CREATE FUNCTION users_post_count(u users) RETURNS bigint LANGUAGE sql STABLE AS 
 |---|---|
 | key | function name minus the `<table>_` prefix: `users_post_count` → `post_count`; `@name` overrides; a name matching a real column → real column wins, computed skipped with a warning |
 | selection | only via `select=` (never in `*`): `GET /api/users?select=id,post_count` |
-| SQL | `"public"."users_post_count"("u" => ROW(__t_1."id", __t_1."email", …)::"public"."users")` — an explicit `ROW(...)::table` cast rather than the bare alias, so the same expression works over any row source (`__mut` CTE in mutation responses, `__vis_n` nested visibility CTEs, function row sources) |
+| SQL | `"public"."users_post_count"("u" => ROW(__t_1."id", __t_1."email", …)::"public"."users")` — an explicit `ROW(...)::table` cast rather than the bare alias, so the same expression works over any row source (`__mut` CTE in mutation responses, `__vis` / `__vis_n` visibility CTEs, function row sources) |
 | set-returning (`SETOF <scalar>` / `SETOF <table>`) | array field; `SETOF <table>` accepts a nested `select=` like an embed: `select=id,recent_posts(id,title)` |
 | `int8` result (`count(*)`) | serialized as string like `int8` columns |
 | volatile / `void` | skipped |

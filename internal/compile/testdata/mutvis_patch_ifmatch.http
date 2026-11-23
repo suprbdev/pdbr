@@ -1,0 +1,4 @@
+PATCH /api/users/1?select=id,posts(id,users(full_name))
+If-Match: W/"5d41402abc4b2a76b9719d911017c592"
+
+{"full_name": "Grace"}

@@ -166,7 +166,16 @@ consequences for generated mutations:
   `POST`/`PATCH`/`PUT`/`DELETE` as long as its `select=` stays within that
   subset. The exception is selecting a **computed column**: the underlying
   function takes the whole row type, so the statement must return every
-  column and the role needs `SELECT` on all of them.
+  column and the role needs `SELECT` on all of them. An embed that leads
+  back to the mutated table (`POST /posts?select=id,users(posts(id))`)
+  reads a visibility CTE merging the table with the mutation's own rows; it
+  projects the columns those embeds read, plus, for bulk `PATCH`/`DELETE`
+  and bulk upserts, the primary-key (or other `NOT NULL` unique key)
+  columns that identify the written rows, and `RETURNING` widens to match.
+  Its table half runs under the role's policies, so rows the `SELECT`
+  policies hide stay hidden, and rows an `UPDATE`/`DELETE` policy skipped
+  keep their old version
+  ([mutations.md](mutations.md#embeds-back-to-the-mutated-table)).
 
 - **ETags hash the whole row.** A single-row `GET`, and `PATCH`/`DELETE`
   with `If-Match`, compute `md5(to_jsonb(row)::text)` over **all** columns in
