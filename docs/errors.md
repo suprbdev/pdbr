@@ -264,8 +264,9 @@ the limit short-circuits without reading.
 
 Rule of thumb: the request was *too slow* → 504; the database was *not
 available* → 503 (safe to retry after a delay; a `Retry-After` header is not
-sent). `/readyz` is a liveness alias of `/healthz` and does not
-reflect pool health ([deployment.md](deployment.md#docker-image)).
+sent). `GET /readyz` answers 503 `unavailable` when the pool ping fails
+within `server.readyz_timeout`; `/healthz` stays a liveness check
+([deployment.md](deployment.md#docker-image)).
 
 ## Hook and plugin errors
 

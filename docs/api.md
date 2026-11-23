@@ -31,7 +31,7 @@ Everything except the health endpoints is mounted under `server.base_path`
 | `POST {base}/rpc/{fn}` (JSON body `{arg: v}`) | any function; volatile via `GET` → `405` (`Allow: POST`) | |
 | `GET {base}/openapi.json` | OpenAPI 3.1 document (`server.openapi`, default true) | `200` |
 | `OPTIONS *` | CORS preflight when `server.cors_origins` is set | |
-| `GET /healthz`, `GET /readyz` | liveness `{"status":"ok"}` — **not** under `{base}` | `200` |
+| `GET /healthz`, `GET /readyz` | `{"status":"ok"}` — **not** under `{base}`; `/readyz` pings the database (`server.readyz_timeout`) | `200`, `/readyz` `503` `unavailable` when the database is unreachable |
 
 `HEAD` is accepted wherever `GET` is and returns the same headers without a
 body.

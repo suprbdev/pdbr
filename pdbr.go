@@ -419,6 +419,7 @@ func (a *App) buildServer(ctx context.Context) (*server.Server, error) {
 	}
 	srv := server.New(a.Config.Server, auth.New(confx.AuthConfig(a.Config.RLS)), rt, a.Log)
 	srv.SetMetrics(a.metrics, a.Config.Metrics)
+	srv.SetReadiness(a.pool.Ping)
 	if a.Config.Watch.Enabled {
 		wctx, cancel := context.WithCancel(ctx)
 		w := &watch.Watcher{

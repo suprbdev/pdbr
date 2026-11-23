@@ -3,7 +3,9 @@ package server
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -14,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/suprbdev/pdbcore/auth"
 	"github.com/suprbdev/pdbcore/testutil"
 
@@ -26,6 +29,11 @@ func quiet() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)
 
 func testServer(t *testing.T, cfg config.Server, authn *auth.Authenticator, h RouteHandler) *httptest.Server {
 	t.Helper()
+	return testServerPing(t, cfg, authn, h, nil)
+}
+
+func testServerPing(t *testing.T, cfg config.Server, authn *auth.Authenticator, h RouteHandler, ping func(context.Context) error) *httptest.Server {
+	t.Helper()
 	built, err := api.New(testutil.FixtureCatalog(), inflect.Default, api.Options{
 		FilterIndexedOnly: true, Functions: true, BasePath: cfg.BasePath, Schemas: []string{"public"},
 		MaxPageSize: 100, Etags: true, Version: "test", Logger: quiet(),
@@ -37,7 +45,9 @@ func testServer(t *testing.T, cfg config.Server, authn *auth.Authenticator, h Ro
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(New(cfg, authn, rt, quiet()).Handler())
+	s := New(cfg, authn, rt, quiet())
+	s.SetReadiness(ping)
+	srv := httptest.NewServer(s.Handler())
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -86,6 +96,50 @@ func TestHealth(t *testing.T) {
 	res, _ := do(t, "GET", srv.URL+"/api/healthz", nil)
 	if res.StatusCode != 404 {
 		t.Errorf("health under base_path should 404, got %d", res.StatusCode)
+	}
+}
+
+func TestReadyz(t *testing.T) {
+	cfg := serverCfg()
+	cfg.ReadyzTimeout = 100 * time.Millisecond
+	ok := testServerPing(t, cfg, nil, nil, func(context.Context) error { return nil })
+	if res, body := do(t, "GET", ok.URL+"/readyz", nil); res.StatusCode != 200 || body != `{"status":"ok"}` {
+		t.Errorf("readyz with a healthy ping = %d %q", res.StatusCode, body)
+	}
+	down := testServerPing(t, cfg, nil, nil, func(context.Context) error { return errors.New("refused") })
+	res, body := do(t, "GET", down.URL+"/readyz", nil)
+	if res.StatusCode != 503 || res.Header.Get("Content-Type") != ContentTypeProblem || problem(t, body).Code != "unavailable" {
+		t.Errorf("readyz with a failing ping = %d %q", res.StatusCode, body)
+	}
+	if res, _ := do(t, "GET", down.URL+"/healthz", nil); res.StatusCode != 200 {
+		t.Errorf("healthz must stay liveness, got %d", res.StatusCode)
+	}
+	if res, _ := do(t, "POST", down.URL+"/readyz", nil); res.StatusCode != 405 {
+		t.Errorf("POST readyz = %d", res.StatusCode)
+	}
+	slow := testServerPing(t, cfg, nil, nil, func(ctx context.Context) error {
+		<-ctx.Done()
+		return ctx.Err()
+	})
+	start := time.Now()
+	res, _ = do(t, "GET", slow.URL+"/readyz", nil)
+	if res.StatusCode != 503 || time.Since(start) > 2*time.Second {
+		t.Errorf("hung ping = %d after %s, want 503 within the timeout", res.StatusCode, time.Since(start))
+	}
+}
+
+func TestReadyzClosedPort(t *testing.T) {
+	pool, err := pgxpool.New(context.Background(), "postgres://u:p@127.0.0.1:1/db?connect_timeout=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	cfg := serverCfg()
+	cfg.ReadyzTimeout = time.Second
+	srv := testServerPing(t, cfg, nil, nil, pool.Ping)
+	res, body := do(t, "GET", srv.URL+"/readyz", nil)
+	if res.StatusCode != 503 || problem(t, body).Code != "unavailable" {
+		t.Errorf("readyz on a closed port = %d %q", res.StatusCode, body)
 	}
 }
 

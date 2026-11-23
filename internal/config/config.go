@@ -42,6 +42,7 @@ type Server struct {
 	OpenAPI                  bool          `koanf:"openapi" doc:"Serve the OpenAPI 3.1 document at GET {base_path}/openapi.json (on by default; it reveals every table, column, relation and function to unauthenticated callers)."`
 	OpenAPIDomains           bool          `koanf:"openapi_domains" doc:"Document each domain over a built-in type as a named component schema (its base type's schema, the domain's comment and constraints, pattern/minimum/maximum when a CHECK is a simple comparison) that columns, arguments and results reference. Off inlines the base type's schema."`
 	RequestTimeout           time.Duration `koanf:"request_timeout" doc:"Overall HTTP request timeout; expiry answers 504."`
+	ReadyzTimeout            time.Duration `koanf:"readyz_timeout" doc:"Timeout of the database ping behind GET /readyz; an unreachable or slow database answers 503 unavailable. /healthz stays a liveness check."`
 	MaxBodyBytes             int64         `koanf:"max_body_bytes" doc:"Maximum accepted request body size in bytes; over answers 413."`
 	MaxEmbedDepth            int           `koanf:"max_embed_depth" doc:"Maximum select= embed nesting depth; deeper answers 400 embed_depth_exceeded."`
 	MaxCost                  int           `koanf:"max_cost" doc:"Maximum estimated cost (1 + list multipliers) per request; over answers 400 cost_exceeded. @costMultiplier smart comments tune the estimate."`
@@ -75,6 +76,7 @@ func DefaultConfig() Config {
 			OpenAPI:        true,
 			OpenAPIDomains: true,
 			RequestTimeout: 30 * time.Second,
+			ReadyzTimeout:  2 * time.Second,
 			MaxBodyBytes:   1 << 20,
 			MaxEmbedDepth:  5,
 			MaxCost:        10000,
@@ -161,6 +163,9 @@ func validateServer(s Server) []string {
 	}
 	if bp := s.BasePath; bp != "" && (!strings.HasPrefix(bp, "/") || strings.HasSuffix(bp, "/")) {
 		errs = append(errs, fmt.Sprintf("server.base_path: %q must be empty or start with '/' and not end with '/'", bp))
+	}
+	if s.ReadyzTimeout <= 0 {
+		errs = append(errs, "server.readyz_timeout must be > 0")
 	}
 	if s.MaxEmbedDepth < 1 {
 		errs = append(errs, "server.max_embed_depth must be >= 1")

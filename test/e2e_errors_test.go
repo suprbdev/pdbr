@@ -446,3 +446,11 @@ func TestErrorDetailLevels(t *testing.T) {
 		})
 	}
 }
+
+func TestReadyzPingsDatabase(t *testing.T) {
+	srv := testServer(t, nil)
+	res, body := do(t, "GET", srv.URL+"/readyz", nil)
+	if res.StatusCode != 200 || string(body) != `{"status":"ok"}` {
+		t.Errorf("readyz = %d %s", res.StatusCode, body)
+	}
+}
