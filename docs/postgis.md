@@ -56,8 +56,9 @@ is tagged 4326, since geography requires a real CRS.
 
 Bare WKT on an unconstrained `geometry` column keeps PostGIS's own default,
 SRID 0. EWKT whose SRID differs from the column's is not reprojected: a
-filter fails with `ST_Intersects: Operation on mixed SRID geometries` and a
-write with `22023` →
+filter whose bounding boxes overlap fails with `ST_Intersects: Operation on
+mixed SRID geometries` (`400 pg:XX000`, detail `invalid geometry` outside
+`errors.detail: dev`) and a write with `22023` →
 `400 pg:22023`. Type modifiers are enforced by PostgreSQL as well: a
 `LineString` into `geometry(Point, 4326)` is `400 pg:22023`. Function
 arguments carry no typmod, so RPC arguments follow the unconstrained rules.

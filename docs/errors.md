@@ -97,18 +97,20 @@ returns `{Class, SQLState, Message(detail)}`):
 | `23502` not-null violation | 400 | `pg:23502` |
 | `23514` check violation | 400 | `pg:23514` |
 | `42*` other than `42501` (undefined function/column, syntax — should not happen; message "invalid operation" in prod/strict) | 400 | `pg:42…` |
+| malformed full-text / ltree operand (`pdbcore/pgexec` contrib input errors): `42601` raised while parsing a `tsquery`/`tsvector`/`ltree`/`lquery`/`ltxtquery` value (`syntax error in tsquery: …`, `ltree syntax error …`, …), `42704` unknown text search configuration | 400 | `pg:42601` / `pg:42704` |
+| PostGIS input error (`XX000` with `Operation on mixed SRID geometries`, `parse error - invalid geometry` or an `lwgeom_*` message): an operand or body value PostGIS rejects | 400 | `pg:XX000` |
 | missing or invalid credentials when the request cannot be served anonymously; invalid token | 401 | `invalid_token` |
 | `42501` insufficient privilege (incl. RLS `RETURNING` filtering) | 403 | `pg:42501` |
 | resolved role not in `rls.allowed_roles` | 403 | `role_not_allowed` |
 | no route; single-row path or keyed mutation matched nothing | 404 | `not_found` |
 | method not on resource / read-only / volatile via GET | 405 + `Allow` | `method_not_allowed` / `read_only` |
 | `Accept` unsatisfiable | 406 | `not_acceptable` |
-| `23505` unique violation, `23503` FK violation, `23P01` exclusion violation | 409 | `pg:235…` / `pg:23P01` |
+| `23505` unique violation, `23503` FK violation, `23001` restrict violation (PostgreSQL 18+ reports `ON DELETE/UPDATE RESTRICT` as `23001`, older servers as `23503`), `23P01` exclusion violation (also a temporal `WITHOUT OVERLAPS` key duplicate) | 409 | `pg:235…` / `pg:23001` / `pg:23P01` |
 | `40001` serialization failure / `40P01` deadlock **after** `transactions.max_retries` re-runs | 409 | `pg:40001` / `pg:40P01` |
 | `If-Match` mismatch | 412 | `etag_mismatch` |
 | body larger than `server.max_body_bytes` | 413 | `body_too_large` |
 | body `Content-Type` not JSON | 415 | `unsupported_media_type` |
-| any other PG SQLSTATE (`21000`, `2D000`, `P0001` `RAISE EXCEPTION`, `XX000`, …) | 500 | `pg:<SQLSTATE>` |
+| any other PG SQLSTATE (`21000`, `2D000`, `P0001` `RAISE EXCEPTION`, `XX000` other than the PostGIS input errors above, …) | 500 | `pg:<SQLSTATE>` |
 | hook / plugin / internal error that is not a `UserError` | 500 | `internal` |
 | `53*` insufficient resources (`53300` too many connections, `53200` OOM), `08*` connection exceptions (*unreachable in e2e*), pool acquire / connection failure without a SQLSTATE | 503 | `pg:53…` / `pg:08…` / `unavailable` |
 | `57014` statement timeout (`database.statement_timeout`), `server.request_timeout` elapsed | 504 | `pg:57014` / `timeout` |
@@ -133,8 +135,8 @@ level, so clients can branch on `code` in every environment.
 | Level | `detail` for PG errors | `pg` object |
 |---|---|---|
 | `dev` | full PG message | present |
-| `prod` (default) | `23*` and `22*` messages pass through; `42501` → `permission denied`; other `42*` → `invalid operation`; everything else → `database error` | absent |
-| `strict` | `23*` → `constraint violation`; `22*` → `invalid input value`; rest as `prod` | absent |
+| `prod` (default) | `23*` and `22*` messages pass through, and so do contrib input errors (`syntax error in tsquery: …`); PostGIS input errors → `invalid geometry`; `42501` → `permission denied`; other `42*` → `invalid operation`; everything else → `database error` | absent |
+| `strict` | `23*` → `constraint violation`; `22*`, contrib and PostGIS input errors → `invalid input value`; rest as `prod` | absent |
 
 Sanitization mirrors pdbq's `sanitizePGMessage`: constraint (`23*`) and
 data-exception (`22*`) messages are user-actionable and safe; `42*` messages

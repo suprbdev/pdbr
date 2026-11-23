@@ -415,7 +415,7 @@ func TestDBErrorMapping(t *testing.T) {
 	}{
 		{"22P02", 400}, {"23502", 400}, {"23514", 400}, {"42703", 400},
 		{"42501", 403},
-		{"23505", 409}, {"23503", 409}, {"23P01", 409}, {"40001", 409}, {"40P01", 409},
+		{"23505", 409}, {"23503", 409}, {"23001", 409}, {"23P01", 409}, {"40001", 409}, {"40P01", 409},
 		{"P0001", 500}, {"XX000", 500},
 		{"53300", 503}, {"08006", 503}, {"57P01", 503},
 		{"57014", 504},
@@ -445,6 +445,23 @@ func TestDBErrorMapping(t *testing.T) {
 	e = newExec(&fakeDB{row: fakeRow{err: &pgconn.PgError{Code: "23505", Message: "dup"}}}, b, nil, Options{Detail: pgexec.Strict})
 	if xe = errOf(t, e.Execute(context.Background(), listOp(b, "/users"))); xe.Detail != "constraint violation" {
 		t.Fatalf("strict 23505: %+v", xe)
+	}
+	for _, tc := range []struct {
+		err                *pgconn.PgError
+		prodDetail, strict string
+	}{
+		{&pgconn.PgError{Code: "XX000", Message: "ST_Intersects: Operation on mixed SRID geometries (Point, 3857) != (Point, 4326)"}, "invalid geometry", "invalid input value"},
+		{&pgconn.PgError{Code: "XX000", Message: "parse error - invalid geometry"}, "invalid geometry", "invalid input value"},
+		{&pgconn.PgError{Code: "42601", Message: `syntax error in tsquery: "a &&"`}, `syntax error in tsquery: "a &&"`, "invalid input value"},
+		{&pgconn.PgError{Code: "42704", Message: `text search configuration "nope" does not exist`}, `text search configuration "nope" does not exist`, "invalid input value"},
+	} {
+		for detail, want := range map[pgexec.Detail]string{pgexec.Prod: tc.prodDetail, pgexec.Strict: tc.strict, pgexec.Dev: tc.err.Message} {
+			e = newExec(&fakeDB{row: fakeRow{err: tc.err}}, b, nil, Options{Detail: detail})
+			xe = errOf(t, e.Execute(context.Background(), listOp(b, "/users")))
+			if xe.Status != 400 || xe.Code != "pg:"+tc.err.Code || xe.Detail != want {
+				t.Errorf("%s (detail %d): got %d %s %q, want 400 %q", tc.err.Message, detail, xe.Status, xe.Code, xe.Detail, want)
+			}
+		}
 	}
 	// non-PG errors
 	e = newExec(&fakeDB{row: fakeRow{err: context.DeadlineExceeded}}, b, nil, Options{})
