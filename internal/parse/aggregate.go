@@ -302,6 +302,8 @@ func (p *parser) checkGroupKeys(n *plan.Node) error {
 	for i := range n.Embeds {
 		e := &n.Embeds[i]
 		switch {
+		case e.SpreadOne() && !e.Relation.UniqueTarget():
+			return errf(CodeInvalidSelect, "spread grouping over %q needs its referenced columns (%s) to be the primary key or a unique key of %q; this relation may match several rows (a @foreignKey onto non-unique columns, or a view without @primaryKey)", e.Key, strings.Join(e.Relation.FK.RefColumns, ", "), e.Relation.To.Path)
 		case e.SpreadOne():
 			if err := p.checkGroupKeys(e.Node); err != nil {
 				return err

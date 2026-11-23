@@ -92,7 +92,11 @@ func (s *stmt) grouped(node *plan.Node, filter plan.Expr, corr func(childAlias s
 			case f.Agg != nil:
 				name := "__a" + strconv.Itoa(nAgg)
 				nAgg++
-				cols = append(cols, s.aggregateSQL(f, alias)+" AS "+name)
+				agg := s.aggregateSQL(f, alias)
+				if !top && f.Column == nil {
+					agg = "count(" + alias + ".*)"
+				}
+				cols = append(cols, agg+" AS "+name)
 				expr = aggregateJSON(colRef(g.alias, name), f.Agg)
 			case f.Column != nil && (len(f.Path) > 0 || f.Cast != nil):
 				name := key(s.valueSQL(alias, f, false), orderTerm{nullable: true})
@@ -123,6 +127,9 @@ func (s *stmt) grouped(node *plan.Node, filter plan.Expr, corr func(childAlias s
 			e := &n.Embeds[i]
 			if !e.SpreadOne() {
 				return errUser(CodeInvalidSelect, "embeds other than to-one spreads cannot be grouping keys of an aggregate select")
+			}
+			if !e.Relation.UniqueTarget() {
+				return errUser(CodeInvalidSelect, "spread grouping over %q needs its referenced columns to be a primary or unique key of the target", e.Key)
 			}
 			if depth+1 > s.maxDepth {
 				return errUser(CodeEmbedDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)

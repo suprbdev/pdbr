@@ -3,7 +3,7 @@ SELECT json_build_object('has_next', coalesce(bool_or(s3.__rn > $2), false), 'ha
 FROM (
   SELECT json_build_object('published', g1."__k0", 'newest', to_json(g1."__a0"), 'n', to_json(g1."__a1")) AS data, row_number() OVER (ORDER BY g1."__k0" ASC) AS __rn
   FROM (
-    SELECT t0."published" AS __k0, max(t2."created_at") AS __a0, count(*) AS __a1
+    SELECT t0."published" AS __k0, max(t2."created_at") AS __a0, count(t2.*) AS __a1
     FROM "public"."posts" t0
     LEFT JOIN "public"."users" t2 ON t2."id" = t0."author_id"
     GROUP BY 1

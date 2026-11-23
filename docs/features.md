@@ -364,10 +364,12 @@ these are the deliberate departures (each documented in its topic page):
   built-in scalar types and the API's enums only, never the `reg*` types,
   pseudo-types or composites; PostgREST casts to any type.
 - **Spread embeds** take no alias of their own, cannot be ordered by in
-  an aggregate select, and keep pdbr's duplicate-key rule (a repeated key
-  replaces the earlier value in place); a to-many spread's arrays follow the
-  embed's `order=` then its primary key, so their order is never
-  unspecified. Plain (non-spread) embeds are still not grouping keys.
+  an aggregate select, and follow pdbr's duplicate-key rule (`400` on a key
+  the parent already has); a to-many spread's arrays follow the embed's
+  `order=` then its primary key, so their order is never unspecified.
+  Spread grouping needs a unique target (below); plain (non-spread) embeds
+  are still not grouping keys, and `count()` inside a to-one spread counts
+  the related rows.
 - **JSON paths on composite columns** work in `select=` only: composites are
   never filterable or orderable in pdbr, so `address->>city=eq.x` is
   `400 column_not_filterable`.

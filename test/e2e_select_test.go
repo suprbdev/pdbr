@@ -1,8 +1,12 @@
 package e2e
 
 import (
+	"context"
 	"net/url"
+	"os"
 	"testing"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/suprbdev/pdbr/internal/config"
 )
@@ -200,4 +204,50 @@ func TestSpreadEmbeds(t *testing.T) {
 			t.Fatalf("csv with a nested embed = %d", res.StatusCode)
 		}
 	})
+}
+
+func TestSpreadGroupingNeedsUniqueTarget(t *testing.T) {
+	url := os.Getenv("PDBR_TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("PDBR_TEST_DATABASE_URL not set; run `make test-e2e`")
+	}
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	drop := func() {
+		if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS public.spread_notes`); err != nil {
+			t.Errorf("cleanup: %v", err)
+		}
+	}
+	drop()
+	t.Cleanup(func() {
+		drop()
+		conn.Close(ctx)
+	})
+	for _, ddl := range []string{
+		`CREATE TABLE public.spread_notes (id int PRIMARY KEY, author_name text, author_email text)`,
+		`COMMENT ON TABLE public.spread_notes IS E'@foreignKey (author_name) references users (full_name)\n@foreignKey (author_email) references users (email)'`,
+		`INSERT INTO public.spread_notes VALUES (1, 'Ada Lovelace', 'ada@example.com'), (2, 'Nobody', 'nobody@example.com'), (3, 'Ada Lovelace', 'ada@example.com')`,
+	} {
+		if _, err := conn.Exec(ctx, ddl); err != nil {
+			t.Fatalf("%v\n%s", err, ddl)
+		}
+	}
+	srv := testServer(t, func(c *config.Config) {
+		c.Server.Aggregates = true
+		c.Filters.IndexedOnly = false
+	})
+	base := srv.URL + "/api"
+	res, body := get(t, base+"/spread_notes?select=count(),...users!author_name(mood)")
+	wantProblem(t, res, body, 400, "invalid_select")
+	res, body = get(t, base+"/spread_notes?select=id,...users!author_name(email)&order=id")
+	if res.StatusCode != 200 || !sameJSON(body, `[{"id":1,"email":"ada@example.com"},{"id":2,"email":null},{"id":3,"email":"ada@example.com"}]`) {
+		t.Fatalf("to-one spread over a non-unique key = %d %s", res.StatusCode, body)
+	}
+	res, body = get(t, base+"/spread_notes?select=n:count(),...users!author_email(c:count(),mood)")
+	if res.StatusCode != 200 || !sameJSON(body, `[{"n":2,"c":2,"mood":"happy"},{"n":1,"c":0,"mood":null}]`) {
+		t.Fatalf("spread count() = %d %s", res.StatusCode, body)
+	}
 }

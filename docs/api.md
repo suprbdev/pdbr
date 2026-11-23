@@ -261,9 +261,9 @@ GET /api/users?select=id,...posts(titles:title,ids:id)&posts.order=id.desc
   embeds (an embed inside a to-many spread becomes an array of objects); a
   to-many spread inside another becomes an array of arrays.
 - The spread itself takes no alias (`x:...rel(…)` is `400 invalid_select`);
-  alias its items. Items answering under a key the parent already has
-  replace the parent's value in its position, like any repeated key —
-  alias them (`author:email`).
+  alias its items. An item answering under a key the parent already has is
+  `400 invalid_select`, like any duplicate key (`select=id,...users(id)`):
+  alias it (`...users(author_id:id)`).
 - In an aggregate select, a to-one spread's items are the parent's own:
   its columns group, its aggregates aggregate over the joined rows
   ([aggregates.md](aggregates.md#spread-embeds)). Aggregates inside a

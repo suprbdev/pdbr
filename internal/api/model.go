@@ -116,6 +116,34 @@ type Relation struct {
 // (each row references every row whose period overlaps its own).
 func (r *Relation) ToMany() bool { return !r.Forward || !r.FK.ReferencesOne() }
 
+// UniqueTarget reports whether a forward relation matches at most one row:
+// its referenced columns cover the primary key or a unique key of the
+// target table (row keys only, not WITHOUT OVERLAPS ones). Catalog foreign
+// keys always do; a smart-comment @foreignKey may name any columns.
+func (r *Relation) UniqueTarget() bool {
+	if !r.Forward || r.FK == nil || r.To == nil || r.To.Table == nil {
+		return false
+	}
+	ref := make(map[string]bool, len(r.FK.RefColumns))
+	for _, c := range r.FK.RefColumns {
+		ref[c] = true
+	}
+	t := r.To.Table
+	for _, k := range append([]*introspect.Constraint{t.PrimaryKey}, t.Uniques...) {
+		if !k.RowKey() || len(k.Columns) == 0 {
+			continue
+		}
+		covered := true
+		for _, c := range k.Columns {
+			covered = covered && ref[c]
+		}
+		if covered {
+			return true
+		}
+	}
+	return false
+}
+
 // EqualityPairs returns the FK column pairs compared by equality: every
 // pair of FK.JoinPairs except the period pair of a PERIOD key. These are
 // the columns a nested write copies from the related row; the period

@@ -4,6 +4,9 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/suprbdev/pdbcore/introspect"
+	"github.com/suprbdev/pdbcore/testutil"
+
 	"github.com/suprbdev/pdbr/internal/plan"
 )
 
@@ -249,4 +252,30 @@ func TestSpreadSelect(t *testing.T) {
 	}
 	_, err = doParse(t, b, req{url: "/api/posts?select=id,...users(email,places(id))", header: map[string]string{"Accept": "text/csv"}}, allOn)
 	wantCode(t, err, CodeNotAcceptable)
+}
+
+func TestSpreadGroupingUniqueTarget(t *testing.T) {
+	cat := testutil.FixtureCatalog()
+	cat.Tables = append(cat.Tables, &introspect.Table{
+		Schema: "public", Name: "notes", Kind: introspect.RelTable,
+		Columns: []*introspect.Column{
+			{Name: "id", Position: 1, PGType: "int4", NotNull: true},
+			{Name: "author_name", Position: 2, PGType: "text"},
+		},
+		PrimaryKey:  &introspect.Constraint{Name: "notes_pkey", Columns: []string{"id"}},
+		ForeignKeys: []*introspect.ForeignKey{{Name: "@foreignKey (author_name) references users (full_name)", Columns: []string{"author_name"}, RefSchema: "public", RefTable: "users", RefColumns: []string{"full_name"}}},
+		Privileges:  introspect.Privileges{Select: true},
+	})
+	b := buildCatalog(t, cat, false, []string{"public"}, nil)
+	if b.ByPath["notes"].Relations["users"][0].UniqueTarget() || !b.ByPath["posts"].Relations["users"][0].UniqueTarget() {
+		t.Fatal("UniqueTarget")
+	}
+	_, err := doParse(t, b, req{url: "/api/notes?select=count(),...users(mood)"}, aggOn)
+	wantCode(t, err, CodeInvalidSelect)
+	if _, err := doParse(t, b, req{url: "/api/notes?select=id,...users(mood)"}, aggOn); err != nil {
+		t.Fatalf("plain to-one spread: %v", err)
+	}
+	if _, err := doParse(t, b, req{url: "/api/posts?select=count(),...users(mood)"}, aggOn); err != nil {
+		t.Fatalf("catalog FK spread grouping: %v", err)
+	}
 }

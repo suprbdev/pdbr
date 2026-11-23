@@ -133,6 +133,17 @@ LEFT JOIN "public"."users" t2 ON t2."id" = t0."author_id"
 GROUP BY 2
 ```
 
+- `count()` inside the spread counts the **related** rows,
+  `count(t2.*)` over the join: a group whose rows have no related row
+  answers `0`. Outside the spread `count()` still counts the node's rows
+  (`select=n:count(),...users(c:count())`). PostgREST's documentation does
+  not specify this case.
+- The relation must match at most one row: its referenced columns must be
+  the primary key or a unique key of the target (catalog foreign keys
+  always are). A smart-comment `@foreignKey` onto non-unique columns, or
+  onto a view without `@primaryKey`, would duplicate the scanned rows in
+  the join, so spread grouping over it is `400 invalid_select`; a plain
+  spread over it still works (it reads one related row).
 - An embed filter on the spread (`users.mood=neq.sad`) moves into the join
   condition, so it nulls the spread's keys rather than dropping rows;
   `!inner` drops the rows without a (matching) related row.
