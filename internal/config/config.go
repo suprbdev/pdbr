@@ -58,6 +58,7 @@ type Server struct {
 	AllowUnfilteredMutations bool          `koanf:"allow_unfiltered_mutations" doc:"Allow PATCH and DELETE on a collection route without a filter (every visible row). Off by default: such requests answer 400 unfiltered_mutation."`
 	Aggregates               bool          `koanf:"aggregates" doc:"Allow aggregate functions in select= (count(), col.sum(), col.avg(), col.max(), col.min(); col.extent(), col.union(), col.collect(), col.centroid() on spatial columns), grouped by the other selected items. Off by default (PostgREST db-aggregates-enabled): an aggregate reads every row its filters match, which limit does not bound; requests answer 400 aggregates_disabled."`
 	PartialBulkWrites        bool          `koanf:"partial_bulk_writes" doc:"Let a bulk POST or PUT opt in (Prefer: partial=items) to running each element in its own savepoint, so a failing element is reported without rolling back the others. The response is then 207 with a per-element report whenever one failed. Off by default: the token is ignored, or 400 invalid_preference under handling=strict."`
+	PartialBulkMaxItems      int           `koanf:"partial_bulk_max_items" doc:"Most elements a bulk POST or PUT may carry when it opts in with Prefer: partial=items; each element is its own statement and savepoint, so this bounds the round trips one request makes. Larger bodies answer 413 body_too_large."`
 	TxEnd                    string        `koanf:"tx_end" doc:"How a write's transaction ends (PostgREST db-tx-end): commit, commit-allow-override, rollback or rollback-allow-override. rollback runs every write (POST, PUT, PATCH, DELETE, volatile RPCs) and discards its effects while still answering with the result; the -allow-override forms honour Prefer: tx=commit|rollback, echoed in Preference-Applied. Without an override form Prefer: tx= is ignored, or 400 invalid_preference under handling=strict."`
 }
 
@@ -76,20 +77,21 @@ func DefaultConfig() Config {
 			StatementTimeout: 30 * time.Second,
 		},
 		Server: Server{
-			Addr:              ":8080",
-			BasePath:          "/api",
-			OpenAPI:           true,
-			OpenAPIDomains:    true,
-			RequestTimeout:    30 * time.Second,
-			ReadyzTimeout:     2 * time.Second,
-			MaxBodyBytes:      1 << 20,
-			MaxEmbedDepth:     5,
-			MaxCost:           100000,
-			MaxPageSize:       100,
-			Etags:             true,
-			CSV:               true,
-			CSVEscapeFormulas: true,
-			TxEnd:             "commit",
+			Addr:                ":8080",
+			BasePath:            "/api",
+			OpenAPI:             true,
+			OpenAPIDomains:      true,
+			RequestTimeout:      30 * time.Second,
+			ReadyzTimeout:       2 * time.Second,
+			MaxBodyBytes:        1 << 20,
+			MaxEmbedDepth:       5,
+			MaxCost:             100000,
+			MaxPageSize:         100,
+			Etags:               true,
+			CSV:                 true,
+			CSVEscapeFormulas:   true,
+			TxEnd:               "commit",
+			PartialBulkMaxItems: 1000,
 		},
 		Schema: Schema{Schema: confx.Schema{
 			Schemas:   []string{"public"},
@@ -215,6 +217,9 @@ func validateServer(s Server) []string {
 	}
 	if s.MaxEmbedDepth < 1 {
 		errs = append(errs, "server.max_embed_depth must be >= 1")
+	}
+	if s.PartialBulkMaxItems < 1 {
+		errs = append(errs, "server.partial_bulk_max_items must be >= 1")
 	}
 	switch s.TxEnd {
 	case "commit", "commit-allow-override", "rollback", "rollback-allow-override":

@@ -48,6 +48,18 @@ func TestPreferPartial(t *testing.T) {
 		_, _, err := do("POST", "/api/users", "handling=strict, partial=items", arr, allOn)
 		wantCode(t, err, CodeInvalidPreference)
 	})
+	t.Run("element cap", func(t *testing.T) {
+		capped := on
+		capped.PartialBulkMaxItems = 2
+		if _, partial, err := do("POST", "/api/users", "partial=items", arr, capped); err != nil || !partial {
+			t.Fatalf("at the cap: partial = %v, err = %v", partial, err)
+		}
+		_, _, err := do("POST", "/api/users", "partial=items", `[{"email":"a@b.c"},{"email":"d@e.f"},{"email":"g@h.i"}]`, capped)
+		wantCode(t, err, CodeBodyTooLarge)
+		if _, partial, err := do("POST", "/api/users", "return=minimal", `[{"email":"a@b.c"},{"email":"d@e.f"},{"email":"g@h.i"}]`, capped); err != nil || partial {
+			t.Fatalf("without the token the cap does not apply: partial = %v, err = %v", partial, err)
+		}
+	})
 	t.Run("not applicable to PATCH", func(t *testing.T) {
 		p, err := doParse(t, b, req{method: "PATCH", url: "/api/users?mood=eq.sad", header: withHeader(jsonCT, "Prefer", "partial=items"), body: `{"full_name":"x"}`}, on)
 		if err != nil || p.Prefer.Partial || len(p.Prefer.Applied) != 0 {

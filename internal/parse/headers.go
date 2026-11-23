@@ -189,13 +189,19 @@ func (p *parser) parsePrefer(headers []string) error {
 }
 
 // resolvePartial applies Prefer: partial=items once the body is parsed: it
-// holds for a bulk POST or PUT (a body array) and is otherwise ignored.
-func (p *parser) resolvePartial() {
+// holds for a bulk POST or PUT (a body array) and is otherwise ignored. A
+// body with more elements than Options.PartialBulkMaxItems is 413
+// body_too_large.
+func (p *parser) resolvePartial() error {
 	if !p.wantPartial || p.req.Body == nil || p.req.Body.Objects == nil {
-		return
+		return nil
+	}
+	if limit := p.opts.PartialBulkMaxItems; limit > 0 && len(p.req.Body.Objects) > limit {
+		return errf(CodeBodyTooLarge, "Prefer: partial=items accepts at most %d elements, got %d (server.partial_bulk_max_items)", limit, len(p.req.Body.Objects))
 	}
 	p.req.Prefer.Partial = true
 	p.req.Prefer.Applied = append(p.req.Prefer.Applied, "partial=items")
+	return nil
 }
 
 // resolveCount applies Prefer: count= once the query is parsed: lists
