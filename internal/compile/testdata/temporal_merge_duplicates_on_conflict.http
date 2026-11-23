@@ -1,0 +1,4 @@
+POST /api/tk_rates?on_conflict=room_id,valid_at
+Prefer: resolution=merge-duplicates
+
+{"id": 2, "room_id": 1, "valid_at": "[2026-01-02,2026-01-03)", "price": 1}

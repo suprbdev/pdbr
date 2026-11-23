@@ -1,0 +1,2 @@
+-- request: POST /api/tk_notes
+-- error: 400 invalid_body: missing required column(s): valid_at

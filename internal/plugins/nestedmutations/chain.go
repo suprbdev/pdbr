@@ -36,6 +36,17 @@ type fkFill struct {
 	refCols []string
 }
 
+// fillFrom wires the equality pairs of rel's FK to cte: the period column
+// of a PERIOD key is never copied, the referencing row supplies its own.
+func fillFrom(cte string, rel *api.Relation) fkFill {
+	f := fkFill{cte: cte}
+	for _, p := range rel.EqualityPairs() {
+		f.cols = append(f.cols, p.Column)
+		f.refCols = append(f.refCols, p.RefColumn)
+	}
+	return f
+}
+
 // rowIn is one row to insert.
 type rowIn struct {
 	res    *api.Resource
@@ -61,6 +72,10 @@ type chain struct {
 	// the table; insertedOrder keeps the map deterministic.
 	inserted      map[string][]string
 	insertedOrder []string
+	// withTable marks the tables whose visibility CTE must also read the
+	// table itself: the parents created through a PERIOD relation, which
+	// the new row may share with existing rows whose periods overlap it.
+	withTable map[string]bool
 }
 
 func (g *chain) name(kind string) string {
@@ -113,7 +128,7 @@ func (g *chain) insertRow(in rowIn) (string, error) {
 		if !n.rel.Forward {
 			continue
 		}
-		for _, c := range n.rel.FK.Columns {
+		for _, c := range n.rel.EqualityColumns() {
 			if _, ok := in.cols[c]; ok {
 				return "", errAt(CodeInvalidBody, in.path, "body sets both column %q and nested relation %q", keyFor(in.res, c), n.key)
 			}
@@ -140,7 +155,7 @@ func (g *chain) insertRow(in rowIn) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		fills = append(fills, fkFill{cte: cte, cols: n.rel.FK.Columns, refCols: n.rel.FK.RefColumns})
+		fills = append(fills, fillFrom(cte, n.rel))
 	}
 
 	name := in.cte
@@ -205,7 +220,7 @@ func (g *chain) requireColumns(in rowIn) error {
 	}
 	for _, n := range in.nested {
 		if n.rel.Forward {
-			for _, c := range n.rel.FK.Columns {
+			for _, c := range n.rel.EqualityColumns() {
 				covered[c] = true
 			}
 		}
@@ -261,12 +276,18 @@ func (g *chain) resolveParent(n nestedIn, depth int, path string) (string, error
 	if err != nil {
 		return "", err
 	}
+	if n.rel.FK.Period {
+		g.withTable[to.Table.Schema+"."+to.Table.Name] = true
+	}
 	return g.insertRow(rowIn{res: to, cols: cols, nested: nested, depth: depth + 1, kind: "p", path: p})
 }
 
 // connectParent emits `__p_n AS (SELECT * FROM t WHERE key = $n)`; the keys
 // must be exactly the referenced columns, the primary key or one unique
-// constraint of the related resource.
+// constraint of the related resource. A PERIOD relation names the
+// referenced entity instead (the equality columns of the referenced key, or
+// a row key), and its CTE selects those columns DISTINCT so one row is
+// inserted however many periods the entity has.
 func (g *chain) connectParent(n nestedIn, connect any, p string) (string, error) {
 	to := n.rel.To
 	obj, ok := connect.(map[string]any)
@@ -286,7 +307,11 @@ func (g *chain) connectParent(n nestedIn, connect any, p string) (string, error)
 		byCol[f.Column.Name] = v
 		colNames = append(colNames, f.Column.Name)
 	}
-	if !keySetOK(to, n.rel.FK.RefColumns, colNames) {
+	refCols := n.rel.FK.RefColumns
+	if n.rel.FK.Period {
+		refCols = fillFrom("", n.rel).refCols
+	}
+	if !keySetOK(to, refCols, colNames) {
 		return "", errAt(CodeInvalidBody, p, `"connect" keys must be the primary key or one unique constraint of %q`, to.Path)
 	}
 	var conds []string
@@ -305,8 +330,16 @@ func (g *chain) connectParent(n nestedIn, connect any, p string) (string, error)
 		}
 		conds = append(conds, compile.QuoteIdent(c.Name)+" = "+expr)
 	}
+	list := "*"
+	if n.rel.FK.Period {
+		quoted := make([]string, len(refCols))
+		for i, c := range refCols {
+			quoted[i] = compile.QuoteIdent(c)
+		}
+		list = "DISTINCT " + strings.Join(quoted, ", ")
+	}
 	name := g.name("p")
-	g.ctes = append(g.ctes, name+" AS (\n"+indent("SELECT * FROM "+compile.TableRefSQL(to.Table.Schema, to.Table.Name)+"\nWHERE "+strings.Join(conds, " AND "))+"\n)")
+	g.ctes = append(g.ctes, name+" AS (\n"+indent("SELECT "+list+" FROM "+compile.TableRefSQL(to.Table.Schema, to.Table.Name)+"\nWHERE "+strings.Join(conds, " AND "))+"\n)")
 	return name, nil
 }
 
@@ -314,7 +347,7 @@ func keySetOK(r *api.Resource, refCols, cols []string) bool {
 	if sameSet(refCols, cols) {
 		return true
 	}
-	if pk := r.Table.PrimaryKey; pk != nil && sameSet(pk.Columns, cols) {
+	if pk := r.PrimaryKey(); pk != nil && sameSet(pk.Columns, cols) {
 		return true
 	}
 	return r.UniqueFor(cols) != nil
@@ -379,8 +412,8 @@ func (g *chain) insertChildren(n nestedIn, parentCTE string, depth int, path str
 		if err != nil {
 			return err
 		}
-		fill := &fkFill{cte: parentCTE, cols: n.rel.FK.Columns, refCols: n.rel.FK.RefColumns}
-		if _, err := g.insertRow(rowIn{res: child, cols: cols, nested: nested, depth: depth + 1, kind: "c", path: ep, parent: fill}); err != nil {
+		fill := fillFrom(parentCTE, n.rel)
+		if _, err := g.insertRow(rowIn{res: child, cols: cols, nested: nested, depth: depth + 1, kind: "c", path: ep, parent: &fill}); err != nil {
 			return err
 		}
 	}

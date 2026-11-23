@@ -146,7 +146,11 @@ hints (`comments!parent_id.body=eq.x`).
 - **Backward** (FK points at this table): quantifiers `some` (default),
   `!none`, `!every` apply. **Forward** (FK on this table): a single referenced
   row, so quantifiers are rejected (`400 invalid_filter`); `exists.false` is
-  the "FK null or dangling" test.
+  the "FK null or dangling" test. A forward relation over a PostgreSQL 18
+  `PERIOD` foreign key references every row whose period overlaps, so it
+  takes quantifiers like a backward one; its correlation is `r.k = t.k AND
+  r.valid_at && t.valid_at`
+  ([api.md](api.md#temporal-keys-and-postgresql-18-foreign-keys)).
 - Several conditions on the same relation key and quantifier are ANDed inside
   one `EXISTS`: `posts.published=is.true&posts.title=sw.A` finds users with a
   post that is both published *and* starts with `A`. `not.` on the leaf
@@ -244,7 +248,7 @@ filters:
 | `unknown_column` | 400 | column or computed column does not exist on the resource |
 | `unknown_relation` | 400 | relation key in a filter path matches no FK of the resource |
 | `column_not_filterable` | 400 | excluded by the indexed-only policy or `@omit filter`; relation/computed column closed by `@omit filter`, opt-in mode, `SETOF`, or the `computed` setting / plugin off |
-| `invalid_filter` | 400 | unknown op, op/type mismatch, unparseable value, bad `in.()`/logic syntax, quantifier on a forward relation, relation path deeper than one level, relation syntax while `relations` is off / the plugin is disabled |
+| `invalid_filter` | 400 | unknown op, op/type mismatch, unparseable value, bad `in.()`/logic syntax, quantifier on a to-one (forward, non-`PERIOD`) relation, relation path deeper than one level, relation syntax while `relations` is off / the plugin is disabled |
 | `ambiguous_relation` | 400 | relation key matches several FKs and no hint given |
 
 Errors are RFC 9457 problem documents; see [api.md](api.md#limits-and-errors).

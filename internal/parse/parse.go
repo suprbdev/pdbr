@@ -58,6 +58,7 @@ const (
 	CodeInvalidPreference    = "invalid_preference"
 	CodeUnfilteredMutation   = "unfiltered_mutation"
 	CodeIfMatchUnsupported   = "if_match_unsupported"
+	CodeTemporalConflict     = compile.CodeTemporalConflict
 )
 
 // Options tune the parser; zero values fall back to the documented defaults

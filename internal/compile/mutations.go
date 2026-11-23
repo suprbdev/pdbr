@@ -195,7 +195,9 @@ func (s *stmt) insertDML() string {
 // resolutionSQL renders the ON CONFLICT clause of a POST under Prefer:
 // resolution=: merge-duplicates updates like PUT, ignore-duplicates skips
 // conflicting rows (on any unique constraint when the table has no primary
-// key and no ?on_conflict= names one).
+// key and no ?on_conflict= names one). A temporal (WITHOUT OVERLAPS) target
+// is an exclusion constraint: ignore-duplicates names it with ON CONSTRAINT,
+// the only form PostgreSQL accepts, and merge-duplicates is refused.
 func (s *stmt) resolutionSQL() string {
 	p := s.plan
 	switch p.Prefer.Resolution {
@@ -204,10 +206,17 @@ func (s *stmt) resolutionSQL() string {
 			s.fail(errUser(CodeInvalidBody, "resolution=merge-duplicates needs a primary key or ?on_conflict="))
 			return ""
 		}
+		if p.OnConflict.WithoutOverlaps {
+			s.fail(errUser(CodeTemporalConflict, "a temporal key (WITHOUT OVERLAPS) cannot be updated on conflict"))
+			return ""
+		}
 		return "\n" + conflictUpdate(p.OnConflict, p.Body.Columns)
 	case plan.IgnoreDuplicates:
 		if p.OnConflict == nil {
 			return "\nON CONFLICT DO NOTHING"
+		}
+		if p.OnConflict.WithoutOverlaps {
+			return "\nON CONFLICT ON CONSTRAINT " + quoteIdent(p.OnConflict.Name) + " DO NOTHING"
 		}
 		return "\nON CONFLICT (" + strings.Join(quotedNames(p.OnConflict.Columns), ", ") + ") DO NOTHING"
 	}
@@ -257,6 +266,9 @@ func (s *stmt) upsertDML() (string, error) {
 	}
 	if target == nil {
 		return "", errUser(CodeInvalidBody, "upsert needs a primary key or ?on_conflict=")
+	}
+	if target.WithoutOverlaps {
+		return "", errUser(CodeTemporalConflict, "a temporal key (WITHOUT OVERLAPS) cannot be a conflict target")
 	}
 	cols := body.Columns
 	if len(cols) == 0 {

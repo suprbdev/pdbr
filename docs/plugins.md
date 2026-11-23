@@ -267,8 +267,8 @@ them into `api.Built`; `server.ParseOptions` turns the `Surface` flags into
 `parse.Options` gates and the parser consults the per-object flags, so
 relation filter paths (`posts.title=eq.x`, `posts!none.title=…`,
 `posts!every.title=…`, `users.name=eq.x`, `posts=exists.true|false`),
-related-column order terms (`order=users(name).asc`; backward relations
-aggregate with `MIN`/`MAX`) and computed-column filter/order
+related-column order terms (`order=users(name).asc`; backward relations,
+and forward ones over a `PERIOD` FK, aggregate with `MIN`/`MAX`) and computed-column filter/order
 (`post_count=gt.3`, `order=post_count.desc`) only ever reach the plan when
 the plugin allowed them. The core compiler renders whatever is in the plan
 (`EXISTS` subqueries, correlated/aggregate order subqueries, function calls
@@ -318,7 +318,10 @@ or `{"connect": {<key cols>}}`, exactly one; backward keys take
 `parse.Options.NestedKeys` — only `POST` create bodies (single object)
 accept them, and forward-FK columns stop being required when the key is
 present — and adds a `<name>.connect` schema per connectable resource
-(`oneOf` the primary key / each unique constraint). The `.insert` schema
+(`oneOf` the primary key / each unique constraint; a temporal key without
+its period column, which `PERIOD` relations connect by). Over a `PERIOD` FK
+only the equality columns are copied from the related row
+([mutations.md](mutations.md#temporal-period-relations)). The `.insert` schema
 variants themselves land with the M6 OpenAPI bodies, rendered from
 `Surface.NestedKeys`. **CompileHook** — when the plan carries nested keys it
 resolves them (`create` / `connect` exactly one, nested-in-nested up to

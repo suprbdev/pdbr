@@ -1,0 +1,3 @@
+POST /api/tk_bookings
+
+{"room_id": 1, "valid_at": "[2026-02-01,2026-02-05)", "guest": "bo", "tk_notes": {"create": [{"note": "allergies", "valid_at": "[2026-02-01,2026-02-02)"}]}}

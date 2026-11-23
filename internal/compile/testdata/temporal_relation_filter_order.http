@@ -1,0 +1,1 @@
+GET /api/tk_notes?select=id&tk_bookings!every.guest=eq.ada&order=tk_bookings(guest).desc

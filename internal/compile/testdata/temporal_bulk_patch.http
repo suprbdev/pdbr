@@ -1,0 +1,3 @@
+PATCH /api/tk_bookings?room_id=eq.2&guest=eq.cy
+
+{"guest": "zed"}

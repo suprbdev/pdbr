@@ -507,8 +507,8 @@ func (p *parser) relationCond(res *api.Resource, key string, o operand) (plan.Ex
 	if !rel.Filterable {
 		return nil, errf(CodeColumnNotFilterable, "relation %q on %q is not filterable", relKey, res.Path)
 	}
-	if rel.Forward && quant != plan.Some {
-		return nil, errf(CodeInvalidFilter, "quantifier !%s is not valid on forward relation %q", quant, relKey)
+	if !rel.ToMany() && quant != plan.Some {
+		return nil, errf(CodeInvalidFilter, "quantifier !%s is not valid on to-one relation %q", quant, relKey)
 	}
 	if !dotted {
 		if o.op != "exists" {

@@ -22,6 +22,10 @@ const (
 	CodeInvalidBody        = "invalid_body"
 	CodeMissingArgument    = "missing_argument"
 	CodeNotImplemented     = "not_implemented"
+	// CodeTemporalConflict rejects a temporal (WITHOUT OVERLAPS) key as an
+	// upsert conflict target: ON CONFLICT cannot infer an exclusion
+	// constraint (PostgreSQL would fail with 42P10).
+	CodeTemporalConflict = "temporal_conflict_target"
 )
 
 // UserError is a client-facing error: rendered as a problem with the given

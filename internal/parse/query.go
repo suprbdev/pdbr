@@ -282,12 +282,19 @@ func (p *parser) parseOnConflict(val string, res *api.Resource) error {
 		}
 		cols = append(cols, f.Column.Name)
 	}
-	if pk := res.Table.PrimaryKey; pk != nil && sameSet(pk.Columns, cols) {
+	if pk := res.PrimaryKey(); pk != nil && sameSet(pk.Columns, cols) {
 		p.req.OnConflict = pk
 		return nil
 	}
 	u := res.UniqueFor(cols)
 	if u == nil {
+		if tk := res.TemporalKeyFor(cols); tk != nil {
+			if p.method == plan.POST && p.req.Prefer.Resolution == plan.IgnoreDuplicates {
+				p.req.OnConflict = tk
+				return nil
+			}
+			return errf(CodeTemporalConflict, "on_conflict columns (%s) are a temporal key (WITHOUT OVERLAPS) of %q, which only Prefer: resolution=ignore-duplicates accepts as a conflict target", val, resName(res))
+		}
 		return errf(CodeInvalidBody, "on_conflict columns (%s) match no unique constraint of %q", val, resName(res))
 	}
 	p.req.OnConflict = u

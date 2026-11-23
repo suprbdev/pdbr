@@ -196,7 +196,7 @@ func (p *parser) bodyObject(res *api.Resource, obj map[string]any, allowNested b
 		if !n.Relation.Forward {
 			continue
 		}
-		for _, c := range n.Relation.FK.Columns {
+		for _, c := range n.Relation.EqualityColumns() {
 			if _, ok := out[c]; ok {
 				return nil, nil, errf(CodeInvalidBody, "body sets both column %q and nested relation %q", c, key)
 			}
@@ -216,7 +216,10 @@ func (p *parser) checkBody(res *api.Resource, body *plan.Body) error {
 		return nil
 	case plan.PUT:
 		if p.req.OnConflict == nil {
-			p.req.OnConflict = res.Table.PrimaryKey
+			p.req.OnConflict = res.PrimaryKey()
+		}
+		if p.req.OnConflict == nil && res.Table.PrimaryKey != nil {
+			return errf(CodeTemporalConflict, "the primary key of %q is a temporal key (WITHOUT OVERLAPS), which cannot be a conflict target; PUT needs ?on_conflict= naming a unique constraint", resName(res))
 		}
 		if p.req.OnConflict == nil {
 			return errf(CodeInvalidBody, "resource %q has no primary key; PUT needs ?on_conflict= naming a unique constraint", resName(res))
@@ -234,6 +237,9 @@ func (p *parser) checkBody(res *api.Resource, body *plan.Body) error {
 		case plan.IgnoreDuplicates:
 			if p.req.OnConflict == nil {
 				p.req.OnConflict = res.Table.PrimaryKey
+			}
+			if p.req.OnConflict != nil && p.req.OnConflict.WithoutOverlaps && p.req.Prefer.Resolution == plan.MergeDuplicates {
+				return errf(CodeTemporalConflict, "the primary key of %q is a temporal key (WITHOUT OVERLAPS), which cannot be updated on conflict; resolution=merge-duplicates needs ?on_conflict= naming a unique constraint", resName(res))
 			}
 			if p.req.OnConflict == nil && p.req.Prefer.Resolution == plan.MergeDuplicates {
 				return errf(CodeInvalidBody, "resource %q has no primary key; resolution=merge-duplicates needs ?on_conflict= naming a unique constraint", resName(res))
@@ -279,7 +285,7 @@ func requiredColumns(res *api.Resource, obj map[string]any, nested map[string]*p
 	covered := map[string]bool{}
 	for _, n := range nested {
 		if n.Relation != nil && n.Relation.Forward {
-			for _, c := range n.Relation.FK.Columns {
+			for _, c := range n.Relation.EqualityColumns() {
 				covered[c] = true
 			}
 		}
