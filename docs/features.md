@@ -139,6 +139,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] `If-Match` on `PATCH`/`DELETE` — two-CTE atomic check → `412` `etag_mismatch` / `404` (new)
 - [x] `Prefer: return=minimal` → `204` (or `201` + `Location` on create) (new)
 - [x] `select=` and embeds on mutation responses; `RETURNING` lists only referenced columns (parity)
+- [x] Mutation-response embeds back to the mutated table see it as it stands after the statement (created and updated rows included, deleted rows excluded) via a `__vis` visibility CTE, emitted only when an embed reads the table (parity)
 - [x] Body validation: unknown key → 400 `invalid_body`; generated/identity → 400 `column_readonly`; required = `NOT NULL && !HasDefault` on create; PATCH all optional (parity)
 - [x] Composite-typed columns accept nested objects (and arrays of them) (parity)
 - [x] Privilege-gated routes (no INSERT grant → no `POST` → `405` + `Allow`) (parity)

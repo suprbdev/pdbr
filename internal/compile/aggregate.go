@@ -123,9 +123,9 @@ func (s *stmt) grouped(node *plan.Node, filter plan.Expr, corr func(childAlias s
 	if err != nil {
 		return nil, err
 	}
-	from := s.sourceRef(t)
+	from := s.sourceRef(t, alias)
 	if root {
-		from = s.rootRef(t)
+		from = s.rootRef(t, alias)
 	}
 	group := ""
 	if len(groupBy) > 0 {
@@ -191,7 +191,7 @@ func (s *stmt) groupCountSQL(node *plan.Node) (string, error) {
 	}
 	where = strings.Replace(where, "\nWHERE ", " WHERE ", 1)
 	return fmt.Sprintf("(SELECT count(*) FROM (SELECT 1 FROM %s %s%s GROUP BY %s) %s)",
-		s.rootRef(r.Table), alias, where, strings.Join(keys, ", "), s.alias("g")), nil
+		s.rootRef(r.Table, alias), alias, where, strings.Join(keys, ", "), s.alias("g")), nil
 }
 
 // orderTerms maps a node's order terms onto its grouping keys (the parser

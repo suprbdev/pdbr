@@ -1,0 +1,3 @@
+PATCH /api/posts/1?select=id,users(id,email)&users.posts.title=eq.x
+
+{"title": "x"}

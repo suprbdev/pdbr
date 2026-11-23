@@ -374,8 +374,9 @@ Golden files: `post_merge_duplicates`, `post_ignore_duplicates`,
 
 `select=` (same grammar as [reads](api.md#select), including embeds and aliases) shapes the
 returned row. It compiles against the `__mut` CTE exactly like a table row
-source, so embeds are `LEFT JOIN LATERAL` against the real tables correlated on
-`__mut` columns:
+source, so embeds are `LEFT JOIN LATERAL` subqueries correlated on `__mut`
+columns (against the real tables, except for the mutated table itself, see
+[embeds back to the mutated table](#embeds-back-to-the-mutated-table)):
 
 ```http
 POST /api/posts?select=id,title,users(id,email)
@@ -410,6 +411,75 @@ rejected on mutation routes (`400`) — only `select=` (and `on_conflict` for
 PUT) is meaningful; the exception is bulk `PATCH`/`DELETE` on the collection
 path, where the filters select the rows. Per-embed params (`posts.order=`, `posts.limit=`) inside
 `select=` embeds are honoured.
+
+### Embeds back to the mutated table
+
+Every table scan of the statement shares one snapshot, so a plain embed that
+leads back to the mutated table (`POST /posts?select=id,users(posts(id))`)
+would read it as it stood **before** the DML: the new post missing, the old
+version of a patched row, a deleted row still listed. Such embeds (and the
+embed filters, orders and relation filters inside them) read a visibility CTE
+instead, the table as it stands after the statement:
+
+```sql
+__vis AS NOT MATERIALIZED (
+  SELECT <cols> FROM t WHERE <rows the DML left alone>
+  UNION ALL SELECT __mut.<cols> FROM __mut      -- not for DELETE
+)
+```
+
+| Mutation | Rows of `t` kept (the pre-statement versions of the replaced rows go) |
+|---|---|
+| `POST` (single, bulk, `resolution=ignore-duplicates`) | all |
+| keyed `PATCH`/`DELETE` (PK or `/by/…`, with or without `If-Match`) | `(<the DML's own key lookup>) IS NOT TRUE`, placeholders reused, so it still matches the old version when the patch changes the key |
+| single-object `PUT` / `POST` + `resolution=merge-duplicates` | `(<conflict key = input>) IS NOT TRUE` |
+| bulk `PUT` / merge-duplicates (or a conflict column left to its default) | `NOT EXISTS (SELECT 1 FROM __mut WHERE __mut.k = t.k)` over the conflict key |
+| bulk `PATCH`/`DELETE` by filter | `NOT EXISTS (…)` over the first `NOT NULL` row key (PK, then unique constraints) the patch leaves alone: exact even when an `UPDATE`/`DELETE` policy skips rows the filter matched. Only when every such key is patched (or there is none) does it fall back to `(<filter>) IS NOT TRUE`, which hides such skipped rows from the embed |
+
+```http
+PATCH /api/posts/1?select=id,title,users(posts(id,title))
+```
+
+```sql
+WITH __mut AS (
+  UPDATE "public"."posts"
+  SET "title" = $1
+  WHERE "public"."posts"."id" = $2
+  RETURNING "id", "author_id", "title"
+),
+__vis AS NOT MATERIALIZED (
+  SELECT "id", "author_id", "title" FROM "public"."posts" WHERE ("public"."posts"."id" = $2) IS NOT TRUE
+  UNION ALL SELECT __mut."id", __mut."author_id", __mut."title" FROM __mut
+)
+SELECT json_build_object('id', t0."id", 'title', t0."title", 'users', l5.data) AS data
+FROM __mut t0
+LEFT JOIN LATERAL (
+  SELECT json_build_object('posts', l4.data) AS data
+  FROM "public"."users" t1
+  LEFT JOIN LATERAL (
+    … FROM __vis t2 WHERE t2."author_id" = t1."id" …
+  ) l4 ON true
+  WHERE t1."id" = t0."author_id"
+  LIMIT 1
+) l5 ON true
+```
+
+- The CTE is emitted only when the response reads the mutated table through
+  an embed; every other mutation compiles to the same SQL as before.
+- It projects only the columns read through it, and `RETURNING` widens to
+  them (plus the key a bulk exclusion reads from `__mut`), so column-level
+  grants keep working ([RLS caveats](#rls-caveats-for-returning)).
+- RLS: the table half runs under the role's policies; `RETURNING` rows have
+  already passed the `SELECT` policies.
+- `NOT MATERIALIZED` inlines it at every reference, so the correlated embed
+  predicates still reach the table's indexes. No `RETURNING old.*`: works on
+  PostgreSQL 14+.
+- Computed columns evaluated inside embeds see the merged row, but a
+  computed function that scans the mutated table itself
+  (`users_post_count`) still runs in the statement's snapshot.
+- Aggregates (`count()`) are refused on mutation responses, as before.
+
+(goldens `mutvis_*`; e2e `test/e2e_mutation_visibility_test.go`.)
 
 ## Body validation
 
@@ -593,10 +663,10 @@ parser stores claimed keys raw in `plan.Body.Nested[key].Raw`, single-object
 set), `parse.CoerceObject` / `parse.CoerceValue` (body-rule coercion of nested
 rows and `connect` keys), `compile.InputValue` (the core's value rendering:
 composites, arrays, json, PostGIS constructors) and
-`compile.MutationWithCTEs(req, ctes, ps, overrides)` (response compilation
+`compile.MutationWithCTEs(req, ctes, ps, inserted)` (response compilation
 over the plugin's CTE chain; the `%%RETURNING%%` placeholder in `__mut`
-receives the narrow column list; `overrides` maps `"schema.table"` to a
-visibility CTE).
+receives the narrow column list; `inserted` maps `"schema.table"` to the
+chain's insert CTEs, from which the core builds the visibility CTEs).
 
 `POST` create only (single object; bulk bodies never accept nested keys).
 Relation keys inside a body use the same names as `select=` embeds (forward
@@ -643,10 +713,11 @@ Rules:
   ([openapi.md](openapi.md)).
 
 Shape — parents first (`__p_n`), then the main row (`__mut`), then children
-(`__c_n`), then one visibility CTE (`__vis_n`) per table that received
-inserts; one counter numbers them in emission order. Children are inserted
-from `SELECT … FROM <parent cte>` so FK values come from the parent's
-`RETURNING`:
+(`__c_n`), all numbered by one counter in emission order, then one
+visibility CTE per table the response reads that received inserts
+(`__vis_n`, numbered in the order the response first reads them; `__vis`
+for the root table). Children are inserted from `SELECT … FROM <parent cte>`
+so FK values come from the parent's `RETURNING`:
 
 ```http
 POST /api/users?select=id,email,posts(id,title)
@@ -673,16 +744,18 @@ __c_2 AS (
   FROM __mut
   RETURNING *
 ),
-__vis_3 AS (
-  SELECT * FROM __c_1 UNION ALL SELECT * FROM __c_2
+__vis_1 AS NOT MATERIALIZED (
+  SELECT "id", "author_id", "title" FROM "public"."posts"
+  UNION ALL SELECT "id", "author_id", "title" FROM __c_1
+  UNION ALL SELECT "id", "author_id", "title" FROM __c_2
 )
-SELECT json_build_object('row', json_build_object('id', t0."id", 'email', t0."email", 'posts', l3.data), 'key', jsonb_build_array(t0."id")) AS data
+SELECT json_build_object('key', jsonb_build_array(t0."id"), 'row', json_build_object('id', t0."id", 'email', t0."email", 'posts', l3.data)) AS data
 FROM __mut t0
 LEFT JOIN LATERAL (
   SELECT coalesce(json_agg(s2.data), '[]'::json) AS data
   FROM (
     SELECT json_build_object('id', t1."id", 'title', t1."title") AS data
-    FROM __vis_3 t1
+    FROM __vis_1 t1
     WHERE t1."author_id" = t0."id"
     ORDER BY t1."id" ASC
     LIMIT $4
@@ -705,10 +778,13 @@ and PostGIS GeoJSON/WKT inside nested rows render exactly as in a plain
 
 Visibility: rows written by a CTE are invisible to plain table scans in the
 same statement, so the response reads every table that received nested
-inserts — children **and** created parents — from a `UNION ALL` of its
-insert CTEs (`__vis_n`, passed as `MutationWithCTEs` overrides) instead of
-the table. Only rows created in this request appear in those embeds; a
-`connect`ed parent is read from the table as usual. Nested CTEs use
+inserts — children **and** created parents — from a visibility CTE: the
+table `UNION ALL` its insert CTEs (`__vis_n`, built by the core from the
+`inserted` map passed to `MutationWithCTEs`), projected to the columns the
+response reads. Embeds back to the root table read `__vis` (table plus
+`__mut`, plus any nested insert into the same table), exactly as for a
+[plain mutation](#embeds-back-to-the-mutated-table). A `connect`ed parent is
+an existing row and appears through the table half. Nested CTEs use
 `RETURNING *` (they are internal row sources); the column-grant-friendly
 narrow `RETURNING` applies to `__mut` and the outer response only.
 
@@ -725,7 +801,7 @@ otherwise).
 | Direction | Body | Meaning |
 |---|---|---|
 | forward `connect` | `"room_bookings": {"connect": {"room_id": 1}}` | names the referenced entity: the equality columns of the referenced key (or one of its plain keys); `__p_n AS (SELECT DISTINCT "room_id" FROM … WHERE "room_id" = $1)`, so one row is inserted however many periods match |
-| forward `create` | `"room_bookings": {"create": {"room_id": 1, "valid_at": "…", …}}` | inserts the parent; the child takes `room_id` from it and keeps its own `valid_at`. The response's embed reads the table **and** the new parent (`__vis_n AS (SELECT * FROM "public"."room_bookings" UNION ALL SELECT * FROM __p_1)`), because the child may overlap existing periods too |
+| forward `create` | `"room_bookings": {"create": {"room_id": 1, "valid_at": "…", …}}` | inserts the parent; the child takes `room_id` from it and keeps its own `valid_at`. The response's embed reads the table **and** the new parent (`__vis_n AS NOT MATERIALIZED (SELECT … FROM "public"."room_bookings" UNION ALL SELECT … FROM __p_1)`, like every visibility CTE), because the child may overlap existing periods too |
 | backward `create` | `"booking_notes": {"create": [{"note": "…", "valid_at": "…"}]}` | children take `room_id` from the new parent, each with its own period |
 
 (goldens `temporal_nested_connect`, `temporal_nested_create_parent`,
@@ -759,6 +835,9 @@ consequences:
 - **Column-level grants.** pdbr compiles `RETURNING` from the `select=` list
   (or all columns when absent), so a role granted `SELECT` on a subset of
   columns can run mutations as long as `select=` stays within that subset.
+  An embed back to the mutated table adds the columns it reads (and, for
+  bulk `PATCH`/`DELETE` and bulk upserts, the key identifying the written
+  rows) to both `RETURNING` and the [visibility CTE](#embeds-back-to-the-mutated-table).
   Exceptions that need every column: computed columns in `select=` (row-type
   argument), `If-Match` (hashes the whole row), and nested-mutation inner
   CTEs (`RETURNING *`).

@@ -332,9 +332,10 @@ DML with a multi-CTE statement (`__p_n` parents inserted / looked-up first,
 `__mut` main row, `__c_n` children reading the FK from their parent CTE) and
 hands the chain to `compile.MutationWithCTEs`, which reuses the core
 response compiler (`select=` embeds included). Rows inserted in CTEs are
-invisible to same-statement table scans, so it also passes row-source
-overrides mapping every table that received inserts (children and created
-parents) to a `__vis_n` `UNION ALL` of its insert CTEs. **RequestHook** —
+invisible to same-statement table scans, so it also passes the insert CTEs
+of every table that received inserts (children and created parents); the
+core reads such a table, when the response embeds it, from a `__vis_n`
+visibility CTE (the table `UNION ALL` those CTEs). **RequestHook** —
 sets `op.ForceTx` when the plan has nested keys (`force_transactions: false`
 opts out). Depth beyond `max_depth` (default 3, root = 1) → `400
 embed_depth_exceeded`; `create` on a related resource without `POST` → `400
@@ -387,7 +388,7 @@ parameter numbering and identifier quoting compose with the core compiler:
 |---|---|
 | `compile.ParamSet` — `Add(v any) string`, `Args() []any` | append a bind parameter, get its `$n` placeholder; the core continues numbering after yours |
 | `(*ParamSet).SpatialValue(col *introspect.Column, v any) (string, error)` | render a GeoJSON/WKT input for a spatial column as its single-parameter constructor expression (`ST_GeomFromGeoJSON($3)` …); mandatory for spatial columns — a bare parameter would fail type resolution |
-| `(*Compiler).MutationWithCTEs(req *Request, ctes string, ps *ParamSet, overrides map[string]string) (*Statement, error)` | compile the response (`select=`, embeds, RETURNING projection) against a caller-supplied CTE chain whose final CTE is `__mut`; `overrides` remaps `"schema.table"` row sources to CTE names for same-snapshot visibility |
+| `(*Compiler).MutationWithCTEs(req *Request, ctes string, ps *ParamSet, inserted map[string][]string) (*Statement, error)` | compile the response (`select=`, embeds, RETURNING projection) against a caller-supplied CTE chain that defines `__mut` (a plain INSERT); `inserted` maps `"schema.table"` to the chain's other CTEs holding rows the statement inserted into it (`RETURNING *`), and embeds reading those tables or the mutated one read a visibility CTE (table `UNION ALL` the new rows) for same-snapshot visibility |
 | `compile.CoerceInput(built *api.Built, col *introspect.Column, v any) any` | convert a JSON body value into a driver-friendly parameter (enum labels, json/jsonb re-encoded as text, arrays element-wise, `int8`/`numeric` strings); route every column value through it before `ParamSet.Add` |
 | `(*Compiler).InputValue(col *introspect.Column, v any, ps *ParamSet) (string, error)` | render a (parser-coerced) body value as the parameter expression the core DML uses — composites `jsonb_populate_record(NULL::t, $n::jsonb)`, arrays `$n::type[]`, json `$n::jsonb`, PostGIS constructors, bare `$n` otherwise — appending to `ps`; the one-stop rendering for plugin-built INSERT tuples (nested-mutations) |
 | `parse.CoerceObject(built, res, obj)` / `parse.CoerceValue(built, col, v)` | apply the body-validation rules and coercion table to a nested row (unknown key / readonly / uncoercible → `UserError`) or to one value regardless of writability (`connect` keys) |

@@ -10,8 +10,9 @@ __mut AS (
   FROM __p_1
   RETURNING "id", "room_id", "valid_at"
 ),
-__vis_2 AS (
-  SELECT * FROM "public"."tk_bookings" UNION ALL SELECT * FROM __p_1
+__vis_1 AS NOT MATERIALIZED (
+  SELECT "room_id", "valid_at", "guest" FROM "public"."tk_bookings"
+  UNION ALL SELECT "room_id", "valid_at", "guest" FROM __p_1
 )
 SELECT json_build_object('key', jsonb_build_array(t0."id"), 'row', json_build_object('id', t0."id", 'tk_bookings', l3.data)) AS data
 FROM __mut t0
@@ -19,7 +20,7 @@ LEFT JOIN LATERAL (
   SELECT coalesce(json_agg(s2.data), '[]'::json) AS data
   FROM (
     SELECT json_build_object('guest', t1."guest") AS data
-    FROM __vis_2 t1
+    FROM __vis_1 t1
     WHERE t1."room_id" = t0."room_id" AND t1."valid_at" && t0."valid_at"
     ORDER BY t1."room_id" ASC, t1."valid_at" ASC
     LIMIT $6

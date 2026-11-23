@@ -83,13 +83,18 @@ func (c *Compiler) RowJSON(req *Request, node *plan.Node, alias string, ps *Para
 //     caller's own RETURNING stands;
 //   - params created through ps keep their numbers and the response's params
 //     continue after them; ps must be the set used to render the chain;
-//   - overrides remaps "schema.table" row sources to CTE names so embeds
-//     read rows written earlier in the statement (a plain table scan cannot
-//     see them within one snapshot: the visibility CTE of nested-mutations).
+//   - inserted maps "schema.table" to the chain's other CTEs (besides
+//     __mut) holding rows the statement inserted into that table, each
+//     projecting every column (RETURNING *). A plain table scan cannot see
+//     them within one snapshot, so embeds reading such a table, or the
+//     mutated one, read a visibility CTE instead: the table UNION ALL those
+//     rows (and __mut's), emitted only when the response reads it. __mut
+//     must be a plain INSERT: none of the table's existing rows is
+//     replaced.
 //
 // This is the extension point the nested-mutations CompileHook uses to
 // replace the DML while reusing response compilation.
-func (c *Compiler) MutationWithCTEs(req *Request, ctes string, ps *ParamSet, overrides map[string]string) (*Statement, error) {
+func (c *Compiler) MutationWithCTEs(req *Request, ctes string, ps *ParamSet, inserted map[string][]string) (*Statement, error) {
 	if req == nil || req.Plan == nil || req.Plan.Resource == nil {
 		return nil, fmt.Errorf("compile: MutationWithCTEs needs a resource request")
 	}
@@ -100,8 +105,7 @@ func (c *Compiler) MutationWithCTEs(req *Request, ctes string, ps *ParamSet, ove
 		ps = &ParamSet{}
 	}
 	s := c.newStmt(req, ps)
-	s.overrides = overrides
-	return s.finish(s.mutationResponse(strings.TrimSpace(ctes)))
+	return s.finish(s.mutationResponse(strings.TrimSpace(ctes), replaced{}, inserted))
 }
 
 // CoerceInput converts an input value into a driver-friendly parameter for

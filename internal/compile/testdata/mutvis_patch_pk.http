@@ -1,0 +1,3 @@
+PATCH /api/posts/1?select=id,title,users(posts(id,title))&users.posts.title=like.patched*
+
+{"title": "patched-probe"}

@@ -16,8 +16,10 @@ __c_2 AS (
   FROM __mut
   RETURNING *
 ),
-__vis_3 AS (
-  SELECT * FROM __c_1 UNION ALL SELECT * FROM __c_2
+__vis_1 AS NOT MATERIALIZED (
+  SELECT "id", "author_id", "title" FROM "public"."posts"
+  UNION ALL SELECT "id", "author_id", "title" FROM __c_1
+  UNION ALL SELECT "id", "author_id", "title" FROM __c_2
 )
 SELECT json_build_object('key', jsonb_build_array(t0."id"), 'row', json_build_object('id', t0."id", 'email', t0."email", 'posts', l3.data)) AS data
 FROM __mut t0
@@ -25,7 +27,7 @@ LEFT JOIN LATERAL (
   SELECT coalesce(json_agg(s2.data), '[]'::json) AS data
   FROM (
     SELECT json_build_object('id', t1."id", 'title', t1."title") AS data
-    FROM __vis_3 t1
+    FROM __vis_1 t1
     WHERE t1."author_id" = t0."id"
     ORDER BY t1."id" ASC
     LIMIT $5

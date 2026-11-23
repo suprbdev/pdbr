@@ -192,7 +192,7 @@ func hasNested(req *compile.Request) bool {
 
 func (p *Plugin) compileNested(req *compile.Request) (*compile.Statement, error) {
 	c := compile.New(req.Built)
-	g := &chain{p: p, c: c, built: req.Built, ps: &compile.ParamSet{}, inserted: map[string][]string{}, withTable: map[string]bool{}}
+	g := &chain{p: p, c: c, built: req.Built, ps: &compile.ParamSet{}, inserted: map[string][]string{}}
 	root := req.Plan.Resource
 	nested := make([]nestedIn, 0, len(req.Plan.Body.Nested))
 	for key, n := range req.Plan.Body.Nested {
@@ -202,22 +202,7 @@ func (p *Plugin) compileNested(req *compile.Request) (*compile.Statement, error)
 	if _, err := g.insertRow(rowIn{res: root, cols: req.Plan.Body.Object, nested: nested, depth: 1, cte: "__mut"}); err != nil {
 		return nil, err
 	}
-	overrides := map[string]string{}
-	for _, table := range g.insertedOrder {
-		names := g.inserted[table]
-		var parts []string
-		if g.withTable[table] {
-			res := req.Built.Resources[table]
-			parts = append(parts, "SELECT * FROM "+compile.TableRefSQL(res.Table.Schema, res.Table.Name))
-		}
-		for _, n := range names {
-			parts = append(parts, "SELECT * FROM "+n)
-		}
-		vis := g.name("vis")
-		g.ctes = append(g.ctes, vis+" AS (\n  "+strings.Join(parts, " UNION ALL ")+"\n)")
-		overrides[table] = vis
-	}
-	return c.MutationWithCTEs(req, strings.Join(g.ctes, ",\n"), g.ps, overrides)
+	return c.MutationWithCTEs(req, strings.Join(g.ctes, ",\n"), g.ps, g.inserted)
 }
 
 // BeforeRequest forces a transaction for a request carrying nested keys

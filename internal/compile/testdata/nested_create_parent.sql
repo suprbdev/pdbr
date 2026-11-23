@@ -10,14 +10,15 @@ __mut AS (
   FROM __p_1
   RETURNING "id", "author_id", "title"
 ),
-__vis_2 AS (
-  SELECT * FROM __p_1
+__vis_1 AS NOT MATERIALIZED (
+  SELECT "id", "email" FROM "public"."users"
+  UNION ALL SELECT "id", "email" FROM __p_1
 )
 SELECT json_build_object('key', jsonb_build_array(t0."id"), 'row', json_build_object('id', t0."id", 'title', t0."title", 'users', l2.data)) AS data
 FROM __mut t0
 LEFT JOIN LATERAL (
   SELECT json_build_object('id', t1."id", 'email', t1."email") AS data
-  FROM __vis_2 t1
+  FROM __vis_1 t1
   WHERE t1."id" = t0."author_id"
   LIMIT 1
 ) l2 ON true

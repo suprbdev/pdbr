@@ -1,0 +1,3 @@
+PATCH /api/users/by/email/a@b.c?select=id,email,posts(users(email))
+
+{"email": "new@b.c"}

@@ -93,7 +93,7 @@ func (s *stmt) anchorVals(t *introspect.Table, terms []orderTerm, keys []any) ([
 			}
 			subWhere = strings.Join(conds, " AND ")
 		}
-		vals[i] = fmt.Sprintf("(SELECT %s FROM %s __a WHERE %s)", s.orderExprSQL(term, "__a"), s.sourceRef(t), subWhere)
+		vals[i] = fmt.Sprintf("(SELECT %s FROM %s __a WHERE %s)", s.orderExprSQL(term, "__a"), s.sourceRef(t, "__a"), subWhere)
 	}
 	return vals, nil
 }

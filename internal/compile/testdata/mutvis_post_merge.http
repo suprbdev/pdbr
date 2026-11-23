@@ -1,0 +1,4 @@
+POST /api/users?on_conflict=email&select=id,posts(users(full_name))
+Prefer: resolution=merge-duplicates
+
+{"email": "a@b.c", "full_name": "Ada"}

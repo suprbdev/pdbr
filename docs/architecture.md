@@ -314,7 +314,7 @@ func (c *Compiler) Compile(ctx context.Context, req *Request) (*Statement, error
 
 // hooks.go — exported for CompileHook plugins (compose param numbering with the core):
 type ParamSet struct{ … }        // Add(v) → "$n"; Args(); SpatialValue(col, v)
-func (c *Compiler) MutationWithCTEs(req *Request, ctes string, ps *ParamSet, overrides map[string]string) (*Statement, error)
+func (c *Compiler) MutationWithCTEs(req *Request, ctes string, ps *ParamSet, inserted map[string][]string) (*Statement, error)
 func (c *Compiler) RowJSON(req *Request, node *plan.Node, alias string, ps *ParamSet) (jsonExpr, laterals string, err error)
 func QuoteIdent(s string) string
 func TableRefSQL(schema, table string) string
@@ -351,7 +351,8 @@ Body shape)`:
 | RPC single row | `SELECT CASE WHEN t0 IS NULL THEN NULL ELSE json_build_object(…) END AS data FROM "public"."publish_post"($1::"int4") AS t0 <laterals>` — shape `scalar` (NULL row → body `null`, 200) |
 | RPC `SETOF <table>` | the list statement (`page` shape) with the root scan replaced by `FROM "public"."search_posts"("term" => $1::"text") t0` (`stmt.rootSource`), the resource's filters/order/limit/offset/count, cursors off (offset `Link`s only) |
 | RPC `SETOF <scalar>` / `SETOF <composite>` | `SELECT coalesce(json_agg(<value>), '[]') AS data FROM (SELECT __v.v FROM "public"."f"($1) AS __v(v) LIMIT $2 [OFFSET $3]) AS __s` — shape `scalar` |
-| nested mutations | `WITH __p0 AS (INSERT INTO parents … RETURNING *), __mut AS (INSERT INTO posts (author_id, …) SELECT __p0.id, $n FROM __p0 RETURNING *), __c1 AS (INSERT INTO comments … FROM __mut RETURNING *), __vis_comments AS (SELECT * FROM __c1) SELECT … FROM __mut t0 <laterals reading __vis_*>` — built by the nested-mutations CompileHook via `MutationWithCTEs`; child rows are `UNION ALL`ed into a visibility CTE so embeds in the response see uncommitted inserts |
+| nested mutations | `WITH __p_1 AS (INSERT INTO users … RETURNING *), __mut AS (INSERT INTO posts (author_id, …) SELECT __p_1.id, $n FROM __p_1 RETURNING …), __c_2 AS (INSERT INTO comments … FROM __mut RETURNING *), __vis_1 AS NOT MATERIALIZED (SELECT <cols> FROM comments UNION ALL SELECT <cols> FROM __c_2) SELECT … FROM __mut t0 <laterals reading __vis_*>` — built by the nested-mutations CompileHook via `MutationWithCTEs`; new rows are `UNION ALL`ed with the table into a visibility CTE so embeds in the response see them |
+| mutation embed back to the mutated table | `__vis AS NOT MATERIALIZED (SELECT <cols> FROM t WHERE <rows the DML left alone> UNION ALL SELECT __mut.<cols> FROM __mut)` (no `UNION ALL` for `DELETE`), emitted only when an embed reads `t` ([mutations.md](mutations.md#embeds-back-to-the-mutated-table)) |
 
 Notes:
 
