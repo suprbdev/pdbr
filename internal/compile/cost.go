@@ -20,7 +20,8 @@ const defaultEmbedFanout = 10
 //
 // An aggregated list (a node selecting an aggregate function) is costed as
 // if it had no limit: limit bounds the groups it returns, not the rows the
-// aggregate reads (root: maxPageSize, embed: 10).
+// aggregate reads (root: maxPageSize, embed: 10). A total on an aggregated
+// root scans again: it adds maxPageSize × its grouping keys.
 //
 // @costMultiplier on an FK replaces a backward embed's multiplier when lower.
 // exec compares the result to server.max_cost before compiling.
@@ -50,7 +51,25 @@ func Cost(req *plan.Request, maxPageSize int) int {
 			mult = maxPageSize
 		}
 	}
-	return 1 + mult*nodeCost(node, maxPageSize)
+	cost := 1 + mult*nodeCost(node, maxPageSize)
+	if req.Count && node.Aggregated() {
+		cost += maxPageSize * groupKeys(node)
+	}
+	return cost
+}
+
+// groupKeys counts the grouping keys of an aggregated node.
+func groupKeys(node *plan.Node) int {
+	n := 0
+	if node.Star && node.Resource != nil {
+		n = len(node.Resource.Columns)
+	}
+	for i := range node.Fields {
+		if node.Fields[i].Agg == nil {
+			n++
+		}
+	}
+	return n
 }
 
 func nodeCost(node *plan.Node, maxPageSize int) int {

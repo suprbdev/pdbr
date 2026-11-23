@@ -176,10 +176,17 @@ type Aggregate struct {
 	Func AggFunc
 	// InputCast is the type the input column is cast to before
 	// aggregating (amount::int.sum()); OutputCast the type the result is
-	// cast to (amount.sum()::text). Both are lower-case type names
-	// validated by the parser ("" = no cast).
-	InputCast  string
-	OutputCast string
+	// cast to (amount.sum()::text). The parser admits only allowlisted
+	// built-in types and the catalog's enums (nil = no cast).
+	InputCast  *TypeRef
+	OutputCast *TypeRef
+}
+
+// TypeRef names a type by schema and pg_type name; the compiler renders it
+// schema-qualified and quoted ("pg_catalog"."int4").
+type TypeRef struct {
+	Schema string
+	Name   string
 }
 
 // Aggregated reports whether the node selects any aggregate function, which

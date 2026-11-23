@@ -123,14 +123,15 @@ item      := field | alias ":" field | embed | "*" | [ alias ":" ] aggregate
 field     := name [ "(" k "=" v ("," k "=" v)* ")" ]      -- args only for spatial projection (transform=<srid>, simplify=<tol>) in v1
 embed     := relkey [ "!" hint ]* "(" select ")"           -- hint := fk_name | column | "inner"
 name      := column | computed column | postgis pseudo-column
-aggregate := "count()" | column [ "::" type ] "." fn "()" [ "::" type ]   -- server.aggregates
+aggregate := "count()" | column [ "::" type ] "." fn "()" [ "::" type ]   -- server.aggregates; type: allowlisted built-in or enum
 fn        := count | sum | avg | max | min | extent | union | collect | centroid
 ```
 
 Aggregate functions (off by default, `server.aggregates`) group the result
-by the other items of the same `select=`: `select=author_id,count()`,
-`select=total:amount::numeric.sum()::text`, `select=id,posts(count())`. See
-[aggregates.md](aggregates.md) for grouping, embeds, ordering, paging, the
+by the other items of the same `select=` (columns and computed fields, not
+embeds): `select=author_id,count()`, `select=total:amount::numeric.sum()::text`,
+`select=id,posts(count())`. See [aggregates.md](aggregates.md) for grouping,
+embeds, the cast allowlist, ordering, paging, the
 spatial `extent`/`union`/`collect`/`centroid` extensions and the differences
 from PostgREST.
 

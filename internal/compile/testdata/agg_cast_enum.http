@@ -1,0 +1,1 @@
+GET /api/users?select=mood.max()::mood,m:mood::text.min(),day:created_at::date.max(),n:count()

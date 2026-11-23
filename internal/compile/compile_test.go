@@ -1198,6 +1198,10 @@ func TestAggregateCost(t *testing.T) {
 	if got := compile.Cost(p, 100); got != 1+10*(1+1+10*1) {
 		t.Errorf("aggregated embed cost = %d, want %d", got, 1+10*(1+1+10*1))
 	}
+	root.Count = true
+	if got := compile.Cost(root, 100); got != 1+100*2+100*1 {
+		t.Errorf("aggregated root with total cost = %d, want %d (the group count scans again)", got, 1+100*2+100*1)
+	}
 	if compile.CountPlannable(root) {
 		t.Error("an aggregated list total counts groups; it is never plannable")
 	}

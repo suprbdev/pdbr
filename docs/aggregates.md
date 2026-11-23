@@ -23,7 +23,7 @@ aggregate := "count()"
            | column [ "::" type ] "." fn "()" [ "::" type ]
 fn        := count | sum | avg | max | min              -- PostgREST
            | extent | union | collect | centroid        -- pdbr, spatial columns
-type      := [a-z_][a-z0-9_]*                            -- case-insensitive
+type      := builtin | enum                              -- see Casts
 ```
 
 | Item | Meaning | Response key |
@@ -37,12 +37,25 @@ type      := [a-z_][a-z0-9_]*                            -- case-insensitive
 | `col.avg()::int` | output cast: `(avg(col))::int` | `avg` |
 | `count` (no parentheses) | legacy PostgREST spelling of `count()`, accepted when the resource has no column, computed field or relation named `count` | `count` |
 
-The type of a cast is a single SQL type name (`int`, `bigint`, `numeric`,
-`float8`, `text`, `date`, an enum or domain name, …), rendered unquoted as
-written, lower-cased. A name PostgreSQL does not know is a database error
-(`400 pg:42704`).
+### Casts
 
-Casts are only accepted on aggregates: `select=id::text` is `400
+Input and output casts take the same allowlist, resolved by pdbr before
+anything reaches the database and rendered schema-qualified and quoted
+(`::"pg_catalog"."int4"`), so the `search_path` plays no part:
+
+| Accepted | Names (case-insensitive) |
+|---|---|
+| numbers | `int2`/`smallint`, `int4`/`int`/`integer`, `int8`/`bigint`, `numeric`/`decimal`, `float4`/`real`, `float8`/`float`, `money` |
+| text | `text`, `varchar`, `bpchar`/`char` |
+| time | `date`, `time`, `timetz`, `timestamp`, `timestamptz`, `interval` |
+| other | `bool`/`boolean`, `uuid`, `json`, `jsonb` |
+| enums | a native enum of an exposed schema (`schema.schemas` order), by its name |
+
+Everything else is `400 invalid_select`: the `reg*` name-lookup types
+(`regclass`, `regrole`, `regproc`, …, which would reveal objects outside the
+API), `oid`, pseudo-types (`record`, `any*`), composite and table row types,
+domains, table-backed `@enum` tables, schema-qualified names and unknown
+names. Casts are only accepted on aggregates: `select=id::text` is `400
 invalid_select` (PostgREST casts any column; see
 [Differences from PostgREST](#differences-from-postgrest)).
 
@@ -63,13 +76,20 @@ GET /api/users?select=mood,total:balance.sum(),mean:id::float8.avg()
 ```
 
 - Grouping keys may be columns (with spatial projection arguments),
-  computed columns, PostGIS pseudo-columns and embeds; `*` groups by every
-  column.
+  computed columns and PostGIS pseudo-columns; `*` groups by every column.
+- Embeds cannot be grouping keys (`400 invalid_select`): a node with an
+  aggregate has no embeds, `!inner` ones included. Aggregate inside the
+  embed instead (`users?select=id,posts(count())`), or restrict the rows
+  with a [relation filter](filtering.md). Set-returning computed columns
+  cannot be keys either, nor columns of a type without equality and
+  ordering (`xml`, `point`, `box`, `polygon`, `circle`, `line`, `lseg`,
+  `path`, `xid`, `cid`, …, or a composite holding one or a `json`
+  attribute). `json` columns are grouped as `jsonb`.
 - Without any grouping key the response is one row, also when no row
   matches (`[{"count": 0}]`, `[{"sum": null}]`); with keys and no matching
   row it is `[]`.
-- Filters (`col=op.value`, `and=`/`or=`, relation filters, `!inner`
-  embeds) restrict the rows **before** grouping. There is no `HAVING`
+- Filters (`col=op.value`, `and=`/`or=`, relation filters) restrict the
+  rows **before** grouping. There is no `HAVING`
   (PostgREST has none either).
 - Two items answering under the same key are `400 invalid_select`:
   `select=id.sum(),balance.sum()` needs an alias on one of them.
@@ -87,21 +107,10 @@ back as strings; grouping keys keep the representation of their column.
 
 ## Aggregates and embeds
 
-**Grouping by an embed.** An embedded resource is a grouping key like a
-column (to-one embeds give one object per group, to-many embeds group by the
-whole embedded array):
-
-```http
-GET /api/posts?select=id.count(),users(mood)
-```
-
-```json
-[{"count": 3, "users": {"mood": "happy"}}, {"count": 1, "users": {"mood": "ok"}}]
-```
-
 **Aggregates inside an embed.** Aggregates in a to-many embed (backward, or
 forward over a `PERIOD` foreign key) are computed per parent row, grouped by
-the embed's own other items and independent of the parent's columns:
+the embed's own other items (columns, computed fields; no nested embeds)
+and independent of the parent's columns:
 
 ```http
 GET /api/users?select=id,email,posts(count())
@@ -133,9 +142,11 @@ a to-one embed are `400 invalid_select` (see the differences below).
   sent. `distinct=` with aggregates is `400 invalid_select` (the grouping
   keys already make rows distinct).
 - `count=true` and `Prefer: count=exact|planned|estimated` total the
-  **groups** (`X-Total-Count`, `Content-Range: 0-24/3`); planned and
-  estimated totals fall back to the exact count (`Preference-Applied:
-  count=exact`), since the table statistic counts rows, not groups.
+  **groups** (`X-Total-Count`, `Content-Range: 0-24/3`) from a key-only
+  grouped scan (`SELECT count(*) FROM (SELECT 1 FROM … GROUP BY <keys>)`);
+  planned and estimated totals fall back to the exact count
+  (`Preference-Applied: count=exact`), since the table statistic counts
+  rows, not groups.
 
 ## Where aggregates apply
 
@@ -147,9 +158,10 @@ a to-one embed are `400 invalid_select` (see the differences below).
 | `{base}/{table}/{pk}`, `/by/{cols}/{vals}`, RPCs returning one row | `400 invalid_select` (one row, nothing to aggregate) |
 | `select=` on `POST`/`PUT`/`PATCH`/`DELETE` responses | `400 invalid_select` |
 | to-one embeds, `SETOF <table>` computed columns | `400 invalid_select` |
+| embeds next to an aggregate (as grouping keys) | `400 invalid_select` |
 
-`Accept: text/csv` works on aggregated lists without embeds; the header row
-is the response keys in `select=` order (`author_id,count`).
+`Accept: text/csv` works on aggregated lists (they never carry embeds); the
+header row is the response keys in `select=` order (`author_id,count`).
 
 ## Spatial aggregates (pdbr extension)
 
@@ -192,13 +204,17 @@ An aggregate reads every row its filters match, so `server.max_cost`
 ([pagination.md](pagination.md#cost-limit)) costs an aggregated list **as if
 it had no limit**: the root at `server.max_page_size`, a to-many embed at 10
 (or its `@costMultiplier`); `limit` still bounds the response. Each
-aggregate costs 1 like a column. Examples with the defaults:
+aggregate costs 1 like a column, and so does a computed grouping key per
+scanned row. A total (`count=true`, `Prefer: count=`) on an aggregated root
+scans again and adds `server.max_page_size` × its grouping keys. Examples
+with the defaults:
 
 | Request | Cost |
 |---|---|
 | `posts?select=author_id,count()&limit=5` | 1 + 100 × 2 = 201 |
 | `users?select=id,posts(count())` | 1 + 100 × (1 + 1 + 10 × 1) = 1201 |
 | `users?select=id,posts(count())&limit=5` | 1 + 5 × 12 = 61 |
+| `posts?select=author_id,count()&count=true` | 1 + 100 × 2 + 100 × 1 = 301 |
 
 Aggregates are only as fast as the scan beneath them; index the filter and
 grouping columns of the aggregates you expose, and keep
@@ -209,11 +225,10 @@ grouping columns of the aggregates you expose, and keep
 | Request | Response |
 |---|---|
 | any aggregate while `server.aggregates` is off | `400 aggregates_disabled` |
-| bad grammar (`col.sum(x)`, an empty or malformed cast, a hint on an aggregate), a cast on a non-aggregate, an aggregate over a computed or derived field, a type without the aggregate (`text.sum()`, `jsonb.max()`, `uuid.max()`), duplicate response keys, aggregates outside list reads or in to-one embeds, `distinct=` | `400 invalid_select` |
+| bad grammar (`col.sum(x)`, a hint on an aggregate), a cast type outside the allowlist (`::regclass`, `::record`, an unknown name), a cast on a non-aggregate, an aggregate over a computed or derived field, a type without the aggregate (`text.sum()`, `jsonb.max()`, `uuid.max()`), an embed, set-returning computed column or ungroupable column as a grouping key, duplicate response keys, aggregates outside list reads or in to-one embeds, `distinct=` | `400 invalid_select` |
 | unknown column | `400 unknown_column` |
 | `order=` on something other than a grouping column | `400 column_not_orderable` |
 | `after=` / `before=` | `400 keyset_unsupported` |
-| unknown cast type | `400 pg:42704` |
 
 ## Differences from PostgREST
 
@@ -222,17 +237,20 @@ differs:
 
 - **Spatial aggregates** (`extent`, `union`, `collect`, `centroid`) are a
   pdbr extension.
-- **Spread embeds** (`...customers(name)`) do not exist in pdbr, so neither
-  does grouping by a spread nor hoisting the aggregates of a to-one spread;
-  aggregates inside a non-spread to-one embed are rejected rather than
-  computed over its single row.
-- **Casts** are accepted on aggregates only; PostgREST also casts plain
-  columns (`select=id::text`). JSON paths (`col->key::numeric.sum()`) are
-  not part of pdbr's `select=` grammar.
+- **Embeds as grouping keys** (`orders?select=amount.sum(),customers(name)`)
+  are rejected: an embed is evaluated per scanned row, which `limit` cannot
+  bound. **Spread embeds** (`...customers(name)`) do not exist in pdbr, so
+  neither does grouping by a spread nor hoisting the aggregates of a to-one
+  spread; aggregates inside a non-spread to-one embed are rejected rather
+  than computed over its single row.
+- **Casts** are accepted on aggregates only, and only to the allowlisted
+  built-in types and the API's enums; PostgREST casts plain columns too
+  (`select=id::text`) to any type. JSON paths (`col->key::numeric.sum()`)
+  are not part of pdbr's `select=` grammar.
 - **Validation before the database**: `sum`/`avg` of a non-numeric column,
   `max`/`min` of `json`/`jsonb`/`bool`/`bytea`/`uuid`/composite columns,
-  duplicate response keys and ordering by a non-grouping column are `400`
-  pdbr codes instead of PostgreSQL errors.
+  ungroupable keys, duplicate response keys and ordering by a non-grouping
+  column are `400` pdbr codes instead of PostgreSQL errors.
 - **Totals count groups**: `count=`/`Prefer: count=` on an aggregated list
   report the number of groups (what `Content-Range` pages over), and the
   planned/estimated modes fall back to exact.

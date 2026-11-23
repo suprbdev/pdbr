@@ -17,9 +17,9 @@ import (
 //	FROM <table> t <laterals> WHERE … GROUP BY 1, …
 //
 // Plain grouping columns are selected raw (so they sort by their own type
-// and the outer ORDER BY can address them), computed and derived fields
-// and embeds as their response JSON; obj renders the response object over
-// alias, the name the caller gives the grouped subquery.
+// and the outer ORDER BY can address them), computed and derived fields as
+// their response JSON; obj renders the response object over alias, the name
+// the caller gives the grouped subquery. Embeds are never grouping keys.
 type groupedQuery struct {
 	sql   string
 	alias string
@@ -31,17 +31,20 @@ type groupedQuery struct {
 }
 
 // grouped compiles node (which selects an aggregate) over its resource
-// with filter, the !inner restrictions and, for an embed, the correlation
-// corr renders against the scan alias.
+// with filter and, for an embed, the correlation corr renders against the
+// scan alias.
 func (s *stmt) grouped(node *plan.Node, filter plan.Expr, corr func(childAlias string) string, root bool, depth int) (*groupedQuery, error) {
 	if depth > s.maxDepth {
 		return nil, errUser(CodeEmbedDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)
+	}
+	if len(node.Embeds) > 0 {
+		return nil, errUser(CodeInvalidSelect, "embeds cannot be grouping keys of an aggregate select")
 	}
 	r := node.Resource
 	t := r.Table
 	alias := s.alias("t")
 	g := &groupedQuery{alias: s.alias("g"), cols: map[string]orderTerm{}}
-	var cols, groupBy, pairs, laterals []string
+	var cols, groupBy, pairs []string
 	key := func(expr string, term orderTerm) string {
 		name := "__k" + strconv.Itoa(len(g.keys))
 		cols = append(cols, expr+" AS "+name)
@@ -54,14 +57,7 @@ func (s *stmt) grouped(node *plan.Node, filter plan.Expr, corr func(childAlias s
 		if term, ok := g.cols[c.Name]; ok {
 			return term.col
 		}
-		expr := colRef(alias, c.Name)
-		if strings.TrimPrefix(c.PGType, "_") == "json" {
-			expr += "::jsonb"
-			if c.IsArray {
-				expr += "[]"
-			}
-		}
-		name := key(expr, orderTerm{nullable: !c.NotNull, owner: s.owner(c)})
+		name := key(groupKeySQL(alias, c), orderTerm{nullable: !c.NotNull, owner: s.owner(c)})
 		g.cols[c.Name] = g.keys[len(g.keys)-1]
 		return name
 	}
@@ -113,28 +109,6 @@ func (s *stmt) grouped(node *plan.Node, filter plan.Expr, corr func(childAlias s
 		}
 		add(k, expr)
 	}
-	for i := range node.Embeds {
-		e := &node.Embeds[i]
-		if e.Relation == nil {
-			return nil, fmt.Errorf("compile: embed %q is not resolved", e.Key)
-		}
-		var value, lat string
-		var err error
-		if e.Relation.ToMany() {
-			value, lat, err = s.manyEmbed(e, alias, depth+1)
-		} else {
-			value, lat, err = s.oneEmbed(e, alias, depth+1)
-		}
-		if err != nil {
-			return nil, err
-		}
-		laterals = append(laterals, lat)
-		k := e.Alias
-		if k == "" {
-			k = e.Key
-		}
-		add(k, colRef(g.alias, key(value, orderTerm{nullable: true})))
-	}
 	var extra []string
 	if corr != nil {
 		extra = append(extra, corr(alias))
@@ -151,9 +125,67 @@ func (s *stmt) grouped(node *plan.Node, filter plan.Expr, corr func(childAlias s
 	if len(groupBy) > 0 {
 		group = "\nGROUP BY " + strings.Join(groupBy, ", ")
 	}
-	g.sql = fmt.Sprintf("SELECT %s\nFROM %s %s%s%s%s", strings.Join(cols, ", "), from, alias, joinLaterals(laterals), where, group)
+	g.sql = fmt.Sprintf("SELECT %s\nFROM %s %s%s%s", strings.Join(cols, ", "), from, alias, where, group)
 	g.obj = buildJSONObject(pairs)
 	return g, nil
+}
+
+// groupKeySQL renders a column as a grouping key: the raw value, json as
+// jsonb (json has no equality operator).
+func groupKeySQL(alias string, c *introspect.Column) string {
+	expr := colRef(alias, c.Name)
+	if strings.TrimPrefix(c.PGType, "_") == "json" {
+		expr += "::jsonb"
+		if c.IsArray {
+			expr += "[]"
+		}
+	}
+	return expr
+}
+
+// groupCountSQL renders the number of groups of the aggregated root: a
+// key-only grouped scan with the same filter (no aggregates, no JSON
+// rendering of column keys); 1 when there is no grouping key.
+func (s *stmt) groupCountSQL(node *plan.Node) (string, error) {
+	r := node.Resource
+	alias := s.alias("c")
+	var keys []string
+	seen := map[string]bool{}
+	column := func(c *introspect.Column) {
+		if !seen[c.Name] {
+			seen[c.Name] = true
+			keys = append(keys, groupKeySQL(alias, c))
+		}
+	}
+	if node.Star {
+		for _, f := range r.Columns {
+			column(f.Column)
+		}
+	}
+	for i := range node.Fields {
+		f := &node.Fields[i]
+		switch {
+		case f.Agg != nil:
+		case f.Column != nil:
+			column(f.Column)
+		default:
+			_, value, err := s.fieldJSON(r, f, alias, 0)
+			if err != nil {
+				return "", err
+			}
+			keys = append(keys, "to_jsonb("+value+")")
+		}
+	}
+	if len(keys) == 0 {
+		return "1", nil
+	}
+	where, err := s.whereClause(node, s.plan.Filter, alias, nil)
+	if err != nil {
+		return "", err
+	}
+	where = strings.Replace(where, "\nWHERE ", " WHERE ", 1)
+	return fmt.Sprintf("(SELECT count(*) FROM (SELECT 1 FROM %s %s%s GROUP BY %s) %s)",
+		s.rootRef(r.Table), alias, where, strings.Join(keys, ", "), s.alias("g")), nil
 }
 
 // orderTerms maps a node's order terms onto its grouping keys (the parser
@@ -195,8 +227,8 @@ func (s *stmt) aggregateSQL(f *plan.FieldSel, alias string) string {
 		return "count(*)"
 	}
 	in := colRef(alias, f.Column.Name)
-	if a.InputCast != "" {
-		in = "(" + in + ")::" + a.InputCast
+	if a.InputCast != nil {
+		in = "(" + in + ")::" + typeRefSQL(a.InputCast)
 	}
 	if !a.Func.Spatial() {
 		return string(a.Func) + "(" + in + ")"
@@ -229,17 +261,24 @@ func (s *stmt) aggregateSQL(f *plan.FieldSel, alias string) string {
 // returns them.
 func aggregateJSON(ref string, a *plan.Aggregate) string {
 	switch {
-	case a.OutputCast != "":
-		return "to_jsonb((" + ref + ")::" + a.OutputCast + ")"
+	case a.OutputCast != nil:
+		return "to_jsonb((" + ref + ")::" + typeRefSQL(a.OutputCast) + ")"
 	case a.Func.Spatial():
 		return postgis.OutputSQL(ref)
 	}
 	return "to_jsonb(" + ref + ")"
 }
 
+// typeRefSQL renders a cast target schema-qualified and quoted, so it never
+// depends on the search_path.
+func typeRefSQL(t *plan.TypeRef) string {
+	return quoteIdent(t.Schema) + "." + quoteIdent(t.Name)
+}
+
 // aggList compiles the list GET of an aggregated root: one row per group,
 // paged by limit/offset (groups have no keyset) and ordered by the
-// requested grouping columns, then by every key. The total counts groups.
+// requested grouping columns, then by every key. The total counts groups
+// (groupCountSQL).
 func (s *stmt) aggList(node *plan.Node) (*Statement, error) {
 	pp, err := s.planPage(s.plan.Resource, s.plan.Page)
 	if err != nil {
@@ -264,13 +303,7 @@ func (s *stmt) aggList(node *plan.Node) (*Statement, error) {
 	}
 	inner := fmt.Sprintf("SELECT %s AS data, row_number() OVER (%s) AS __rn\nFROM (\n%s\n) %s%s%s",
 		g.obj, strings.TrimPrefix(orderSQL, "\n"), indent(g.sql), g.alias, orderSQL, limit)
-	count := func() (string, error) {
-		cg, err := s.grouped(node, s.plan.Filter, nil, true, 0)
-		if err != nil {
-			return "", err
-		}
-		return fmt.Sprintf("(SELECT count(*) FROM (%s) %s)", strings.ReplaceAll(cg.sql, "\n", " "), cg.alias), nil
-	}
+	count := func() (string, error) { return s.groupCountSQL(node) }
 	return s.pageEnvelope(inner, pp, count)
 }
 

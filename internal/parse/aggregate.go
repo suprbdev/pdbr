@@ -16,18 +16,29 @@ var aggFuncs = map[string]plan.AggFunc{
 	"extent": plan.AggExtent, "union": plan.AggUnion, "collect": plan.AggCollect, "centroid": plan.AggCentroid,
 }
 
-// castAliases maps the SQL spellings of the built-in types to their
-// pg_type names, which is what the column types and the type checks use.
-var castAliases = map[string]string{
-	"smallint": "int2", "int": "int4", "integer": "int4", "bigint": "int8",
-	"real": "float4", "float": "float8", "decimal": "numeric", "boolean": "bool",
-}
+// castTypes are the built-in cast targets of the aggregate grammar
+// (pg_catalog type names); castAliases maps their SQL spellings onto them.
+// Anything else — the reg* name lookups, pseudo-types, composites, types
+// with user-defined casts — is not castable.
+var (
+	castTypes = typeSet("int2", "int4", "int8", "numeric", "float4", "float8", "text", "varchar", "bpchar", "bool",
+		"date", "time", "timetz", "timestamp", "timestamptz", "interval", "uuid", "json", "jsonb", "money")
+	castAliases = map[string]string{
+		"smallint": "int2", "int": "int4", "integer": "int4", "bigint": "int8",
+		"real": "float4", "float": "float8", "decimal": "numeric", "boolean": "bool", "char": "bpchar",
+	}
+)
 
 var (
 	sumTypes = typeSet("int2", "int4", "int8", "float4", "float8", "numeric", "money", "interval")
 	avgTypes = typeSet("int2", "int4", "int8", "float4", "float8", "numeric", "interval")
 	// unorderedTypes have no max/min aggregate.
 	unorderedTypes = typeSet("json", "jsonb", "bool", "bytea", "xml", "uuid", "point", "line", "lseg", "box", "path", "polygon", "circle")
+	// ungroupableTypes have no equality or B-tree ordering, so they cannot
+	// be grouping keys (json keys are grouped as jsonb, except inside a
+	// composite).
+	ungroupableTypes = typeSet("xml", "point", "line", "lseg", "box", "path", "polygon", "circle", "xid", "cid",
+		"aclitem", "txid_snapshot", "pg_snapshot", "int2vector", "oidvector")
 )
 
 func typeSet(names ...string) map[string]bool {
@@ -79,29 +90,29 @@ func takesArgs(it selectItem) bool {
 	return ok
 }
 
-// castType validates a cast target: one SQL type name (letters, digits and
-// underscores, not starting with a digit), lower-cased. It is rendered
-// unquoted, so the built-in spellings (int, bigint, text) resolve as in SQL.
-func castType(raw string) (string, bool) {
-	t := strings.ToLower(strings.TrimSpace(raw))
-	if t == "" || t[0] >= '0' && t[0] <= '9' {
-		return "", false
+// castType resolves a cast target: an allowlisted built-in type
+// (pg_catalog) or a native enum of an exposed schema (schema.schemas order),
+// matched case-insensitively for the built-ins and exactly or lower-cased
+// for enums.
+func (p *parser) castType(raw string) (*plan.TypeRef, error) {
+	name := strings.TrimSpace(raw)
+	t := strings.ToLower(name)
+	if c, ok := castAliases[t]; ok {
+		t = c
 	}
-	for i := 0; i < len(t); i++ {
-		c := t[i]
-		if c != '_' && (c < 'a' || c > 'z') && (c < '0' || c > '9') {
-			return "", false
+	if castTypes[t] {
+		return &plan.TypeRef{Schema: "pg_catalog", Name: t}, nil
+	}
+	if cat := p.built.Catalog; cat != nil && name != "" {
+		for _, schema := range cat.Schemas {
+			for _, e := range cat.Enums {
+				if e.Schema == schema && !e.TableBacked && (e.Name == name || e.Name == t) {
+					return &plan.TypeRef{Schema: e.Schema, Name: e.Name}, nil
+				}
+			}
 		}
 	}
-	return t, true
-}
-
-// canonicalType returns the pg_type name of a cast target.
-func canonicalType(t string) string {
-	if c, ok := castAliases[t]; ok {
-		return c
-	}
-	return t
+	return nil, errf(CodeInvalidSelect, "cast type %q is not allowed; use a built-in scalar type (int, bigint, numeric, float8, text, date, timestamptz, interval, …) or an enum of the API", raw)
 }
 
 // resolveAggregate resolves col.fn() / count() into an aggregate field.
@@ -115,9 +126,9 @@ func (p *parser) resolveAggregate(node *plan.Node, it selectItem, fn plan.AggFun
 	}
 	agg := &plan.Aggregate{Func: fn}
 	if it.outCast != "" {
-		t, ok := castType(it.outCast)
-		if !ok {
-			return errf(CodeInvalidSelect, "invalid cast type %q", it.outCast)
+		t, err := p.castType(it.outCast)
+		if err != nil {
+			return err
 		}
 		agg.OutputCast = t
 	}
@@ -128,9 +139,9 @@ func (p *parser) resolveAggregate(node *plan.Node, it selectItem, fn plan.AggFun
 	}
 	name, cast, hasCast := strings.Cut(colPart, "::")
 	if hasCast {
-		t, ok := castType(cast)
-		if !ok {
-			return errf(CodeInvalidSelect, "invalid cast type %q", cast)
+		t, err := p.castType(cast)
+		if err != nil {
+			return err
 		}
 		agg.InputCast = t
 	}
@@ -150,11 +161,9 @@ func (p *parser) resolveAggregate(node *plan.Node, it selectItem, fn plan.AggFun
 }
 
 // checkAggregateType rejects aggregate/input-type combinations PostgreSQL
-// has no aggregate for, as far as the catalog type (or the input cast)
-// tells; a cast to a type outside the built-in tables is left to the
-// database.
+// has no aggregate for, by the catalog type or the input cast.
 func (p *parser) checkAggregateType(c *introspect.Column, agg *plan.Aggregate) error {
-	spatial := postgis.IsSpatial(c.PGType) && agg.InputCast == ""
+	spatial := postgis.IsSpatial(c.PGType) && agg.InputCast == nil
 	if agg.Func.Spatial() {
 		switch {
 		case !p.opts.SpatialAggregates:
@@ -172,21 +181,20 @@ func (p *parser) checkAggregateType(c *introspect.Column, agg *plan.Aggregate) e
 	}
 	typ := strings.TrimPrefix(c.PGType, "_")
 	array := c.IsArray
-	if agg.InputCast != "" {
-		typ, array = canonicalType(agg.InputCast), false
+	if agg.InputCast != nil {
+		typ, array = agg.InputCast.Name, false
 	}
-	known := agg.InputCast == "" || sumTypes[typ] || unorderedTypes[typ] || typ == "text"
 	switch agg.Func {
 	case plan.AggSum, plan.AggAvg:
 		allowed := sumTypes
 		if agg.Func == plan.AggAvg {
 			allowed = avgTypes
 		}
-		if known && (array || !allowed[typ]) {
+		if array || !allowed[typ] {
 			return errf(CodeInvalidSelect, "%s() needs a numeric column; %q is %s (cast it: %s::numeric.%s())", agg.Func, c.Name, typ, c.Name, agg.Func)
 		}
 	case plan.AggMax, plan.AggMin:
-		composite := agg.InputCast == "" && p.built.Catalog != nil && p.built.Catalog.Composite(c.TypeSchema, typ) != nil
+		composite := agg.InputCast == nil && p.built.Catalog != nil && p.built.Catalog.Composite(c.TypeSchema, typ) != nil
 		if !array && (unorderedTypes[typ] || composite) {
 			return errf(CodeInvalidSelect, "%s() is not defined on %s column %q", agg.Func, typ, c.Name)
 		}
@@ -218,10 +226,10 @@ func (p *parser) checkAggregates() error {
 			return errf(CodeKeysetUnsupported, "after/before cannot be combined with aggregate functions; page grouped results with limit/offset")
 		}
 	}
-	return checkAggNode(root, p.req.Order)
+	return p.checkAggNode(root, p.req.Order)
 }
 
-func checkAggNode(n *plan.Node, order []plan.OrderTerm) error {
+func (p *parser) checkAggNode(n *plan.Node, order []plan.OrderTerm) error {
 	for i := range n.Fields {
 		if f := &n.Fields[i]; f.Node.Aggregates() {
 			return errf(CodeInvalidSelect, "aggregate functions are not supported inside the set-returning computed column %q", f.Computed.Key)
@@ -232,12 +240,15 @@ func checkAggNode(n *plan.Node, order []plan.OrderTerm) error {
 		if e.Node.Aggregated() && !e.Relation.ToMany() {
 			return errf(CodeInvalidSelect, "aggregate functions are only supported in to-many embeds; %q embeds one row", embedKey(e))
 		}
-		if err := checkAggNode(e.Node, e.Order); err != nil {
+		if err := p.checkAggNode(e.Node, e.Order); err != nil {
 			return err
 		}
 	}
 	if !n.Aggregated() {
 		return nil
+	}
+	if err := p.checkGroupKeys(n); err != nil {
+		return err
 	}
 	if err := checkAggKeys(n); err != nil {
 		return err
@@ -251,6 +262,65 @@ func checkAggNode(n *plan.Node, order []plan.OrderTerm) error {
 		}
 	}
 	return nil
+}
+
+// checkGroupKeys rejects grouping keys whose cost the limit cannot bound or
+// that PostgreSQL cannot group: embeds (evaluated per scanned row; pdbr has
+// no spread embeds), set-returning computed columns, and columns of types
+// without equality and ordering.
+func (p *parser) checkGroupKeys(n *plan.Node) error {
+	if len(n.Embeds) > 0 {
+		return errf(CodeInvalidSelect, "embeds cannot be grouping keys of an aggregate select (%q); aggregate inside the embed instead (rel(count())) or filter on the relation", embedKey(&n.Embeds[0]))
+	}
+	check := func(c *introspect.Column) error {
+		if !p.groupable(c, false, 0) {
+			return errf(CodeInvalidSelect, "column %q (%s) cannot be a grouping key: its type has no equality or ordering", c.Name, strings.TrimPrefix(c.PGType, "_"))
+		}
+		return nil
+	}
+	if n.Star {
+		for _, f := range n.Resource.Columns {
+			if err := check(f.Column); err != nil {
+				return err
+			}
+		}
+	}
+	for i := range n.Fields {
+		f := &n.Fields[i]
+		switch {
+		case f.Agg != nil:
+		case f.Column != nil:
+			if err := check(f.Column); err != nil {
+				return err
+			}
+		case f.Computed != nil && f.Computed.Function.ReturnsSet:
+			return errf(CodeInvalidSelect, "the set-returning computed column %q cannot be a grouping key", f.Computed.Key)
+		}
+	}
+	return nil
+}
+
+// groupable reports whether values of c's type can be grouped: not one of
+// ungroupableTypes, and for a composite every attribute (json included,
+// which is only converted at the top level).
+func (p *parser) groupable(c *introspect.Column, nested bool, depth int) bool {
+	typ := strings.TrimPrefix(c.PGType, "_")
+	if ungroupableTypes[typ] || nested && typ == "json" {
+		return false
+	}
+	if p.built.Catalog == nil || depth > 8 {
+		return true
+	}
+	comp := p.built.Catalog.Composite(c.TypeSchema, typ)
+	if comp == nil {
+		return true
+	}
+	for _, f := range comp.Fields {
+		if !p.groupable(f, true, depth+1) {
+			return false
+		}
+	}
+	return true
 }
 
 // groupsBy reports whether col is a grouping key of the aggregated node.

@@ -420,7 +420,7 @@ func (b *Builder) listSelectParam(r *Resource, lead string) *Parameter {
 	if b.Surface.SpatialAggregates && hasSpatial(r) {
 		sb.WriteString(", and on spatial columns <col>.extent(), <col>.union(), <col>.collect(), <col>.centroid() (GeoJSON)")
 	}
-	sb.WriteString("; alias:<col>.sum(), input cast <col>::<type>.sum(), output cast <col>.sum()::<type>. The other items of the same select (columns, computed fields, embeds) group the rows; aggregates also apply inside to-many embeds. order= takes only grouping columns; no after/before or distinct.")
+	sb.WriteString("; alias:<col>.sum(), input cast <col>::<type>.sum(), output cast <col>.sum()::<type>. The other items of the same select (columns, computed fields; not embeds) group the rows; aggregates also apply inside to-many embeds. Casts: built-in scalar types (int, bigint, numeric, float8, text, date, timestamptz, interval, ...) and the API's enums. order= takes only grouping columns; no after/before or distinct.")
 	p.Description = sb.String()
 	return p
 }

@@ -1,10 +1,14 @@
 package e2e
 
 import (
+	"context"
 	"encoding/json"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/suprbdev/pdbr/internal/config"
 )
@@ -32,6 +36,21 @@ func aggRows(t *testing.T, url string, hdr map[string]string) []row {
 		t.Fatalf("GET %s: %s: %v", url, body, err)
 	}
 	return rows
+}
+
+func dbText(t *testing.T, sql string) string {
+	t.Helper()
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, os.Getenv("PDBR_TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+	var s string
+	if err := conn.QueryRow(ctx, sql).Scan(&s); err != nil {
+		t.Fatal(err)
+	}
+	return s
 }
 
 func wantRows(t *testing.T, url string, want string) {
@@ -68,16 +87,14 @@ func TestAggregates(t *testing.T) {
 	wantRows(t, url+"/users?select=balance.sum(),created_at.count()", `[{"sum": 0, "count": 3}]`)
 	wantRows(t, url+"/users?select=mood,count()&order=mood", `[{"mood": "ok", "count": 1}, {"mood": "happy", "count": 2}]`)
 
-	wantRows(t, url+"/posts?select=id.count(),users(mood)",
-		`[{"count": 3, "users": {"mood": "happy"}}, {"count": 1, "users": {"mood": "ok"}}]`)
 	wantRows(t, url+"/users?select=id,posts(count())&order=id",
 		`[{"id": 1, "posts": [{"count": 2}]}, {"id": 2, "posts": [{"count": 1}]}, {"id": 3, "posts": [{"count": 1}]}]`)
 	wantRows(t, url+"/users?select=id,posts(author_id,n:count(),id.max())&posts.order=author_id&id=eq.1",
 		`[{"id": 1, "posts": [{"author_id": 1, "n": 2, "max": 2}]}]`)
 	wantRows(t, url+"/users?select=id,posts(count)&id=lt.3",
 		`[{"id": 1, "posts": [{"count": 2}]}, {"id": 2, "posts": [{"count": 1}]}]`)
-	wantRows(t, url+"/users?select=mood,count(),posts!inner(author_id)&posts.author_id=eq.1",
-		`[{"mood": "happy", "count": 1, "posts": [{"author_id": 1}, {"author_id": 1}]}]`)
+	wantRows(t, url+"/users?select=mood.max()::mood,low:mood::text.min(),day:created_at::date.max()::text,n:count()&id=eq.1",
+		`[{"max": "happy", "low": "happy", "day": "`+dbText(t, `SELECT created_at::date::text FROM users WHERE id = 1`)+`", "n": 1}]`)
 
 	wantRows(t, url+"/rpc/search_posts?term=o&select=author_id,count()&order=author_id.desc",
 		`[{"author_id": 3, "count": 1}, {"author_id": 2, "count": 1}, {"author_id": 1, "count": 1}]`)
@@ -92,6 +109,10 @@ func TestAggregates(t *testing.T) {
 	res, _ = do(t, "GET", url+"/posts?select=count()&count=true", nil)
 	if res.Header.Get("X-Total-Count") != "1" {
 		t.Errorf("ungrouped total = %q", res.Header.Get("X-Total-Count"))
+	}
+	res, _ = do(t, "GET", url+"/users?select=mood,post_count,count()&count=true&limit=1", nil)
+	if res.Header.Get("X-Total-Count") != "3" {
+		t.Errorf("total over a computed key = %q", res.Header.Get("X-Total-Count"))
 	}
 
 	res, body = do(t, "GET", url+"/posts?select=author_id,n:count()&order=author_id", map[string]string{"Accept": "text/csv"})
@@ -173,8 +194,20 @@ func TestAggregatesErrors(t *testing.T) {
 		{"/posts?select=id.sum(),author_id.sum()", "invalid_select"},
 		{"/posts?select=id::text", "invalid_select"},
 		{"/places?select=location.max()", "invalid_select"},
-		{"/posts?select=id::nosuchtype.sum()", "pg:42704"},
+		{"/posts?select=id::nosuchtype.sum()", "invalid_select"},
+		{"/posts?select=id.count(),users(mood)", "invalid_select"},
+		{"/users?select=count(),posts!inner(id)", "invalid_select"},
+		{"/users?select=tag_words,count()", "invalid_select"},
 		{"/users?select=id,posts(count())", "cost_exceeded"},
+	}
+	for _, typ := range []string{"regclass", "regrole", "regproc", "regprocedure", "regoper", "regoperator", "regnamespace", "regtype", "regconfig", "regdictionary", "regcollation", "oid", "record", "users", "address", "event_type"} {
+		cases = append(cases, struct {
+			q    string
+			code string
+		}{"/posts?select=id.max()::" + typ, "invalid_select"}, struct {
+			q    string
+			code string
+		}{"/posts?select=id::" + typ + ".max()", "invalid_select"})
 	}
 	for _, c := range cases {
 		res, body := get(t, url+c.q)
