@@ -475,6 +475,7 @@ drops the `text/csv` content and the `Accept` header parameter.
 | `Prefer: handling=strict` | unknown or malformed tokens → `400 invalid_preference` (default `handling=lenient` ignores them) |
 | `Prefer: handling=strict, max-affected=N` | `PATCH`/`DELETE` writing more than `N` rows → `400 max_affected_exceeded`, rolled back |
 | `Prefer: resolution=merge-duplicates\|ignore-duplicates` | `POST` upserts / skips conflicting rows on `?on_conflict=` or the PK ([mutations.md](mutations.md#post-with-prefer-resolution)) |
+| `Prefer: partial=items` | bulk `POST`/`PUT`: each element in its own savepoint, answered as a per-element report (`207` when one failed); needs `server.partial_bulk_writes`, else ignored (`400` under `handling=strict`) |
 | `Prefer: tx=commit\|rollback` | writes: commit or roll back (the result is still returned); needs `server.tx_end` `commit-allow-override` / `rollback-allow-override`, else ignored (`400` under `handling=strict`) |
 | `Prefer: timezone=<IANA name>` | the transaction runs with that `timezone` (validated against `pg_timezone_names`); unknown → ignored (`400` under `handling=strict`) |
 | `?columns=a,b` on `POST`/`PUT`/`PATCH` | only those body keys are used; others ignored, omitted ones take `DEFAULT` ([mutations.md](mutations.md#columns)) |

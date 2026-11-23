@@ -653,6 +653,9 @@ type Prefer struct {
 	// MissingDefault reports missing=default (pdbr always inserts DEFAULT
 	// for keys absent from a bulk element, so it changes nothing).
 	MissingDefault bool
+	// Partial reports that Prefer: partial=items applies: a bulk POST or PUT
+	// whose elements each run in their own savepoint (server.partial_bulk_writes).
+	Partial bool
 	// Rollback reports that the request runs in a transaction that is rolled
 	// back instead of committed: the server.tx_end default or an honoured
 	// Prefer: tx=rollback. Only ever set on writes.

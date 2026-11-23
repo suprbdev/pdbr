@@ -99,6 +99,12 @@ func (p *parser) parsePrefer(headers []string) error {
 	for _, pr := range prefs {
 		ok := true
 		switch pr.key {
+		case "partial":
+			if pr.val != "items" || !p.opts.PartialBulk {
+				ok = false
+				break
+			}
+			p.wantPartial = write && (p.method == plan.POST || p.method == plan.PUT)
 		case "return":
 			switch pr.val {
 			case "representation", "minimal", "headers-only":
@@ -179,6 +185,22 @@ func (p *parser) parsePrefer(headers []string) error {
 		}
 	}
 	pf.Applied = applied
+	return nil
+}
+
+// resolvePartial applies Prefer: partial=items once the body is parsed: it
+// holds for a bulk POST or PUT (a body array) and is otherwise ignored. A
+// body with more elements than Options.PartialBulkMaxItems is 413
+// body_too_large.
+func (p *parser) resolvePartial() error {
+	if !p.wantPartial || p.req.Body == nil || p.req.Body.Objects == nil {
+		return nil
+	}
+	if limit := p.opts.PartialBulkMaxItems; limit > 0 && len(p.req.Body.Objects) > limit {
+		return errf(CodeBodyTooLarge, "Prefer: partial=items accepts at most %d elements, got %d (server.partial_bulk_max_items)", limit, len(p.req.Body.Objects))
+	}
+	p.req.Prefer.Partial = true
+	p.req.Prefer.Applied = append(p.req.Prefer.Applied, "partial=items")
 	return nil
 }
 

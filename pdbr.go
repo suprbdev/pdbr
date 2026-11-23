@@ -428,6 +428,8 @@ func (a *App) routeHandler(built *api.Built, in instruments) *server.Handler {
 	opts.AllowUnfilteredMutations = a.Config.Server.AllowUnfilteredMutations
 	opts.Aggregates = a.Config.Server.Aggregates
 	opts.TxEnd = a.Config.Server.TxEnd
+	opts.PartialBulk = a.Config.Server.PartialBulkWrites
+	opts.PartialBulkMaxItems = a.Config.Server.PartialBulkMaxItems
 	h := server.NewHandler(built, ex, opts, built.Options.BasePath, a.Log)
 	h.CSVRawFormulas = !a.Config.Server.CSVEscapeFormulas
 	return h
