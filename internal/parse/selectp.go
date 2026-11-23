@@ -218,6 +218,12 @@ func (p *parser) resolveSelectItem(node *plan.Node, it selectItem, depth int) er
 				return err
 			}
 			fs.Args = args
+		case fs.Pseudo != nil && fs.Pseudo.Contrib != nil:
+			args, err := parseContribArgs(fs.Pseudo, it.inner)
+			if err != nil {
+				return err
+			}
+			fs.Args = args
 		case fs.Computed != nil && fs.Computed.SetOf != nil:
 			if depth+1 > p.opts.maxEmbedDepth() {
 				return errf(CodeEmbedDepthExceeded, "select nesting exceeds max_embed_depth %d", p.opts.maxEmbedDepth())
@@ -241,8 +247,63 @@ func (p *parser) resolveSelectItem(node *plan.Node, it selectItem, depth int) er
 			return errf(CodeInvalidSelect, "arguments are not allowed on %q (only spatial columns and their pseudo-columns take (transform=,simplify=))", it.name)
 		}
 	}
+	if fs.Pseudo != nil && fs.Pseudo.Contrib != nil && fs.Pseudo.Contrib.Expr != nil && !it.hasInner {
+		return errf(CodeInvalidSelect, "%q needs arguments: %s%s", it.name, it.name, fs.Pseudo.Contrib.ContribArgSyntax())
+	}
 	node.Fields = append(node.Fields, fs)
 	return nil
+}
+
+// parseContribArgs parses the k=v arguments of a derived contrib
+// pseudo-column (path_lca(path=a.b), path_subpath(offset=1,length=2)) and
+// checks them with the expression's own operand rules; an accessor takes
+// none.
+func parseContribArgs(pc *api.PseudoColumn, inner string) (map[string]any, error) {
+	cv := pc.Contrib
+	if cv.Expr == nil {
+		return nil, errf(CodeInvalidSelect, "%q takes no arguments", pc.Key)
+	}
+	items, ok := splitTop(inner)
+	if !ok {
+		return nil, errf(CodeInvalidSelect, "unbalanced parentheses or quotes in select")
+	}
+	args := map[string]any{}
+	for _, raw := range items {
+		name, val, isArg := cutArg(raw)
+		if !isArg {
+			return nil, errf(CodeInvalidSelect, "%q takes arguments %s, got %q", pc.Key, cv.ContribArgSyntax(), strings.TrimSpace(raw))
+		}
+		var spec *api.ContribArg
+		for i := range cv.Args {
+			if cv.Args[i].Name == name {
+				spec = &cv.Args[i]
+			}
+		}
+		if spec == nil {
+			return nil, errf(CodeUnknownArgument, "%q has no argument %q (takes %s)", pc.Key, name, cv.ContribArgSyntax())
+		}
+		if _, dup := args[name]; dup {
+			return nil, errf(CodeInvalidSelect, "duplicate argument %q", name)
+		}
+		if spec.Type == "integer" {
+			n, err := strconv.ParseInt(strings.TrimSpace(val), 10, 32)
+			if err != nil {
+				return nil, errf(CodeInvalidSelect, "argument %q of %q must be an integer, got %q", name, pc.Key, val)
+			}
+			args[name] = n
+			continue
+		}
+		args[name] = val
+	}
+	for _, a := range cv.Args {
+		if _, ok := args[a.Name]; !ok && !a.Optional {
+			return nil, errf(CodeInvalidSelect, "%q needs argument %q: %s%s", pc.Key, a.Name, pc.Key, cv.ContribArgSyntax())
+		}
+	}
+	if _, err := cv.Expr.Params(cv.Operand(args)); err != nil {
+		return nil, errf(CodeInvalidSelect, "%s: %s", pc.Key, err.Error())
+	}
+	return args, nil
 }
 
 // computedArgs splits the parenthesised part of a computed-column item into

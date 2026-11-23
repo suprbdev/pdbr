@@ -59,7 +59,11 @@ type Request struct {
 	// Vec is the reference vector for pgvector distance ordering (vec=; a
 	// []any of numbers from a JSON array, or the pgvector text form as a
 	// string; nil when absent).
-	Vec         any
+	Vec any
+	// Levenshtein is the reference text (a string) for Levenshtein
+	// distance ordering, scores and thresholds (levenshtein=; nil when
+	// absent).
+	Levenshtein any
 	IfMatch     string // raw ETag from If-Match ("" = absent)
 	IfNoneMatch string
 	Prefer      Prefer
@@ -116,9 +120,12 @@ type FieldSel struct {
 	Alias    string             // response key ("" = key of the selected item)
 	Column   *introspect.Column // real column
 	Computed *api.Computed      // computed column (row-type function)
-	Pseudo   *api.PseudoColumn  // postgis derived accessor (<col>_<accessor>)
+	Pseudo   *api.PseudoColumn  // derived pseudo-column (<col>_<accessor>, scores)
 	// Args are spatial projection args: "transform" (int SRID) and/or
-	// "simplify" (float64 tolerance). Nil when absent.
+	// "simplify" (float64 tolerance); a geometry distance score's
+	// "spheroid" (bool); or the arguments of a derived contrib
+	// pseudo-column ("path" string; "offset", "length" int64). Nil when
+	// absent.
 	Args map[string]any
 	// CallArgs are the extra-argument values of a computed column
 	// (select=key(k=v)), keyed by argument name; absent arguments keep
@@ -407,13 +414,19 @@ type Not struct{ Term Expr }
 //     addresses, range elements); []string for list operands (hk_all,
 //     hk_any, *_any); map[string]any (decoded JSON object) or a range
 //     literal string for range operands; map[string]any or an hstore
-//     literal string for hstore cs/cd.
+//     literal string for hstore cs/cd; a float64 distance for the vec_*_lt
+//     thresholds and an int64 one for levenshtein_lt (their references
+//     are vec= and levenshtein=); the text for hk_def, soundex,
+//     metaphone, dmetaphone and query_int.
 type Cond struct {
 	Column *introspect.Column // real column of the current resource
 	// Path is the JSON path applied to Column (data->>a=eq.x): a ->> path
 	// compares text, a -> path jsonb.
 	Path     JSONPath
 	Computed *api.Computed // computed-column filter (advanced-filters)
+	// Pseudo is a filterable (integer) contrib pseudo-column of the current
+	// resource (<col>_nlevel, <col>_icount).
+	Pseudo   *api.PseudoColumn
 	Relation *RelationPath // relation filter (advanced-filters)
 	Op       Op            // eq, neq, ..., st_intersects, exists
 	Value    any           // coerced; nil for structural ops (is.null ...)
@@ -595,6 +608,7 @@ type OrderTerm struct {
 	// Path is the JSON path applied to Column (order=data->a.desc).
 	Path       JSONPath
 	Computed   *api.Computed
+	Pseudo     *api.PseudoColumn  // orderable contrib pseudo-column (<col>_nlevel, <col>_icount)
 	Relation   *RelationOrder     // users(name) — forward: scalar subquery, backward: MIN/MAX
 	Distance   *introspect.Column // spatial column for `.dist` (uses Request.Near)
 	Contrib    *ContribOrder      // .rank / .rank_cd / .trgm_dist / .vec_l2 ... (pdbcore/contrib)
@@ -604,7 +618,8 @@ type OrderTerm struct {
 
 // ContribOrder orders by a pdbcore/contrib value expression over Column:
 // full-text relevance against Filter (Rank set), a trigram distance to
-// Request.Trgm or a vector distance to Request.Vec (Expr set).
+// Request.Trgm, a vector distance to Request.Vec or the Levenshtein
+// distance to Request.Levenshtein (Expr set).
 type ContribOrder struct {
 	Column *introspect.Column
 	// Name is the order modifier (rank, rank_cd, trgm_dist, vec_l2, ...).
@@ -615,8 +630,9 @@ type ContribOrder struct {
 	// term ranks against (same operator, query and config).
 	Filter *Cond
 	// Expr names the distance expression of a distance term: trigram
-	// (distance, wordDistance, strictWordDistance) or vector (l2Distance,
-	// negativeInnerProduct, cosineDistance, l1Distance).
+	// (distance, wordDistance, strictWordDistance), vector (l2Distance,
+	// negativeInnerProduct, cosineDistance, l1Distance) or
+	// levenshteinDistance.
 	Expr string
 }
 

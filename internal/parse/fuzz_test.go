@@ -55,6 +55,8 @@ func FuzzParse(f *testing.F) {
 		{"GET", "/kb/docs", "body=unaccent_ilike.*cr%C3%A8me*&or=(body.not.unaccent_eq.Caf%C3%A9,body.unaccent_sw.Zo,body.unaccent_includes.50%25)", "", ""},
 		{"GET", "/kb/embeddings", "select=id,emb,chunks(id)&order=emb.vec_cos,half.vec_l2.desc&chunks.order=emb.vec_ip&vec=%5B0.1%2C2%2C-3e-2%5D&emb=not.is.null&after=x", "", ""},
 		{"GET", "/kb/embeddings", "order=sparse.vec_l1&vec=%7B1%3A1.5%7D%2F3&limit=2", "text/csv", ""},
+		{"GET", "/kb/docs", "select=id,attrs->c,x:attrs->>%22a.b%22,path_nlevel,path_lca(path=a.b),path_subpath(offset=-1,length=2),body_levenshtein_distance&attrs->>c=ilike.*x*&attrs=hk_def.k&or=(path_nlevel.gt.1,body.soundex.Rob)&body=levenshtein_lt.2&order=attrs->c.desc,path_nlevel,body.levenshtein&levenshtein=Jon", "", ""},
+		{"GET", "/kb/labels", "select=id,tags_icount&tags=query_int.1%26(2%7C!3)&tags_icount=gte.1&order=tags_icount.desc", "", ""},
 		{"POST", "/kb/embeddings", "select=id,emb", "", `{"emb":[1,2,3],"half":"[1,2]","sparse":[0,1.5]}`},
 		{"GET", "/places", "location=bbox_intersects2d.POINT(1%202)&or=(area.not.bbox_intersects2d.POINT(0%200))", "", ""},
 		{"GET", "/posts", "select=id,users(settings->>theme)&users.settings->>theme=like.d*&users.order=settings->n.desc&users.settings->>a->b=eq.x", "", ""},

@@ -26,7 +26,7 @@ func TestFilterOpsMatchParser(t *testing.T) {
 	}
 	for _, indexedOnly := range []bool{false, true} {
 		built := buildContrib(t, indexedOnly)
-		for _, path := range []string{"users", "posts", "places", "events", "kb.docs", "kb.embeddings"} {
+		for _, path := range []string{"users", "posts", "places", "events", "kb.docs", "kb.embeddings", "kb.labels"} {
 			res := built.ByPath[path]
 			for _, f := range res.Columns {
 				if !res.FilterColumns[f.Key] {
@@ -39,8 +39,11 @@ func TestFilterOpsMatchParser(t *testing.T) {
 				for _, op := range all {
 					val := sampleValue(op, f.Column)
 					u := "/api/" + strings.ReplaceAll(path, ".", "/") + "?" + f.Key + "=" + op + "." + url.QueryEscape(val)
-					if api.IsVectorThreshold(op) {
+					switch api.ThresholdParam(op) {
+					case "vec":
 						u = "/api/" + strings.ReplaceAll(path, ".", "/") + "?" + f.Key + "=" + op + ".0.5&vec=" + url.QueryEscape(sampleVector(f.Column))
+					case "levenshtein":
+						u = "/api/" + strings.ReplaceAll(path, ".", "/") + "?" + f.Key + "=" + op + ".2&levenshtein=x"
 					}
 					_, err := doParse(t, built, req{url: u}, allOn)
 					if (err == nil) != documented[op] {
@@ -56,7 +59,7 @@ func TestFilterOpsMatchParser(t *testing.T) {
 // (api.Built.ContribOrders, rendered into the order parameter) to the
 // parser.
 func TestContribOrdersMatchParser(t *testing.T) {
-	mods := []string{"rank", "rank_cd", "trgm_dist", "trgm_wdist", "trgm_swdist", "vec_l2", "vec_ip", "vec_cos", "vec_l1", "vec_hamming", "vec_jaccard"}
+	mods := []string{"rank", "rank_cd", "trgm_dist", "trgm_wdist", "trgm_swdist", "vec_l2", "vec_ip", "vec_cos", "vec_l1", "vec_hamming", "vec_jaccard", "levenshtein"}
 	for _, indexedOnly := range []bool{false, true} {
 		built := buildContrib(t, indexedOnly)
 		for _, path := range []string{"kb.docs", "kb.embeddings"} {
@@ -73,6 +76,8 @@ func TestContribOrdersMatchParser(t *testing.T) {
 					switch {
 					case strings.HasPrefix(mod, "vec_"):
 						q += "&vec=" + url.QueryEscape(sampleVector(f.Column))
+					case mod == "levenshtein":
+						q += "&levenshtein=x"
 					case !strings.HasPrefix(mod, "rank"):
 						q += "&trgm=x"
 					case res.FilterColumns[f.Key]:
@@ -148,8 +153,11 @@ func sampleValue(op string, c *introspect.Column) string {
 		return "$.a"
 	case "hk_all", "hk_any", "ancestor_any", "descendant_any", "lquery_any":
 		return "{a,b}"
-	case "fts", "plfts", "phfts", "wfts", "trgm_sim", "trgm_wsim", "trgm_swsim", "ancestor", "descendant", "lquery", "ltxtquery":
+	case "fts", "plfts", "phfts", "wfts", "trgm_sim", "trgm_wsim", "trgm_swsim", "ancestor", "descendant", "lquery", "ltxtquery",
+		"hk_def", "soundex", "metaphone", "dmetaphone":
 		return "a"
+	case "query_int":
+		return "1&2"
 	case "sl", "sr", "nxr", "nxl", "adj", "ov", "cs", "cd":
 		switch base {
 		case "int4multirange":

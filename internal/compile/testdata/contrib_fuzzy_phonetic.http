@@ -1,0 +1,1 @@
+GET /api/kb/docs?select=id&body=soundex.Robert&or=(body.metaphone.Knight,body.not.dmetaphone.Smith)

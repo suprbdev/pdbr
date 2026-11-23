@@ -27,6 +27,7 @@ func TestContribScores(t *testing.T) {
 	b := build(t, testcatalog.Contrib(testutil.FixtureCatalog()), contribOptions(true))
 	docs := b.ByPath["kb.docs"]
 	want := []string{
+		"body_levenshtein_distance=levenshtein:levenshteinDistance",
 		"body_similarity=trgm:similarity", "body_strict_word_similarity=trgm:strictWordSimilarity", "body_word_similarity=trgm:wordSimilarity",
 		"title_similarity=trgm:similarity", "title_strict_word_similarity=trgm:strictWordSimilarity", "title_word_similarity=trgm:wordSimilarity",
 	}
@@ -52,7 +53,7 @@ func TestContribScores(t *testing.T) {
 		t.Errorf("emb_cosine_distance property = %+v", p)
 	}
 	get := b.OpenAPI.Paths["/kb/docs"].Get
-	if sel := paramByName(get.Parameters, "select").Description; !strings.Contains(sel, "Scores against near=, trgm= or vec=") || !strings.Contains(sel, "title_similarity") {
+	if sel := paramByName(get.Parameters, "select").Description; !strings.Contains(sel, "Scores against near=, trgm=, vec= or levenshtein=") || !strings.Contains(sel, "title_similarity") {
 		t.Errorf("select description: %s", sel)
 	}
 	if paramByName(get.Parameters, "trgm") == nil {
@@ -64,7 +65,7 @@ func TestContribScores(t *testing.T) {
 	cat.Table(testcatalog.ContribSchema, "docs").Columns = append(cat.Table(testcatalog.ContribSchema, "docs").Columns,
 		&introspect.Column{Name: "trgm", Position: 20, PGType: "int4", TypeSchema: "pg_catalog"})
 	b = build(t, cat, contribOptions(true))
-	if got := scoreKeys(b.ByPath["kb.docs"]); len(got) != 0 {
+	if got := scoreKeys(b.ByPath["kb.docs"]); !reflect.DeepEqual(got, []string{"body_levenshtein_distance=levenshtein:levenshteinDistance"}) {
 		t.Errorf("scores on a resource with a column named trgm: %v", got)
 	}
 	got := scoreKeys(b.ByPath["kb.embeddings"])
@@ -77,7 +78,7 @@ func TestContribScores(t *testing.T) {
 		t.Errorf("vector scores without indexes = %v", got)
 	}
 	b = build(t, cat, contribOptions(false))
-	if got := scoreKeys(b.ByPath["kb.embeddings"]); len(got) != 17 || !strings.HasPrefix(got[0], "code_hamming_distance") {
+	if got := scoreKeys(b.ByPath["kb.embeddings"]); len(got) != 18 || !strings.HasPrefix(got[0], "code_hamming_distance") {
 		t.Errorf("indexed_only off: %v", got)
 	}
 }

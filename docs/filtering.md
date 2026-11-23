@@ -47,7 +47,7 @@ compile time (`400 invalid_filter` when it does not parse) and passed as
 | `cs`, `cd`, `ov` | `@>`, `<@`, `&&` | arrays (`{a,b}` literal); `cs`/`cd` also jsonb (JSON literal); ranges, hstore, ltree, inet — see [contrib.md](contrib.md) |
 | `fts`, `plfts`, `phfts`, `wfts` (optional `(config)`) | `@@ to_tsquery` / `plainto_tsquery` / `phraseto_tsquery` / `websearch_to_tsquery` | `tsvector`; text-like through `to_tsvector` — [contrib.md](contrib.md#full-text-search-postgrest) |
 | `sl`, `sr`, `nxr`, `nxl`, `adj` | `<<`, `>>`, `&<`, `&>`, `-\|-` (range literal or JSON object operand) | ranges, multiranges — [contrib.md](contrib.md#ranges-and-multiranges-postgrest) |
-| contrib (pdbr) | `trgm_sim`, `trgm_wsim`, `trgm_swsim` (pg_trgm); `unaccent_eq`, `unaccent_ilike`, `unaccent_sw`, `unaccent_includes` (unaccent, text-like columns); `hk_all`, `hk_any` (hstore); `ancestor`, `descendant`, `ancestor_any`, `descendant_any`, `lquery`, `lquery_any`, `ltxtquery` (ltree); `cs_strict`, `cd_strict` (inet) — see [contrib.md](contrib.md) | extension types, gated on the installed extension |
+| contrib (pdbr) | `trgm_sim`, `trgm_wsim`, `trgm_swsim` (pg_trgm); `unaccent_eq`, `unaccent_ilike`, `unaccent_sw`, `unaccent_includes` (unaccent, text-like columns); `levenshtein_lt`, `soundex`, `metaphone`, `dmetaphone` (fuzzystrmatch, text-like columns); `query_int` (intarray, `int4[]`); `hk_all`, `hk_any`, `hk_def` (hstore); `ancestor`, `descendant`, `ancestor_any`, `descendant_any`, `lquery`, `lquery_any`, `ltxtquery` (ltree); `cs_strict`, `cd_strict` (inet) — see [contrib.md](contrib.md) | extension types, gated on the installed extension |
 | `hk` | `?` (has key) | jsonb, hstore |
 | `jpe`, `jpm` | `@?`, `@@` — value is a SQL/JSON path | jsonb |
 | spatial (`postgis` plugin) | `st_intersects`, `st_disjoint`, `st_contains`, `st_containsproperly`, `st_within`, `st_covers`, `st_coveredby`, `st_crosses`, `st_overlaps`, `st_touches`, `st_equals`, `st_exactlyequals`, `st_orderingequals`, `st_intersects3d`, `bbox_leftof`, `bbox_rightof`, `bbox_below`, `bbox_above`, `bbox_overlapsorleftof`, `bbox_overlapsorrightof`, `bbox_overlapsorbelow`, `bbox_overlapsorabove`, `bbox_equals`, `bbox_intersectsnd`, `bbox_intersects2d` (value = GeoJSON or WKT/EWKT); `st_dwithin.(geom,dist[,spheroid])`, `st_beyond.(…)`; `bbox_intersects.(minx,miny,maxx,maxy[,srid])`, `bbox_contains`, `bbox_containedby` — plus `is.null`; scalar ops on a spatial column are `400 invalid_filter`, spatial ops on a scalar column too; off (`invalid_filter`) with `plugins.settings.postgis.filters: false` or the plugin disabled — see [postgis.md](postgis.md) | geometry / geography |
@@ -173,6 +173,9 @@ index the column itself); `order=` takes the same paths under the order
 policy. Contrib and spatial operators do not apply to paths
 (`400 invalid_filter`); composite columns take paths in `select=` only
 (they are never filterable or orderable, `400 column_not_filterable`).
+On an hstore column the path is one key, `attrs->color` or
+`attrs->>color` alike, compared as **text** (the value of that key; see
+[contrib.md](contrib.md#hstore-pdbr)).
 
 Enums:
 

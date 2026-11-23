@@ -178,7 +178,7 @@ func (p *parser) checkAggregateType(fs *plan.FieldSel) error {
 	c, agg := fs.Column, fs.Agg
 	name := c.Name + fs.Path.String()
 	if len(fs.Path) > 0 {
-		pt := pathType(fs.Path)
+		pt := p.pathType(c, fs.Path)
 		c = &introspect.Column{Name: name, PGType: pt.base, TypeSchema: "pg_catalog"}
 	}
 	spatial := postgis.IsSpatial(c.PGType) && agg.InputCast == nil

@@ -575,15 +575,23 @@ func (b *Builder) resourceSchema(r *Resource) *Schema {
 		p := &Schema{}
 		if pc.Schema != nil {
 			p = pc.Schema
-			if !pc.Column.NotNull || pc.Score != nil {
+			if !pc.Column.NotNull || pc.Score != nil || pc.Contrib != nil && p.Type != "integer" {
 				p = Nullable(p)
 			}
 		}
 		cp := *p
 		cp.ReadOnly = true
-		sel := key
+		sel := key + pc.Contrib.ContribArgSyntax()
 		if pc.Score != nil && pc.Score.Param == "near" && postgis.FlavourOf(pc.Column.PGType) == postgis.Geometry {
 			sel += "[(spheroid=true)]"
+		}
+		switch {
+		case pc.Filterable && pc.Orderable:
+			sel += "; also filterable (" + key + "=<op>.<value>) and orderable (order=" + key + ")"
+		case pc.Filterable:
+			sel += "; also filterable (" + key + "=<op>.<value>)"
+		case pc.Orderable:
+			sel += "; also orderable (order=" + key + ")"
 		}
 		cp.Description = strings.TrimSpace(pc.Description + " Derived from " + pc.Column.Name + ". Select explicitly: select=" + sel + ".")
 		s.Properties[key] = &cp

@@ -341,6 +341,70 @@ func FuzzFilter(f *testing.F) {
 	pathBaseline := compilePath(f, "a@example.com", "admin", 5)
 	pathAggBaseline := compilePathAgg(f, "a@example.com", "admin", 5)
 	contribBaseline := compileContrib(f, "a@example.com", "admin", 5)
+	compileContribDerived := func(t testing.TB, e, tag string, n int64) *compile.Statement {
+		t.Helper()
+		clip := func(s string) string {
+			if len(s) > 60 {
+				return s[:60]
+			}
+			return s
+		}
+		off := n % 1000
+		length := n % 7
+		if length < 0 {
+			length = -length
+		}
+		hp := func(key string, text bool) plan.JSONPath { return plan.JSONPath{{Key: key, Text: text}} }
+		p := list(docs)
+		p.Select = fields(docs, "id")
+		p.Select.Fields = append(p.Select.Fields,
+			plan.FieldSel{Column: dc("attrs"), Path: hp(e, false)},
+			plan.FieldSel{Alias: "v", Column: dc("attrs"), Path: hp(tag, true)},
+			plan.FieldSel{Pseudo: docs.Pseudo["path_nlevel"]},
+			plan.FieldSel{Pseudo: docs.Pseudo["path_parent"]},
+			plan.FieldSel{Pseudo: docs.Pseudo["paths_lca"]},
+			plan.FieldSel{Pseudo: docs.Pseudo["path_lca"], Args: map[string]any{"path": e}},
+			plan.FieldSel{Pseudo: docs.Pseudo["path_subpath"], Args: map[string]any{"offset": off, "length": length}},
+			plan.FieldSel{Alias: "rest", Pseudo: docs.Pseudo["path_subpath"], Args: map[string]any{"offset": off}},
+			plan.FieldSel{Pseudo: docs.Pseudo["body_levenshtein_distance"]},
+		)
+		p.Filter = plan.And{Terms: []plan.Expr{
+			plan.Cond{Column: dc("attrs"), Path: hp(e, true), Op: plan.OpEq, Value: tag},
+			plan.Cond{Column: dc("attrs"), Path: hp(tag, false), Op: plan.OpLike, Value: e},
+			cond(dc("attrs"), "hk_def", e),
+			plan.Cond{Pseudo: docs.Pseudo["path_nlevel"], Op: plan.OpGte, Value: n},
+			plan.Not{Term: plan.Cond{Pseudo: docs.Pseudo["path_nlevel"], Op: plan.OpIn, Value: []any{n, n + 1}}},
+			cond(dc("body"), "levenshtein_lt", n&0xffff),
+			cond(dc("body"), "soundex", e),
+			plan.Or{Terms: []plan.Expr{cond(dc("body"), "metaphone", clip(tag)), plan.Not{Term: cond(dc("body"), "dmetaphone", e)}}},
+		}}
+		p.Order = []plan.OrderTerm{
+			{Column: dc("attrs"), Path: hp(tag, false), Desc: true},
+			{Pseudo: docs.Pseudo["path_nlevel"]},
+			{Contrib: &plan.ContribOrder{Column: dc("body"), Name: "levenshtein", Expr: "levenshteinDistance"}},
+		}
+		p.Levenshtein = clip(e)
+		p.Page = plan.Page{Limit: 10, After: []any{n}}
+		read, err := cfx.c.Compile(context.Background(), &compile.Request{Plan: p, Built: cfx.built})
+		if err != nil {
+			t.Fatalf("contrib derived compile error on valid input: %v", err)
+		}
+		labels := cfx.res("kb.labels")
+		q := list(labels)
+		q.Select = fields(labels, "id")
+		q.Select.Fields = append(q.Select.Fields, plan.FieldSel{Pseudo: labels.Pseudo["tags_icount"]})
+		q.Filter = plan.Or{Terms: []plan.Expr{
+			cond(cfx.col("kb.labels", "tags"), "query_int", e),
+			plan.Cond{Pseudo: labels.Pseudo["tags_icount"], Op: plan.OpLt, Value: n},
+		}}
+		q.Order = []plan.OrderTerm{{Pseudo: labels.Pseudo["tags_icount"], Desc: true}}
+		ia, err := cfx.c.Compile(context.Background(), &compile.Request{Plan: q, Built: cfx.built})
+		if err != nil {
+			t.Fatalf("intarray compile error on valid input: %v", err)
+		}
+		return &compile.Statement{SQL: read.SQL + "\n" + ia.SQL, Args: append(read.Args, ia.Args...)}
+	}
+	derivedBaseline := compileContribDerived(f, "a@example.com", "admin", 5)
 	compileVector := func(t testing.TB, e, tag string, n int64) *compile.Statement {
 		t.Helper()
 		emb := cfx.res("kb.embeddings")
@@ -387,6 +451,7 @@ func FuzzFilter(f *testing.F) {
 		for _, c := range []struct{ stmt, baseline *compile.Statement }{
 			{compileWith(t, e, tag, n), baseline},
 			{compileContrib(t, e, tag, n), contribBaseline},
+			{compileContribDerived(t, e, tag, n), derivedBaseline},
 			{compileVector(t, e, tag, n), vectorBaseline},
 			{compileAgg(t, e, tag, n), aggBaseline},
 			{compileAggEmbed(t, e, tag, n), aggEmbedBaseline},

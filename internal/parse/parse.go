@@ -255,10 +255,13 @@ type parser struct {
 	// bound once the whole query is parsed.
 	scores     []*api.PseudoColumn
 	vecFilters []vecFilter
+	// levFilters are the levenshtein_lt thresholds, checked against
+	// levenshtein=.
+	levFilters []vecFilter
 }
 
-// vecFilter is a vector distance threshold (vec_cos_lt, ...) on Column,
-// checked against vec= once it is parsed.
+// vecFilter is a distance threshold (vec_cos_lt, levenshtein_lt, ...) on
+// Column, checked against its reference parameter once it is parsed.
 type vecFilter struct {
 	Column *introspect.Column
 	Op     contrib.Op

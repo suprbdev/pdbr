@@ -72,6 +72,8 @@ github.com/suprbdev/pdbcore v0.11.0 h1:8KF4feJyHyhGcSLLeLmJCPgJCziJMCzCCKrC3CbOj
 github.com/suprbdev/pdbcore v0.11.0/go.mod h1:u090NTtiOkO0yfGv4ab0FM7xd8WFAwKnRGWUbY14SAQ=
 github.com/suprbdev/pdbcore v0.12.0 h1:KqyPQK3/o21KMMjiyYBT9Et28GODTJaCBhLQLa2GkiE=
 github.com/suprbdev/pdbcore v0.12.0/go.mod h1:u090NTtiOkO0yfGv4ab0FM7xd8WFAwKnRGWUbY14SAQ=
+github.com/suprbdev/pdbcore v0.12.1-0.20261123160618-3d3ff87df9fc h1:q5iQbXQgyBGwjR9mFw9s4XhtzOmsEgTACKjjubc53uk=
+github.com/suprbdev/pdbcore v0.12.1-0.20261123160618-3d3ff87df9fc/go.mod h1:u090NTtiOkO0yfGv4ab0FM7xd8WFAwKnRGWUbY14SAQ=
 go.uber.org/goleak v1.3.0 h1:2K3zAYmnTNqV73imy9J1T3WC+gmCePx2hEGkimedGto=
 go.uber.org/goleak v1.3.0/go.mod h1:CoHD4mav9JJNrW/WLlf7HGZPjdw8EucARQHekz1X6bE=
 go.yaml.in/yaml/v2 v2.4.4 h1:tuyd0P+2Ont/d6e2rl3be67goVK4R6deVxCUX5vyPaQ=

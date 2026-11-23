@@ -1,0 +1,2 @@
+-- request: GET /api/kb/docs?select=id&body=levenshtein_lt.3
+-- error: 400 invalid_filter: filter levenshtein_lt on body requires levenshtein=<text>

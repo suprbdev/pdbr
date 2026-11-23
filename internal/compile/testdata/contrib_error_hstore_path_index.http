@@ -1,0 +1,1 @@
+GET /api/kb/docs?attrs->0=eq.x
