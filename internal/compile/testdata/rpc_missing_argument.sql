@@ -1,0 +1,2 @@
+-- request: POST /api/rpc/add_numbers
+-- error: 400 missing_argument: function "add_numbers": missing required argument(s): b

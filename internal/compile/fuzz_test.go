@@ -73,7 +73,9 @@ func FuzzFilter(f *testing.F) {
 
 // FuzzSpatial is FuzzFilter for the PostGIS path: WKT strings, bounding-box
 // coordinates and distances are user data and must move through the
-// parameter list exactly like scalars.
+// parameter list exactly like scalars. Bare WKT and EWKT are distinct input
+// encodings (bare WKT is tagged with the column's SRID), so each has its own
+// baseline.
 func FuzzSpatial(f *testing.F) {
 	fx := newFixture(f)
 	places := fx.res("places")
@@ -105,6 +107,10 @@ func FuzzSpatial(f *testing.F) {
 	if !ok {
 		f.Fatal("baseline spatial query failed to compile")
 	}
+	ewktBaseline, ok := compileWith(f, "SRID=4326;POINT(1 2)", 1.5, 100)
+	if !ok {
+		f.Fatal("EWKT baseline spatial query failed to compile")
+	}
 	f.Add("POINT(1 2)", 1.5, 100.0)
 	f.Add("SRID=4326;POLYGON((0 0,1 0,1 1,0 0))", -0.5, 0.0)
 	f.Add(`POINT(1 2)'); DROP TABLE places; --`, 0.0, 1.0)
@@ -116,7 +122,7 @@ func FuzzSpatial(f *testing.F) {
 		if !ok {
 			return
 		}
-		if stmt.SQL != baseline.SQL {
+		if stmt.SQL != baseline.SQL && stmt.SQL != ewktBaseline.SQL {
 			t.Fatalf("spatial SQL text varied with input values:\n--- baseline ---\n%s\n--- got ---\n%s", baseline.SQL, stmt.SQL)
 		}
 		if len(stmt.Args) != len(baseline.Args) {

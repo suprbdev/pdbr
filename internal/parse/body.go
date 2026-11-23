@@ -304,7 +304,7 @@ func (p *parser) coerceBody(col *introspect.Column, v any) (any, *compile.UserEr
 		return string(b), nil
 	case kindSpatial:
 		if !t.isArray {
-			return p.spatialBody(t.flavour, v)
+			return p.spatialBody(t, v)
 		}
 		list, ok := v.([]any)
 		if !ok {
@@ -315,7 +315,7 @@ func (p *parser) coerceBody(col *introspect.Column, v any) (any, *compile.UserEr
 			if item == nil {
 				continue
 			}
-			g, err := p.spatialBody(t.flavour, item)
+			g, err := p.spatialBody(t, item)
 			if err != nil {
 				return nil, err
 			}
@@ -330,8 +330,8 @@ func (p *parser) coerceBody(col *introspect.Column, v any) (any, *compile.UserEr
 	return out, nil
 }
 
-func (p *parser) spatialBody(f postgis.Flavour, v any) (any, *compile.UserError) {
-	val, err := postgis.Parse(v, f)
+func (p *parser) spatialBody(t colType, v any) (any, *compile.UserError) {
+	val, err := postgis.ParseFor(v, t.flavour, t.srid)
 	if err != nil {
 		return nil, errf(CodeInvalidBody, "%s", err.Error())
 	}

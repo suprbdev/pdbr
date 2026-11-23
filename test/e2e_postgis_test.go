@@ -109,6 +109,9 @@ func TestPostGISFilters(t *testing.T) {
 		{[]string{"select=id", "area=bbox_equals." + trafalgarArea}, []int{1}},
 		{[]string{"select=id", "area=st_intersects3d.POINT(-0.128 51.508)"}, []int{1}},
 		{[]string{"select=id", "area=bbox_intersectsnd.POINT(-0.128 51.508)"}, []int{1}},
+		{[]string{"select=id", "location=st_intersects.POINT(-0.1281 51.508)"}, []int{1}},
+		{[]string{"select=id", "location=st_dwithin.(\"POINT(-0.1281 51.508)\",0.05)", "order=id"}, []int{1, 2}},
+		{[]string{"select=id", "location=bbox_leftof.POINT(0 0)", "order=id"}, []int{1, 2, 3}},
 	}
 	for _, tc := range cases {
 		var rows []row
@@ -351,6 +354,10 @@ func TestPostGISDistanceOrder(t *testing.T) {
 	if got := ids(rows, "id"); !eq(got, []int{1, 2, 3, 4}) {
 		t.Errorf("geography dist = %v", got)
 	}
+	getJSON(t, q(srv.URL, "select=id", "order=location.dist.asc", "near=POINT(-0.1281 51.508)", "limit=3"), &rows)
+	if got := ids(rows, "id"); !eq(got, []int{1, 2, 3}) {
+		t.Errorf("bare WKT near = %v", got)
+	}
 	// near= without .dist is ignored.
 	getJSON(t, q(srv.URL, "select=id", "order=id", "near="+trafalgar, "limit=1"), &rows)
 	if got := ids(rows, "id"); !eq(got, []int{1}) {
@@ -406,6 +413,10 @@ func TestPostGISMutations(t *testing.T) {
 	sendJSON(t, "PATCH", fmt.Sprintf("%s/api/places/%d?select=location,area", srv.URL, id), `{"location": "SRID=4326;POINT(1 2)", "area": null}`, 200, &pl)
 	if c := pl["location"].(map[string]any)["coordinates"].([]any); c[0] != float64(1) || pl["area"] != nil {
 		t.Errorf("PATCH EWKT/null = %v", pl)
+	}
+	sendJSON(t, "PATCH", fmt.Sprintf("%s/api/places/%d?select=location_srid", srv.URL, id), `{"location": "POINT(3 4)"}`, 200, &pl)
+	if pl["location_srid"] != float64(4326) {
+		t.Errorf("bare WKT geometry(Point,4326) = %v", pl)
 	}
 	// The column's typmod SRID is enforced by PostgreSQL (22023 → 400).
 	res, out := send(t, "PATCH", fmt.Sprintf("%s/api/places/%d", srv.URL, id), `{"location": "SRID=3857;POINT(1 2)"}`, nil)

@@ -16,7 +16,10 @@ import (
 // parseRPC handles /rpc/{fn}: arguments by name from the query string
 // (GET/HEAD) or the JSON body (POST), plus the SETOF <table> read surface
 // (select, filters, order, limit/offset, count) against the returned
-// resource. Body.Object always holds the argument map (possibly empty).
+// resource. Body.Object always holds the argument map (possibly empty): an
+// absent key is an omitted argument (its DEFAULT applies), a nil value an
+// explicit null. A VARIADIC argument takes one element per repetition of
+// its query parameter, or a JSON array in the body.
 func (p *parser) parseRPC(r *http.Request) error {
 	rpc := p.match.RPC
 	args := map[string]any{}
@@ -51,6 +54,15 @@ func (p *parser) parseRPC(r *http.Request) error {
 				return false, errf(CodeUnknownArgument, "function %q has no argument %q", rpc.Function.Name, key)
 			}
 			t := p.typeFor(a.PGType, a.TypeSchema, false, "")
+			if a.Variadic() {
+				v, err := p.coerceText(t.elem(), val)
+				if err != nil {
+					return false, errf(CodeInvalidFilter, "argument %q: %s", key, err.Detail)
+				}
+				list, _ := args[key].([]any)
+				args[key] = append(list, v)
+				return true, nil
+			}
 			v, err := p.coerceText(t, val)
 			if err != nil {
 				return false, errf(CodeInvalidFilter, "argument %q: %s", key, err.Detail)
@@ -63,7 +75,7 @@ func (p *parser) parseRPC(r *http.Request) error {
 }
 
 // parseRPCBody reads a JSON object of arguments; an absent or empty body is
-// {} (every argument NULL).
+// {} (every argument omitted).
 func (p *parser) parseRPCBody(r *http.Request, argByName map[string]introspect.FuncArg, args map[string]any) error {
 	if r.Body == nil || r.ContentLength == 0 {
 		return nil

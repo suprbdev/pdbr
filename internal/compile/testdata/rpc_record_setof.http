@@ -1,0 +1,1 @@
+GET /api/rpc/mood_counts?select=mood,n&n=gt.0&order=n.desc,mood&limit=5&count=true

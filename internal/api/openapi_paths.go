@@ -243,7 +243,7 @@ func (b *Builder) rpcItem(item *PathItem, rt *Route) {
 		}
 		post := b.operation(rt, "rpc."+rpc.Path+".post", "Call "+fn, statuses)
 		post.Parameters = b.rpcListParams(rpc, nil)
-		post.RequestBody = jsonBody(b.rpcBodySchema(rpc), false, "Arguments by name; a missing argument (or no body) is SQL NULL.")
+		post.RequestBody = jsonBody(b.rpcBodySchema(rpc), rpcRequiresArgs(rpc), "Arguments by name; an omitted argument takes its DEFAULT (arguments without one are required, 400 missing_argument); null is SQL NULL.")
 		if setOfRows {
 			appendDescription(post, b.filterProse(rpc.Resource))
 		}
@@ -499,13 +499,35 @@ func (b *Builder) pathParams(r *Resource, cols []string) []*Parameter {
 // scalars keep their type, structured values (composites, arrays, json,
 // GeoJSON) travel as text.
 func (b *Builder) argParam(a introspect.FuncArg) *Parameter {
-	s := b.typeSchema(a.PGType, a.TypeSchema, "")
-	desc := "Argument (" + a.PGType + "); missing means SQL NULL."
+	pgType := a.PGType
+	if a.Variadic() {
+		pgType = strings.TrimPrefix(pgType, "_")
+	}
+	s := b.typeSchema(pgType, a.TypeSchema, "")
+	desc := "Argument (" + a.PGType + ")" + argDefaultProse(a)
 	if s.Ref != "" && b.enumByRef(s.Ref) == nil || s.Type == "array" || (s.Type == nil && s.Ref == "") {
 		s = &Schema{Type: "string"}
 		desc += " Structured value as JSON text (spatial: GeoJSON or WKT)."
 	}
-	return &Parameter{Name: a.Name, In: "query", Schema: s, Description: desc}
+	p := &Parameter{Name: a.Name, In: "query", Required: !a.HasDefault, Schema: s, Description: desc}
+	if a.Variadic() {
+		p.Schema = &Schema{Type: "array", Items: s}
+		p.Style, p.Explode = "form", boolPtr(true)
+		p.Description += " VARIADIC: repeat the parameter once per element."
+	}
+	return p
+}
+
+// argDefaultProse completes an argument description: required, or the
+// DEFAULT an omitted argument takes.
+func argDefaultProse(a introspect.FuncArg) string {
+	switch {
+	case !a.HasDefault:
+		return "; required."
+	case a.Default != "":
+		return "; optional, default " + a.Default + "."
+	}
+	return "; optional (has a default)."
 }
 
 func (b *Builder) enumByRef(ref string) *Enum {
@@ -521,9 +543,28 @@ func (b *Builder) enumByRef(ref string) *Enum {
 func (b *Builder) rpcBodySchema(rpc *RPC) *Schema {
 	s := &Schema{Type: "object", Properties: map[string]*Schema{}, AdditionalProperties: boolPtr(false)}
 	for _, a := range rpc.Args {
-		s.Properties[a.Name] = Nullable(b.inputTypeSchema(a.PGType, a.TypeSchema, ""))
+		prop := *Nullable(b.inputTypeSchema(a.PGType, a.TypeSchema, ""))
+		if a.HasDefault {
+			prop.Description = strings.TrimPrefix(argDefaultProse(a), "; ")
+		} else {
+			s.Required = append(s.Required, a.Name)
+		}
+		if a.Variadic() {
+			prop.Description = strings.TrimSpace(prop.Description + " VARIADIC: a JSON array of the elements.")
+		}
+		s.Properties[a.Name] = &prop
 	}
 	return s
+}
+
+// rpcRequiresArgs reports whether any argument lacks a DEFAULT.
+func rpcRequiresArgs(rpc *RPC) bool {
+	for _, a := range rpc.Args {
+		if !a.HasDefault {
+			return true
+		}
+	}
+	return false
 }
 
 // rpcResponses renders the success response per return kind (docs/rpc.md).
@@ -551,6 +592,9 @@ func (b *Builder) rpcResponses(rpc *RPC, get bool) map[string]*Response {
 	case ReturnVoid:
 		return map[string]*Response{"204": {Description: "No Content (void function)."}}
 	case ReturnRow:
+		if rpc.Record {
+			return ok(SchemaRef(rpc.Resource.Path))
+		}
 		return ok(Nullable(SchemaRef(rpc.Resource.Path)))
 	case ReturnSetOfRows:
 		return list(SchemaRef(rpc.Resource.Path), map[string]*Header{

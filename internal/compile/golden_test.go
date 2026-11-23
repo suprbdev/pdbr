@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -49,8 +50,9 @@ func goldenCompile(c *compile.Compiler) compile.Func {
 
 // goldenCatalog is the shared fixture plus two golden-only tables the
 // fixture lacks: a composite-primary-key table (memberships) and a table in
-// a second schema (audit.log). Both exist only in memory; the live fixture
-// database does not have them.
+// a second schema (audit.log), and the golden-only functions in
+// goldenOnlyRPCs. They exist only in memory; the live fixture database does
+// not have them.
 func goldenCatalog() *introspect.Catalog {
 	cat := testutil.FixtureCatalog()
 	cat.Schemas = []string{"public", "audit"}
@@ -79,9 +81,36 @@ func goldenCatalog() *introspect.Catalog {
 			Privileges: priv,
 		},
 	)
-	// A void function (the fixture has none) so the void shape has a golden.
+	// A void function (the fixture has none) so the void shape has a golden,
+	// plus defaulted and variadic arguments.
+	pg := "pg_catalog"
 	cat.Functions = append(cat.Functions, &introspect.Function{
-		Schema: "public", Name: "noop", ReturnType: "void", ReturnTypeSchema: "pg_catalog", Volatility: introspect.VolatilityVolatile,
+		Schema: "public", Name: "noop", ReturnType: "void", ReturnTypeSchema: pg, Volatility: introspect.VolatilityVolatile,
+	}, &introspect.Function{
+		Schema: "public", Name: "greet", ReturnType: "text", ReturnTypeSchema: pg, Volatility: introspect.VolatilityImmutable,
+		Args: []introspect.FuncArg{
+			{Name: "name", PGType: "text", TypeSchema: pg, Mode: introspect.ArgModeIn, HasDefault: true, Default: "'world'::text"},
+			{Name: "greeting", PGType: "text", TypeSchema: pg, Mode: introspect.ArgModeIn, HasDefault: true, Default: "'hello'::text"},
+		},
+	}, &introspect.Function{
+		Schema: "public", Name: "mood_counts", ReturnType: "record", ReturnTypeSchema: pg, ReturnsSet: true, Volatility: introspect.VolatilityStable,
+		ReturnColumns: []introspect.FuncArg{
+			{Name: "mood", PGType: "mood", TypeSchema: "public", Mode: introspect.ArgModeTable},
+			{Name: "n", PGType: "int8", TypeSchema: pg, Mode: introspect.ArgModeTable},
+		},
+	}, &introspect.Function{
+		Schema: "public", Name: "user_stats", ReturnType: "record", ReturnTypeSchema: pg, Volatility: introspect.VolatilityStable,
+		Args: []introspect.FuncArg{{Name: "uid", PGType: "int4", TypeSchema: pg, Mode: introspect.ArgModeIn}},
+		ReturnColumns: []introspect.FuncArg{
+			{Name: "posts", PGType: "int8", TypeSchema: pg, Mode: introspect.ArgModeOut},
+			{Name: "last_title", PGType: "text", TypeSchema: pg, Mode: introspect.ArgModeOut},
+		},
+	}, &introspect.Function{
+		Schema: "public", Name: "sum_all", ReturnType: "int4", ReturnTypeSchema: pg, Volatility: introspect.VolatilityImmutable,
+		Args: []introspect.FuncArg{
+			{Name: "base", PGType: "int4", TypeSchema: pg, Mode: introspect.ArgModeIn},
+			{Name: "nums", PGType: "_int4", TypeSchema: pg, Mode: introspect.ArgModeVariadic},
+		},
 	})
 	return cat
 }
@@ -236,6 +265,9 @@ func TestGolden(t *testing.T) {
 	}
 }
 
+// goldenOnlyRPCs are the functions goldenCatalog adds to the fixture.
+var goldenOnlyRPCs = map[string]bool{"noop": true, "greet": true, "sum_all": true, "mood_counts": true, "user_stats": true}
+
 // TestGoldenAgainstDatabase executes every golden statement against the
 // live fixture database (PDBR_TEST_DATABASE_URL; skipped otherwise), each in
 // a transaction that is rolled back: a golden that does not run is a bug.
@@ -259,7 +291,7 @@ func TestGoldenAgainstDatabase(t *testing.T) {
 		name := strings.TrimSuffix(filepath.Base(file), ".http")
 		t.Run(name, func(t *testing.T) {
 			r := readHTTPFile(t, file)
-			if strings.Contains(r.URL.Path, "/memberships") || strings.HasPrefix(r.URL.Path, "/api/audit/") || strings.HasSuffix(r.URL.Path, "/rpc/noop") {
+			if strings.Contains(r.URL.Path, "/memberships") || strings.HasPrefix(r.URL.Path, "/api/audit/") || goldenOnlyRPCs[path.Base(r.URL.Path)] && strings.Contains(r.URL.Path, "/rpc/") {
 				t.Skip("golden-only table")
 			}
 			m, ok := built.Match(strings.TrimPrefix(r.URL.EscapedPath(), goldenBasePath))

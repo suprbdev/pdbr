@@ -168,6 +168,7 @@ rls:
 	t.Setenv("PDBR_SERVER_BASE__PATH", "/v1")
 	t.Setenv("PDBR_FILTERS_INDEXED__ONLY", "false")
 	t.Setenv("PDBR_SCHEMA_SCHEMAS", "public,audit")
+	t.Setenv("PDBR_SCHEMA_EXPOSE__PARTITIONS", "true")
 
 	fs := flag.NewFlagSet("t", flag.ContinueOnError)
 	fs.String("server.addr", "", "")
@@ -193,6 +194,9 @@ rls:
 	}
 	if !reflect.DeepEqual(cfg.Schema.Schemas, []string{"public", "audit"}) {
 		t.Errorf("schemas = %v", cfg.Schema.Schemas)
+	}
+	if !cfg.Schema.ExposePartitions || !cfg.Schema.Functions {
+		t.Errorf("schema section = %+v", cfg.Schema)
 	}
 	if cfg.Server.MaxPageSize != 100 {
 		t.Errorf("unset flag clobbered default: %d", cfg.Server.MaxPageSize)
@@ -225,6 +229,10 @@ func koanfPaths(t reflect.Type, prefix string) []string {
 		f := t.Field(i)
 		key := f.Tag.Get("koanf")
 		if key == "" || key == "-" {
+			continue
+		}
+		if f.Anonymous && strings.HasPrefix(key, ",") {
+			out = append(out, koanfPaths(f.Type, prefix)...)
 			continue
 		}
 		path := key

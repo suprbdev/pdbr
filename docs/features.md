@@ -5,6 +5,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **As built (v0.1.0): ev
 ## Introspection (pg_catalog — from pdbcore)
 
 - [x] Tables (including partitioned tables) (v1) (parity)
+- [x] Partitions hidden by default (`Table.IsPartition`; per-partition constraint clones no longer duplicate relations), `schema.expose_partitions` to expose them (v1.x) (parity)
 - [x] Views (read-only) (v1) (parity)
 - [x] Materialized views (read-only) (v1) (parity)
 - [x] Columns: type, nullability, defaults, identity/generated detection (v1) (parity)
@@ -22,8 +23,9 @@ Checklist of PostgreSQL and REST features pdbr supports. **As built (v0.1.0): ev
 - [x] Composite-type columns mapped to OpenAPI object schemas (nested objects in bodies; composite arrays included) (v1) (parity)
 - [x] `CatalogFormatVersion` shared with pdbq; cache files interchangeable (v1) (new)
 - [ ] Domains surfaced as named schemas (v1 resolves them to the base type) (v1.x) (parity)
-- [ ] Function argument default values / variadic args (v1.x) (parity)
-- [ ] Functions with `OUT`/`INOUT` parameters or anonymous record returns (v1.x) (parity)
+- [x] Function argument default values / variadic args (`FuncArg.HasDefault`, `Function.Variadic`) (v1.x) (parity)
+- [x] Functions with `OUT`/`INOUT` parameters / `RETURNS TABLE` (`Function.ReturnColumns`) (v1.x) (parity)
+- [ ] Anonymous `record` returns (no output parameters: no shape to describe) (stretch) (parity)
 
 ## Type mapping (Postgres → JSON/OpenAPI)
 
@@ -96,6 +98,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **As built (v0.1.0): ev
 - [x] Filtering/ordering on computed columns (`post_count=gt.3`, `order=post_count.desc`) — `advanced-filters` plugin (v1) (parity)
 - [x] Related-column ordering `order=users(name).asc` (forward: correlated subquery; backward: MIN/MAX) — `advanced-filters` plugin, policy of the related table applies (v1) (parity)
 - [x] Spatial filter ops (`st_intersects` … `st_equals`, `st_dwithin`, `st_beyond`, `bbox_*`) — `postgis` plugin (v1) (parity)
+- [x] Spatial values parsed for their column's typmod SRID (`pdbcore/postgis.ParseFor`): bare WKT tagged with it, GeoJSON reprojected to it on geometry columns, EWKT kept — filters, `near=`, bodies — see [PostGIS](postgis.md) (v1.x) (parity)
 - [x] Directional/equality bounding-box ops (`bbox_leftof`, `bbox_rightof`, `bbox_below`, `bbox_above`, `bbox_overlapsor{leftof,rightof,below,above}`, `bbox_equals`, `bbox_intersectsnd`) and `st_exactlyequals`, `st_orderingequals`, `st_intersects3d`, geometry operand — `postgis` plugin (v1.x) (parity)
 - [x] Distance ordering `order=location.dist.asc&near=…`; missing `near` → 400 (v1) (parity)
 - [x] `distinct=col1,col2` → `SELECT DISTINCT ON`; distinct-aware `X-Total-Count`; limit/offset only (v1) (parity)
@@ -142,14 +145,17 @@ Checklist of PostgreSQL and REST features pdbr supports. **As built (v0.1.0): ev
 - [x] `GET {base}/rpc/{fn}?arg=value` for stable/immutable functions (v1) (parity)
 - [x] `POST {base}/rpc/{fn}` JSON body `{arg: value}` for any volatility; volatile via `GET` → `405` `Allow: POST` (v1) (parity)
 - [x] Volatile → mutation semantics (tx, read-only `405`) (v1) (parity)
-- [x] Args by name; missing → SQL `NULL`; unknown → 400; coerced by pg type; enum labels verbatim; spatial args GeoJSON/WKT (v1) (parity)
+- [x] Args by name (named notation); omitted → the function's `DEFAULT` (none → `400 missing_argument`), `null` → SQL `NULL`; unknown → 400; coerced by pg type; enum labels verbatim; spatial args GeoJSON/WKT (v1) (parity)
+- [x] `RETURNS TABLE` / `OUT`-parameter functions: objects keyed by the result columns; `SETOF record` paged like `SETOF <table>` with `select=`, filters, `order=`, `count`, CSV; OpenAPI `rpc.<fn>` schema (v1.x) (parity)
+- [x] `VARIADIC` arguments: repeated query params on GET, JSON array in the body, called with `VARIADIC` (v1.x) (parity)
+- [x] Computed columns whose extra arguments all have defaults (v1.x) (parity)
 - [x] Scalar returns → JSON value `200` (via `to_jsonb`) (v1) (parity)
 - [x] `void` → `204` (v1) (new)
 - [x] Single row (table/composite) → object `200` (`null` when the function returns NULL) (v1) (parity)
 - [x] `SETOF <table>` → array with full `select=` / filters / `order=` / `limit` / `offset` / `count=true` (offset paging only; `Accept: text/csv` supported) (v1) (parity — filters/order/count are a superset)
 - [x] `SETOF <scalar>` → array (v1) (parity)
 - [x] `rls.auth.jwt_type` composite return → minted HS256 JWT string (pdbcore/jwtmint) (v1) (parity)
-- [x] EXECUTE-privilege gating; extension-owned / unnamed / OUT/INOUT (`record`) / trigger / polymorphic returns excluded (VARIADIC undetectable in the catalog) (v1) (parity)
+- [x] EXECUTE-privilege gating; extension-owned / unnamed / anonymous `record` / trigger / polymorphic returns excluded (v1) (parity)
 - [x] Overloads / duplicate route names → keep-first + warning (v1) (parity)
 - [x] Computed columns: stable/immutable row-type functions → `select=` fields, key = function name minus `<table>_` prefix, `@name` override (via the inflector; smart-comments plugin M5), real column wins on collision (v1) (parity)
 - [x] Set-returning computed columns → array fields (v1) (parity)
@@ -164,6 +170,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **As built (v0.1.0): ev
 - [x] `errors.detail: dev` adds `pg` object `{sqlstate, message, detail, hint, table, constraint}` (v1) (parity)
 - [x] `errors.detail: dev|prod|strict` message policy (22*/23* pass through in prod; everything generic in strict) (v1) (parity)
 - [x] Status mapping: 400 grammar/body/22*/23502/23514/42*, 401 credentials, 403 `42501`/role not allowed, 404 route/row, 405 + `Allow`, 406, 409 `23505`/`23503`/`23P01`/serialization exhausted, 412, 413, 415, 500 other, 503 `53*`/`08*`, 504 `57014`/request timeout (v1) (new)
+- [x] `23001` restrict violation (PostgreSQL 18+) → 409; PostGIS input errors (`XX000` mixed SRID / invalid geometry) and contrib input errors (`42601` tsquery/ltree syntax, `42704` unknown text search configuration) → 400 with a sanitized message (`invalid geometry` / passthrough; `invalid input value` in strict) (v1.x) (new)
 
 ## RLS & auth
 

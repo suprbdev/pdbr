@@ -239,7 +239,7 @@ func derivedFor(accessor string) (postgis.Derived, bool) {
 // projected rows (SETOF <table>).
 func (s *stmt) computedJSON(c *api.Computed, node *plan.Node, alias string, depth int) (string, error) {
 	fn := c.Function
-	call := computedCallSQL(fn, c.Resource.Table, alias)
+	call := s.computedCallSQL(fn, c.Resource.Table, alias)
 	ret := fnReturnColumn(fn)
 	if fn.ReturnsSet {
 		if c.SetOf != nil {
@@ -290,9 +290,21 @@ func rowParamSQL(t *introspect.Table, alias string) string {
 	return "ROW(" + strings.Join(cols, ", ") + ")::" + tableRef(t)
 }
 
-// computedCallSQL renders a computed-column function called on the current row.
-func computedCallSQL(fn *introspect.Function, t *introspect.Table, alias string) string {
-	return quoteIdent(fn.Schema) + "." + quoteIdent(fn.Name) + "(" + rowParamSQL(t, alias) + ")"
+// computedCallSQL renders a computed-column function called on the current
+// row: the row is its first argument and every other argument is left to
+// its DEFAULT (api only exposes functions whose extra arguments have one).
+func (s *stmt) computedCallSQL(fn *introspect.Function, t *introspect.Table, alias string) string {
+	call, err := fn.CallSQL(func(a introspect.FuncArg) (string, bool, error) {
+		if a.Name == fn.Args[0].Name {
+			return rowParamSQL(t, alias), true, nil
+		}
+		return "", false, nil
+	})
+	if err != nil {
+		s.fail(fmt.Errorf("compile: computed column %s.%s: %w", fn.Schema, fn.Name, err))
+		return "NULL"
+	}
+	return call
 }
 
 // fnReturnColumn describes a function's return type as a column so the

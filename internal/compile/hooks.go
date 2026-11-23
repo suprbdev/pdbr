@@ -37,7 +37,7 @@ func (p *ParamSet) SpatialValue(col *introspect.Column, v any) (string, error) {
 	if !f.Spatial() {
 		return "", fmt.Errorf("compile: column %q is not a PostGIS type", col.Name)
 	}
-	val, err := postgis.Parse(v, f)
+	val, err := postgis.ParseFor(v, f, spatialSRID(col))
 	if err != nil {
 		return "", errUser(CodeInvalidFilter, "%s", err.Error())
 	}

@@ -27,6 +27,9 @@ type Options struct {
 	AllowColumns map[string][]string
 	// Functions exposes PostgreSQL functions as RPC routes and computed columns.
 	Functions bool
+	// ExposePartitions makes partitions of partitioned tables resources too
+	// (schema.expose_partitions); by default only the partitioned parent is.
+	ExposePartitions bool
 	// BasePath is server.base_path (OpenAPI servers[0].url).
 	BasePath string
 	// Schemas is schema.schemas; Schemas[0] gets bare aliases.
@@ -326,6 +329,10 @@ func (b *Builder) addResources() {
 			b.log.Debug("skipping relation: no SELECT privilege", "table", t.Schema+"."+t.Name)
 			continue
 		}
+		if t.IsPartition() && !b.Options.ExposePartitions {
+			b.log.Debug("skipping relation: partition (schema.expose_partitions is off)", "table", t.Schema+"."+t.Name, "parent", t.PartitionOf)
+			continue
+		}
 		seg := b.Inflect(inflect.KindResourcePath, coreinflect.Input{Schema: t.Schema, Table: t.Name})
 		if segments[t.Schema] == nil {
 			segments[t.Schema] = map[string]bool{}
@@ -577,9 +584,17 @@ func isPseudoType(schema, name string) bool {
 }
 
 // pseudoTyped reports the first pseudo-typed argument name, or "return"
-// when the return type is one; "" when the signature is fully callable.
+// when the return type is one; "" when the signature is fully callable. A
+// record return described by output parameters (returnsRecordColumns) is
+// callable when those columns are.
 func pseudoTyped(f *introspect.Function) string {
-	if isPseudoType(f.ReturnTypeSchema, f.ReturnType) {
+	if returnsRecordColumns(f) {
+		for _, c := range f.ReturnColumns {
+			if isPseudoType(c.TypeSchema, c.PGType) {
+				return "return"
+			}
+		}
+	} else if isPseudoType(f.ReturnTypeSchema, f.ReturnType) {
 		return "return"
 	}
 	for _, a := range f.Args {
@@ -652,8 +667,49 @@ func (b *Builder) addFunctions() {
 		} else {
 			rpc.Path = f.Schema + "." + seg
 		}
+		if rpc.Record {
+			rpc.Resource.Path = b.claimOpenAPIName("rpc."+rpc.Path, "function "+fkey+" result")
+		}
 		b.RPCs[fkey] = rpc
 	}
+}
+
+// returnsRecordColumns reports whether f returns record rows whose columns
+// are its output parameters (OUT/INOUT/TABLE, at least two of them).
+func returnsRecordColumns(f *introspect.Function) bool {
+	return f.ReturnType == "record" && (f.ReturnTypeSchema == "" || f.ReturnTypeSchema == "pg_catalog") && len(f.ReturnColumns) > 1
+}
+
+// recordResource is the read-only resource a record-returning function's
+// rows are compiled and documented against: one column per output
+// parameter, every non-composite column filterable and orderable (the
+// function output is scanned, so there is no index policy to honour). It
+// has no routes, relations or keys and is not part of Resources.
+func (b *Builder) recordResource(f *introspect.Function) *Resource {
+	t := &introspect.Table{Schema: f.Schema, Name: f.Name, Kind: introspect.RelView, Privileges: introspect.Privileges{Select: true}}
+	r := &Resource{
+		Table:           t,
+		Segment:         f.Name,
+		Methods:         map[Method]bool{},
+		Computed:        map[string]*Computed{},
+		Pseudo:          map[string]*PseudoColumn{},
+		Relations:       map[string][]*Relation{},
+		FilterColumns:   map[string]bool{},
+		OrderColumns:    map[string]bool{},
+		InputColumns:    map[string]*introspect.Column{},
+		CostMultipliers: map[string]int{},
+		Description:     "Result row of " + f.Schema + "." + f.Name + ".",
+	}
+	for i, a := range f.ReturnColumns {
+		c := &introspect.Column{Name: a.Name, Position: i + 1, PGType: a.PGType, TypeSchema: a.TypeSchema, IsArray: strings.HasPrefix(a.PGType, "_")}
+		t.Columns = append(t.Columns, c)
+		r.Columns = append(r.Columns, &Field{Column: c, Key: a.Name})
+		if b.Catalog.Composite(c.TypeSchema, strings.TrimPrefix(c.PGType, "_")) == nil {
+			r.FilterColumns[a.Name] = true
+			r.OrderColumns[a.Name] = true
+		}
+	}
+	return r
 }
 
 // resolveReturn classifies the return shape; it returns false when the
@@ -665,6 +721,14 @@ func (b *Builder) resolveReturn(rpc *RPC) bool {
 	switch {
 	case f.ReturnType == "void":
 		rpc.Returns = ReturnVoid
+		return true
+	case returnsRecordColumns(f):
+		rpc.Resource = b.recordResource(f)
+		rpc.Record = true
+		rpc.Returns = ReturnRow
+		if f.ReturnsSet {
+			rpc.Returns = ReturnSetOfRows
+		}
 		return true
 	case b.Catalog.Table(f.ReturnTypeSchema, f.ReturnType) != nil:
 		r := b.Resource(f.ReturnTypeSchema, f.ReturnType)
@@ -694,8 +758,20 @@ func (b *Builder) resolveReturn(rpc *RPC) bool {
 	}
 }
 
+// extraArgsDefaulted reports whether every argument after the first (the
+// row) has a DEFAULT, so the function can be called with the row alone.
+func extraArgsDefaulted(f *introspect.Function) bool {
+	for _, a := range f.Args[1:] {
+		if !a.HasDefault {
+			return false
+		}
+	}
+	return true
+}
+
 // addComputed exposes a stable/immutable function whose first argument is
-// t's row type as a computed column on t's resource.
+// t's row type, and whose other arguments all have defaults, as a computed
+// column on t's resource.
 func (b *Builder) addComputed(t *introspect.Table, f *introspect.Function) {
 	fkey := f.Schema + "." + f.Name
 	r := b.Resource(t.Schema, t.Name)
@@ -709,8 +785,8 @@ func (b *Builder) addComputed(t *introspect.Table, f *introspect.Function) {
 	case f.ReturnType == "void":
 		b.log.Debug("skipping computed column: void return", "function", fkey)
 		return
-	case len(f.Args) > 1:
-		b.log.Debug("skipping computed column: extra arguments are not supported in v1", "function", fkey)
+	case !extraArgsDefaulted(f):
+		b.log.Debug("skipping computed column: extra arguments without defaults are not supported", "function", fkey)
 		return
 	}
 	key := b.Inflect(inflect.KindComputedField, coreinflect.Input{Schema: f.Schema, Table: t.Name, Function: f.Name})

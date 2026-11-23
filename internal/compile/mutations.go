@@ -313,7 +313,7 @@ func (s *stmt) inputValue(col *introspect.Column, v any) string {
 		return s.compositeInput(comp, col, v)
 	}
 	if f := postgis.FlavourOf(col.PGType); f.Spatial() {
-		expr, err := s.spatialInput(f, col.IsArray, v)
+		expr, err := s.spatialInput(f, spatialSRID(col), col.IsArray, v)
 		if err != nil {
 			s.fail(err)
 			return "NULL"
@@ -362,7 +362,7 @@ func compositeText(v any) any {
 // spatialInput renders a geometry/geography value (postgis.Value from the
 // parser, or raw GeoJSON / WKT) through its constructor; arrays become an
 // ARRAY[...] of constructors. NULL is a typed null parameter.
-func (s *stmt) spatialInput(f postgis.Flavour, isArray bool, v any) (string, error) {
+func (s *stmt) spatialInput(f postgis.Flavour, srid int, isArray bool, v any) (string, error) {
 	one := func(item any) (string, error) {
 		if item == nil {
 			return s.param(nil) + "::" + f.String(), nil
@@ -370,7 +370,7 @@ func (s *stmt) spatialInput(f postgis.Flavour, isArray bool, v any) (string, err
 		val, ok := item.(postgis.Value)
 		if !ok {
 			var err error
-			val, err = postgis.Parse(item, f)
+			val, err = postgis.ParseFor(item, f, srid)
 			if err != nil {
 				return "", errUser(CodeInvalidBody, "%s", err.Error())
 			}

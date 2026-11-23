@@ -24,8 +24,10 @@ import (
 
 // errorsFixture adds the objects the docs/errors.md rows need that the shared
 // fixture lacks: a slow stable function (timeouts), a RAISE EXCEPTION
-// function (P0001), a CHECK constraint (23514) and an EXCLUDE constraint
-// (23P01). Dropped again after the test.
+// function (P0001), a CHECK constraint (23514), an EXCLUDE constraint
+// (23P01), an ON DELETE RESTRICT foreign key (23001 / 23503) and full-text
+// functions taking query input (contrib input errors). Dropped again after
+// the test.
 func errorsFixture(t *testing.T) {
 	t.Helper()
 	url := os.Getenv("PDBR_TEST_DATABASE_URL")
@@ -43,6 +45,9 @@ func errorsFixture(t *testing.T) {
 			`DROP FUNCTION IF EXISTS public.e2e_raise()`,
 			`DROP TABLE IF EXISTS public.e2e_checked`,
 			`DROP TABLE IF EXISTS public.e2e_spans`,
+			`DROP TABLE IF EXISTS public.e2e_restrict_child`,
+			`DROP TABLE IF EXISTS public.e2e_restrict_parent`,
+			`DROP FUNCTION IF EXISTS public.e2e_tsquery(text, text)`,
 		} {
 			if _, err := conn.Exec(ctx, ddl); err != nil {
 				t.Errorf("errors fixture cleanup: %v", err)
@@ -63,6 +68,13 @@ func errorsFixture(t *testing.T) {
 		`CREATE TABLE public.e2e_spans (id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY, span int4range NOT NULL,
 		    EXCLUDE USING gist (span WITH &&))`,
 		`INSERT INTO public.e2e_spans (span) VALUES ('[1,10)')`,
+		`CREATE TABLE public.e2e_restrict_parent (id integer PRIMARY KEY)`,
+		`CREATE TABLE public.e2e_restrict_child (id integer PRIMARY KEY,
+		    parent_id integer NOT NULL REFERENCES public.e2e_restrict_parent ON DELETE RESTRICT)`,
+		`INSERT INTO public.e2e_restrict_parent VALUES (1)`,
+		`INSERT INTO public.e2e_restrict_child VALUES (1, 1)`,
+		`CREATE FUNCTION public.e2e_tsquery(cfg text, q text) RETURNS text STABLE LANGUAGE sql AS $$
+		    SELECT to_tsquery(cfg::regconfig, q)::text $$`,
 	} {
 		if _, err := conn.Exec(ctx, ddl); err != nil {
 			t.Fatalf("errors fixture: %v\n%s", err, ddl)
@@ -159,6 +171,7 @@ func TestErrorCodeVocabulary(t *testing.T) {
 		{name: "invalid_cursor", path: "/api/users?after=zzz", status: 400, code: "invalid_cursor"},
 		{name: "method_not_allowed", method: "POST", path: "/api/metrics", status: 405, code: "method_not_allowed", check: allowIs("GET, HEAD")},
 		{name: "unknown_argument", path: "/api/rpc/best_mood?nope=1", status: 400, code: "unknown_argument"},
+		{name: "missing_argument", path: "/api/rpc/describe_mood", status: 400, code: "missing_argument", check: detailIs(`function "describe_mood": missing required argument(s): m`)},
 		{name: "pg sqlstate", path: "/api/users?settings=jpe.$[", status: 400, code: "pg:42601", check: func(t *testing.T, _ *http.Response, p problem) {
 			if p.PG["sqlstate"] != "42601" {
 				t.Errorf("pg object = %v", p.PG)
@@ -316,6 +329,11 @@ func TestErrorStatusMapping(t *testing.T) {
 		{name: "409 23505 unique", method: "POST", path: "/api/users", body: `{"email":"ada@example.com"}`, status: 409, code: "pg:23505"},
 		{name: "409 23503 fk", method: "POST", path: "/api/posts", body: `{"author_id":999999,"title":"x"}`, status: 409, code: "pg:23503"},
 		{name: "409 23P01 exclusion", method: "POST", path: "/api/e2e_spans", body: `{"span":"[5,6)"}`, status: 409, code: "pg:23P01"},
+		{name: "409 ON DELETE RESTRICT", method: "DELETE", path: "/api/e2e_restrict_parent/1", status: 409, code: restrictCode(t)},
+		{name: "400 PostGIS mixed SRID", path: "/api/places?location=st_intersects.SRID%3D3857%3BPOINT(-0.1281%2051.508)", status: 400, code: "pg:XX000"},
+		{name: "400 PostGIS parse error", path: "/api/places?location=st_intersects.POINT(1%202%203%204%205)", status: 400, code: "pg:XX000"},
+		{name: "400 tsquery syntax", path: "/api/rpc/e2e_tsquery?cfg=english&q=a%20%26%26", status: 400, code: "pg:42601"},
+		{name: "400 unknown text search configuration", path: "/api/rpc/e2e_tsquery?cfg=nope&q=a", status: 400, code: "pg:42704"},
 		{name: "500 P0001 raise", path: "/api/rpc/e2e_raise", status: 500, code: "pg:P0001", check: func(t *testing.T, _ *http.Response, p problem) {
 			if p.Detail != "nope" || p.PG["hint"] != "do not" {
 				t.Errorf("dev P0001 = %+v", p)
@@ -341,18 +359,42 @@ func TestErrorStatusMapping(t *testing.T) {
 	}
 }
 
+// restrictCode is the SQLSTATE of an ON DELETE RESTRICT violation:
+// PostgreSQL 18 reports 23001, older servers 23503.
+func restrictCode(t *testing.T) string {
+	t.Helper()
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, os.Getenv("PDBR_TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+	var num int
+	if err := conn.QueryRow(ctx, `SELECT current_setting('server_version_num')::int`).Scan(&num); err != nil {
+		t.Fatal(err)
+	}
+	if num >= 180000 {
+		return "pg:23001"
+	}
+	return "pg:23503"
+}
+
 // TestErrorDetailLevels: the errors.detail table — pg object only in dev,
-// prod passes 22*/23* through and hides the rest, strict hides everything.
+// prod passes 22*/23* and contrib input messages through, renders PostGIS
+// input errors as "invalid geometry" and hides the rest, strict hides
+// everything.
 func TestErrorDetailLevels(t *testing.T) {
 	errorsFixture(t)
 	dup := errorRow{method: "POST", path: "/api/users", body: `{"email":"ada@example.com"}`, hdr: map[string]string{"X-Pdbr-Claim-Role": "app_user"}, status: 409, code: "pg:23505"}
 	perm := errorRow{path: "/api/comments", status: 403, code: "pg:42501"}
 	raise := errorRow{path: "/api/rpc/e2e_raise", status: 500, code: "pg:P0001"}
 	syntax := errorRow{path: "/api/users?settings=jpe.$[", status: 400, code: "pg:42601"}
-	for level, want := range map[string]struct{ dup, perm, raise, syntax string }{
-		"dev":    {`duplicate key value violates unique constraint "users_email_key"`, "permission denied for table comments", "nope", ""},
-		"prod":   {`duplicate key value violates unique constraint "users_email_key"`, "permission denied", "database error", "invalid operation"},
-		"strict": {"constraint violation", "permission denied", "database error", "invalid operation"},
+	geom := errorRow{path: "/api/places?location=st_intersects.SRID%3D3857%3BPOINT(-0.1281%2051.508)", status: 400, code: "pg:XX000"}
+	tsq := errorRow{path: "/api/rpc/e2e_tsquery?cfg=english&q=a%20%26%26", status: 400, code: "pg:42601"}
+	for level, want := range map[string]struct{ dup, perm, raise, syntax, geom, tsq string }{
+		"dev":    {`duplicate key value violates unique constraint "users_email_key"`, "permission denied for table comments", "nope", "", "", ""},
+		"prod":   {`duplicate key value violates unique constraint "users_email_key"`, "permission denied", "database error", "invalid operation", "invalid geometry", `syntax error in tsquery: "a &&"`},
+		"strict": {"constraint violation", "permission denied", "database error", "invalid operation", "invalid input value", "invalid input value"},
 	} {
 		t.Run(level, func(t *testing.T) {
 			srv := testServer(t, func(c *config.Config) {
@@ -378,7 +420,15 @@ func TestErrorDetailLevels(t *testing.T) {
 				{name: "P0001", path: raise.path, status: raise.status, code: raise.code, check: detailIs(want.raise)},
 			}
 			if want.syntax != "" {
-				rows = append(rows, errorRow{name: "42601", path: syntax.path, status: syntax.status, code: syntax.code, check: detailIs(want.syntax)})
+				rows = append(rows, errorRow{name: "42601", path: syntax.path, status: syntax.status, code: syntax.code, check: detailIs(want.syntax)},
+					errorRow{name: "postgis input", path: geom.path, status: geom.status, code: geom.code, check: detailIs(want.geom)},
+					errorRow{name: "contrib input", path: tsq.path, status: tsq.status, code: tsq.code, check: detailIs(want.tsq)})
+			} else {
+				rows = append(rows, errorRow{name: "postgis input", path: geom.path, status: geom.status, code: geom.code, check: func(t *testing.T, _ *http.Response, p problem) {
+					if !strings.Contains(p.Detail, "mixed SRID") {
+						t.Errorf("dev postgis detail = %q", p.Detail)
+					}
+				}})
 			}
 			// Grammar errors are always rendered in full.
 			rows = append(rows, errorRow{name: "grammar", path: "/api/users?select=emial", status: 400, code: "unknown_column", check: func(t *testing.T, _ *http.Response, p problem) {

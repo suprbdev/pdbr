@@ -1,0 +1,1 @@
+GET /api/rpc/greet?greeting=hi

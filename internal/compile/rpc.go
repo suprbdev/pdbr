@@ -2,6 +2,7 @@ package compile
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -12,11 +13,14 @@ import (
 	"github.com/suprbdev/pdbr/internal/plan"
 )
 
-// rpc compiles /rpc/{fn} requests. Arguments are bound positionally in
-// declaration order as `$n::type` (absent or null → `NULL::type`), then the
-// return kind picks the shape: scalar / composite values are materialized in
-// a subquery and rendered like column values; void yields a constant (exec
-// answers 204); a single table row is projected over `FROM fn(...) AS t`
+// rpc compiles /rpc/{fn} requests. Arguments are passed by name
+// (introspect.Function.CallSQL) as `$n::type` in declaration order: an
+// absent argument is left out so PostgreSQL applies its DEFAULT (absent
+// without a default → 400 missing_argument), an explicit null is
+// `NULL::type`, and a variadic function is called positionally with
+// `VARIADIC <array>`. Then the return kind picks the shape: scalar /
+// composite values are materialized in a subquery and rendered like column
+// values; void yields a constant (exec answers 204); a single table row is projected over `FROM fn(...) AS t`
 // with embeds; SETOF <table> reuses the list compiler with the function call
 // as the root row source (offset paging only); SETOF <scalar|composite>
 // aggregates the function output into an array. Minted (jwt_type) functions
@@ -53,23 +57,25 @@ func (s *stmt) rpc() (*Statement, error) {
 	return st, nil
 }
 
-// rpcCall renders the function call with one typed parameter per declared
-// argument.
+// rpcCall renders the function call passing exactly the arguments present
+// in args, each as a typed parameter (nil as a typed NULL).
 func (s *stmt) rpcCall(fn *introspect.Function, args map[string]any) (string, error) {
-	params := make([]string, len(fn.Args))
-	for i, a := range fn.Args {
+	call, err := fn.CallSQL(func(a introspect.FuncArg) (string, bool, error) {
 		v, ok := args[a.Name]
-		if !ok || v == nil {
-			params[i] = "NULL::" + argTypeSQL(a, s.c.Built)
-			continue
+		if !ok {
+			return "", false, nil
+		}
+		if v == nil {
+			return "NULL::" + argTypeSQL(a, s.c.Built), true, nil
 		}
 		p, err := s.argParam(a, v)
-		if err != nil {
-			return "", err
-		}
-		params[i] = p
+		return p, true, err
+	})
+	var missing *introspect.MissingArgsError
+	if errors.As(err, &missing) {
+		return "", errUser(CodeMissingArgument, "function %q: missing required argument(s): %s", fn.Name, strings.Join(missing.Args, ", "))
 	}
-	return quoteIdent(fn.Schema) + "." + quoteIdent(fn.Name) + "(" + strings.Join(params, ", ") + ")", nil
+	return call, err
 }
 
 // argColumn views a function argument as a column so the parameter helpers
@@ -112,7 +118,7 @@ func (s *stmt) argParam(a introspect.FuncArg, v any) (string, error) {
 		}
 		return fmt.Sprintf("jsonb_populate_record(NULL::%s, %s::jsonb)", typeRef(a.TypeSchema, base), s.jsonParam(v)), nil
 	case postgis.IsSpatial(base) && !col.IsArray:
-		expr, err := s.spatialOperand(postgis.FlavourOf(base), v)
+		expr, err := s.spatialOperand(postgis.FlavourOf(base), 0, v)
 		if err != nil {
 			return "", err
 		}
@@ -236,7 +242,9 @@ func (s *stmt) rpcNode(r *api.Resource) *plan.Node {
 
 // rpcRow compiles a single table-row return: the projection (with embeds)
 // over the call as a row source. A strict function returning NULL yields one
-// all-null row, which the CASE surfaces as JSON null (200, body null).
+// all-null row, which the CASE surfaces as JSON null (200, body null). A
+// record of output parameters is always an object, all-null columns
+// included.
 func (s *stmt) rpcRow(rpc *api.RPC, call string) (*Statement, error) {
 	node := s.rpcNode(rpc.Resource)
 	alias := s.alias("t")
@@ -248,8 +256,10 @@ func (s *stmt) rpcRow(rpc *api.RPC, call string) (*Statement, error) {
 	if err != nil {
 		return nil, err
 	}
-	sql := fmt.Sprintf("SELECT CASE WHEN %s IS NULL THEN NULL ELSE %s END AS data\nFROM %s AS %s%s%s",
-		alias, jsonExpr, call, alias, joinLaterals(laterals), where)
+	if !rpc.Record {
+		jsonExpr = fmt.Sprintf("CASE WHEN %s IS NULL THEN NULL ELSE %s END", alias, jsonExpr)
+	}
+	sql := fmt.Sprintf("SELECT %s AS data\nFROM %s AS %s%s%s", jsonExpr, call, alias, joinLaterals(laterals), where)
 	return &Statement{SQL: sql, Shape: ShapeScalar}, nil
 }
 

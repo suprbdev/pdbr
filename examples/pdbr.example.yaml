@@ -48,6 +48,8 @@ schema:
   cache_path: ""
   # Expose PostgreSQL functions as /rpc/{fn} routes and computed columns.
   functions: true
+  # Expose each partition of a partitioned table as a resource of its own. Off by default: a partition's rows are already reachable (and writable) through its partitioned parent, which stays a resource either way.
+  expose_partitions: false
 
 filters:
   # Only allow filtering on columns covered by an index (default policy).

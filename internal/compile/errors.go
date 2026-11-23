@@ -20,6 +20,7 @@ const (
 	CodeCostExceeded       = "cost_exceeded"
 	CodeInvalidCursor      = "invalid_cursor"
 	CodeInvalidBody        = "invalid_body"
+	CodeMissingArgument    = "missing_argument"
 	CodeNotImplemented     = "not_implemented"
 )
 

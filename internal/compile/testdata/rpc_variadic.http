@@ -1,0 +1,1 @@
+GET /api/rpc/sum_all?base=1&nums=2&nums=3

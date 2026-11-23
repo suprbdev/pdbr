@@ -36,6 +36,7 @@ type colType struct {
 	kind    typeKind
 	enum    *api.Enum
 	flavour postgis.Flavour
+	srid    int
 }
 
 func (t colType) elem() colType {
@@ -52,7 +53,11 @@ func (t colType) name() string {
 }
 
 func (p *parser) typeOf(col *introspect.Column) colType {
-	return p.typeFor(col.PGType, col.TypeSchema, col.IsArray, col.EnumRef)
+	t := p.typeFor(col.PGType, col.TypeSchema, col.IsArray, col.EnumRef)
+	if t.kind == kindSpatial && col.Spatial != nil {
+		t.srid = col.Spatial.SRID
+	}
+	return t
 }
 
 func (p *parser) typeFor(pgType, typeSchema string, isArray bool, enumRef string) colType {
@@ -175,7 +180,7 @@ func (p *parser) coerceElem(t colType, text string) (any, *compile.UserError) {
 	case kindEnum:
 		return p.enumLabel(t.enum, text)
 	case kindSpatial:
-		return p.coerceSpatial(t.flavour, text)
+		return p.coerceSpatial(t, text)
 	}
 	return text, nil
 }
@@ -200,17 +205,27 @@ func (p *parser) enumLabel(e *api.Enum, text string) (any, *compile.UserError) {
 	return nil, errf(CodeInvalidFilter, "%q is not a value of enum %q", text, e.Name)
 }
 
-// coerceSpatial parses GeoJSON text or WKT/EWKT into a postgis.Value.
-func (p *parser) coerceSpatial(f postgis.Flavour, text string) (any, *compile.UserError) {
-	var in any = text
-	if strings.HasPrefix(strings.TrimSpace(text), "{") {
-		var m map[string]any
-		if err := json.Unmarshal([]byte(text), &m); err != nil {
-			return nil, errf(CodeInvalidFilter, "spatial value is not valid GeoJSON")
-		}
-		in = m
+// spatialInput decodes GeoJSON text into an object and leaves WKT/EWKT as
+// the string it is: the two input forms postgis.ParseFor accepts.
+func spatialInput(text string) (any, *compile.UserError) {
+	if !strings.HasPrefix(strings.TrimSpace(text), "{") {
+		return text, nil
 	}
-	v, err := postgis.Parse(in, f)
+	var m map[string]any
+	if err := json.Unmarshal([]byte(text), &m); err != nil {
+		return nil, errf(CodeInvalidFilter, "spatial value is not valid GeoJSON")
+	}
+	return m, nil
+}
+
+// coerceSpatial parses GeoJSON text or WKT/EWKT into a postgis.Value bound
+// for a column of type t (its flavour and typmod SRID).
+func (p *parser) coerceSpatial(t colType, text string) (any, *compile.UserError) {
+	in, uerr := spatialInput(text)
+	if uerr != nil {
+		return nil, uerr
+	}
+	v, err := postgis.ParseFor(in, t.flavour, t.srid)
 	if err != nil {
 		return nil, errf(CodeInvalidFilter, "%s", err.Error())
 	}
@@ -249,7 +264,7 @@ func (p *parser) coerceJSON(t colType, v any) (any, *compile.UserError) {
 		}
 		return string(b), nil
 	case kindSpatial:
-		val, err := postgis.Parse(v, t.flavour)
+		val, err := postgis.ParseFor(v, t.flavour, t.srid)
 		if err != nil {
 			return nil, errf(CodeInvalidFilter, "%s", err.Error())
 		}

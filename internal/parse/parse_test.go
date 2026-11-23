@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/suprbdev/pdbcore/introspect"
 	"github.com/suprbdev/pdbcore/postgis"
 	"github.com/suprbdev/pdbcore/testutil"
 
@@ -746,7 +747,7 @@ func TestOrder(t *testing.T) {
 	if p.Order[0].Distance == nil || p.Order[0].Distance.Name != "location" || p.Near == nil {
 		t.Fatalf("order = %+v near=%v", p.Order, p.Near)
 	}
-	if p.Near.(postgis.Value).Param != "SRID=4326;POINT(-0.1281 51.508)" {
+	if p.Near != "SRID=4326;POINT(-0.1281 51.508)" {
 		t.Fatalf("near = %+v", p.Near)
 	}
 	_, err := doParse(t, b, req{url: "/api/places?order=location.dist"}, allOn)
@@ -1064,6 +1065,36 @@ func TestRPC(t *testing.T) {
 	}
 	_, err = doParse(t, b, req{method: "POST", url: "/api/rpc/add_numbers?a=1", body: `{}`, header: hdr}, allOn)
 	wantCode(t, err, CodeUnknownArgument)
+}
+
+func TestRPCVariadic(t *testing.T) {
+	cat := testutil.FixtureCatalog()
+	cat.Functions = append(cat.Functions, &introspect.Function{
+		Schema: "public", Name: "sum_all", ReturnType: "int4", ReturnTypeSchema: "pg_catalog", Volatility: introspect.VolatilityImmutable,
+		Args: []introspect.FuncArg{
+			{Name: "base", PGType: "int4", TypeSchema: "pg_catalog", HasDefault: true},
+			{Name: "nums", PGType: "_int4", TypeSchema: "pg_catalog", Mode: introspect.ArgModeVariadic},
+		},
+	})
+	b, err := api.New(cat, inflect.Default, api.Options{Functions: true, BasePath: "/api", Schemas: []string{"public"}, MaxPageSize: 100, Logger: quiet()}).Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := mustParse(t, b, "/api/rpc/sum_all?nums=1&base=5&nums=2&nums=3")
+	if !reflect.DeepEqual(p.Body.Object, map[string]any{"base": int64(5), "nums": []any{int64(1), int64(2), int64(3)}}) {
+		t.Fatalf("args = %#v", p.Body.Object)
+	}
+	p = mustParse(t, b, "/api/rpc/sum_all?nums=7")
+	if !reflect.DeepEqual(p.Body.Object, map[string]any{"nums": []any{int64(7)}}) {
+		t.Fatalf("args = %#v", p.Body.Object)
+	}
+	_, err = doParse(t, b, req{url: "/api/rpc/sum_all?nums=1&nums=x"}, allOn)
+	wantCode(t, err, CodeInvalidFilter)
+	hdr := map[string]string{"Content-Type": "application/json"}
+	p, err = doParse(t, b, req{method: "POST", url: "/api/rpc/sum_all", body: `{"nums": [1, 2]}`, header: hdr}, allOn)
+	if err != nil || !reflect.DeepEqual(p.Body.Object, map[string]any{"nums": []any{int64(1), int64(2)}}) {
+		t.Fatalf("plan=%+v err=%v", p, err)
+	}
 }
 
 func TestCoerceJSON(t *testing.T) {

@@ -346,6 +346,11 @@ func (b *Builder) openAPI(built *Built) *Document {
 			doc.Components.Schemas[r.Path+".upsert"] = b.inputSchema(r, MethodPut)
 		}
 	}
+	for _, rpc := range sortedRPCs(b.RPCs) {
+		if rpc.Record {
+			doc.Components.Schemas[rpc.Resource.Path] = b.resourceSchema(rpc.Resource)
+		}
+	}
 	for _, e := range b.Enums {
 		doc.Components.Schemas[e.Name] = &Schema{Type: "string", Enum: append([]string(nil), e.Values...), Description: e.Description}
 	}

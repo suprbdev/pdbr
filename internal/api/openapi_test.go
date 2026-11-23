@@ -7,8 +7,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/suprbdev/pdbcore/introspect"
 	"github.com/suprbdev/pdbcore/testutil"
 	"go.yaml.in/yaml/v3"
+
+	"github.com/suprbdev/pdbr/internal/inflect"
 )
 
 func paramNames(ps []*Parameter, in string) []string {
@@ -197,20 +200,110 @@ func TestOpenAPIRowPaths(t *testing.T) {
 	}
 }
 
+func TestOpenAPIRPCDefaultsAndVariadic(t *testing.T) {
+	cat := testutil.FixtureCatalog()
+	cat.Functions = append(cat.Functions, &introspect.Function{
+		Schema: "public", Name: "sum_all", ReturnType: "int4", ReturnTypeSchema: "pg_catalog", Volatility: introspect.VolatilityImmutable,
+		Args: []introspect.FuncArg{
+			{Name: "base", PGType: "int4", TypeSchema: "pg_catalog", HasDefault: true, Default: "0"},
+			{Name: "nums", PGType: "_int4", TypeSchema: "pg_catalog", Mode: introspect.ArgModeVariadic},
+		},
+	})
+	built, err := New(cat, inflect.Default, Options{Functions: true, BasePath: "/api", Schemas: []string{"public"}, MaxPageSize: 100, Logger: quiet()}).Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sa := built.OpenAPI.Paths["/rpc/sum_all"]
+	base, nums := paramByName(sa.Get.Parameters, "base"), paramByName(sa.Get.Parameters, "nums")
+	if base.Required || !strings.Contains(base.Description, "default 0") {
+		t.Errorf("base = %+v", base)
+	}
+	if !nums.Required || nums.Schema.Type != "array" || nums.Schema.Items.Type != "integer" || nums.Explode == nil || !*nums.Explode {
+		t.Errorf("nums = %+v", nums)
+	}
+	bs := sa.Post.RequestBody.Content["application/json"].Schema
+	if !reflect.DeepEqual(bs.Required, []string{"nums"}) || !strings.Contains(bs.Properties["base"].Description, "default 0") || bs.Properties["nums"].Items == nil {
+		t.Errorf("body = %+v", bs)
+	}
+}
+
+func TestRecordReturningFunctions(t *testing.T) {
+	pg := "pg_catalog"
+	cat := testutil.FixtureCatalog()
+	cat.Functions = append(cat.Functions, &introspect.Function{
+		Schema: "public", Name: "order_status_counts", ReturnType: "record", ReturnTypeSchema: pg, ReturnsSet: true, Volatility: introspect.VolatilityStable,
+		ReturnColumns: []introspect.FuncArg{
+			{Name: "status", PGType: "mood", TypeSchema: "public", Mode: introspect.ArgModeTable},
+			{Name: "n", PGType: "int8", TypeSchema: pg, Mode: introspect.ArgModeTable},
+		},
+	}, &introspect.Function{
+		Schema: "public", Name: "user_stats", ReturnType: "record", ReturnTypeSchema: pg, Volatility: introspect.VolatilityStable,
+		Args: []introspect.FuncArg{{Name: "uid", PGType: "int4", TypeSchema: pg}},
+		ReturnColumns: []introspect.FuncArg{
+			{Name: "posts", PGType: "int8", TypeSchema: pg, Mode: introspect.ArgModeOut},
+			{Name: "home", PGType: "address", TypeSchema: "public", Mode: introspect.ArgModeOut},
+		},
+	}, &introspect.Function{
+		Schema: "public", Name: "anon_record", ReturnType: "record", ReturnTypeSchema: pg, Volatility: introspect.VolatilityStable,
+	}, &introspect.Function{
+		Schema: "public", Name: "poly_out", ReturnType: "record", ReturnTypeSchema: pg, Volatility: introspect.VolatilityStable,
+		ReturnColumns: []introspect.FuncArg{
+			{Name: "a", PGType: "anyelement", TypeSchema: pg, Mode: introspect.ArgModeOut},
+			{Name: "b", PGType: "int4", TypeSchema: pg, Mode: introspect.ArgModeOut},
+		},
+	})
+	built, err := New(cat, inflect.Default, Options{FilterIndexedOnly: true, Functions: true, BasePath: "/api", Schemas: []string{"public"}, MaxPageSize: 100, Logger: quiet()}).Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if built.RPCByPath["anon_record"] != nil || built.RPCByPath["poly_out"] != nil {
+		t.Error("anonymous / polymorphic record functions must stay excluded")
+	}
+	osc := built.RPCByPath["order_status_counts"]
+	if osc == nil || !osc.Record || osc.Returns != ReturnSetOfRows || osc.Resource.Path != "rpc.order_status_counts" {
+		t.Fatalf("order_status_counts = %+v", osc)
+	}
+	if !osc.Resource.FilterColumns["n"] || !osc.Resource.OrderColumns["status"] {
+		t.Errorf("record columns not filterable/orderable under indexed_only: %v %v", osc.Resource.FilterColumns, osc.Resource.OrderColumns)
+	}
+	if built.Resources["public.order_status_counts"] != nil {
+		t.Error("record resource leaked into Resources")
+	}
+	us := built.RPCByPath["user_stats"]
+	if us == nil || us.Returns != ReturnRow || us.Resource.FilterColumns["home"] {
+		t.Fatalf("user_stats = %+v", us)
+	}
+	doc := built.OpenAPI
+	rs := doc.Components.Schemas["rpc.order_status_counts"]
+	if rs == nil || rs.Properties["status"] == nil || rs.Properties["n"] == nil || len(rs.Required) != 0 {
+		t.Fatalf("result schema = %+v", rs)
+	}
+	get := doc.Paths["/rpc/order_status_counts"].Get
+	if items := get.Responses["200"].Content["application/json"].Schema.Items; items.Ref != "#/components/schemas/rpc.order_status_counts" {
+		t.Errorf("200 items = %+v", items)
+	}
+	if got := strings.Join(paramNames(get.Parameters, "query"), ","); !strings.Contains(got, "select,order,limit,offset,count") || !strings.HasSuffix(got, ",status,n") {
+		t.Errorf("params = %s", got)
+	}
+	if s := doc.Paths["/rpc/user_stats"].Get.Responses["200"].Content["application/json"].Schema; s.Ref != "#/components/schemas/rpc.user_stats" {
+		t.Errorf("user_stats 200 = %+v", s)
+	}
+}
+
 func TestOpenAPIRPC(t *testing.T) {
 	doc := fixture(t).OpenAPI
 	sp := doc.Paths["/rpc/search_posts"]
 	if got := paramNames(sp.Get.Parameters, "query"); !reflect.DeepEqual(got[:2], []string{"term", "select"}) || !strings.Contains(strings.Join(got, ","), ",author_id,title") || strings.Contains(strings.Join(got, ","), "after") {
 		t.Errorf("search_posts GET params = %v", got)
 	}
-	if p := paramByName(sp.Get.Parameters, "term"); p.Schema.Type != "string" || !strings.Contains(p.Description, "NULL") {
+	if p := paramByName(sp.Get.Parameters, "term"); p.Schema.Type != "string" || !p.Required || !strings.Contains(p.Description, "required") {
 		t.Errorf("term param = %+v", p)
 	}
 	if got := paramNames(sp.Post.Parameters, "query"); got[0] != "select" || paramByName(sp.Post.Parameters, "term") != nil {
 		t.Errorf("search_posts POST params = %v", got)
 	}
 	body := sp.Post.RequestBody
-	if body.Required || body.Content["application/json"].Schema.Properties["term"] == nil {
+	if bs := body.Content["application/json"].Schema; !body.Required || bs.Properties["term"] == nil || !reflect.DeepEqual(bs.Required, []string{"term"}) {
 		t.Errorf("search_posts POST body = %+v", body)
 	}
 	if ok := sp.Get.Responses["200"]; ok.Content["application/json"].Schema.Items.Ref != "#/components/schemas/posts" || ok.Headers["X-Total-Count"] == nil || ok.Headers["Link"] == nil {

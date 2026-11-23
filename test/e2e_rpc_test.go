@@ -105,7 +105,6 @@ func TestRPCScalarAndEnums(t *testing.T) {
 		"/api/rpc/mood_moods?limit=1":     `["ok"]`,
 		"/api/rpc/mood_moods?offset=1":    `["happy"]`,
 		"/api/rpc/describe_mood?m=happy":  `"mood is happy"`,
-		"/api/rpc/describe_mood":          `null`,
 		"/api/rpc/search_posts?term=zzzz": `[]`,
 	}
 	for path, want := range cases {
@@ -135,11 +134,145 @@ func TestRPCScalarAndEnums(t *testing.T) {
 	res, body, _ = rpcCall(t, "POST", srv.URL+"/api/rpc/describe_mood", `[1]`, nil)
 	wantProblem(t, res, body, 400, "invalid_body")
 	res, body, _ = rpcCall(t, "POST", srv.URL+"/api/rpc/describe_mood", "", map[string]string{"Content-Type": "text/plain"})
-	if res.StatusCode != 200 {
-		t.Errorf("empty body ignores content type: %d %s", res.StatusCode, body)
+	wantProblem(t, res, body, 400, "missing_argument")
+	res, body, _ = rpcCall(t, "GET", srv.URL+"/api/rpc/describe_mood", "", nil)
+	wantProblem(t, res, body, 400, "missing_argument")
+	if v := rpcOK(t, "POST", srv.URL+"/api/rpc/describe_mood", `{"m": null}`); v != nil {
+		t.Errorf("describe_mood(null) = %v", v)
 	}
 	res, body, _ = rpcCall(t, "GET", srv.URL+"/api/rpc/nope", "", nil)
 	wantProblem(t, res, body, 404, "not_found")
+}
+
+// rpcArgFixtures creates functions with defaulted, variadic and defaulted
+// computed-column arguments; dropped again after the test.
+func rpcArgFixtures(t *testing.T) {
+	t.Helper()
+	url := os.Getenv("PDBR_TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("PDBR_TEST_DATABASE_URL not set; run `make test-e2e`")
+	}
+	ctx := context.Background()
+	exec := func(ddl ...string) error {
+		conn, err := pgx.Connect(ctx, url)
+		if err != nil {
+			return err
+		}
+		defer conn.Close(ctx)
+		for _, d := range ddl {
+			if _, err := conn.Exec(ctx, d); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	drop := []string{
+		`DROP FUNCTION IF EXISTS public.e2e_greet(text, text)`,
+		`DROP FUNCTION IF EXISTS public.e2e_sum(int4, int4[])`,
+		`DROP FUNCTION IF EXISTS public.e2e_tail(int4, int4[])`,
+		`DROP FUNCTION IF EXISTS public.users_label(users, text)`,
+	}
+	if err := exec(drop...); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := exec(drop...); err != nil {
+			t.Errorf("rpc arg fixture cleanup: %v", err)
+		}
+	})
+	err := exec(
+		`CREATE FUNCTION public.e2e_greet(name text DEFAULT 'world', greeting text DEFAULT 'hello') RETURNS text
+		    IMMUTABLE LANGUAGE sql AS $$ SELECT greeting || ', ' || coalesce(name, '<null>') $$`,
+		`CREATE FUNCTION public.e2e_sum(base int4, VARIADIC nums int4[]) RETURNS int4
+		    IMMUTABLE LANGUAGE sql AS $$ SELECT base + coalesce((SELECT sum(n)::int4 FROM unnest(nums) n), 0) $$`,
+		`CREATE FUNCTION public.e2e_tail(base int4 DEFAULT 100, VARIADIC nums int4[] DEFAULT '{}') RETURNS int4
+		    IMMUTABLE LANGUAGE sql AS $$ SELECT base + coalesce(array_length(nums, 1), 0) $$`,
+		`CREATE FUNCTION public.users_label(u users, sep text DEFAULT ': ') RETURNS text
+		    STABLE LANGUAGE sql AS $$ SELECT u.id || sep || u.email $$`,
+		`GRANT EXECUTE ON FUNCTION public.e2e_greet(text, text), public.e2e_sum(int4, int4[]),
+		    public.e2e_tail(int4, int4[]), public.users_label(users, text) TO anonymous, app_user`,
+	)
+	if err != nil {
+		t.Fatalf("rpc arg fixture: %v", err)
+	}
+}
+
+func TestRPCDefaultsAndVariadic(t *testing.T) {
+	rpcArgFixtures(t)
+	srv := testServer(t, nil)
+	for path, want := range map[string]string{
+		"/api/rpc/e2e_greet":                       `"hello, world"`,
+		"/api/rpc/e2e_greet?greeting=hi":           `"hi, world"`,
+		"/api/rpc/e2e_greet?name=ada&greeting=hey": `"hey, ada"`,
+		"/api/rpc/e2e_sum?base=1&nums=2&nums=3":    `6`,
+		"/api/rpc/e2e_sum?nums=2&base=10":          `12`,
+		"/api/rpc/e2e_tail":                        `100`,
+		"/api/rpc/e2e_tail?base=1":                 `1`,
+		"/api/rpc/e2e_tail?base=1&nums=5&nums=6":   `3`,
+	} {
+		res, body, _ := rpcCall(t, "GET", srv.URL+path, "", nil)
+		if res.StatusCode != 200 || string(body) != want {
+			t.Errorf("GET %s = %d %s, want %s", path, res.StatusCode, body, want)
+		}
+	}
+	for body, want := range map[string]string{
+		`{}`:                 `"hello, world"`,
+		`{"name": null}`:     `"hello, <null>"`,
+		`{"greeting": "yo"}`: `"yo, world"`,
+	} {
+		res, out, _ := rpcCall(t, "POST", srv.URL+"/api/rpc/e2e_greet", body, nil)
+		if res.StatusCode != 200 || string(out) != want {
+			t.Errorf("POST e2e_greet %s = %d %s, want %s", body, res.StatusCode, out, want)
+		}
+	}
+	for body, want := range map[string]string{
+		`{"base": 1, "nums": [2, 3, 4]}`: `10`,
+		`{"base": 1, "nums": []}`:        `1`,
+	} {
+		res, out, _ := rpcCall(t, "POST", srv.URL+"/api/rpc/e2e_sum", body, nil)
+		if res.StatusCode != 200 || string(out) != want {
+			t.Errorf("POST e2e_sum %s = %d %s, want %s", body, res.StatusCode, out, want)
+		}
+	}
+	res, body, _ := rpcCall(t, "GET", srv.URL+"/api/rpc/e2e_sum?base=1", "", nil)
+	wantProblem(t, res, body, 400, "missing_argument")
+	res, body, _ = rpcCall(t, "GET", srv.URL+"/api/rpc/e2e_tail?nums=1", "", nil)
+	if p := wantProblem(t, res, body, 400, "missing_argument"); !strings.Contains(p.Detail, "base") {
+		t.Errorf("variadic leading omission detail = %q", p.Detail)
+	}
+	res, body, _ = rpcCall(t, "GET", srv.URL+"/api/rpc/e2e_sum?base=1&nums=x", "", nil)
+	wantProblem(t, res, body, 400, "invalid_filter")
+
+	var rows []row
+	getJSON(t, srv.URL+"/api/users?select=id,label&id=eq.1", &rows)
+	if len(rows) != 1 || rows[0]["label"] != "1: ada@example.com" {
+		t.Errorf("computed column with a defaulted argument = %v", rows)
+	}
+
+	raw, doc := fetchOpenAPI(t, srv.URL)
+	validateOpenAPI(t, oasSchema(t), raw)
+	get := doc["paths"].(map[string]any)["/rpc/e2e_sum"].(map[string]any)["get"].(map[string]any)
+	for _, p := range get["parameters"].([]any) {
+		pm := p.(map[string]any)
+		switch pm["name"] {
+		case "base":
+			if pm["required"] != true {
+				t.Errorf("e2e_sum base param = %v", pm)
+			}
+		case "nums":
+			if pm["required"] != true || pm["schema"].(map[string]any)["type"] != "array" || pm["explode"] != true {
+				t.Errorf("e2e_sum nums param = %v", pm)
+			}
+		}
+	}
+	greet := doc["paths"].(map[string]any)["/rpc/e2e_greet"].(map[string]any)["post"].(map[string]any)
+	if rb := greet["requestBody"].(map[string]any); rb["required"] == true {
+		t.Errorf("e2e_greet body required = %v", rb)
+	}
+	props := greet["requestBody"].(map[string]any)["content"].(map[string]any)["application/json"].(map[string]any)["schema"].(map[string]any)["properties"].(map[string]any)
+	if d, _ := props["greeting"].(map[string]any)["description"].(string); !strings.Contains(d, "'hello'::text") {
+		t.Errorf("e2e_greet greeting description = %q", d)
+	}
 }
 
 func TestRPCVolatile(t *testing.T) {
@@ -160,12 +293,17 @@ func TestRPCVolatile(t *testing.T) {
 	if v := rpcOK(t, "POST", srv.URL+"/api/rpc/add_numbers", `{"a": "2", "b": 40}`); v != json.Number("42") {
 		t.Errorf("add_numbers with string number = %v", v)
 	}
-	// A missing argument is NULL: a + NULL is NULL.
-	if v := rpcOK(t, "POST", srv.URL+"/api/rpc/add_numbers", `{"a": 2}`); v != nil {
-		t.Errorf("add_numbers missing b = %v", v)
+	// An explicit null is NULL: a + NULL is NULL.
+	if v := rpcOK(t, "POST", srv.URL+"/api/rpc/add_numbers", `{"a": 2, "b": null}`); v != nil {
+		t.Errorf("add_numbers null b = %v", v)
 	}
-	if v := rpcOK(t, "POST", srv.URL+"/api/rpc/add_numbers", ""); v != nil {
-		t.Errorf("add_numbers without body = %v", v)
+	res, body, _ = rpcCall(t, "POST", srv.URL+"/api/rpc/add_numbers", `{"a": 2}`, nil)
+	if p := wantProblem(t, res, body, 400, "missing_argument"); !strings.Contains(p.Detail, "b") {
+		t.Errorf("missing b detail = %q", p.Detail)
+	}
+	res, body, _ = rpcCall(t, "POST", srv.URL+"/api/rpc/add_numbers", "", nil)
+	if p := wantProblem(t, res, body, 400, "missing_argument"); !strings.Contains(p.Detail, "a, b") {
+		t.Errorf("missing a, b detail = %q", p.Detail)
 	}
 	if v := rpcOK(t, "POST", srv.URL+"/api/rpc/word_lengths", `{"words": ["a", "bb", "ccc"]}`); v != json.Number("3") {
 		t.Errorf("word_lengths = %v", v)
@@ -435,5 +573,98 @@ func TestJWTMintRoundTrip(t *testing.T) {
 		t.Errorf("composite = %v", v)
 	} else if _, isStr := got["exp"].(string); !isStr {
 		t.Errorf("exp (int8) should render as a string in composite output: %#v", got["exp"])
+	}
+}
+
+// recordFixtures creates functions returning record rows described by
+// output parameters (issue 7); dropped again after the test.
+func recordFixtures(t *testing.T) {
+	t.Helper()
+	url := os.Getenv("PDBR_TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("PDBR_TEST_DATABASE_URL not set; run `make test-e2e`")
+	}
+	ctx := context.Background()
+	run := func(ddl ...string) error {
+		conn, err := pgx.Connect(ctx, url)
+		if err != nil {
+			return err
+		}
+		defer conn.Close(ctx)
+		for _, d := range ddl {
+			if _, err := conn.Exec(ctx, d); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	drop := []string{
+		`DROP FUNCTION IF EXISTS public.mood_counts()`,
+		`DROP FUNCTION IF EXISTS public.user_stats(int4)`,
+	}
+	if err := run(drop...); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := run(drop...); err != nil {
+			t.Errorf("record fixture cleanup: %v", err)
+		}
+	})
+	err := run(
+		`CREATE FUNCTION public.mood_counts() RETURNS TABLE(mood mood, n bigint) STABLE LANGUAGE sql AS $$
+		    SELECT u.mood, count(*) FROM users u WHERE u.mood IS NOT NULL GROUP BY u.mood $$`,
+		`CREATE FUNCTION public.user_stats(uid int4, OUT posts bigint, OUT last_title text) STABLE LANGUAGE sql AS $$
+		    SELECT count(*), max(title) FILTER (WHERE id = (SELECT max(id) FROM posts WHERE author_id = uid))
+		    FROM posts WHERE author_id = uid $$`,
+		`GRANT EXECUTE ON FUNCTION public.mood_counts(), public.user_stats(int4) TO anonymous, app_user`,
+	)
+	if err != nil {
+		t.Fatalf("record fixture: %v", err)
+	}
+}
+
+func TestRPCRecordReturning(t *testing.T) {
+	recordFixtures(t)
+	srv := testServer(t, nil)
+	for path, want := range map[string]string{
+		"/api/rpc/mood_counts?order=mood":                  `[{"n": "1", "mood": "ok"}, {"n": "2", "mood": "happy"}]`,
+		"/api/rpc/mood_counts?select=mood&order=n.asc":     `[{"mood": "ok"}, {"mood": "happy"}]`,
+		"/api/rpc/mood_counts?select=c:n&n=gt.1":           `[{"c": "2"}]`,
+		"/api/rpc/mood_counts?order=mood&limit=1&offset=1": `[{"n": "2", "mood": "happy"}]`,
+		"/api/rpc/user_stats?uid=1":                        `{"posts": "2", "last_title": "Unpublished draft"}`,
+		"/api/rpc/user_stats?uid=999":                      `{"posts": "0", "last_title": null}`,
+		"/api/rpc/user_stats?uid=1&select=posts":           `{"posts": "2"}`,
+	} {
+		res, body, _ := rpcCall(t, "GET", srv.URL+path, "", nil)
+		if res.StatusCode != 200 || string(body) != want {
+			t.Errorf("GET %s = %d %s, want %s", path, res.StatusCode, body, want)
+		}
+	}
+	res, _, _ := rpcCall(t, "GET", srv.URL+"/api/rpc/mood_counts?count=true&n=gte.1", "", nil)
+	if res.Header.Get("X-Total-Count") != "2" {
+		t.Errorf("X-Total-Count = %q", res.Header.Get("X-Total-Count"))
+	}
+	res, body, _ := rpcCall(t, "GET", srv.URL+"/api/rpc/mood_counts?order=mood", "", map[string]string{"Accept": "text/csv"})
+	if res.StatusCode != 200 || string(body) != "mood,n\r\nok,1\r\nhappy,2\r\n" {
+		t.Errorf("CSV = %d %q", res.StatusCode, body)
+	}
+	for path, code := range map[string]string{
+		"/api/rpc/mood_counts?select=nope":      "unknown_column",
+		"/api/rpc/mood_counts?select=users(id)": "unknown_relation",
+		"/api/rpc/mood_counts?after=x":          "keyset_unsupported",
+		"/api/rpc/user_stats":                   "missing_argument",
+	} {
+		res, body, _ := rpcCall(t, "GET", srv.URL+path, "", nil)
+		wantProblem(t, res, body, 400, code)
+	}
+	raw, doc := fetchOpenAPI(t, srv.URL)
+	validateOpenAPI(t, oasSchema(t), raw)
+	if s, _ := schemas(doc)["rpc.mood_counts"].(map[string]any); s == nil || s["properties"].(map[string]any)["n"] == nil {
+		t.Errorf("rpc.mood_counts schema = %v", s)
+	}
+	paths := doc["paths"].(map[string]any)
+	ok := paths["/rpc/user_stats"].(map[string]any)["get"].(map[string]any)["responses"].(map[string]any)["200"].(map[string]any)
+	if ref := ok["content"].(map[string]any)["application/json"].(map[string]any)["schema"].(map[string]any)["$ref"]; ref != "#/components/schemas/rpc.user_stats" {
+		t.Errorf("user_stats 200 schema = %v", ok)
 	}
 }

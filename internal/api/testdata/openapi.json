@@ -4405,7 +4405,8 @@
         "summary": "Call public.add_numbers",
         "operationId": "rpc.add_numbers.post",
         "requestBody": {
-          "description": "Arguments by name; a missing argument (or no body) is SQL NULL.",
+          "description": "Arguments by name; an omitted argument takes its DEFAULT (arguments without one are required, 400 missing_argument); null is SQL NULL.",
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
@@ -4426,6 +4427,10 @@
                     "format": "int32"
                   }
                 },
+                "required": [
+                  "a",
+                  "b"
+                ],
                 "additionalProperties": false
               }
             }
@@ -4566,7 +4571,7 @@
         "summary": "Call public.all_moods",
         "operationId": "rpc.all_moods.post",
         "requestBody": {
-          "description": "Arguments by name; a missing argument (or no body) is SQL NULL.",
+          "description": "Arguments by name; an omitted argument takes its DEFAULT (arguments without one are required, 400 missing_argument); null is SQL NULL.",
           "content": {
             "application/json": {
               "schema": {
@@ -4625,7 +4630,8 @@
         "summary": "Call public.authenticate",
         "operationId": "rpc.authenticate.post",
         "requestBody": {
-          "description": "Arguments by name; a missing argument (or no body) is SQL NULL.",
+          "description": "Arguments by name; an omitted argument takes its DEFAULT (arguments without one are required, 400 missing_argument); null is SQL NULL.",
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
@@ -4638,6 +4644,9 @@
                     ]
                   }
                 },
+                "required": [
+                  "user_email"
+                ],
                 "additionalProperties": false
               }
             }
@@ -4782,7 +4791,7 @@
         "summary": "Call public.best_mood",
         "operationId": "rpc.best_mood.post",
         "requestBody": {
-          "description": "Arguments by name; a missing argument (or no body) is SQL NULL.",
+          "description": "Arguments by name; an omitted argument takes its DEFAULT (arguments without one are required, 400 missing_argument); null is SQL NULL.",
           "content": {
             "application/json": {
               "schema": {
@@ -4842,7 +4851,8 @@
         "summary": "Call public.bump_mood",
         "operationId": "rpc.bump_mood.post",
         "requestBody": {
-          "description": "Arguments by name; a missing argument (or no body) is SQL NULL.",
+          "description": "Arguments by name; an omitted argument takes its DEFAULT (arguments without one are required, 400 missing_argument); null is SQL NULL.",
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
@@ -4859,6 +4869,9 @@
                     ]
                   }
                 },
+                "required": [
+                  "m"
+                ],
                 "additionalProperties": false
               }
             }
@@ -4926,7 +4939,8 @@
           {
             "name": "m",
             "in": "query",
-            "description": "Argument (mood); missing means SQL NULL.",
+            "required": true,
+            "description": "Argument (mood); required.",
             "schema": {
               "$ref": "#/components/schemas/mood"
             }
@@ -4979,7 +4993,8 @@
           {
             "name": "m",
             "in": "query",
-            "description": "Argument (mood); missing means SQL NULL.",
+            "required": true,
+            "description": "Argument (mood); required.",
             "schema": {
               "$ref": "#/components/schemas/mood"
             }
@@ -5019,7 +5034,8 @@
         "summary": "Call public.describe_mood",
         "operationId": "rpc.describe_mood.post",
         "requestBody": {
-          "description": "Arguments by name; a missing argument (or no body) is SQL NULL.",
+          "description": "Arguments by name; an omitted argument takes its DEFAULT (arguments without one are required, 400 missing_argument); null is SQL NULL.",
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
@@ -5036,6 +5052,9 @@
                     ]
                   }
                 },
+                "required": [
+                  "m"
+                ],
                 "additionalProperties": false
               }
             }
@@ -5226,7 +5245,7 @@
           }
         ],
         "requestBody": {
-          "description": "Arguments by name; a missing argument (or no body) is SQL NULL.",
+          "description": "Arguments by name; an omitted argument takes its DEFAULT (arguments without one are required, 400 missing_argument); null is SQL NULL.",
           "content": {
             "application/json": {
               "schema": {
@@ -5282,7 +5301,8 @@
         "summary": "Call public.publish_post",
         "operationId": "rpc.publish_post.post",
         "requestBody": {
-          "description": "Arguments by name; a missing argument (or no body) is SQL NULL.",
+          "description": "Arguments by name; an omitted argument takes its DEFAULT (arguments without one are required, 400 missing_argument); null is SQL NULL.",
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
@@ -5296,6 +5316,9 @@
                     "format": "int32"
                   }
                 },
+                "required": [
+                  "post_id"
+                ],
                 "additionalProperties": false
               }
             }
@@ -5360,7 +5383,7 @@
         "summary": "Call public.retry_probe",
         "operationId": "rpc.retry_probe.post",
         "requestBody": {
-          "description": "Arguments by name; a missing argument (or no body) is SQL NULL.",
+          "description": "Arguments by name; an omitted argument takes its DEFAULT (arguments without one are required, 400 missing_argument); null is SQL NULL.",
           "content": {
             "application/json": {
               "schema": {
@@ -5429,7 +5452,8 @@
           {
             "name": "term",
             "in": "query",
-            "description": "Argument (text); missing means SQL NULL.",
+            "required": true,
+            "description": "Argument (text); required.",
             "schema": {
               "type": "string"
             }
@@ -5629,7 +5653,8 @@
           {
             "name": "term",
             "in": "query",
-            "description": "Argument (text); missing means SQL NULL.",
+            "required": true,
+            "description": "Argument (text); required.",
             "schema": {
               "type": "string"
             }
@@ -5951,7 +5976,8 @@
           }
         ],
         "requestBody": {
-          "description": "Arguments by name; a missing argument (or no body) is SQL NULL.",
+          "description": "Arguments by name; an omitted argument takes its DEFAULT (arguments without one are required, 400 missing_argument); null is SQL NULL.",
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
@@ -5964,6 +5990,9 @@
                     ]
                   }
                 },
+                "required": [
+                  "term"
+                ],
                 "additionalProperties": false
               }
             }
@@ -6029,7 +6058,8 @@
         "summary": "Call public.unpublish_post",
         "operationId": "rpc.unpublish_post.post",
         "requestBody": {
-          "description": "Arguments by name; a missing argument (or no body) is SQL NULL.",
+          "description": "Arguments by name; an omitted argument takes its DEFAULT (arguments without one are required, 400 missing_argument); null is SQL NULL.",
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
@@ -6043,6 +6073,9 @@
                     "format": "int32"
                   }
                 },
+                "required": [
+                  "post_id"
+                ],
                 "additionalProperties": false
               }
             }
@@ -6107,7 +6140,8 @@
         "summary": "Call public.word_lengths",
         "operationId": "rpc.word_lengths.post",
         "requestBody": {
-          "description": "Arguments by name; a missing argument (or no body) is SQL NULL.",
+          "description": "Arguments by name; an omitted argument takes its DEFAULT (arguments without one are required, 400 missing_argument); null is SQL NULL.",
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
@@ -6123,6 +6157,9 @@
                     }
                   }
                 },
+                "required": [
+                  "words"
+                ],
                 "additionalProperties": false
               }
             }

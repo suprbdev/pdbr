@@ -114,7 +114,7 @@ func (s *stmt) orderExprSQL(term orderTerm, alias string) string {
 	case term.rel != nil:
 		return s.relationOrderSQL(term, alias)
 	case term.fn != nil:
-		return computedCallSQL(term.fn, term.fnTable, alias)
+		return s.computedCallSQL(term.fn, term.fnTable, alias)
 	}
 	return colRef(alias, term.col)
 }
@@ -125,7 +125,7 @@ func (s *stmt) nearExpr(col *introspect.Column) string {
 		s.fail(errUser(CodeInvalidFilter, "order by distance requires near="))
 		return "NULL"
 	}
-	expr, err := s.spatialOperand(postgis.FlavourOf(col.PGType), s.plan.Near)
+	expr, err := s.spatialOperand(postgis.FlavourOf(col.PGType), spatialSRID(col), s.plan.Near)
 	if err != nil {
 		s.fail(err)
 		return "NULL"
