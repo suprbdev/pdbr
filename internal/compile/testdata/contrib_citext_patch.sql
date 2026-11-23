@@ -1,6 +1,6 @@
 -- request: PATCH /api/kb/authors/Ada@Example.com?select=email
 WITH cur AS (
-  SELECT md5(to_jsonb(__cur)::text) AS h
+  SELECT md5(to_jsonb(ROW(__cur."email", __cur."name", __cur."meta"))::text) AS h
   FROM "kb"."authors" __cur
   WHERE __cur."email" OPERATOR("ext".=) $2::"ext".citext
 ),

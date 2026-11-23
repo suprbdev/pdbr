@@ -399,14 +399,18 @@ func TestUserTextNeverRewritesSQL(t *testing.T) {
 	built := goldenBuilt(t)
 	c := compile.New(built)
 
-	out := renderRequest(t, built, c, httptest.NewRequest("GET", "/api/users?select=id,posts(x%25%25ALIAS%25%25y:title)", nil))
-	if !strings.Contains(out, "'x%%ALIAS%%y'") {
-		t.Fatalf("embed alias was rewritten:\n%s", out)
+	for _, q := range []string{"select=id,posts(x%25%25ALIAS%25%25y:title)", "select=x%25%25ALIAS%25%25y:posts(id)", "select=x%25%25ALIAS%25%25y:settings->a"} {
+		out := renderRequest(t, built, c, httptest.NewRequest("GET", "/api/users?"+q, nil))
+		_, body, _ := strings.Cut(out, "\n")
+		sql, args, ok := strings.Cut(body, "\n-- args: ")
+		if !ok || strings.Contains(sql, "ALIAS") || !strings.Contains(args, `"x%%ALIAS%%y"`) {
+			t.Fatalf("alias is not a bind parameter:\n%s", out)
+		}
 	}
 
 	r := httptest.NewRequest("PATCH", `/api/users/1?select=t0."balance":email`, strings.NewReader(`{"full_name":"z"}`))
 	r.Header.Set("Content-Type", "application/json")
-	out = renderRequest(t, built, c, r)
+	out := renderRequest(t, built, c, r)
 	if strings.Contains(out, `"balance"`) && !strings.Contains(out, "-- error:") {
 		if strings.Contains(out, `RETURNING "email", "balance"`) || strings.Contains(out, `RETURNING "balance"`) {
 			t.Fatalf("select alias widened RETURNING:\n%s", out)

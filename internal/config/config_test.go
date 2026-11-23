@@ -32,7 +32,7 @@ func TestDefaults(t *testing.T) {
 		"server.readyz_timeout":             2 * time.Second,
 		"server.max_body_bytes":             int64(1 << 20),
 		"server.max_embed_depth":            5,
-		"server.max_cost":                   10000,
+		"server.max_cost":                   100000,
 		"server.max_page_size":              100,
 		"server.etags":                      true,
 		"server.csv":                        true,

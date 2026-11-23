@@ -345,8 +345,8 @@ Body shape)`:
 | bulk `PATCH`/`DELETE` by filter | `WITH __mut AS (UPDATE "public"."users" m0 SET … WHERE <filter over m0> RETURNING …) SELECT json_build_object('n', count(*), 'rows', coalesce(json_agg(s.data), '[]')) FROM (SELECT … FROM __mut t1 <laterals>) s` — shape `mut_bulk`; no filter → `400 unfiltered_mutation` in the parser unless `server.allow_unfiltered_mutations` |
 | `PUT` (upsert) | `WITH __mut AS (INSERT … VALUES … ON CONFLICT ("email") DO UPDATE SET "full_name" = EXCLUDED."full_name", … RETURNING …, (xmax = 0) AS __inserted) SELECT json_build_object('row', …, 'inserted', t0.__inserted, 'key', jsonb_build_array(t0."id"))` (single) / `json_agg` (array, always 200) |
 | `POST` + `Prefer: resolution=` / `PUT {pk}` | the `POST` / `PUT` shapes with `ON CONFLICT (<on_conflict or PK>) DO UPDATE SET …` (merge) or `DO NOTHING` (ignore) appended to the `INSERT`; a single-row `PUT` takes its conflict target and key values from the path |
-| `If-Match` | `WITH cur AS (SELECT md5(to_jsonb(__cur)::text) AS h FROM "public"."users" __cur WHERE __cur."id" = $2), __mut AS (UPDATE … WHERE "public"."users"."id" = $2 AND (SELECT h FROM cur) = $3 RETURNING …) SELECT json_build_object('found', EXISTS (SELECT 1 FROM cur), 'row', (SELECT json_build_object(…) FROM __mut t0)) AS data` → exec: `!found` → 404, `found && row IS NULL` → 412 (`= ANY($3)` for several tags; `*` drops the hash predicate) |
-| single-row `GET` ETag | `SELECT json_build_object('etag', md5(to_jsonb(t0)::text), 'row', json_build_object(…)) AS data FROM …` — hash over **all** columns regardless of `select=` |
+| `If-Match` | `WITH cur AS (SELECT md5(to_jsonb(ROW(__cur."id", …))::text) AS h FROM "public"."users" __cur WHERE __cur."id" = $2), __mut AS (UPDATE … WHERE "public"."users"."id" = $2 AND (SELECT h FROM cur) = $3 RETURNING …) SELECT json_build_object('found', EXISTS (SELECT 1 FROM cur), 'row', (SELECT json_build_object(…) FROM __mut t0)) AS data` → exec: `!found` → 404, `found && row IS NULL` → 412 (`= ANY($3)` for several tags; `*` drops the hash predicate) |
+| single-row `GET` ETag | `SELECT json_build_object('etag', md5(to_jsonb(ROW(t0."id", t0."email", …))::text), 'row', json_build_object(…)) AS data FROM …` — hash over the resource's **exposed** columns (`Resource.Columns`, so `@omit`/`@omit read` columns never reach it) regardless of `select=` |
 | RPC scalar / composite | `SELECT to_json(__fn.v) AS data FROM (SELECT "public"."add_numbers"("a" => $1::"int4", "b" => $2::"int4") AS v) AS __fn` (named notation via `introspect.Function.CallSQL`: omitted args take their `DEFAULT`, `null` → `NULL::type`, variadic functions positional with `VARIADIC`; composites expanded per attribute like composite columns; `jwt_type` composites raw → shapes `jwt`/`jwt_set`) — shape `scalar` |
 | RPC void | `SELECT 'null'::jsonb AS data FROM (SELECT "public"."f"($1)) AS __v` — shape `void`, exec emits `204` because of the shape, never because of the value. Two statements (`SELECT f(); SELECT …`) are not allowed |
 | RPC single row | `SELECT CASE WHEN t0 IS NULL THEN NULL ELSE json_build_object(…) END AS data FROM "public"."publish_post"($1::"int4") AS t0 <laterals>` — shape `scalar` (NULL row → body `null`, 200) |
@@ -580,7 +580,11 @@ lives in `CLAUDE.md` § Gotchas.
    must stay harmless. Not interchangeable with pdbq `nodeId` (type name
    differs).
 6. **SQL-injection invariant enforced by `FuzzFilter`/`FuzzSpatial`.** Never
-   interpolate a value; use `ps.Add(v)`.
+   interpolate a value; use `ps.Add(v)`. Request-supplied response keys
+   (`select=` aliases, JSON-path keys) are values too (`$n::text`). Only
+   catalog names are rendered as literals, through `quoteLiteral`, which
+   switches to `E'…'` when the name holds a backslash so the literal reads
+   the same whatever `standard_conforming_strings` is.
 7. **`SET LOCAL` only, never `SET`.** Pooled connections must not leak
    identity. `pdbr serve` warns loudly when RLS is off.
 8. **Reserved query params** (`select order limit offset after before count
@@ -590,9 +594,11 @@ lives in `CLAUDE.md` § Gotchas.
    `by`, `healthz`, `readyz` or `openapi.json` loses its bare alias (startup
    warning); the schema-qualified path still works. Two schemas do not
    collide because only `schemas[0]` gets bare aliases.
-10. **ETag hashes the whole row.** `md5(to_jsonb(row)::text)` needs SELECT on
-    every column; with column-level grants a single-row GET can 403 where the
-    same `select=` list would succeed → set `server.etags: false` (or grant).
+10. **ETag hashes every exposed column.** `md5(to_jsonb(ROW(<exposed
+    columns>))::text)` needs SELECT on each of them; with column-level grants
+    a single-row GET can 403 where the same `select=` list would succeed →
+    set `server.etags: false` (or grant, or hide the column). Hidden columns
+    stay out of the hash (they would leak through it).
 11. **No textual placeholders in rendered SQL that also carries user JSON
     keys.** Correlations are rendered via a callback after alias allocation;
     `%%RETURNING%%` is substituted only in the CTE chain, never in the

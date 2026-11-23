@@ -141,7 +141,7 @@ func TestMutationIfMatch(t *testing.T) {
 	if st.Shape != compile.ShapeMutWrap {
 		t.Errorf("shape %s", st.Shape)
 	}
-	has(t, st.SQL, "WITH cur AS (", "md5(to_jsonb(__cur)::text) AS h", `WHERE __cur."id" = $2`, "AND (SELECT h FROM cur) = $3", "'found', EXISTS (SELECT 1 FROM cur)", "'row', (")
+	has(t, st.SQL, "WITH cur AS (", `md5(to_jsonb(ROW(__cur."id", __cur."email", __cur."full_name", __cur."mood", __cur."settings", __cur."tags", __cur."balance", __cur."created_at", __cur."address", __cur."prev_addresses", __cur."moods"))::text) AS h`, `WHERE __cur."id" = $2`, "AND (SELECT h FROM cur) = $3", "'found', EXISTS (SELECT 1 FROM cur)", "'row', (")
 	if len(st.Args) != 3 || st.Args[2] != "abc" {
 		t.Errorf("args %v", st.Args)
 	}

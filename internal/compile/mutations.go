@@ -530,7 +530,7 @@ func (s *stmt) keyedDML() (cur, dml string, rep replaced, err error) {
 	where := keyConds(tableRef(t))
 	rep = replaced{cond: "(" + where + ") IS NOT TRUE", removes: p.Method == plan.DELETE}
 	if tags := s.ifMatchTags(); tags != nil {
-		cur = fmt.Sprintf("cur AS (\n  SELECT md5(to_jsonb(__cur)::text) AS h\n  FROM %s __cur\n  WHERE %s\n)", tableRef(t), keyConds("__cur"))
+		cur = fmt.Sprintf("cur AS (\n  SELECT %s AS h\n  FROM %s __cur\n  WHERE %s\n)", etagSQL(p.Resource, "__cur"), tableRef(t), keyConds("__cur"))
 		switch {
 		case tags.star:
 		case len(tags.tags) == 1:

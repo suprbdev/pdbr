@@ -23,8 +23,11 @@ import (
 // group count, casts) and an aggregated embed, the last two JSON paths
 // (keys, indexes and the path-derived response keys are values) in select,
 // filters, order, casts and grouping, then spread embeds (to-one, to-many,
-// spread grouping); a path-derived key equal to another item's key is a
-// duplicate-key error, which the path and spread-grouping statements skip.
+// spread grouping), then select= aliases on columns, paths, computed
+// columns, embeds, spread items and aggregates (response keys the request
+// supplies are values too); a path-derived key equal to another item's key
+// is a duplicate-key error, which the path and spread-grouping statements
+// skip.
 func FuzzFilter(f *testing.F) {
 	fx := newFixture(f)
 	cfx := &fixture{t: f, built: goldenBuilt(f)}
@@ -268,7 +271,44 @@ func FuzzFilter(f *testing.F) {
 		}
 		return stmt
 	}
+	compileAlias := func(t testing.TB, e, tag string, n int64) *compile.Statement {
+		t.Helper()
+		posts := fx.res("posts")
+		p := list(users)
+		p.Select = &plan.Node{Resource: users, Fields: []plan.FieldSel{
+			{Alias: "a" + e, Column: id},
+			{Alias: "b" + tag, Column: settings, Path: plan.JSONPath{{Key: e}}},
+			{Alias: "c" + e, Computed: fx.computed("users", "post_count")},
+		}, Embeds: []plan.Embed{
+			{Key: "posts", Alias: "d" + tag, Relation: fx.rel("users", "posts", ""), Node: &plan.Node{Resource: posts, Fields: []plan.FieldSel{{Alias: "e" + e, Column: fx.col("posts", "title")}}}},
+			{Key: "places", Spread: true, Relation: fx.rel("users", "places", ""), Node: &plan.Node{Resource: fx.res("places"), Fields: []plan.FieldSel{{Alias: "f" + tag, Column: fx.col("places", "name")}}}},
+		}}
+		p.Filter = cond(id, plan.OpGt, n)
+		stmt, err := fx.c.Compile(context.Background(), &compile.Request{Plan: p, Built: fx.built})
+		if err != nil {
+			t.Fatalf("alias compile error on valid input: %v", err)
+		}
+		return stmt
+	}
+	compileAliasAgg := func(t testing.TB, e, tag string, n int64) *compile.Statement {
+		t.Helper()
+		p := list(users)
+		p.Select = &plan.Node{Resource: users, Fields: []plan.FieldSel{
+			{Alias: "a" + e, Column: mood},
+			{Alias: "b" + tag, Agg: &plan.Aggregate{Func: plan.AggCount}},
+			{Alias: "c" + e, Column: id, Agg: &plan.Aggregate{Func: plan.AggMax}},
+		}}
+		p.Filter = cond(id, plan.OpGt, n)
+		p.Page = plan.Page{Limit: 10}
+		stmt, err := fx.c.Compile(context.Background(), &compile.Request{Plan: p, Built: fx.built})
+		if err != nil {
+			t.Fatalf("alias aggregate compile error on valid input: %v", err)
+		}
+		return stmt
+	}
 	baseline := compileWith(f, "a@example.com", "admin", 5)
+	aliasBaseline := compileAlias(f, "a@example.com", "admin", 5)
+	aliasAggBaseline := compileAliasAgg(f, "a@example.com", "admin", 5)
 	spreadBaseline := compileSpread(f, "a@example.com", "admin", 5)
 	spreadAggBaseline := compileSpreadAgg(f, "a@example.com", "admin", 5)
 	pathBaseline := compilePath(f, "a@example.com", "admin", 5)
@@ -282,6 +322,7 @@ func FuzzFilter(f *testing.F) {
 	f.Add("%_\\*", "'", int64(0))
 	f.Add("", "", int64(1)<<40)
 	f.Add("$1 || '", "\x00", int64(7))
+	f.Add(`a'b\`, `\' || pg_sleep(1) --`, int64(3))
 
 	f.Fuzz(func(t *testing.T, e, tag string, n int64) {
 		for _, c := range []struct{ stmt, baseline *compile.Statement }{
@@ -293,6 +334,8 @@ func FuzzFilter(f *testing.F) {
 			{compilePathAgg(t, e, tag, n), pathAggBaseline},
 			{compileSpread(t, e, tag, n), spreadBaseline},
 			{compileSpreadAgg(t, e, tag, n), spreadAggBaseline},
+			{compileAlias(t, e, tag, n), aliasBaseline},
+			{compileAliasAgg(t, e, tag, n), aliasAggBaseline},
 		} {
 			if c.stmt == nil {
 				continue

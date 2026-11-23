@@ -152,7 +152,8 @@ response key are `400 invalid_select` (alias one of them), unless they are
 the same column selected again (`select=*,email` or `select=id,id` answer
 once): `select=id,email,email:full_name`, `select=*,mood::text` and
 `select=excerpt(max_chars=5),excerpt:title` are rejected. PostgREST would
-return both keys.
+return both keys. Aliases (and JSON-path keys) are bind parameters in the
+compiled SQL, never SQL text, so any character the grammar admits is safe.
 
 `*` expands to real columns only (PostgREST behaviour, as built in
 `compile.rowJSON`); computed columns and PostGIS pseudo-columns must be named
@@ -446,6 +447,12 @@ CSV rules (RFC 4180, `internal/server/csv.go`):
 - Values: strings verbatim, numbers/booleans as their JSON literals,
   arrays / json / composites / GeoJSON as compact JSON text, NULL and
   missing keys as an empty field (no `\N` sentinel).
+- Formula escaping (CSV injection): a header or string cell that starts with
+  `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading `'`, so
+  Excel, LibreOffice and Google Sheets show it as text instead of evaluating
+  it (`=HYPERLINK(…)` → `'=HYPERLINK(…)`, a text `-5` → `'-5`). JSON numbers
+  are never escaped (`-5` in an integer column stays `-5`).
+  `server.csv_escape_formulas: false` writes every cell verbatim.
 - The SQL is identical to the JSON request (goldens unaffected); the server
   re-encodes the jsonb array on the way out. `X-Total-Count`, cursors and
   `Link` are unchanged, and `HEAD` returns the same headers with no body.
@@ -473,15 +480,18 @@ transaction semantics: [mutations.md](mutations.md#prefer).
 
 ## ETag / conditional requests
 
-Single-row `GET`s carry a weak `ETag: W/"<hex>"` = `md5(to_jsonb(row)::text)`
-over **all** columns of the resource, computed in SQL and independent of
-`select=`. `If-None-Match` matching it → `304`.
+Single-row `GET`s carry a weak `ETag: W/"<hex>"` =
+`md5(to_jsonb(ROW(<exposed columns>))::text)` over every column the resource
+exposes, in catalog order, computed in SQL and independent of `select=`.
+Columns hidden with `@omit` / `@omit read` ([smart-comments.md](smart-comments.md))
+are left out, so the ETag neither reveals their values nor changes when only
+they change. `If-None-Match` matching it → `304`.
 
 `PATCH`/`DELETE` on single-row paths honour `If-Match`. The check is part of
 the one statement:
 
 ```sql
-WITH cur AS (SELECT md5(to_jsonb(t)::text) AS h FROM users t WHERE id = $1),
+WITH cur AS (SELECT md5(to_jsonb(ROW(t.id, t.email, …))::text) AS h FROM users t WHERE id = $1),
      __mut AS (UPDATE users SET … WHERE id = $1 AND (SELECT h FROM cur) = $2 RETURNING …)
 SELECT …
 ```
@@ -489,9 +499,11 @@ SELECT …
 No `cur` row → `404`; hash mismatch → `412 etag_mismatch`. Atomic without a
 second round-trip. `server.etags` (default true) toggles the whole feature.
 
-**Caveat — column-level grants.** Hashing the whole row needs `SELECT` on every
-column. If a role has column-level grants on a table, single-row `GET`s on it
-fail with `403`; disable `server.etags` for such deployments.
+**Caveat — column-level grants.** The hash needs `SELECT` on every exposed
+column. If a role lacks it on an exposed column, single-row `GET`s on that
+table fail with `403`; hide the column (`@omit read`), grant it, or disable
+`server.etags`. A write to a hidden column alone does not change the ETag, so
+`If-Match` does not guard it.
 
 List responses carry no `ETag`.
 
@@ -518,7 +530,7 @@ Cursor and `Link` details: [pagination.md](pagination.md).
 |---|---|---|
 | page size | `server.max_page_size` (100) | `400 page_size_exceeded` (`limit=`); a `Range` header is clamped instead |
 | embed depth | `server.max_embed_depth` (5) | `400 embed_depth_exceeded` |
-| request cost | `server.max_cost` (10000) | `400 cost_exceeded` |
+| request cost | `server.max_cost` (100000) | `400 cost_exceeded` |
 | body size | `server.max_body_bytes` (1 MiB) | `413` |
 | request time | `server.request_timeout` (30s) | `504` |
 | statement time | `database.statement_timeout` (30s) | `504` |

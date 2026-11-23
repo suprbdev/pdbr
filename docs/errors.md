@@ -70,7 +70,7 @@ has a `code`, see the note below the table):
 | `not_acceptable` | 406 | `Accept` unsatisfiable (incl. `text/csv` with embeds or on non-list responses) |
 | `unsupported_media_type` | 415 | request body `Content-Type` is not `application/json` |
 | `role_not_allowed` | 403 | credential valid, but the resolved role is not in `rls.allowed_roles`, or is `none`, `public`, a `pg_*` role or not `[A-Za-z0-9_]+` |
-| `invalid_token` | 401 | JWT/headers present but invalid (signature, exp, iss/aud, JWKS miss, malformed) |
+| `invalid_token` | 401 | JWT/headers present but invalid (signature, exp, iss/aud, JWKS miss or unavailable, malformed; a claim header misspelt, repeated, folding onto another claim or outside `rls.auth.header_claims`) |
 | (`unknown_relation`) | 400 | relation key in `select=`, a filter/order path, a per-embed param, or a nested-mutation body that matches no FK of the resource |
 | (`invalid_cursor`) | 400 | `after`/`before` cursor undecodable or minted for a different resource |
 | (`method_not_allowed`) | 405 | method not registered on the path (view, missing privilege, `@omit`, volatile GET) |

@@ -1,5 +1,5 @@
 -- request: GET /api/posts/7?select=id,title,users(email)
-SELECT json_build_object('etag', md5(to_jsonb(t0)::text), 'row', json_build_object('id', t0."id", 'title', t0."title", 'users', l2.data)) AS data
+SELECT json_build_object('etag', md5(to_jsonb(ROW(t0."id", t0."author_id", t0."title", t0."body", t0."published"))::text), 'row', json_build_object('id', t0."id", 'title', t0."title", 'users', l2.data)) AS data
 FROM "public"."posts" t0
 LEFT JOIN LATERAL (
   SELECT json_build_object('email', t1."email") AS data

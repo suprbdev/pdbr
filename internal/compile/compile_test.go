@@ -188,14 +188,14 @@ func TestListSelectOffset(t *testing.T) {
 	p.Select.Fields = append(p.Select.Fields, plan.FieldSel{Alias: "n", Column: f.col("users", "full_name")})
 	p.Page = plan.Page{Limit: 20, Offset: 40}
 	stmt := f.compile(p)
-	wantSQL(t, stmt, `SELECT json_build_object('has_next', coalesce(bool_or(s1.__rn > $3), false), 'has_prev', true, 'first', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $3))->0, 'last', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $3))->-1, 'n', count(*) FILTER (WHERE s1.__rn <= $3), 'rows', coalesce(json_agg(s1.data ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $3), '[]'::json)) AS data
+	wantSQL(t, stmt, `SELECT json_build_object('has_next', coalesce(bool_or(s1.__rn > $4), false), 'has_prev', true, 'first', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $4))->0, 'last', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $4))->-1, 'n', count(*) FILTER (WHERE s1.__rn <= $4), 'rows', coalesce(json_agg(s1.data ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $4), '[]'::json)) AS data
 FROM (
-  SELECT json_build_object('id', t0."id", 'email', t0."email", 'n', t0."full_name") AS data, jsonb_build_array(t0."id") AS __key, row_number() OVER (ORDER BY t0."id" ASC) AS __rn
+  SELECT json_build_object('id', t0."id", 'email', t0."email", $1::text, t0."full_name") AS data, jsonb_build_array(t0."id") AS __key, row_number() OVER (ORDER BY t0."id" ASC) AS __rn
   FROM "public"."users" t0
   ORDER BY t0."id" ASC
-  LIMIT $1
-  OFFSET $2
-) s1`, 21, 40, 60)
+  LIMIT $2
+  OFFSET $3
+) s1`, "n", 21, 40, 60)
 }
 
 func TestListStarPlusComputed(t *testing.T) {
@@ -260,9 +260,9 @@ func TestEmbedForward(t *testing.T) {
 		Node: fields(f.res("users"), "id", "email"),
 	}}}
 	stmt := f.compile(p)
-	wantSQL(t, stmt, `SELECT json_build_object('has_next', coalesce(bool_or(s3.__rn > $2), false), 'has_prev', false, 'first', (json_agg(s3.__key ORDER BY s3.__rn ASC) FILTER (WHERE s3.__rn <= $2))->0, 'last', (json_agg(s3.__key ORDER BY s3.__rn ASC) FILTER (WHERE s3.__rn <= $2))->-1, 'n', count(*) FILTER (WHERE s3.__rn <= $2), 'rows', coalesce(json_agg(s3.data ORDER BY s3.__rn ASC) FILTER (WHERE s3.__rn <= $2), '[]'::json)) AS data
+	wantSQL(t, stmt, `SELECT json_build_object('has_next', coalesce(bool_or(s3.__rn > $3), false), 'has_prev', false, 'first', (json_agg(s3.__key ORDER BY s3.__rn ASC) FILTER (WHERE s3.__rn <= $3))->0, 'last', (json_agg(s3.__key ORDER BY s3.__rn ASC) FILTER (WHERE s3.__rn <= $3))->-1, 'n', count(*) FILTER (WHERE s3.__rn <= $3), 'rows', coalesce(json_agg(s3.data ORDER BY s3.__rn ASC) FILTER (WHERE s3.__rn <= $3), '[]'::json)) AS data
 FROM (
-  SELECT json_build_object('id', t0."id", 'title', t0."title", 'author', l2.data) AS data, jsonb_build_array(t0."id") AS __key, row_number() OVER (ORDER BY t0."id" ASC) AS __rn
+  SELECT json_build_object('id', t0."id", 'title', t0."title", $1::text, l2.data) AS data, jsonb_build_array(t0."id") AS __key, row_number() OVER (ORDER BY t0."id" ASC) AS __rn
   FROM "public"."posts" t0
   LEFT JOIN LATERAL (
     SELECT json_build_object('id', t1."id", 'email', t1."email") AS data
@@ -271,8 +271,8 @@ FROM (
     LIMIT 1
   ) l2 ON true
   ORDER BY t0."id" ASC
-  LIMIT $1
-) s3`, 101, 100)
+  LIMIT $2
+) s3`, "author", 101, 100)
 }
 
 func TestEmbedBackwardPagedNested(t *testing.T) {
@@ -363,8 +363,11 @@ func TestEmbedHintsSelfRef(t *testing.T) {
 	if !strings.Contains(stmt.SQL, `WHERE t1."id" = t0."parent_id"`) || !strings.Contains(stmt.SQL, `WHERE t3."parent_id" = t0."id"`) {
 		t.Errorf("self-reference embeds:\n%s", stmt.SQL)
 	}
-	if !strings.Contains(stmt.SQL, `'parent', l2.data, 'replies', l5.data`) {
+	if !strings.Contains(stmt.SQL, `$1::text, l2.data, $3::text, l5.data`) {
 		t.Errorf("aliases:\n%s", stmt.SQL)
+	}
+	if stmt.Args[0] != "parent" || stmt.Args[2] != "replies" {
+		t.Errorf("alias args %v", stmt.Args)
 	}
 }
 
@@ -876,12 +879,47 @@ FROM (
 
 // ---- rows ----
 
+func TestETagHashesExposedColumnsOnly(t *testing.T) {
+	b := api.New(testutil.FixtureCatalog(), inflect.Default, api.Options{
+		Functions:   true,
+		BasePath:    "/api",
+		Schemas:     []string{"public"},
+		MaxPageSize: 100,
+		Etags:       true,
+		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	users := b.Resource("public", "users")
+	b.RemoveField(users, "balance", false)
+	b.RemoveField(users, "mood", true)
+	built, err := b.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fixture{t: t, built: built, c: compile.New(built)}
+	users = f.res("users")
+	key := &plan.Key{Constraint: users.Table.PrimaryKey, Values: []any{1}}
+	row := f.compile(&plan.Request{Method: plan.GET, Resource: users, Key: key, Select: fields(users, "id")})
+	const hash = `md5(to_jsonb(ROW(t0."id", t0."email", t0."full_name", t0."settings", t0."tags", t0."created_at", t0."address", t0."prev_addresses", t0."moods"))::text)`
+	if !strings.Contains(row.SQL, "'etag', "+hash) {
+		t.Errorf("row etag hashes hidden columns:\n%s", row.SQL)
+	}
+	patch := f.compile(&plan.Request{Method: plan.PATCH, Resource: users, Key: key, Body: body(users, map[string]any{"full_name": "x"}), IfMatch: `W/"abc"`})
+	if !strings.Contains(patch.SQL, strings.ReplaceAll(hash, "t0.", "__cur.")+" AS h") {
+		t.Errorf("If-Match hash differs from the ETag:\n%s", patch.SQL)
+	}
+	for _, st := range []*compile.Statement{row, patch} {
+		if strings.Contains(st.SQL, `"balance"`) && !strings.Contains(st.SQL, "RETURNING") || strings.Contains(st.SQL, "to_jsonb(t0)") || strings.Contains(st.SQL, "to_jsonb(__cur)") {
+			t.Errorf("hidden column reaches the hash:\n%s", st.SQL)
+		}
+	}
+}
+
 func TestRowPK(t *testing.T) {
 	f := newFixture(t)
 	users := f.res("users")
 	p := &plan.Request{Method: plan.GET, Resource: users, Key: &plan.Key{Constraint: users.Table.PrimaryKey, Values: []any{1}}, Select: fields(users, "id", "email")}
 	stmt := f.compile(p)
-	wantSQL(t, stmt, `SELECT json_build_object('etag', md5(to_jsonb(t0)::text), 'row', json_build_object('id', t0."id", 'email', t0."email")) AS data
+	wantSQL(t, stmt, `SELECT json_build_object('etag', md5(to_jsonb(ROW(t0."id", t0."email", t0."full_name", t0."mood", t0."settings", t0."tags", t0."balance", t0."created_at", t0."address", t0."prev_addresses", t0."moods"))::text), 'row', json_build_object('id', t0."id", 'email', t0."email")) AS data
 FROM "public"."users" t0
 WHERE t0."id" = $1
 LIMIT 1`, 1)
@@ -1004,7 +1042,7 @@ func TestMultiSchemaAndAliasing(t *testing.T) {
 	if !strings.Contains(stmt.SQL, `json_build_object('id', (t0."id")::text, 'payload', encode(t0."payload", 'base64'), 'amount', (t0."amount")::text, 'price', (t0."price")::text, 'who', t0."who", 'users', l2.data)`) {
 		t.Errorf("type rendering:\n%s", stmt.SQL)
 	}
-	if !strings.Contains(stmt.SQL, `json_build_object('e', t1."email")`) {
+	if !strings.Contains(stmt.SQL, `json_build_object($1::text, t1."email")`) {
 		t.Errorf("alias:\n%s", stmt.SQL)
 	}
 }
@@ -1024,11 +1062,11 @@ func TestSpatialOutput(t *testing.T) {
 		{Alias: "gt", Pseudo: &api.PseudoColumn{Key: "location_geometry_type", Column: loc, Accessor: "geometry_type"}},
 	}}
 	stmt := f.compile(p)
-	want := `json_build_object('name', t0."name", 'location', ST_AsGeoJSON(t0."location")::json, 'web', ST_AsGeoJSON(ST_Transform(t0."location", 3857))::json, 'coarse', ST_AsGeoJSON(ST_Transform(ST_SimplifyPreserveTopology(t0."area"::geometry, $1), 3857))::json, 'location_srid', ST_SRID(t0."location"), 'area_centroid', ST_AsGeoJSON(ST_Centroid(t0."area"::geometry))::json, 'gt', ST_GeometryType(t0."location"))`
+	want := `json_build_object('name', t0."name", 'location', ST_AsGeoJSON(t0."location")::json, $1::text, ST_AsGeoJSON(ST_Transform(t0."location", 3857))::json, $3::text, ST_AsGeoJSON(ST_Transform(ST_SimplifyPreserveTopology(t0."area"::geometry, $2), 3857))::json, 'location_srid', ST_SRID(t0."location"), 'area_centroid', ST_AsGeoJSON(ST_Centroid(t0."area"::geometry))::json, $4::text, ST_GeometryType(t0."location"))`
 	if !strings.Contains(stmt.SQL, want) {
 		t.Errorf("spatial output:\nwant %s\n%s", want, stmt.SQL)
 	}
-	if stmt.Args[0] != 0.01 {
+	if stmt.Args[0] != "web" || stmt.Args[1] != 0.01 || stmt.Args[2] != "coarse" || stmt.Args[3] != "gt" {
 		t.Errorf("args %v", stmt.Args)
 	}
 }
@@ -1100,14 +1138,30 @@ func TestCost(t *testing.T) {
 			Key: "comments", Relation: f.rel("posts", "comments", ""), Node: fields(f.res("comments"), "id"),
 		}}},
 	}}}
-	if got := compile.Cost(p, 100); got != 2441 {
-		t.Errorf("cost = %d, want 2441", got)
+	if got, want := compile.Cost(p, 100), 1+20*(1+1+100*(1+1+100*1)); got != want {
+		t.Errorf("cost = %d, want %d (a limitless embed fetches max_page_size rows)", got, want)
 	}
 	// Explicit embed limit and @costMultiplier (comments self-ref: 3).
 	p.Select.Embeds[0].Page = plan.Page{Limit: 5, LimitSet: true}
-	if got := compile.Cost(p, 100); got != 1+20*(1+1+5*(1+11)) {
+	if got := compile.Cost(p, 100); got != 1+20*(1+1+5*(1+1+100*1)) {
 		t.Errorf("cost = %d", got)
 	}
+	p.Select.Embeds[0].Page = plan.Page{Limit: 100, LimitSet: true}
+	explicit := compile.Cost(p, 100)
+	p.Select.Embeds[0].Page = plan.Page{}
+	if limitless := compile.Cost(p, 100); limitless < explicit {
+		t.Errorf("limitless embed cost %d < cost %d with limit=max_page_size", limitless, explicit)
+	}
+	limitless := compile.Cost(p, 100)
+	p.Select.Embeds[0].Page = plan.Page{Limit: 0, LimitSet: true}
+	if got := compile.Cost(p, 100); got != limitless {
+		t.Errorf("limit=0 embed cost %d, want %d (the compiler applies max_page_size)", got, limitless)
+	}
+	p.Select.Embeds[0].Spread = true
+	if got := compile.Cost(p, 100); got != limitless {
+		t.Errorf("to-many spread cost %d, want %d", got, limitless)
+	}
+	p.Select.Embeds[0].Spread = false
 	comments := f.res("comments")
 	cp := list(comments)
 	cp.Page = plan.Page{Limit: 10}
@@ -1129,6 +1183,13 @@ func TestCost(t *testing.T) {
 	rp := &plan.Request{Method: plan.GET, Resource: users, Key: &plan.Key{Constraint: users.Table.PrimaryKey, Values: []any{1}}}
 	if got := compile.Cost(rp, 100); got != 1+len(users.Columns) {
 		t.Errorf("row cost = %d", got)
+	}
+	recent := plan.FieldSel{Computed: f.computed("users", "recent_posts"), Node: &plan.Node{Resource: posts, Fields: []plan.FieldSel{{Column: f.col("posts", "id")}}, Embeds: []plan.Embed{{
+		Key: "comments", Relation: f.rel("posts", "comments", ""), Page: plan.Page{Limit: 2, LimitSet: true}, Node: fields(f.res("comments"), "id"),
+	}}}}
+	rp.Select = &plan.Node{Resource: users, Fields: []plan.FieldSel{{Column: f.col("users", "id")}, recent, {Computed: f.computed("users", "tag_words")}}}
+	if got, want := compile.Cost(rp, 100), 1+1+(1+100*(1+1+2*1))+(1+100); got != want {
+		t.Errorf("setof computed cost = %d, want %d", got, want)
 	}
 	// Root list without explicit limit uses the cap.
 	lp := &plan.Request{Method: plan.GET, Resource: users, Select: fields(users, "id")}
@@ -1221,8 +1282,8 @@ func TestAggregateCost(t *testing.T) {
 		Key: "posts", Relation: f.rel("users", "posts", ""), Page: plan.Page{Limit: 2, LimitSet: true},
 		Node: &plan.Node{Resource: posts, Fields: []plan.FieldSel{count}},
 	}}}
-	if got := compile.Cost(p, 100); got != 1+10*(1+1+10*1) {
-		t.Errorf("aggregated embed cost = %d, want %d", got, 1+10*(1+1+10*1))
+	if got := compile.Cost(p, 100); got != 1+10*(1+1+100*1) {
+		t.Errorf("aggregated embed cost = %d, want %d (limit does not bound the rows it reads)", got, 1+10*(1+1+100*1))
 	}
 	root.Count = true
 	if got := compile.Cost(root, 100); got != 1+100*2+100*1 {

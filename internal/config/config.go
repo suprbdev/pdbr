@@ -45,13 +45,14 @@ type Server struct {
 	ReadyzTimeout            time.Duration `koanf:"readyz_timeout" doc:"Timeout of the database ping behind GET /readyz; an unreachable or slow database answers 503 unavailable. /healthz stays a liveness check."`
 	MaxBodyBytes             int64         `koanf:"max_body_bytes" doc:"Maximum accepted request body size in bytes; over answers 413."`
 	MaxEmbedDepth            int           `koanf:"max_embed_depth" doc:"Maximum select= embed nesting depth; deeper answers 400 embed_depth_exceeded."`
-	MaxCost                  int           `koanf:"max_cost" doc:"Maximum estimated cost (1 + list multipliers) per request; over answers 400 cost_exceeded. @costMultiplier smart comments tune the estimate."`
+	MaxCost                  int           `koanf:"max_cost" doc:"Maximum estimated cost (1 + list multipliers) per request; over answers 400 cost_exceeded. A list counts the rows the SQL can fetch: its limit, else max_page_size (to-many embeds included). @costMultiplier smart comments tune the estimate."`
 	MaxPageSize              int           `koanf:"max_page_size" doc:"Largest accepted limit (larger answers 400 page_size_exceeded); also the page size when limit is absent."`
 	CORSOrigins              []string      `koanf:"cors_origins" doc:"Allowed CORS origins (exact match, or '*' for any). Empty disables CORS headers and preflight entirely."`
 	Compression              bool          `koanf:"compression" doc:"Gzip responses for clients that send Accept-Encoding: gzip (off by default)."`
 	ReadOnly                 bool          `koanf:"read_only" doc:"Answer every write with 405 (code read_only) for read replicas, maintenance or demos. Also toggleable at runtime when embedding pdbr as a library (App.SetReadOnly)."`
-	Etags                    bool          `koanf:"etags" doc:"Weak ETag on single-row GETs, If-None-Match answering 304, If-Match on PATCH/DELETE answering 412. Disable when column-level grants deny SELECT on some columns (the ETag hashes the whole row)."`
+	Etags                    bool          `koanf:"etags" doc:"Weak ETag on single-row GETs, If-None-Match answering 304, If-Match on PATCH/DELETE answering 412. The hash covers every column the resource exposes (not @omit / @omit read ones); disable when column-level grants deny SELECT on an exposed column."`
 	CSV                      bool          `koanf:"csv" doc:"Honour Accept: text/csv on list GETs and set-returning RPCs."`
+	CSVEscapeFormulas        bool          `koanf:"csv_escape_formulas" doc:"Prefix CSV header and string cells that start with =, +, -, @, a tab or a carriage return with a single quote, so spreadsheets do not evaluate them as formulas (CSV injection). Numbers are never escaped. Disable only when every consumer reads the CSV as data."`
 	AllowUnfilteredMutations bool          `koanf:"allow_unfiltered_mutations" doc:"Allow PATCH and DELETE on a collection route without a filter (every visible row). Off by default: such requests answer 400 unfiltered_mutation."`
 	Aggregates               bool          `koanf:"aggregates" doc:"Allow aggregate functions in select= (count(), col.sum(), col.avg(), col.max(), col.min(); col.extent(), col.union(), col.collect(), col.centroid() on spatial columns), grouped by the other selected items. Off by default (PostgREST db-aggregates-enabled): an aggregate reads every row its filters match, which limit does not bound; requests answer 400 aggregates_disabled."`
 }
@@ -71,18 +72,19 @@ func DefaultConfig() Config {
 			StatementTimeout: 30 * time.Second,
 		},
 		Server: Server{
-			Addr:           ":8080",
-			BasePath:       "/api",
-			OpenAPI:        true,
-			OpenAPIDomains: true,
-			RequestTimeout: 30 * time.Second,
-			ReadyzTimeout:  2 * time.Second,
-			MaxBodyBytes:   1 << 20,
-			MaxEmbedDepth:  5,
-			MaxCost:        10000,
-			MaxPageSize:    100,
-			Etags:          true,
-			CSV:            true,
+			Addr:              ":8080",
+			BasePath:          "/api",
+			OpenAPI:           true,
+			OpenAPIDomains:    true,
+			RequestTimeout:    30 * time.Second,
+			ReadyzTimeout:     2 * time.Second,
+			MaxBodyBytes:      1 << 20,
+			MaxEmbedDepth:     5,
+			MaxCost:           100000,
+			MaxPageSize:       100,
+			Etags:             true,
+			CSV:               true,
+			CSVEscapeFormulas: true,
 		},
 		Schema: Schema{Schema: confx.Schema{
 			Schemas:   []string{"public"},

@@ -1,6 +1,6 @@
 -- request: PATCH /api/users/1?select=id,posts(id,users(full_name))
 WITH cur AS (
-  SELECT md5(to_jsonb(__cur)::text) AS h
+  SELECT md5(to_jsonb(ROW(__cur."id", __cur."email", __cur."full_name", __cur."mood", __cur."settings", __cur."tags", __cur."balance", __cur."created_at", __cur."address", __cur."prev_addresses", __cur."moods"))::text) AS h
   FROM "public"."users" __cur
   WHERE __cur."id" = $2
 ),

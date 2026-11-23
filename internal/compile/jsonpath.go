@@ -84,13 +84,20 @@ func (s *stmt) fieldValueJSON(alias string, f *plan.FieldSel) string {
 }
 
 // pairKey renders the response key of a selected field in a
-// json_build_object call: a literal, or a bind parameter when the key is
-// the last key of a JSON path (a value).
+// json_build_object call: a literal for a catalog-derived key, a bind
+// parameter when the request supplies the key (an alias, or the last key of
+// a JSON path).
 func (s *stmt) pairKey(f *plan.FieldSel, key string) string {
-	if f != nil && f.PathKeyed() {
-		return s.param(key) + "::text"
+	if f != nil && (f.Alias != "" || f.PathKeyed()) {
+		return s.keyParam(key)
 	}
 	return quoteLiteral(key)
+}
+
+// keyParam renders a request-supplied response key as a text bind
+// parameter, keeping request text out of the SQL.
+func (s *stmt) keyParam(key string) string {
+	return s.param(key) + "::text"
 }
 
 // pathSignature identifies a column's JSON path, values included, for

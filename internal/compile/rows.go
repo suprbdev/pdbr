@@ -25,7 +25,7 @@ const jsonBuildObjectChunk = 40 // pairs (80 args)
 // the same rule.
 type pairList struct {
 	keys   []string // response keys
-	keySQL []string // rendered keys: literals, or bind parameters for path-derived keys
+	keySQL []string // rendered keys: literals, or bind parameters for request-supplied keys
 	vals   []string
 	pos    map[string]int
 }
@@ -135,7 +135,11 @@ func (s *stmt) rowPairs(node *plan.Node, alias string, depth int) (*pairList, []
 		if err != nil {
 			return nil, nil, err
 		}
-		if err := pl.add(key, quoteLiteral(key), expr); err != nil {
+		keySQL := quoteLiteral(key)
+		if e.Alias != "" {
+			keySQL = s.keyParam(key)
+		}
+		if err := pl.add(key, keySQL, expr); err != nil {
 			return nil, nil, err
 		}
 		laterals = append(laterals, lat)

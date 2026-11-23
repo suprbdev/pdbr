@@ -30,8 +30,8 @@ server:
   max_body_bytes: 1048576
   # Maximum select= embed nesting depth; deeper answers 400 embed_depth_exceeded.
   max_embed_depth: 5
-  # Maximum estimated cost (1 + list multipliers) per request; over answers 400 cost_exceeded. @costMultiplier smart comments tune the estimate.
-  max_cost: 10000
+  # Maximum estimated cost (1 + list multipliers) per request; over answers 400 cost_exceeded. A list counts the rows the SQL can fetch: its limit, else max_page_size (to-many embeds included). @costMultiplier smart comments tune the estimate.
+  max_cost: 100000
   # Largest accepted limit (larger answers 400 page_size_exceeded); also the page size when limit is absent.
   max_page_size: 100
   # Allowed CORS origins (exact match, or '*' for any). Empty disables CORS headers and preflight entirely.
@@ -40,10 +40,12 @@ server:
   compression: false
   # Answer every write with 405 (code read_only) for read replicas, maintenance or demos. Also toggleable at runtime when embedding pdbr as a library (App.SetReadOnly).
   read_only: false
-  # Weak ETag on single-row GETs, If-None-Match answering 304, If-Match on PATCH/DELETE answering 412. Disable when column-level grants deny SELECT on some columns (the ETag hashes the whole row).
+  # Weak ETag on single-row GETs, If-None-Match answering 304, If-Match on PATCH/DELETE answering 412. The hash covers every column the resource exposes (not @omit / @omit read ones); disable when column-level grants deny SELECT on an exposed column.
   etags: true
   # Honour Accept: text/csv on list GETs and set-returning RPCs.
   csv: true
+  # Prefix CSV header and string cells that start with =, +, -, @, a tab or a carriage return with a single quote, so spreadsheets do not evaluate them as formulas (CSV injection). Numbers are never escaped. Disable only when every consumer reads the CSV as data.
+  csv_escape_formulas: true
   # Allow PATCH and DELETE on a collection route without a filter (every visible row). Off by default: such requests answer 400 unfiltered_mutation.
   allow_unfiltered_mutations: false
   # Allow aggregate functions in select= (count(), col.sum(), col.avg(), col.max(), col.min(); col.extent(), col.union(), col.collect(), col.centroid() on spatial columns), grouped by the other selected items. Off by default (PostgREST db-aggregates-enabled): an aggregate reads every row its filters match, which limit does not bound; requests answer 400 aggregates_disabled.
@@ -72,7 +74,7 @@ rls:
   default_role: ""
   # Role assumed for unauthenticated requests.
   anonymous_role: "anonymous"
-  # JWT claim (or header name in header mode) carrying the database role.
+  # JWT claim (or claim header in headers mode: app_role is <header_prefix>App-Role) carrying the database role.
   role_claim: "role"
   # Roles a request may assume via the role claim. Empty allows any role (subject to database grants); default_role and anonymous_role are always allowed.
   allowed_roles: []
@@ -85,14 +87,16 @@ rls:
     jwt_secret: ""
     # JWKS endpoint for asymmetric JWT verification (RS256/384/512, ES256/384/512). Takes precedence over jwt_secret.
     jwks_url: ""
-    # How long fetched JWKS keys are cached; an unknown kid triggers an early refresh (key rotation).
+    # How long fetched JWKS keys are cached; an unknown kid triggers an early refresh (key rotation) at most once a minute. After the TTL, keys refresh in the background and stay in use for up to one more TTL while the endpoint fails; failed fetches back off from 1s to 1m.
     jwks_cache_ttl: "1h0m0s"
     # Expected iss claim; empty skips the check.
     jwt_issuer: ""
     # Expected aud claim; empty skips the check.
     jwt_audience: ""
-    # Header prefix mapped to claims in headers mode, e.g. X-Pdbr-Claim-.
+    # Header prefix mapped to claims in headers mode, e.g. X-Pdbr-Claim-. The rest of the name maps to one claim (User-Id is user_id); requests with a claim header containing an underscore or other punctuation, repeated, or folding onto another claim header are rejected. The gateway must strip every client-supplied header with this prefix, in any letter case.
     header_prefix: "X-Pdbr-Claim-"
+    # Claim names (e.g. user_id) accepted from claim headers in headers mode; role_claim is always accepted. Requests carrying any other claim header are rejected. Empty accepts any claim.
+    header_claims: []
     # CIDR blocks (or single IPs) allowed to supply claim headers in headers mode. Requests from other peers that carry claim headers are rejected. Empty trusts every peer and logs a startup warning.
     trusted_proxies: []
     # Schema-qualified composite type (e.g. public.jwt) minted into a signed JWT: any function returning it yields an HS256 token string built from the composite's fields (an exp field becomes the token expiry). Requires jwt_secret; jwt_issuer/jwt_audience are embedded when set. Empty disables minting.

@@ -386,39 +386,52 @@ effective order. Constraints:
 
 ## Cost limit
 
-`server.max_cost` (default 10000) rejects requests whose estimated row
+`server.max_cost` (default 100000) rejects requests whose estimated row
 fan-out is too large, before any SQL runs:
 
 ```
 cost         = 1 + Σ mult(child) × cost(child)   over the selected items
-mult(list)   = explicit limit clamped to server.max_page_size, else 10   (root list, backward embed)
-mult(other)  = 1                                                          (columns, forward embeds)
+mult(list)   = explicit limit clamped to server.max_page_size,
+               else server.max_page_size                       (root list, to-many embed)
+mult(other)  = 1                                                (columns, forward embeds)
 cost(column) = 1
 ```
 
+A list's multiplier is the number of rows its SQL can fetch: an embed
+without `limit` fetches up to `server.max_page_size` rows per parent, so it
+costs exactly what the same embed with `limit=<max_page_size>` costs —
+leaving the limit out never lowers an estimate. Set an embed `limit` (or
+`@costMultiplier`) to make nested selects cheaper.
+
 An aggregated list (a root or embed selecting an [aggregate
-function](aggregates.md#cost)) is costed as if it had no `limit` — the root
-at `server.max_page_size`, an embed at 10 — because `limit` bounds the groups
+function](aggregates.md#cost)) is costed as if it had no `limit` — at
+`server.max_page_size` — because `limit` bounds the groups
 it returns, not the rows the aggregate reads; each aggregate costs 1 like a
 column, and a total on an aggregated root adds `server.max_page_size` × its
 grouping keys. A [spread embed](api.md#spread-embeds) costs what the same
 embed costs; the items of a to-one spread in an aggregate select are
 grouping keys of the node they are spread into (spread grouping joins one
-row per scanned row).
+row per scanned row). A set-returning computed column
+([rpc.md](rpc.md)) has no SQL limit either: it costs 1 +
+`server.max_page_size` × the cost of its rows (its nested `select=`, embeds
+included; one value per row for a set of scalars).
 
 `@costMultiplier n` on an FK comment replaces the multiplier of that backward
 embed when `n` is lower — it only ever lowers an estimate (values < 1 are
 ignored). Over the limit → `400 cost_exceeded`.
 
 Example: `GET /api/users?select=id,posts(id,comments(id))&limit=20`:
-`comments` = 1 + 10 × 1 = 11, `posts` = 1 + 10 × (1 + 11) = 121, request =
-1 + 20 × (1 + 121) = 2441.
+`comments` = 1 + 100 × 1 = 101, `posts` = 1 + 100 × (1 + 101) = 10201,
+request = 1 + 20 × (1 + 10201) = 204041 → `400 cost_exceeded` with the
+defaults. With `posts.limit=5&posts.comments.limit=5`: `comments` = 1 + 5 × 1
+= 6, `posts` = 1 + 5 × (1 + 6) = 36, request = 1 + 20 × (1 + 36) = 741.
 
 Two details the formula leaves implicit, fixed here: each named column
 costs 1 and `*` costs the number of columns it expands to; a root list without
 an explicit `limit` uses its **effective** limit (`server.max_page_size`,
-default 100) as the multiplier, while a backward embed without an explicit
-`limit` uses the estimate 10 (pdbq parity for nested lists).
+default 100) as the multiplier, and so does a backward embed without an
+explicit `limit` (`limit=0` included), since that is the limit its SQL
+applies.
 
 ## Per-embed pagination
 

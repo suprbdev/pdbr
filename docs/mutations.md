@@ -528,8 +528,8 @@ as text) passed as a bare `$n` typed by the target column.
 
 ## If-Match on PATCH / DELETE
 
-Single-row GETs return `ETag: W/"<hex>"` = `md5(to_jsonb(row)::text)` over all
-columns ([api.md](api.md#etag--conditional-requests), `server.etags`). `PATCH`/`DELETE` on single-row paths
+Single-row GETs return `ETag: W/"<hex>"` = `md5(to_jsonb(ROW(…))::text)` over the
+exposed columns ([api.md](api.md#etag--conditional-requests), `server.etags`). `PATCH`/`DELETE` on single-row paths
 honour `If-Match` in the same statement — no read-then-write race:
 
 ```http
@@ -541,7 +541,7 @@ If-Match: W/"5d41402abc4b2a76b9719d911017c592"
 
 ```sql
 WITH cur AS (
-  SELECT md5(to_jsonb(__cur)::text) AS h
+  SELECT md5(to_jsonb(ROW(__cur."id", __cur."email", __cur."full_name", __cur."mood", __cur."settings", __cur."tags", __cur."balance", __cur."created_at", __cur."address", __cur."prev_addresses", __cur."moods"))::text) AS h
   FROM "public"."users" __cur
   WHERE __cur."id" = $2
 ),
@@ -839,7 +839,7 @@ consequences:
   bulk `PATCH`/`DELETE` and bulk upserts, the key identifying the written
   rows) to both `RETURNING` and the [visibility CTE](#embeds-back-to-the-mutated-table).
   Exceptions that need every column: computed columns in `select=` (row-type
-  argument), `If-Match` (hashes the whole row), and nested-mutation inner
+  argument), `If-Match` (hashes every exposed column), and nested-mutation inner
   CTEs (`RETURNING *`).
 
 - **`SELECT` policies apply to rows returned by the mutation itself.** All

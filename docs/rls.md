@@ -64,6 +64,20 @@ override.
   claim `user_id = "42"` → `pdbq.claims.user_id = '42'`. The role comes from
   the header named after `rls.role_claim` (`X-Pdbr-Claim-Role`).
 
+  Every claim has exactly **one** header spelling: the part after the prefix
+  is alphanumeric words joined by single hyphens, lower-cased with hyphens
+  turned into underscores (`User-Id` → `user_id`; the prefix and the words
+  match in any letter case). A request is rejected with `401 invalid_token`
+  when a prefixed header has any other shape (`X-Pdbr-Claim-User_Id`,
+  punctuation), is repeated, or folds onto the same claim as another
+  header, so a client cannot smuggle a second spelling past a gateway that
+  only strips the canonical one. Set `rls.auth.header_claims` to the claim
+  names the gateway sends (e.g. `[user_id, tenant_id]`; `rls.role_claim` is
+  always accepted) to reject every other claim header with `401` as well.
+
+  The gateway must remove **every** client-supplied header that starts with
+  the prefix, in any letter case, before adding its own.
+
   Set `rls.auth.trusted_proxies` to the gateway's CIDR blocks (or single
   IPs), e.g. `["10.0.0.0/8", "192.168.1.5"]`: claim headers arriving from
   any other peer are rejected. Left empty, **every** peer that can reach the
@@ -177,12 +191,15 @@ consequences for generated mutations:
   keep their old version
   ([mutations.md](mutations.md#embeds-back-to-the-mutated-table)).
 
-- **ETags hash the whole row.** A single-row `GET`, and `PATCH`/`DELETE`
-  with `If-Match`, compute `md5(to_jsonb(row)::text)` over **all** columns in
-  SQL, independent of `select=`. Under column-level grants that expression
-  fails with `42501` → `403` even when the selected columns are readable.
-  Either grant `SELECT` on the full row or set `server.etags: false` for
-  such deployments (`If-Match` is then ignored and no `ETag` header is sent).
+- **ETags hash every exposed column.** A single-row `GET`, and
+  `PATCH`/`DELETE` with `If-Match`, compute
+  `md5(to_jsonb(ROW(<exposed columns>))::text)` in SQL, independent of
+  `select=` (columns hidden with `@omit` / `@omit read` are left out). Under
+  column-level grants that expression fails with `42501` → `403` when the
+  role cannot read an exposed column, even when the selected columns are
+  readable. Grant `SELECT` on the exposed columns, hide the others with
+  `@omit read`, or set `server.etags: false` for such deployments (`If-Match`
+  is then ignored and no `ETag` header is sent).
 
 - **`SELECT` policies apply to rows returned by the mutation itself.** This
   matters for nested creates (the `nested-mutations` plugin): all inserts run

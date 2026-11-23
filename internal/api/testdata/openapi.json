@@ -884,7 +884,7 @@
             "description": "OK",
             "headers": {
               "ETag": {
-                "description": "Weak row hash W/\"<md5>\" over all columns, independent of select=.",
+                "description": "Weak row hash W/\"<md5>\" over the exposed columns, independent of select=.",
                 "schema": {
                   "type": "string"
                 }
@@ -946,7 +946,7 @@
             "description": "OK (same headers as GET, no body)",
             "headers": {
               "ETag": {
-                "description": "Weak row hash W/\"<md5>\" over all columns, independent of select=.",
+                "description": "Weak row hash W/\"<md5>\" over the exposed columns, independent of select=.",
                 "schema": {
                   "type": "string"
                 }
@@ -2025,7 +2025,7 @@
             "description": "OK",
             "headers": {
               "ETag": {
-                "description": "Weak row hash W/\"<md5>\" over all columns, independent of select=.",
+                "description": "Weak row hash W/\"<md5>\" over the exposed columns, independent of select=.",
                 "schema": {
                   "type": "string"
                 }
@@ -2087,7 +2087,7 @@
             "description": "OK (same headers as GET, no body)",
             "headers": {
               "ETag": {
-                "description": "Weak row hash W/\"<md5>\" over all columns, independent of select=.",
+                "description": "Weak row hash W/\"<md5>\" over the exposed columns, independent of select=.",
                 "schema": {
                   "type": "string"
                 }
@@ -3452,7 +3452,7 @@
             "description": "OK",
             "headers": {
               "ETag": {
-                "description": "Weak row hash W/\"<md5>\" over all columns, independent of select=.",
+                "description": "Weak row hash W/\"<md5>\" over the exposed columns, independent of select=.",
                 "schema": {
                   "type": "string"
                 }
@@ -3514,7 +3514,7 @@
             "description": "OK (same headers as GET, no body)",
             "headers": {
               "ETag": {
-                "description": "Weak row hash W/\"<md5>\" over all columns, independent of select=.",
+                "description": "Weak row hash W/\"<md5>\" over the exposed columns, independent of select=.",
                 "schema": {
                   "type": "string"
                 }
@@ -4605,7 +4605,7 @@
             "description": "OK",
             "headers": {
               "ETag": {
-                "description": "Weak row hash W/\"<md5>\" over all columns, independent of select=.",
+                "description": "Weak row hash W/\"<md5>\" over the exposed columns, independent of select=.",
                 "schema": {
                   "type": "string"
                 }
@@ -4667,7 +4667,7 @@
             "description": "OK (same headers as GET, no body)",
             "headers": {
               "ETag": {
-                "description": "Weak row hash W/\"<md5>\" over all columns, independent of select=.",
+                "description": "Weak row hash W/\"<md5>\" over the exposed columns, independent of select=.",
                 "schema": {
                   "type": "string"
                 }
@@ -7364,7 +7364,7 @@
             "description": "OK",
             "headers": {
               "ETag": {
-                "description": "Weak row hash W/\"<md5>\" over all columns, independent of select=.",
+                "description": "Weak row hash W/\"<md5>\" over the exposed columns, independent of select=.",
                 "schema": {
                   "type": "string"
                 }
@@ -7426,7 +7426,7 @@
             "description": "OK (same headers as GET, no body)",
             "headers": {
               "ETag": {
-                "description": "Weak row hash W/\"<md5>\" over all columns, independent of select=.",
+                "description": "Weak row hash W/\"<md5>\" over the exposed columns, independent of select=.",
                 "schema": {
                   "type": "string"
                 }
@@ -7863,7 +7863,7 @@
             "description": "OK",
             "headers": {
               "ETag": {
-                "description": "Weak row hash W/\"<md5>\" over all columns, independent of select=.",
+                "description": "Weak row hash W/\"<md5>\" over the exposed columns, independent of select=.",
                 "schema": {
                   "type": "string"
                 }
@@ -7925,7 +7925,7 @@
             "description": "OK (same headers as GET, no body)",
             "headers": {
               "ETag": {
-                "description": "Weak row hash W/\"<md5>\" over all columns, independent of select=.",
+                "description": "Weak row hash W/\"<md5>\" over the exposed columns, independent of select=.",
                 "schema": {
                   "type": "string"
                 }
