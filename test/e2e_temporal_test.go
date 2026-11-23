@@ -200,6 +200,24 @@ func TestTemporalRoutesAndErrors(t *testing.T) {
 	wantProblem(t, res, body, 409, "pg:23503")
 	sendJSON(t, "POST", srv+"/api/tk_readings", `{"id":3,"room_id":42,"celsius":1}`, 201, &r)
 
+	ignore := map[string]string{"Prefer": "resolution=ignore-duplicates"}
+	res, body = send(t, "POST", srv+"/api/tk_bookings", `{"room_id":1,"valid_at":"[2026-01-02,2026-01-03)","guest":"dup"}`, ignore)
+	if res.StatusCode != 204 {
+		t.Errorf("ignore-duplicates on an overlapping temporal PK = %d %s", res.StatusCode, body)
+	}
+	sendJSON(t, "POST", srv+"/api/tk_bookings", `{"room_id":1,"valid_at":"[2026-02-01,2026-02-03)","guest":"new"}`, 201, &r)
+	res, body = send(t, "POST", srv+"/api/tk_rates?on_conflict=room_id,valid_at", `{"id":5,"room_id":1,"valid_at":"[2026-01-10,2026-01-11)","price":1}`, ignore)
+	if res.StatusCode != 204 {
+		t.Errorf("ignore-duplicates on a temporal unique = %d %s", res.StatusCode, body)
+	}
+	res, body = send(t, "POST", srv+"/api/tk_rates?on_conflict=room_id,valid_at", `{"id":5,"room_id":1,"valid_at":"[2026-01-10,2026-01-11)","price":1}`,
+		map[string]string{"Prefer": "resolution=merge-duplicates"})
+	wantProblem(t, res, body, 400, "temporal_conflict_target")
+	sendJSON(t, "PUT", srv+"/api/tk_rates/1", `{"room_id":1,"valid_at":"[2026-01-01,2026-02-01)","price":130}`, 200, &r)
+	if r["price"] != "130" {
+		t.Errorf("PUT on the plain-key row path = %v", r)
+	}
+
 	doc := openAPIDoc(t, srv)
 	for path := range doc["paths"].(map[string]any) {
 		if strings.HasPrefix(path, "/tk_bookings/") || strings.HasPrefix(path, "/tk_rates/by/") {

@@ -216,7 +216,7 @@ valid_at)`, and `NOT ENFORCED` foreign keys. pdbr handles them like this:
 |---|---|
 | temporal primary key | no `/{pk}` row route (`404`), no `ETag`, not the default `PUT` conflict target; it still orders the default listing and backs keyset cursors (the range value travels in the cursor) |
 | temporal unique constraint | no `/by/{cols}/{vals}` route |
-| `?on_conflict=` naming a temporal key | `400 temporal_conflict_target`: PostgreSQL enforces the key as an exclusion constraint, which `ON CONFLICT` cannot infer |
+| `?on_conflict=` naming a temporal key | `400 temporal_conflict_target` on `PUT` and `Prefer: resolution=merge-duplicates`: PostgreSQL enforces the key as an exclusion constraint, which `ON CONFLICT (cols)` cannot infer and `DO UPDATE` does not support; `resolution=ignore-duplicates` accepts it (`ON CONFLICT ON CONSTRAINT … DO NOTHING`) |
 | `PUT` | offered only when the table has a plain primary key or unique constraint; a table whose only key is temporal has no `PUT` (`405`) and, without a row route, is updated and deleted only by filter on the collection (`PATCH`/`DELETE /bookings?room_id=eq.1&…`) |
 | duplicate (overlapping) period on insert/update | `409 pg:23P01` (exclusion violation) |
 | `PERIOD` FK, forward embed | an **array** of every referenced row whose period overlaps the row's own (the child's period may be covered by several parent rows), ordered by the referenced primary key; per-embed parameters apply |

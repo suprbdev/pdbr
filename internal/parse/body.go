@@ -238,6 +238,9 @@ func (p *parser) checkBody(res *api.Resource, body *plan.Body) error {
 			if p.req.OnConflict == nil {
 				p.req.OnConflict = res.Table.PrimaryKey
 			}
+			if p.req.OnConflict != nil && p.req.OnConflict.WithoutOverlaps && p.req.Prefer.Resolution == plan.MergeDuplicates {
+				return errf(CodeTemporalConflict, "the primary key of %q is a temporal key (WITHOUT OVERLAPS), which cannot be updated on conflict; resolution=merge-duplicates needs ?on_conflict= naming a unique constraint", resName(res))
+			}
 			if p.req.OnConflict == nil && p.req.Prefer.Resolution == plan.MergeDuplicates {
 				return errf(CodeInvalidBody, "resource %q has no primary key; resolution=merge-duplicates needs ?on_conflict= naming a unique constraint", resName(res))
 			}

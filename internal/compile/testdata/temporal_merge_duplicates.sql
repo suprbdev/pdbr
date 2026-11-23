@@ -1,0 +1,2 @@
+-- request: POST /api/tk_bookings
+-- error: 400 invalid_preference: resolution=merge-duplicates needs UPDATE on "tk_bookings" and a primary key or unique constraint (the PUT method)

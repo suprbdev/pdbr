@@ -1,0 +1,4 @@
+POST /api/tk_bookings
+Prefer: resolution=merge-duplicates
+
+{"room_id": 1, "valid_at": "[2026-01-02,2026-01-03)", "guest": "dup"}
