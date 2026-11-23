@@ -109,6 +109,10 @@ func TestPostGISFilters(t *testing.T) {
 		{[]string{"select=id", "area=bbox_equals." + trafalgarArea}, []int{1}},
 		{[]string{"select=id", "area=st_intersects3d.POINT(-0.128 51.508)"}, []int{1}},
 		{[]string{"select=id", "area=bbox_intersectsnd.POINT(-0.128 51.508)"}, []int{1}},
+		{[]string{"select=id", "location=bbox_intersects2d.SRID=4326;LINESTRING(-0.2 51.5,-0.1 51.51)"}, []int{1}},
+		{[]string{"select=id", "area=bbox_intersects2d.POINT(-0.128 51.508)"}, []int{1}},
+		{[]string{"select=id", "area=not.bbox_intersects2d.POINT(10 10)"}, []int{1}},
+		{[]string{"select=id", "or=(area.bbox_intersects2d.\"POINT(10 10)\",location.bbox_intersects2d.\"" + trafalgar + "\")"}, []int{1}},
 		{[]string{"select=id", "location=st_intersects.POINT(-0.1281 51.508)"}, []int{1}},
 		{[]string{"select=id", "location=st_dwithin.(\"POINT(-0.1281 51.508)\",0.05)", "order=id"}, []int{1, 2}},
 		{[]string{"select=id", "location=bbox_leftof.POINT(0 0)", "order=id"}, []int{1, 2, 3}},
@@ -172,11 +176,13 @@ func TestPostGISPseudoColumns(t *testing.T) {
 	if sq, _ := r["sq_m"].(float64); sq < 50000 || sq > 80000 {
 		t.Errorf("area_area (m²) = %v", r["sq_m"])
 	}
-	if per, _ := r["area_perimeter"].(float64); per <= 0 {
-		t.Errorf("area_perimeter = %v", r["area_perimeter"])
+	if per, _ := r["area_perimeter"].(float64); per < 900 || per > 1100 {
+		t.Errorf("area_perimeter (m) = %v", r["area_perimeter"])
 	}
 	if c, _ := r["area_centroid"].(map[string]any); c["type"] != "Point" {
 		t.Errorf("area_centroid = %v", r["area_centroid"])
+	} else if xy, _ := c["coordinates"].([]any); len(xy) != 2 || math.Abs(xy[0].(float64)+0.128) > 0.001 || math.Abs(xy[1].(float64)-51.508) > 0.001 {
+		t.Errorf("area_centroid = %v", c)
 	}
 	if e, _ := r["area_envelope"].(map[string]any); e["type"] != "Polygon" {
 		t.Errorf("area_envelope = %v", r["area_envelope"])
@@ -492,7 +498,7 @@ func TestPostGISOpenAPI(t *testing.T) {
 	params := opParams(pathOp(doc, "/places", "get"))
 	for _, col := range []string{"location", "area"} {
 		ops, _ := params["query:"+col]["x-pdbr-filter-ops"].([]any)
-		if len(ops) != 30 || ops[len(ops)-1] != "is" {
+		if len(ops) != 31 || ops[len(ops)-1] != "is" {
 			t.Errorf("%s x-pdbr-filter-ops = %v", col, ops)
 		}
 		for _, op := range ops {

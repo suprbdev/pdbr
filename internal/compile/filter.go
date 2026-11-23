@@ -398,8 +398,12 @@ func (s *stmt) keyEqSQL(col *introspect.Column, ref, ph string) string {
 // contribFilterSQL renders a pdbcore/contrib operator: the operand goes
 // through Op.Params into bind parameters and Op.Render builds the predicate
 // from their placeholders. An hstore operand given as hstore literal text
-// is cast to the column type instead.
+// is cast to the column type instead; an unaccent_ilike pattern gets the
+// like/ilike wildcard translation first.
 func (s *stmt) contribFilterSQL(cf api.ContribFilter, ref string, v any) (string, error) {
+	if cf.Vocabulary.Name == contrib.VocabUnaccent && cf.Op.Name == "unaccentLike" {
+		v = likePattern(v)
+	}
 	if lit, ok := v.(string); ok && cf.Op.Arg == contrib.ArgHstore {
 		op := "@>"
 		if cf.Op.Name == "containedBy" {

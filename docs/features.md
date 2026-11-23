@@ -52,6 +52,8 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Full-text search: `fts plfts phfts wfts` with optional `(config)` on `tsvector` and text-like columns (parity)
 - [x] Extension types and operators gated on `pg_extension` (and `pg_trgm` version), schema-qualified when the extension schema is off the `search_path`; citext comparisons stay case-insensitive there (new)
 - [x] PostGIS `geometry`/`geography` → `GeoJSON` schema (GeoJSON out; GeoJSON or WKT/EWKT in), with spatial filters, derived accessors, projection arguments and distance ordering — see [PostGIS](postgis.md) (parity)
+- [x] Geography measures in metres on the spheroid (`_area`, `_length`, `_perimeter`) and a spheroidal `_centroid` — see [PostGIS](postgis.md#derived-accessors-pseudo-columns) (parity)
+- [x] pgvector `vector`/`halfvec` → JSON array of numbers out (`type: array`), `sparsevec` → text; array or text form in (`oneOf` input schema); `is` filters only — see [contrib](contrib.md#pgvector-pdbr) (new)
 
 ## Reads
 
@@ -111,7 +113,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Related-column ordering `order=users(name).asc` (forward: correlated subquery; backward: MIN/MAX) — `advanced-filters` plugin, policy of the related table applies (parity)
 - [x] Spatial filter ops (`st_intersects` … `st_equals`, `st_dwithin`, `st_beyond`, `bbox_*`) — `postgis` plugin (parity)
 - [x] Spatial values parsed for their column's typmod SRID (`pdbcore/postgis.ParseFor`): bare WKT tagged with it, GeoJSON reprojected to it on geometry columns, EWKT kept — filters, `near=`, bodies — see [PostGIS](postgis.md) (parity)
-- [x] Directional/equality bounding-box ops (`bbox_leftof`, `bbox_rightof`, `bbox_below`, `bbox_above`, `bbox_overlapsor{leftof,rightof,below,above}`, `bbox_equals`, `bbox_intersectsnd`) and `st_exactlyequals`, `st_orderingequals`, `st_intersects3d`, geometry operand — `postgis` plugin (parity)
+- [x] Directional/equality bounding-box ops (`bbox_leftof`, `bbox_rightof`, `bbox_below`, `bbox_above`, `bbox_overlapsor{leftof,rightof,below,above}`, `bbox_equals`, `bbox_intersectsnd`, `bbox_intersects2d`) and `st_exactlyequals`, `st_orderingequals`, `st_intersects3d`, geometry operand — `postgis` plugin (parity)
 - [x] Distance ordering `order=location.dist.asc&near=…`; missing `near` → 400 (parity)
 - [x] `distinct=col1,col2` → `SELECT DISTINCT ON`; distinct-aware `X-Total-Count`; limit/offset only (parity)
 - [x] Reserved param names (`select`, `order`, …) filterable only inside `and=(...)` — documented limitation (new)
@@ -119,6 +121,8 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Custom range types (`CREATE TYPE … AS RANGE`) and their multiranges: range operators, structured input and `oneOf` input schema, schema-qualified constructors
 - [x] `isdistinct` (`IS DISTINCT FROM`) on every comparable column (parity)
 - [x] Trigram similarity `trgm_sim trgm_wsim trgm_swsim` (pg_trgm) (new)
+- [x] Accent- and case-insensitive `unaccent_eq unaccent_ilike unaccent_sw unaccent_includes` on text-like columns (unaccent; never index-served, `filters.allow_columns` under the policy) (new)
+- [x] Vector distance ordering `order=<col>.vec_l2|vec_ip|vec_cos|vec_l1&vec=<vector>` (pgvector; HNSW/IVFFlat under the policy), keyset-capable (new)
 - [x] inet/cidr containment `cs cd cs_strict cd_strict ov` (new)
 - [x] Full-text relevance ordering `order=<col>.rank|rank_cd` against the column's fts filter; trigram distance ordering `order=<col>.trgm_dist|trgm_wdist|trgm_swdist&trgm=<text>` (new)
 - [x] Indexed-only policy per contrib operator from pdbcore index hints (new)

@@ -120,6 +120,7 @@ bounding-box operator when the table is large.
 | `bbox_overlapsorabove.<geom>` | geometry | `col \|&> <geom>` (does not extend below) | ✔ |
 | `bbox_equals.<geom>` | geometry | `col ~= <geom>` (same bounding box) | ✔ |
 | `bbox_intersectsnd.<geom>` | geometry | `col &&& <geom>` (n-D boxes, Z/M included, overlap) | n-D |
+| `bbox_intersects2d.<geom>` | geometry | `col && <geom>` (2D boxes overlap) | ✔ |
 | `st_exactlyequals.<geom>` | geometry | `col = <geom>` (same coordinates, order and SRID) | B-tree |
 | `st_orderingequals.<geom>` | geometry | `ST_OrderingEquals` (equal, same vertex order) | ✔ |
 | `st_intersects3d.<geom>` | geometry | `ST_3DIntersects` | ✔ |
@@ -128,14 +129,17 @@ bounding-box operator when the table is large.
 `pdbcore/postgis` (and pdbq) name, lower-cased, with a `bbox_` prefix for
 the bounding-box operators and `st_` for the rest: `bboxLeftOf` →
 `bbox_leftof`, `bboxOverlapsOrBelow` → `bbox_overlapsorbelow`,
-`exactlyEquals` → `st_exactlyequals`, `intersects3D` → `st_intersects3d`.
+`exactlyEquals` → `st_exactlyequals`, `intersects3D` → `st_intersects3d`,
+`bboxIntersects2D` → `bbox_intersects2d`. `bbox_intersects2d` is the same
+`&&` as `bbox_intersects`, against a geometry operand's bounding box instead
+of an envelope.
 The names are part of the API and never change; new pdbcore operators are
 added under the same rule.
 
 **Bounding-box operand.** Only `bbox_intersects`, `bbox_contains` and
 `bbox_containedby` take the `(minx,miny,maxx,maxy[,srid])` envelope (the
 viewport case). The directional and equality bounding-box operators
-(`bbox_leftof` … `bbox_equals`, `bbox_intersectsnd`) take a geometry, like
+(`bbox_leftof` … `bbox_equals`, `bbox_intersectsnd`, `bbox_intersects2d`) take a geometry, like
 the `st_*` operators, and compare against that geometry's bounding box — a
 geometry can carry the Z/M extent `&&&` needs where an envelope cannot.
 "Left/right" compare X, "below/above" compare Y; `bbox_overlapsorleftof`
@@ -153,8 +157,9 @@ work inside `and=`/`or=` groups (`or=(location.st_intersects."…",…)`).
 Geometries, bounding-box corners and distances are bind parameters; only the
 SRID of a bounding box is a structural integer literal in the SQL text.
 
-**Geography columns.** PostGIS defines only `&&`, `=`, `ST_Intersects`,
-`ST_Covers`, `ST_CoveredBy` and `ST_DWithin` for `geography`. The other
+**Geography columns.** PostGIS defines only `&&` (`bbox_intersects`,
+`bbox_intersects2d`), `=`, `ST_Intersects`, `ST_Covers`, `ST_CoveredBy` and
+`ST_DWithin` for `geography`. The other
 operators are still accepted on a geography column: pdbr casts both sides
 to `geometry` (`ST_Within("area"::geometry, CASE … END)`,
 `"area"::geometry ~ ST_MakeEnvelope(…)`, `"area"::geometry << …`), i.e. planar semantics in the
@@ -234,8 +239,8 @@ OpenAPI as `readOnly` properties, and cannot be written, filtered or ordered:
 |---|---|---|
 | `<col>_area` | number | `ST_Area` (m² for geography, SRID units for geometry) |
 | `<col>_length` | number | `ST_Length` |
-| `<col>_perimeter` | number | `ST_Perimeter` |
-| `<col>_centroid` | GeoJSON | `ST_Centroid` |
+| `<col>_perimeter` | number | `ST_Perimeter` (metres for geography, SRID units for geometry) |
+| `<col>_centroid` | GeoJSON | `ST_Centroid` (spheroidal for geography) |
 | `<col>_envelope` | GeoJSON | `ST_Envelope` |
 | `<col>_srid` | integer | `ST_SRID` |
 | `<col>_geometry_type` | string | `ST_GeometryType` (e.g. `ST_Point`) |
@@ -258,7 +263,11 @@ GET /api/places?select=name,lon:location_x,lat:location_y,location_ewkt,area_xmi
 ```
 
 Geometry-only functions are applied to a geography column through a
-`::geometry` cast (`ST_NPoints("area"::geometry)`). The type-specific
+`::geometry` cast (`ST_NPoints("area"::geometry)`). `_area`, `_length` and
+`_perimeter` use the native geography overloads and measure metres on the
+spheroid; `_centroid` is the spheroidal `ST_Centroid(geography)`, except for a
+GeometryCollection value, which PostGIS cannot centroid as geography and
+which gets the planar centroid of the `::geometry` cast. The type-specific
 accessors (`x`/`y`/`z`/`m`, `start_point`/`end_point`) render a `CASE` on
 `ST_GeometryType`, so a value of another type yields `null` instead of a
 PostGIS error.

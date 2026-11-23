@@ -33,7 +33,7 @@ var (
 	sumTypes = typeSet("int2", "int4", "int8", "float4", "float8", "numeric", "money", "interval")
 	avgTypes = typeSet("int2", "int4", "int8", "float4", "float8", "numeric", "interval")
 	// unorderedTypes have no max/min aggregate.
-	unorderedTypes = typeSet("json", "jsonb", "bool", "bytea", "xml", "uuid", "point", "line", "lseg", "box", "path", "polygon", "circle")
+	unorderedTypes = typeSet("json", "jsonb", "bool", "bytea", "xml", "uuid", "point", "line", "lseg", "box", "path", "polygon", "circle", "vector", "halfvec", "sparsevec")
 	// ungroupableTypes have no equality or B-tree ordering, so they cannot
 	// be grouping keys (json keys are grouped as jsonb, except inside a
 	// composite).

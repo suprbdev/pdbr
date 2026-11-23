@@ -335,8 +335,8 @@ func (b *Builder) rpcItem(item *PathItem, rt *Route) {
 }
 
 // listParams are the read parameters of a collection: select, order, paging,
-// count, distinct, the logic params, near (postgis), trgm (pg_trgm) and one
-// filter param per filterable column.
+// count, distinct, the logic params, near (postgis), trgm (pg_trgm), vec
+// (pgvector) and one filter param per filterable column.
 func (b *Builder) listParams(r *Resource, rpc bool) []*Parameter {
 	out := []*Parameter{
 		b.listSelectParam(r, "Columns and embeds to return."),
@@ -362,6 +362,9 @@ func (b *Builder) listParams(r *Resource, rpc bool) []*Parameter {
 	}
 	if trgm := b.trgmParam(r); trgm != nil {
 		out = append(out, trgm)
+	}
+	if vec := b.vecParam(r); vec != nil {
+		out = append(out, vec)
 	}
 	return append(out, b.filterParams(r, nil)...)
 }
@@ -449,7 +452,7 @@ func (b *Builder) listSelectParam(r *Resource, lead string) *Parameter {
 func (b *Builder) orderParam(r *Resource) *Parameter {
 	var sb strings.Builder
 	sb.WriteString("Comma list of <col>[.asc|.desc][.nullsfirst|.nullslast] (default asc, nulls last); json, jsonb and array columns also order by a JSON path (<col>->key, <col>->>key). Orderable columns: ")
-	sb.WriteString(strings.Join(orderableKeys(r), ", "))
+	sb.WriteString(strings.Join(b.orderableKeys(r), ", "))
 	if b.Surface.ComputedOrder {
 		if keys := computedKeys(r, func(c *Computed) bool { return c.Orderable && !c.Function.ReturnsSet }); len(keys) > 0 {
 			sb.WriteString(". Computed: " + strings.Join(keys, ", "))
@@ -472,8 +475,11 @@ func (b *Builder) orderParam(r *Resource) *Parameter {
 	if len(ranks) > 0 {
 		sb.WriteString(". Full-text relevance against the column's fts/plfts/phfts/wfts filter (higher is better, use .desc): " + strings.Join(ranks, ", "))
 	}
-	if len(dists) > 0 {
-		sb.WriteString(". Trigram distance to trgm=<text> (lower is better): " + strings.Join(dists, ", "))
+	if len(dists["trgm"]) > 0 {
+		sb.WriteString(". Trigram distance to trgm=<text> (lower is better): " + strings.Join(dists["trgm"], ", "))
+	}
+	if len(dists["vec"]) > 0 {
+		sb.WriteString(". pgvector distance to vec=<vector> (lower is closer; asc is nearest first): " + strings.Join(dists["vec"], ", "))
 	}
 	sb.WriteString(".")
 	return &Parameter{Name: "order", In: "query", Schema: &Schema{Type: "string"}, Description: sb.String()}
@@ -502,17 +508,28 @@ func (b *Builder) nearParam(r *Resource) *Parameter {
 // trgmParam documents trgm= when the resource has a column orderable by
 // trigram distance.
 func (b *Builder) trgmParam(r *Resource) *Parameter {
-	if _, dists := b.contribOrderKeys(r); len(dists) == 0 {
+	if _, dists := b.contribOrderKeys(r); len(dists["trgm"]) == 0 {
 		return nil
 	}
 	return &Parameter{Name: "trgm", In: "query", Schema: &Schema{Type: "string"},
 		Description: "Reference text for order=<col>.trgm_dist|trgm_wdist|trgm_swdist (pg_trgm); required whenever such a term is present."}
 }
 
+// vecParam documents vec= when the resource has a column orderable by
+// vector distance.
+func (b *Builder) vecParam(r *Resource) *Parameter {
+	if _, dists := b.contribOrderKeys(r); len(dists["vec"]) == 0 {
+		return nil
+	}
+	return &Parameter{Name: "vec", In: "query", Schema: &Schema{Type: "string"},
+		Description: "Reference vector for order=<col>.vec_l2|vec_ip|vec_cos|vec_l1 (pgvector): a JSON array of numbers ([0.1,0.2,0.3]) or the column type's text form; required whenever such a term is present."}
+}
+
 // contribOrderKeys lists the contrib order terms of r's orderable columns:
-// rank terms (columns that also take a full-text filter) and trigram
-// distance terms.
-func (b *Builder) contribOrderKeys(r *Resource) (ranks, dists []string) {
+// rank terms (columns that also take a full-text filter) and distance terms
+// keyed by the query parameter they measure against (trgm, vec).
+func (b *Builder) contribOrderKeys(r *Resource) (ranks []string, dists map[string][]string) {
+	dists = map[string][]string{}
 	for _, f := range r.Columns {
 		if !r.OrderColumns[f.Key] {
 			continue
@@ -522,7 +539,7 @@ func (b *Builder) contribOrderKeys(r *Resource) (ranks, dists []string) {
 			case o.Rank != "" && r.FilterColumns[f.Key]:
 				ranks = append(ranks, f.Key+"."+o.Name)
 			case o.Rank == "":
-				dists = append(dists, f.Key+"."+o.Name)
+				dists[o.Param] = append(dists[o.Param], f.Key+"."+o.Name)
 			}
 		}
 	}
@@ -942,10 +959,10 @@ func fieldKeys(fs []*Field) []string {
 	return out
 }
 
-func orderableKeys(r *Resource) []string {
+func (b *Builder) orderableKeys(r *Resource) []string {
 	var out []string
 	for _, f := range r.Columns {
-		if r.OrderColumns[f.Key] {
+		if _, vector := VectorVocabulary(b.Catalog, f.Column); r.OrderColumns[f.Key] && !vector {
 			out = append(out, f.Key)
 		}
 	}

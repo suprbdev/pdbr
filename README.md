@@ -120,7 +120,7 @@ See [docs/quickstart.md](docs/quickstart.md) for the full tour.
 | [docs/rls.md](docs/rls.md) | Roles, JWT/header claims, policies |
 | [docs/smart-comments.md](docs/smart-comments.md) | `@omit`/`@name`/`@foreignKey`/… tags with REST semantics |
 | [docs/postgis.md](docs/postgis.md) | GeoJSON, spatial filters, pseudo-columns, distance ordering |
-| [docs/contrib.md](docs/contrib.md) | Full-text search, trigrams, hstore, ltree, ranges, inet, citext: operators, rank/similarity ordering, values |
+| [docs/contrib.md](docs/contrib.md) | Full-text search, trigrams, unaccent, hstore, ltree, ranges, inet, citext, pgvector: operators, rank/similarity/vector-distance ordering, values |
 | [docs/plugins.md](docs/plugins.md) | Hook surfaces, writing a plugin, built-ins as worked examples |
 | [docs/caching.md](docs/caching.md) | Schema cache and CI/CD gates |
 | [docs/deployment.md](docs/deployment.md) | Docker image, health checks, production checklist |

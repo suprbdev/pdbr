@@ -1,4 +1,4 @@
-# Contrib types: full-text search, trigrams, hstore, ltree, ranges, inet
+# Contrib types: full-text search, trigrams, unaccent, hstore, ltree, ranges, inet, pgvector
 
 pdbr gives PostgreSQL's non-scalar built-in types and the common contrib
 extensions a filter and ordering surface, built on the operator vocabularies
@@ -9,10 +9,13 @@ vocabulary needs is read from the catalog:
   built-in range types and their multiranges, `inet`/`cidr`) always get their
   operators, and so do range types created with `CREATE TYPE … AS RANGE`
   (and their multiranges), which the catalog records with their subtype.
-- **Extension types and operators** (`pg_trgm`, `hstore`, `ltree`, `citext`)
-  only appear when the extension is installed (`pg_extension`). The extension
+- **Extension types and operators** (`pg_trgm`, `unaccent`, `hstore`,
+  `ltree`, `citext`, pgvector's `vector`) only appear when the extension is
+  installed (`pg_extension`). None of them is required: without one, its
+  operators, order terms and type handling are simply absent. The extension
   version matters too: `pg_trgm` older than 1.2 has no word-similarity
-  operators and older than 1.4 no strict ones.
+  operators and older than 1.4 no strict ones, and pgvector older than 0.7
+  has no L1 distance (`vec_l1`).
 - **Extension schemas.** An extension may live in a schema that is not on the
   `search_path`. Every extension type, operator and function is then rendered
   schema-qualified, for example `(t0."attrs") OPERATOR("ext".?) $1::text`,
@@ -120,6 +123,41 @@ every column `eq` works on, and the operand is coerced like `eq`'s.
 These apply to text-like columns. The column is on the left, the form the
 `gin_trgm_ops`/`gist_trgm_ops` index classes serve.
 
+### unaccent (pdbr)
+
+| op | SQL | `$1` | Matches |
+|---|---|---|---|
+| `unaccent_eq` | `lower(unaccent(col)) = lower(unaccent($1))` | the value | equal |
+| `unaccent_ilike` | `unaccent(col) ILIKE unaccent($1)` | the pattern, `*` → `%` | the `ilike` pattern (`%` any run, `_` one character) |
+| `unaccent_sw` | same | escaped value + `%` | starts with the value |
+| `unaccent_includes` | same | `%` + escaped value + `%` | contains the value |
+
+Comparisons ignore both accents and case (`Crème` matches `creme`,
+`CREME` and `crème`). They apply to text-like columns (`text`, `varchar`,
+`char(n)`, `citext`) when the `unaccent` extension is installed, take `not.`
+and work inside `and=`/`or=`:
+
+```http
+GET /api/cities?name=unaccent_eq.Sao%20Paulo
+GET /api/recipes?title=unaccent_ilike.*creme*brulee
+GET /api/people?or=(last_name.unaccent_sw.Mull,first_name.not.unaccent_includes.zoe)
+```
+
+`unaccent_ilike` translates `*` to `%` exactly as `like`/`ilike` do.
+`unaccent_sw` and `unaccent_includes` match their value literally: pdbr
+escapes `%`, `_` and `\` in it before adding the wildcard. Every call is
+the two-argument `"ext".unaccent('"ext"."unaccent"'::regdictionary, …)`
+form, which names the dictionary explicitly, so it works with the extension
+installed in a schema off the `search_path` (the one-argument form looks the
+dictionary up through the `search_path` at execution time and fails there).
+
+`unaccent` is `STABLE`, not `IMMUTABLE`, so no index can serve these
+operators (an expression index over an `IMMUTABLE` wrapper function does
+not match the rendered expression). Under `filters.indexed_only` they are
+therefore `400 column_not_filterable` unless the column is listed in
+`filters.allow_columns` (or the policy is off); see
+[the indexed-only policy](#the-indexed-only-policy).
+
 ### hstore (pdbr)
 
 | op | SQL | Operand |
@@ -204,6 +242,10 @@ hstore these are its B-tree class operators `#<#`/`#>#`, since it has no
 | `<col>.trgm_dist` | `col <-> $trgm` (1 − similarity) | `asc` (default) |
 | `<col>.trgm_wdist` | `col <->> $trgm` (1 − word similarity; pg_trgm 1.2+) | `asc` |
 | `<col>.trgm_swdist` | `col <->>> $trgm` (1 − strict word similarity; 1.4+) | `asc` |
+| `<col>.vec_l2` | `col <-> $vec::vector` (Euclidean distance) | `asc` (default) |
+| `<col>.vec_ip` | `col <#> $vec::vector` (negative inner product) | `asc` |
+| `<col>.vec_cos` | `col <=> $vec::vector` (cosine distance, 1 − cosine similarity) | `asc` |
+| `<col>.vec_l1` | `col <+> $vec::vector` (taxicab distance; pgvector 0.7+) | `asc` |
 
 ```http
 GET /api/articles?search=wfts(english).fat%20cat&order=search.rank.desc&limit=10
@@ -227,12 +269,75 @@ GET /api/articles?title=trgm_sim.postgres&order=title.trgm_dist,id&trgm=postgres
   (`400 column_not_orderable`; OpenAPI lists neither the terms nor a `trgm`
   parameter). No escape spelling exists; rename the column, or expose it
   through a view, to get distance ordering there.
+- **vec_l2**, **vec_ip**, **vec_cos** and **vec_l1** measure the distance of
+  a pgvector column to the `vec=` query parameter, the same way: one `vec=`
+  serves the root and every embed, a vector term without `vec=` or `vec=`
+  without one is `400 invalid_filter`, and `vec` is reserved only where no
+  column, computed column or RPC argument is named so. See
+  [pgvector](#pgvector-pdbr).
 - The direction keyword is the usual one: the default is `asc` and nulls sort
   last. Ranks grow with relevance, so ask for `.desc`. Distances shrink with
   similarity, so `asc` (the default) is nearest-first, which a GiST trigram
-  index serves directly (KNN).
+  index (or an HNSW/IVFFlat vector index) serves directly (KNN).
 - The terms combine with the PK tiebreaker and keyset cursors like any other
   expression term.
+
+## pgvector (pdbr)
+
+Columns of pgvector's `vector`, `halfvec` and `sparsevec` types (extension
+`vector`, any schema) are vectors to pdbr when the extension is installed.
+
+- **Output**: `vector` and `halfvec` as JSON arrays of numbers
+  (`"emb": [0.1, 0.2, 0.3]`, rendered as `(col)::text::json`), `sparsevec`
+  as its text form (`"{1:1.5,3:2}/5"`, 1-based indices). In CSV the cell
+  holds the same JSON text, like other structured values.
+- **Input** (`POST`/`PUT`/`PATCH` bodies, bulk and nested rows, `RPC`
+  arguments in a `POST` body, elements of `vector[]`): a JSON array of
+  numbers or the type's text form. For `sparsevec` the array is dense and
+  its zeros are left out. Either form becomes one text parameter cast to the
+  column type (`$n::"ext".vector`); `null` stays `NULL`. Bad input (an empty
+  array, a non-number element, more than 16000 elements) is `400
+  invalid_body`; a malformed text form or a wrong dimension count is
+  rejected by PostgreSQL (`400 pg:22P02` / `pg:22000`). `GET` RPC arguments
+  take the text form.
+- **Filters**: only `is.null` / `not.is.null`. Comparisons (`eq`, `lt`,
+  `in`, …) are `400 invalid_filter`, as on spatial columns.
+- **Ordering**: only by distance to `vec=`, nearest first under `asc`:
+
+```http
+GET /api/items?order=embedding.vec_cos&vec=%5B0.1%2C0.2%2C0.3%5D&limit=10
+GET /api/items?order=embedding.vec_l2&vec=[0.1,0.2,0.3]&limit=10
+GET /api/docs?select=id,chunks(id,text)&chunks.order=embedding.vec_ip&chunks.limit=3&vec=%5B1%2C0%2C0%5D
+```
+
+  `vec=` is a JSON array of numbers (URL-encoded, or raw where the client
+  allows `[`/`]`) or the column type's text form, and is checked against
+  every vector term's column (`400 invalid_filter` when it is not a vector
+  value). Its dimensions must match the column's; PostgreSQL rejects a
+  mismatch (`400 pg:22000`). A plain `order=embedding`, `distinct=` on a
+  vector column, related ordering by one (`rel(embedding)`) and `min()`/`max()`
+  over one are rejected. The terms take the PK tiebreaker and keyset cursors
+  like any other expression term (the anchor row's distance is re-evaluated),
+  and `.desc` (farthest first) works but no index serves it.
+- **Index policy**: under `filters.indexed_only` a distance term is
+  accepted only when an index of the table covers the column with an access
+  method that serves it: HNSW for all four, IVFFlat for `vec_l2`, `vec_ip`
+  and `vec_cos` on `vector` and `halfvec` (not `vec_l1`, not `sparsevec`).
+  Operator classes are not introspected, so an HNSW index built with
+  `vector_l2_ops` admits `vec_cos` too, which then scans; the same
+  approximation as for trigram indexes. Otherwise the term is `400
+  column_not_orderable` unless the column is in `filters.allow_columns`.
+  HNSW and IVFFlat scans are approximate nearest-neighbour searches (see
+  pgvector's `hnsw.ef_search` / `ivfflat.probes`), and these indexes do not
+  store NULL vectors: when PostgreSQL serves the order from one (the PK
+  tiebreaker is applied by an incremental sort on top), rows whose vector is
+  NULL are not returned, where a sequential scan would list them last. Add
+  `<col>=not.is.null` to make that explicit.
+- **OpenAPI**: `vector`/`halfvec` are `type: array, items: {type: number}`
+  in responses and `oneOf [array, string]` in request bodies; `sparsevec` is
+  `string` (`oneOf [string, array]` in bodies). The `order` description
+  lists the vector terms per column and the `vec` parameter is documented on
+  resources that have one.
 
 ## Output
 
@@ -244,6 +349,8 @@ Values come out the way PostgREST returns them:
 | ranges, multiranges | literal text (`"[1,5)"`, `"empty"`, `"{[1,3),[5,7)}"`), normalized by PostgreSQL |
 | `ltree`, `tsvector`, `inet`, `cidr`, `citext` | string |
 | `ltree[]` | array of strings |
+| `vector`, `halfvec` (pgvector) | array of numbers (`[0.1,0.2,0.3]`) |
+| `sparsevec` (pgvector) | its text form (`"{1:1.5,3:2}/5"`) |
 
 Structured range output (`{start, end, …}`, as `contrib.Codec.OutputSQL`
 renders it) is not offered. PostgREST returns the literal and pdbr matches
@@ -258,9 +365,11 @@ it, so the structured form is accepted on input only.
 | multiranges | literal string (`"{[1,3), [5,7)}"`), or an array of range literals and objects |
 | `ltree`, `citext`, `tsvector`, `inet`, `cidr` | string |
 | `ltree[]` | array of strings |
+| `vector`, `halfvec`, `sparsevec` | array of numbers (`[0.1, 0.2, 0.3]`; for `sparsevec` a dense array whose zeros are left out), or the type's text form (`"[0.1,0.2,0.3]"`, `"{1:1.5,3:2}/5"`) → `$n::"ext".vector` |
 
 Other shapes are `400 invalid_body`: a non-string hstore value, a
-fractional bound on an integer range, an object for a multirange. OpenAPI
+fractional bound on an integer range, an object for a multirange, an empty
+vector or one with a non-number element. OpenAPI
 documents ranges and multiranges as `oneOf [literal string, object / array]`
 in the `.insert`/`.update`/`.upsert` schemas. The same JSON forms are
 accepted for RPC arguments in a `POST` body and for the elements of array
@@ -281,15 +390,19 @@ no index can serve (hstore `cd`, ltree `*_any`, `ancestor` on `ltree[]`) and
 full-text search on a text column (only an expression index on
 `to_tsvector('<config>', col)` serves it, and expression indexes have no
 columns) need the column in `filters.allow_columns`, or
-`filters.indexed_only: false`. Trigram distance ordering needs a GiST index
-under the policy. Rank ordering needs a column that accepts a full-text
-filter. A rejected operator is `400 column_not_filterable`
-(`column_not_orderable` for order terms).
+`filters.indexed_only: false`. The unaccent operators are never
+index-served and always need `filters.allow_columns` under the policy.
+Trigram distance ordering needs a GiST index under the policy, vector
+distance ordering an HNSW index (or IVFFlat, which serves `vec_l2`,
+`vec_ip` and `vec_cos` on `vector` and `halfvec`). Rank ordering needs a
+column that accepts a full-text filter. A rejected operator is `400
+column_not_filterable` (`column_not_orderable` for order terms).
 
 OpenAPI lists exactly the accepted operators per column in
 `x-pdbr-filter-ops` (pinned to the parser by `TestFilterOpsMatchParser`,
 under both policies), the rank and distance terms in the `order`
-description, and the `trgm` parameter on resources that have a distance term.
+description, and the `trgm` / `vec` parameter on resources that have a
+trigram / vector distance term.
 
 ## Differences from PostgREST
 
@@ -298,9 +411,14 @@ description, and the `trgm` parameter on resources that have a distance term.
   `cs`/`cd` match PostgREST. The trigram ops (`trgm_*`), hstore
   `hk`/`hk_all`/`hk_any`, the ltree words (`ancestor`, `descendant`,
   `*_any`, `lquery`, `lquery_any`, `ltxtquery`), inet
-  `cs_strict`/`cd_strict`, element containment `cs.5` on ranges, JSON-object
-  range and hstore operands, and the `rank`/`rank_cd`/`trgm_*` order terms are
+  `cs_strict`/`cd_strict`, the unaccent ops (`unaccent_*`), element
+  containment `cs.5` on ranges, JSON-object range and hstore operands, and
+  the `rank`/`rank_cd`/`trgm_*`/`vec_*` order terms with `trgm=`/`vec=` are
   pdbr extensions.
+- **pgvector output.** `vector` and `halfvec` values are JSON arrays of
+  numbers. PostgREST returns their text form as a JSON string
+  (`"[0.1,0.2,0.3]"`); pdbr parses it, so clients get numbers without a
+  second decode. `sparsevec` stays a string in both. Input takes either form.
 - **inet `cs`/`cd`** mean `>>=`/`<<=`, where PostgREST's literal `@>`/`<@`
   fails on inet.
 - **Full-text search on json/jsonb columns**, which PostgREST supports through
@@ -322,4 +440,11 @@ range `overlaps`, `contains`/`containsElement`, `containedBy`,
 `strictlyLeftOf`, `strictlyRightOf`, `notExtendsRightOf`, `notExtendsLeftOf`,
 `adjacentTo` → `ov`, `cs`, `cd`, `sl`, `sr`, `nxr`, `nxl`, `adj`; inet
 `containsOrEquals`, `containedByOrEquals`, `contains`, `containedBy`,
-`containsOrContainedBy` → `cs`, `cd`, `cs_strict`, `cd_strict`, `ov`.
+`containsOrContainedBy` → `cs`, `cd`, `cs_strict`, `cd_strict`, `ov`;
+unaccent `unaccentEqualTo`, `unaccentLike`, `unaccentStartsWith`,
+`unaccentIncludes` → `unaccent_eq`, `unaccent_ilike`, `unaccent_sw`,
+`unaccent_includes`; the vector distances `l2Distance`,
+`negativeInnerProduct`, `cosineDistance`, `l1Distance` → the order terms
+`vec_l2`, `vec_ip`, `vec_cos`, `vec_l1`. The vocabulary's derived accessors
+(ltree `nlevel`, inet `family`, range bounds, vector `dims`/`norm`) are not
+exposed by pdbr.

@@ -1,0 +1,1 @@
+GET /api/kb/embeddings?emb=eq.%5B1%2C2%2C3%5D

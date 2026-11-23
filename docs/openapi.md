@@ -98,6 +98,8 @@ Per-property details:
 | `bytea` | `string`, `contentEncoding: base64` |
 | `json`, `jsonb` | `{}` (any value) |
 | `hstore` | `object` (string → string\|null) |
+| `vector`, `halfvec` (pgvector) | `array` of `number`; input: `oneOf [array of number, string]` (the text form) |
+| `sparsevec` (pgvector) | `string` (`{1:1.5,3:2}/5`); input: `oneOf [string, array of number]` (dense) |
 | ranges, multiranges | `string` (the literal); input: `oneOf [string, {start, end, startInclusive, endInclusive, isEmpty}]` (multiranges: `oneOf [string, array]`) |
 | `inet`, `cidr`, `macaddr`, `ltree`, `tsvector` | `string` |
 | arrays (`T[]`) | `array`, `items` = element mapping (nested arrays nest) |
@@ -202,16 +204,17 @@ stay at their defaults):
 | Param | Where | Schema / description |
 |---|---|---|
 | `select` | every operation with a body response | `string`; grammar summarised in the description, columns, computed and derived fields and embeddable relation keys listed (with the per-embed `rel.order=`/`rel.limit=`/`rel.offset=`/`rel.<col>=` forms and `!inner`); projection args `col(transform=,simplify=)` mentioned when the postgis plugin enables them; on list `GET`s (and `SETOF <table>` RPCs) the aggregate grammar when `server.aggregates` is on, with the spatial aggregates where the resource has a spatial column |
-| `order` | list, `SETOF` rpc | `string`; orderable columns listed; computed / related (`rel(col)`) / distance (`<col>.dist`, needs `near=`) forms mentioned only when the corresponding plugin surface is on; full-text relevance (`<col>.rank`, `<col>.rank_cd`) and trigram distance (`<col>.trgm_dist`, … needs `trgm=`) terms listed where the column admits them ([contrib.md](contrib.md#ordering)) |
+| `order` | list, `SETOF` rpc | `string`; orderable columns listed; computed / related (`rel(col)`) / distance (`<col>.dist`, needs `near=`) forms mentioned only when the corresponding plugin surface is on; full-text relevance (`<col>.rank`, `<col>.rank_cd`), trigram distance (`<col>.trgm_dist`, … needs `trgm=`) and vector distance (`<col>.vec_l2`, … needs `vec=`) terms listed where the column admits them, pgvector columns themselves not listed as plainly orderable ([contrib.md](contrib.md#ordering)) |
 | `limit`, `offset` | list, `SETOF` rpc | `integer`, `limit` `minimum: 1`, `maximum: server.max_page_size`, `offset` `minimum: 0` |
 | `after`, `before` | list (resources with a PK) | `string` (opaque cursor) |
 | `count` | list, `SETOF <table>` rpc | `boolean` |
 | `distinct` | list | `string` (comma list) |
 | `on_conflict` | `PUT` | `string` (comma list of a unique constraint's columns; the description lists the resource's unique column sets) |
 | `and`, `or`, `not.and`, `not.or` | list, `SETOF <table>` rpc | `string`; nested logic grammar |
-| `{column}` | list, `SETOF <table>` rpc — one per **filterable** column under the active policy (`filters.indexed_only`, `allow_columns`, `@omit filter`), catalog order | `string`; description lists the operator vocabulary for that column's type (scalar `eq neq gt gte lt lte in is isdistinct`; text adds `like ilike sw ew`; arrays `eq…lte is isdistinct cs cd ov`; `jsonb` `eq…lte is isdistinct cs cd hk jpe jpm`; `json` `is cs cd hk jpe jpm`; hstore `eq neq in is isdistinct`; then the contrib operators the filter policy admits for the column — full-text, trigram, hstore, ltree, range, inet, see [contrib.md](contrib.md); spatial types take `Built.Extra.FilterOps[type]` — the postgis `st_*`/`bbox_*`/`is` set, or just `is` without the plugin) and mentions the `not.` prefix once; vendor extension `x-pdbr-filter-ops: ["eq","neq",...]` carries the same list machine-readably (`internal/parse` has a test pinning it to what the parser accepts). `deprecated`/`x-deprecation-reason` from the column |
+| `{column}` | list, `SETOF <table>` rpc — one per **filterable** column under the active policy (`filters.indexed_only`, `allow_columns`, `@omit filter`), catalog order | `string`; description lists the operator vocabulary for that column's type (scalar `eq neq gt gte lt lte in is isdistinct`; text adds `like ilike sw ew`; arrays `eq…lte is isdistinct cs cd ov`; `jsonb` `eq…lte is isdistinct cs cd hk jpe jpm`; `json` `is cs cd hk jpe jpm`; hstore `eq neq in is isdistinct`; pgvector types `is`; then the contrib operators the filter policy admits for the column — full-text, trigram, unaccent, hstore, ltree, range, inet, see [contrib.md](contrib.md); spatial types take `Built.Extra.FilterOps[type]` — the postgis `st_*`/`bbox_*`/`is` set, or just `is` without the plugin) and mentions the `not.` prefix once; vendor extension `x-pdbr-filter-ops: ["eq","neq",...]` carries the same list machine-readably (`internal/parse` has a test pinning it to what the parser accepts). `deprecated`/`x-deprecation-reason` from the column |
 | `near` | list of resources with a `.dist`-orderable spatial column (postgis plugin, `Surface.SpatialOrder`) | `string` (GeoJSON or WKT) |
 | `trgm` | list of resources with a column orderable by trigram distance | `string` (reference text for `<col>.trgm_dist` and the word forms) |
+| `vec` | list of resources with a column orderable by vector distance | `string` (reference vector for `<col>.vec_*`: JSON array of numbers or the pgvector text form) |
 | `{arg}` | rpc `GET` | mapped type of the argument; `required` unless it has a `DEFAULT` (shown in the description) |
 
 Per-embed params (`posts.order=`, `posts.limit=`, `posts.title=eq.x`) are

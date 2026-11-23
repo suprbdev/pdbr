@@ -15,16 +15,19 @@ const (
 	ContribExtSchema = "ext"
 )
 
-// Contrib adds the hstore, ltree, citext and pg_trgm extensions (in
-// ContribExtSchema) and the table kb.docs, which has one column of every
-// type a pdbcore/contrib vocabulary covers, to cat, and appends
-// ContribSchema to cat.Schemas. Its indexes serve the trigram operators and
-// distances on title, full-text search on search, the hstore, ltree, range,
-// multirange and inet operators; body has no index (full-text search on a
-// text column needs filters.allow_columns under filters.indexed_only).
+// Contrib adds the hstore, ltree, citext, pg_trgm, unaccent and vector
+// extensions (in ContribExtSchema) and the table kb.docs, which has one
+// column of every non-vector type a pdbcore/contrib vocabulary covers, to
+// cat, and appends ContribSchema to cat.Schemas. Its indexes serve the
+// trigram operators and distances on title, full-text search on search, the
+// hstore, ltree, range, multirange and inet operators; body has no index
+// (full-text search and the unaccent operators on a text column need
+// filters.allow_columns under filters.indexed_only).
 // kb.authors (citext primary key; meta, a domain in schema app over hstore)
 // and kb.notes (citext foreign key to it) cover keys, joins and ordering on
-// extension-owned types.
+// extension-owned types. kb.embeddings has a pgvector column of each type:
+// emb (vector, HNSW index), half (halfvec, IVFFlat index) and sparse
+// (sparsevec, no index), and kb.chunks a vector column embedded under it.
 func Contrib(cat *introspect.Catalog) *introspect.Catalog {
 	cat.Schemas = append(cat.Schemas, ContribSchema)
 	cat.Extensions = append(cat.Extensions,
@@ -32,6 +35,8 @@ func Contrib(cat *introspect.Catalog) *introspect.Catalog {
 		&introspect.Extension{Name: "hstore", Version: "1.8", Schema: ContribExtSchema},
 		&introspect.Extension{Name: "ltree", Version: "1.3", Schema: ContribExtSchema},
 		&introspect.Extension{Name: "pg_trgm", Version: "1.6", Schema: ContribExtSchema},
+		&introspect.Extension{Name: "unaccent", Version: "1.1", Schema: ContribExtSchema},
+		&introspect.Extension{Name: "vector", Version: "0.8.0", Schema: ContribExtSchema},
 	)
 	core := func(name string, pos int, typ string) *introspect.Column {
 		return &introspect.Column{Name: name, Position: pos, PGType: typ, TypeSchema: "pg_catalog"}
@@ -99,6 +104,35 @@ func Contrib(cat *introspect.Catalog) *introspect.Catalog {
 			ForeignKeys: []*introspect.ForeignKey{{Name: "notes_author_fkey", Columns: []string{"author"},
 				RefSchema: ContribSchema, RefTable: "authors", RefColumns: []string{"email"}}},
 			Indexes:    []*introspect.Index{idx("notes_author_idx", "btree", "author")},
+			Privileges: priv,
+		},
+	)
+	embID := core("id", 1, "int4")
+	embID.NotNull = true
+	chunkID := core("id", 1, "int4")
+	chunkID.NotNull = true
+	cat.Tables = append(cat.Tables,
+		&introspect.Table{
+			Schema: ContribSchema, Name: "embeddings", Kind: introspect.RelTable,
+			Columns: []*introspect.Column{embID, core("title", 2, "text"),
+				ext("emb", 3, "vector"), ext("half", 4, "halfvec"), ext("sparse", 5, "sparsevec")},
+			PrimaryKey: &introspect.Constraint{Name: "embeddings_pkey", Columns: []string{"id"}},
+			Indexes: []*introspect.Index{
+				idx("embeddings_emb_idx", "hnsw", "emb"),
+				idx("embeddings_half_idx", "ivfflat", "half"),
+			},
+			Privileges: priv,
+		},
+		&introspect.Table{
+			Schema: ContribSchema, Name: "chunks", Kind: introspect.RelTable,
+			Columns:    []*introspect.Column{chunkID, core("doc_id", 2, "int4"), ext("emb", 3, "vector")},
+			PrimaryKey: &introspect.Constraint{Name: "chunks_pkey", Columns: []string{"id"}},
+			ForeignKeys: []*introspect.ForeignKey{{Name: "chunks_doc_id_fkey", Columns: []string{"doc_id"},
+				RefSchema: ContribSchema, RefTable: "embeddings", RefColumns: []string{"id"}}},
+			Indexes: []*introspect.Index{
+				idx("chunks_doc_id_idx", "btree", "doc_id"),
+				idx("chunks_emb_idx", "hnsw", "emb"),
+			},
 			Privileges: priv,
 		},
 	)

@@ -1,0 +1,2 @@
+-- request: GET /api/kb/embeddings?emb=eq.%5B1%2C2%2C3%5D
+-- error: 400 invalid_filter: operator "eq" is not supported on vector column "emb" (is.null only; order by distance with vec=)

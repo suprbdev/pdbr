@@ -176,6 +176,21 @@ func TestContribKeysAndJoins(t *testing.T) {
 // are reachable too.
 func contribServer(t *testing.T, mutate func(*config.Config)) string {
 	t.Helper()
+	return extensionServer(t, contribSchema, contribExtSchema, contribExtensions, contribDDL, func(cfg *config.Config) {
+		cfg.Filters.AllowColumns = map[string][]string{contribSchema + ".docs": {"body", "attrs", "path"}}
+		if mutate != nil {
+			mutate(cfg)
+		}
+	})
+}
+
+// extensionServer creates schema and installs exts into extSchema (off the
+// search_path), runs ddl and serves schema. The test is skipped when an
+// extension cannot be created or is already installed in another schema.
+// Both schemas and the extensions it created are dropped after the test by
+// a connection of its own.
+func extensionServer(t *testing.T, schema, extSchema string, exts []string, ddl string, mutate func(*config.Config)) string {
+	t.Helper()
 	dbURL := os.Getenv("PDBR_TEST_DATABASE_URL")
 	if dbURL == "" {
 		t.Skip("PDBR_TEST_DATABASE_URL not set; run `make test-e2e`")
@@ -194,36 +209,35 @@ func contribServer(t *testing.T, mutate func(*config.Config)) string {
 			return
 		}
 		defer c.Close(ctx)
-		_, _ = c.Exec(ctx, `DROP SCHEMA IF EXISTS `+contribSchema+` CASCADE`)
+		_, _ = c.Exec(ctx, `DROP SCHEMA IF EXISTS `+schema+` CASCADE`)
 		for _, ext := range created {
 			_, _ = c.Exec(ctx, `DROP EXTENSION IF EXISTS `+ext+` CASCADE`)
 		}
-		_, _ = c.Exec(ctx, `DROP SCHEMA IF EXISTS `+contribExtSchema+` CASCADE`)
+		_, _ = c.Exec(ctx, `DROP SCHEMA IF EXISTS `+extSchema+` CASCADE`)
 	})
-	if _, err := conn.Exec(ctx, `DROP SCHEMA IF EXISTS `+contribSchema+` CASCADE; CREATE SCHEMA IF NOT EXISTS `+contribExtSchema+`; CREATE SCHEMA `+contribSchema); err != nil {
+	if _, err := conn.Exec(ctx, `DROP SCHEMA IF EXISTS `+schema+` CASCADE; CREATE SCHEMA IF NOT EXISTS `+extSchema+`; CREATE SCHEMA `+schema); err != nil {
 		t.Fatal(err)
 	}
-	for _, ext := range contribExtensions {
-		var schema string
-		err := conn.QueryRow(ctx, `SELECT n.nspname FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace WHERE e.extname = $1`, ext).Scan(&schema)
+	for _, ext := range exts {
+		var installed string
+		err := conn.QueryRow(ctx, `SELECT n.nspname FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace WHERE e.extname = $1`, ext).Scan(&installed)
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):
-			if _, err := conn.Exec(ctx, `CREATE EXTENSION `+ext+` SCHEMA `+contribExtSchema); err != nil {
+			if _, err := conn.Exec(ctx, `CREATE EXTENSION `+ext+` SCHEMA `+extSchema); err != nil {
 				t.Skipf("extension %s unavailable: %v", ext, err)
 			}
 			created = append(created, ext)
 		case err != nil:
 			t.Fatal(err)
-		case schema != contribExtSchema:
-			t.Skipf("extension %s is already installed in schema %s", ext, schema)
+		case installed != extSchema:
+			t.Skipf("extension %s is already installed in schema %s", ext, installed)
 		}
 	}
-	if _, err := conn.Exec(ctx, contribDDL); err != nil {
+	if _, err := conn.Exec(ctx, ddl); err != nil {
 		t.Fatal(err)
 	}
 	srv := testServer(t, func(cfg *config.Config) {
-		cfg.Schema.Schemas = []string{contribSchema}
-		cfg.Filters.AllowColumns = map[string][]string{contribSchema + ".docs": {"body", "attrs", "path"}}
+		cfg.Schema.Schemas = []string{schema}
 		if mutate != nil {
 			mutate(cfg)
 		}
@@ -231,7 +245,6 @@ func contribServer(t *testing.T, mutate func(*config.Config)) string {
 	return srv.URL
 }
 
-// docsURL builds /api/docs?<params>, percent-encoding every value.
 func docsURL(srv string, params ...string) string {
 	var sb strings.Builder
 	sb.WriteString(srv + "/api/docs?")

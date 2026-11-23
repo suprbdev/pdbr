@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/suprbdev/pdbcore/contrib"
 	"github.com/suprbdev/pdbcore/introspect"
 	"github.com/suprbdev/pdbcore/postgis"
 
@@ -661,10 +662,12 @@ func (s *stmt) tuple(cols []*introspect.Column, obj map[string]any) (string, map
 // inputValue renders a body value as a parameter expression for col:
 // composites are populated from a jsonb parameter, spatial values go
 // through their PostGIS constructor, hstore objects and structured ranges
-// through their pdbcore/contrib codec, arrays and json/jsonb carry an
-// explicit cast, everything else is a bare parameter typed by the target
-// column. The expression depends only on the column type (and, for spatial,
-// hstore and range values, the input encoding), never on the value.
+// through their pdbcore/contrib codec, vectors (lists of numbers, text
+// forms and nulls alike) as one text parameter cast to the vector type,
+// arrays and json/jsonb carry an explicit cast, everything else is a bare
+// parameter typed by the target column. The expression depends only on the
+// column type (and, for spatial, hstore and range values, the input
+// encoding), never on the value.
 func (s *stmt) inputValue(col *introspect.Column, v any) string {
 	if comp := s.compositeFor(col); comp != nil {
 		return s.compositeInput(comp, col, v)
@@ -681,6 +684,17 @@ func (s *stmt) inputValue(col *introspect.Column, v any) string {
 		return s.param(coerceInput(col, v)) + arrayCast(s.c.Built, col)
 	}
 	if codec, ok := api.CodecFor(s.catalog(), col); ok {
+		if codec.Arg == contrib.ArgVector {
+			if v == nil {
+				return codec.SQL(s.param(nil))
+			}
+			params, err := codec.Params(v)
+			if err != nil {
+				s.fail(errUser(CodeInvalidBody, "%s: %s", col.Name, err.Error()))
+				return "NULL"
+			}
+			return codec.SQL(s.params(params)...)
+		}
 		switch v.(type) {
 		case map[string]any, []any:
 			params, err := codec.Params(v)

@@ -1,6 +1,8 @@
 package api
 
 import (
+	"encoding/json"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -9,7 +11,8 @@ import (
 )
 
 // ContribFilter is one filter operator a column takes from a pdbcore/contrib
-// vocabulary (full-text search, pg_trgm, hstore, ltree, ranges, inet).
+// vocabulary (full-text search, pg_trgm, unaccent, hstore, ltree, ranges,
+// inet).
 type ContribFilter struct {
 	// Name is the operator's URL spelling (fts, trgm_sim, cs, ...).
 	Name string
@@ -20,15 +23,19 @@ type ContribFilter struct {
 }
 
 // ContribOrder is one order=<col>.<Name> term a column takes from a
-// pdbcore/contrib vocabulary: full-text relevance (rank, rank_cd) or a
-// trigram distance (trgm_dist, trgm_wdist, trgm_swdist).
+// pdbcore/contrib vocabulary: full-text relevance (rank, rank_cd), a
+// trigram distance (trgm_dist, trgm_wdist, trgm_swdist) or a pgvector
+// distance (vec_l2, vec_ip, vec_cos, vec_l1).
 type ContribOrder struct {
 	// Name is the order modifier as written after the column.
 	Name string
 	// Rank is the relevance function of a rank term; "" for a distance.
 	Rank contrib.Rank
-	// Expr is the distance expression of a trigram term.
+	// Expr is the distance expression of a trigram or vector term.
 	Expr contrib.Expr
+	// Param is the query parameter holding the reference value a distance
+	// term measures against: "trgm" or "vec"; "" for a rank term.
+	Param string
 }
 
 type spelling struct{ url, op string }
@@ -74,9 +81,27 @@ var contribSpellings = map[string][]spelling{
 		{"cs", "containsOrEquals"}, {"cd", "containedByOrEquals"}, {"ov", "containsOrContainedBy"},
 		{"cs_strict", "contains"}, {"cd_strict", "containedBy"},
 	},
+	contrib.VocabUnaccent: {
+		{"unaccent_eq", "unaccentEqualTo"}, {"unaccent_ilike", "unaccentLike"},
+		{"unaccent_sw", "unaccentStartsWith"}, {"unaccent_includes", "unaccentIncludes"},
+	},
 }
 
 var trgmOrders = []spelling{{"trgm_dist", "distance"}, {"trgm_wdist", "wordDistance"}, {"trgm_swdist", "strictWordDistance"}}
+
+var vecOrders = []spelling{
+	{"vec_l2", "l2Distance"}, {"vec_ip", "negativeInnerProduct"}, {"vec_cos", "cosineDistance"}, {"vec_l1", "l1Distance"},
+}
+
+// distanceOrders maps each vocabulary with distance order terms to them and
+// to the query parameter holding their reference value.
+var distanceOrders = []struct {
+	vocab, param string
+	terms        []spelling
+}{
+	{contrib.VocabTrgm, "trgm", trgmOrders},
+	{contrib.VocabVector, "vec", vecOrders},
+}
 
 var rankOrders = []struct {
 	name string
@@ -107,19 +132,60 @@ func IsFullTextOp(name string) bool {
 }
 
 // IsContribOrder reports whether a modifier is a contrib order term
-// (rank, rank_cd, trgm_dist, trgm_wdist, trgm_swdist).
+// (rank, rank_cd, trgm_dist, trgm_wdist, trgm_swdist, vec_l2, vec_ip,
+// vec_cos, vec_l1).
 func IsContribOrder(name string) bool {
 	for _, r := range rankOrders {
 		if r.name == name {
 			return true
 		}
 	}
-	for _, sp := range trgmOrders {
-		if sp.url == name {
-			return true
+	return DistanceParam(name) != ""
+}
+
+// DistanceParam returns the query parameter a distance order modifier
+// measures against ("trgm" for trgm_*, "vec" for vec_*); "" for anything
+// else.
+func DistanceParam(mod string) string {
+	for _, d := range distanceOrders {
+		for _, sp := range d.terms {
+			if sp.url == mod {
+				return d.param
+			}
 		}
 	}
-	return false
+	return ""
+}
+
+// VectorVocabulary returns the pgvector vocabulary of a vector, halfvec or
+// sparsevec column (bound to the extension's schema); false for any other
+// column, and when the catalog does not record the vector extension.
+func VectorVocabulary(cat *introspect.Catalog, c *introspect.Column) (contrib.Vocabulary, bool) {
+	if c == nil || c.IsArray || strings.HasPrefix(c.PGType, "_") {
+		return contrib.Vocabulary{}, false
+	}
+	for _, v := range contrib.ForColumn(cat, c) {
+		if v.Name == contrib.VocabVector {
+			return v, true
+		}
+	}
+	return contrib.Vocabulary{}, false
+}
+
+// VectorOperand decodes a vector given as query text: a JSON array of
+// numbers becomes a []any of json.Number for the vector codec, anything
+// else stays the pgvector text form it is.
+func VectorOperand(text string) (any, error) {
+	if !strings.HasPrefix(strings.TrimSpace(text), "[") {
+		return text, nil
+	}
+	dec := json.NewDecoder(strings.NewReader(text))
+	dec.UseNumber()
+	var list []any
+	if err := dec.Decode(&list); err != nil || dec.More() {
+		return nil, fmt.Errorf("vector value %q is not a JSON array of numbers", text)
+	}
+	return list, nil
 }
 
 // RangeOperand reports whether a cs operand on a range column is a range
@@ -140,13 +206,14 @@ func RangeOperand(v any) bool {
 // column's type (citext, hstore, ltree): comparisons on it must be spelled
 // with Vocabulary.Operator and the operand cast to the column type, or
 // PostgreSQL resolves them to the wrong operator (citext) or none at all
-// (hstore, ltree) when the extension schema is off the search_path.
+// (hstore, ltree) when the extension schema is off the search_path. pgvector
+// types are not owned this way: they take no comparisons (VectorVocabulary).
 func OwnerVocabulary(cat *introspect.Catalog, c *introspect.Column) (contrib.Vocabulary, bool) {
 	if c == nil || c.IsArray || strings.HasPrefix(c.PGType, "_") {
 		return contrib.Vocabulary{}, false
 	}
 	for _, v := range contrib.ForColumn(cat, c) {
-		if v.Extension != "" && v.Codec != nil {
+		if v.Extension != "" && v.Codec != nil && v.Name != contrib.VocabVector {
 			return v, true
 		}
 	}
@@ -154,7 +221,8 @@ func OwnerVocabulary(cat *introspect.Catalog, c *introspect.Column) (contrib.Voc
 }
 
 // CodecFor returns the value codec of a column whose JSON input differs from
-// its text form (hstore objects, structured ranges and multiranges).
+// its text form (hstore objects, structured ranges and multiranges, vectors
+// as lists of numbers).
 func CodecFor(cat *introspect.Catalog, c *introspect.Column) (*contrib.Codec, bool) {
 	if c == nil || c.IsArray || strings.HasPrefix(c.PGType, "_") {
 		return nil, false
@@ -164,7 +232,7 @@ func CodecFor(cat *introspect.Catalog, c *introspect.Column) (*contrib.Codec, bo
 			continue
 		}
 		switch v.Codec.Arg {
-		case contrib.ArgHstore, contrib.ArgRange, contrib.ArgMultirange:
+		case contrib.ArgHstore, contrib.ArgRange, contrib.ArgMultirange, contrib.ArgVector:
 			return v.Codec, true
 		}
 	}
@@ -204,9 +272,10 @@ func (b *Built) ContribFilters(r *Resource, c *introspect.Column) []ContribFilte
 
 // ContribOrders returns the contrib order terms column c of r accepts under
 // the filter policy: rank and rank_cd wherever a full-text operator is
-// accepted, trigram distances where an ordering index (GiST) serves them or
+// accepted, trigram distances where an ordering index (GiST) serves them,
+// vector distances where an HNSW or IVFFlat index does, or anywhere when
 // filters.indexed_only is off — unless r has a column or computed column
-// named trgm, which takes the trgm= parameter's place.
+// named trgm (vec), which takes the trgm= (vec=) parameter's place.
 func (b *Built) ContribOrders(r *Resource, c *introspect.Column) []ContribOrder {
 	return contribOrders(b.Catalog, b.Options, r, c)
 }
@@ -242,13 +311,15 @@ func contribOrders(cat *introspect.Catalog, opts Options, r *Resource, c *intros
 		}
 	}
 	for _, voc := range contrib.ForColumn(cat, c) {
-		if voc.Name != contrib.VocabTrgm || (r != nil && r.NameTaken("trgm")) {
-			continue
-		}
-		for _, sp := range trgmOrders {
-			e, ok := voc.Expr(sp.op)
-			if ok && indexServes(opts, r, c, e.Index, true) {
-				out = append(out, ContribOrder{Name: sp.url, Expr: e})
+		for _, d := range distanceOrders {
+			if voc.Name != d.vocab || (r != nil && r.NameTaken(d.param)) {
+				continue
+			}
+			for _, sp := range d.terms {
+				e, ok := voc.Expr(sp.op)
+				if ok && indexServes(opts, r, c, e.Index, true) {
+					out = append(out, ContribOrder{Name: sp.url, Expr: e, Param: d.param})
+				}
 			}
 		}
 	}
@@ -256,7 +327,8 @@ func contribOrders(cat *introspect.Catalog, opts Options, r *Resource, c *intros
 }
 
 // NameTaken reports whether r has a column or computed column named key; a
-// soft-reserved query parameter (near, trgm) of that name is then a filter.
+// soft-reserved query parameter (near, trgm, vec) of that name is then a
+// filter.
 func (r *Resource) NameTaken(key string) bool {
 	return r.Field(key) != nil || r.Computed[key] != nil
 }
