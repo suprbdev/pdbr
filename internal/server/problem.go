@@ -32,6 +32,9 @@ const (
 	CodeUnavailable      = exec.CodeUnavailable
 )
 
+// RetryAfterUnavailable is the Retry-After value (seconds) on every 503.
+const RetryAfterUnavailable = "1"
+
 // ContentTypeProblem is the media type of every error response.
 const ContentTypeProblem = "application/problem+json"
 
@@ -55,6 +58,9 @@ func WriteProblemPG(w http.ResponseWriter, r *http.Request, status int, code, de
 		p.Instance = r.URL.Path
 	}
 	w.Header().Set("Content-Type", ContentTypeProblem)
+	if status == http.StatusServiceUnavailable {
+		w.Header().Set("Retry-After", RetryAfterUnavailable)
+	}
 	w.WriteHeader(status)
 	if r != nil && r.Method == http.MethodHead {
 		return

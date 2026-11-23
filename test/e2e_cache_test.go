@@ -57,6 +57,14 @@ func TestCacheBootWithoutDatabase(t *testing.T) {
 	}
 	res, body := get(t, offline.URL+"/api/users?limit=1")
 	wantProblem(t, res, body, 503, "unavailable")
+	res, body = get(t, offline.URL+"/readyz")
+	wantProblem(t, res, body, 503, "unavailable")
+	if res.Header.Get("Retry-After") != "1" {
+		t.Errorf("readyz Retry-After = %q", res.Header.Get("Retry-After"))
+	}
+	if res, _ = get(t, offline.URL+"/healthz"); res.StatusCode != 200 {
+		t.Errorf("healthz with the database down = %d", res.StatusCode)
+	}
 
 	// Same cache with the real database: data requests work and the
 	// document is still the live one.
