@@ -82,10 +82,11 @@ See [cli.md](cli.md) for details.
 | `rls.auth.mode` | string | `jwt` | `jwt`, `headers` (behind a trusted gateway) or `none` |
 | `rls.auth.jwt_secret` | string | — | HMAC secret for HS256/384/512 (ignored when `jwks_url` set) |
 | `rls.auth.jwks_url` | string | — | JWKS endpoint for RS*/ES* verification; takes precedence over `jwt_secret` |
-| `rls.auth.jwks_cache_ttl` | duration | `1h` | JWKS cache lifetime; unknown `kid` triggers an early refresh |
+| `rls.auth.jwks_cache_ttl` | duration | `1h` | JWKS cache lifetime; unknown `kid` triggers an early refresh. Keys are refreshed in the background with backoff after a failed fetch; fetch errors are logged (endpoint and cause) and clients only see `401 invalid_token` |
 | `rls.auth.jwt_issuer` | string | — | expected `iss`; empty skips |
 | `rls.auth.jwt_audience` | string | — | expected `aud`; empty skips |
-| `rls.auth.header_prefix` | string | `X-Pdbr-Claim-` | header prefix mapped to claims in headers mode |
+| `rls.auth.header_prefix` | string | `X-Pdbr-Claim-` | header prefix mapped to claims in headers mode; one spelling per claim (`User-Id` → `user_id`, matched in any case); a prefixed header with an underscore or other punctuation, repeated, or folding onto another claim header → `401 invalid_token`. The gateway must strip every client-supplied header with the prefix, in any letter case ([rls.md](rls.md)) |
+| `rls.auth.header_claims` | []string | `[]` | claim names (e.g. `user_id`) accepted from claim headers in headers mode; `rls.role_claim` is always accepted; any other claim header → `401 invalid_token`; empty accepts any claim. Names are lower-case letters and digits joined by single underscores (validated at startup) |
 | `rls.auth.trusted_proxies` | []string | `[]` | CIDRs/IPs allowed to supply claim headers; empty trusts every peer (startup warning) |
 | `rls.auth.jwt_type` | string | — | schema-qualified composite (e.g. `public.jwt`); functions returning it yield a minted HS256 token |
 | `transactions.mutations` | bool | `true` | wrap every write in a tx |

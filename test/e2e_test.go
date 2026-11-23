@@ -716,6 +716,50 @@ func TestRLSRejectsRoleNone(t *testing.T) {
 	}
 }
 
+// TestClaimHeaderSpelling: every claim has one header spelling, so a claim
+// header with an underscore, a repeated one, two spellings of one claim, or
+// (with rls.auth.header_claims) a claim outside the allowlist is a 401.
+func TestClaimHeaderSpelling(t *testing.T) {
+	srv := testServer(t, func(c *config.Config) {
+		c.RLS.Enabled = true
+		c.RLS.Auth.Mode = "headers"
+		c.RLS.Auth.HeaderClaims = []string{"user_id"}
+	})
+	send := func(hdr http.Header) (*http.Response, []byte) {
+		t.Helper()
+		req, err := http.NewRequest("GET", srv.URL+"/api/posts?select=id&limit=100", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header = hdr
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res, body
+	}
+	ok := http.Header{"X-Pdbr-Claim-Role": {"app_user"}, "X-Pdbr-Claim-User-Id": {"1"}}
+	if res, body := send(ok); res.StatusCode != 200 {
+		t.Fatalf("canonical claim headers = %d %s", res.StatusCode, body)
+	}
+	for name, hdr := range map[string]http.Header{
+		"underscore":    {"X-Pdbr-Claim-Role": {"app_user"}, "X-Pdbr-Claim-User_id": {"1"}},
+		"repeated":      {"X-Pdbr-Claim-Role": {"app_user"}, "X-Pdbr-Claim-User-Id": {"1", "2"}},
+		"two spellings": {"X-Pdbr-Claim-Role": {"app_user"}, "X-Pdbr-Claim-User-Id": {"1"}, "x-pdbr-claim-user-id": {"2"}},
+		"not allowed":   {"X-Pdbr-Claim-Role": {"app_user"}, "X-Pdbr-Claim-User-Id": {"1"}, "X-Pdbr-Claim-Tenant": {"9"}},
+	} {
+		res, body := send(hdr)
+		if res.StatusCode != http.StatusUnauthorized || !strings.Contains(string(body), `"invalid_token"`) {
+			t.Errorf("%s: %d %s, want 401 invalid_token", name, res.StatusCode, body)
+		}
+	}
+}
+
 func TestReadOnly(t *testing.T) {
 	srv := testServer(t, func(c *config.Config) { c.Server.ReadOnly = true })
 	res, body := do(t, "POST", srv.URL+"/api/users", nil)

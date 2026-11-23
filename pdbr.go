@@ -417,7 +417,9 @@ func (a *App) buildServer(ctx context.Context) (*server.Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	srv := server.New(a.Config.Server, auth.New(confx.AuthConfig(a.Config.RLS)), rt, a.Log)
+	authCfg := confx.AuthConfig(a.Config.RLS)
+	authCfg.Logger = a.Log
+	srv := server.New(a.Config.Server, auth.New(authCfg), rt, a.Log)
 	srv.SetMetrics(a.metrics, a.Config.Metrics)
 	srv.SetReadiness(a.pool.Ping)
 	if a.Config.Watch.Enabled {

@@ -98,8 +98,13 @@ strings in intermediary log formats.
   `rls.allowed_roles` to the exact list a token may name; a role outside it
   → `403 role_not_allowed`.
 - `rls.auth.mode: jwt` with a strong `jwt_secret` or a `jwks_url` (or
-  `headers` strictly behind a gateway that strips inbound `X-Pdbr-Claim-*`,
-  with `rls.auth.trusted_proxies` set to that gateway).
+  `headers` strictly behind a gateway that strips every inbound
+  `X-Pdbr-Claim-*` header in any letter case, with
+  `rls.auth.trusted_proxies` set to that gateway and `rls.auth.header_claims`
+  listing the claims it sends; pdbr answers `401 invalid_token` to a claim
+  header that is misspelt (an underscore, punctuation), repeated, a second
+  spelling of another claim, or outside `header_claims` — see
+  [rls.md](rls.md)).
 - `errors.detail: prod` (default) — constraint violations pass through,
   internals do not. Use `strict` if constraint/column names in error
   messages are themselves sensitive (hides all database error messages;
