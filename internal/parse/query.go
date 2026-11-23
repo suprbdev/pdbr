@@ -43,13 +43,13 @@ func splitQuery(raw string) ([]param, error) {
 var reserved = map[string]bool{
 	"select": true, "order": true, "limit": true, "offset": true, "after": true,
 	"before": true, "count": true, "distinct": true, "near": true, "on_conflict": true,
-	"trgm": true, "vec": true, "columns": true,
+	"trgm": true, "vec": true, "columns": true, "geometry": true,
 }
 
 // softReserved are the reserved params that yield to a column, computed
 // column or RPC argument of the same name on the route: there the name is a
 // filter (or the argument) and the parameter is unavailable.
-var softReserved = map[string]bool{"near": true, "trgm": true, "vec": true}
+var softReserved = map[string]bool{"near": true, "trgm": true, "vec": true, "geometry": true}
 
 // isReserved reports whether key is a reserved parameter on this route.
 func (p *parser) isReserved(key string, res *api.Resource) bool {
@@ -58,6 +58,9 @@ func (p *parser) isReserved(key string, res *api.Resource) bool {
 	}
 	if key == "columns" {
 		return p.isMutation() && p.method != plan.DELETE
+	}
+	if key == "geometry" && (res == nil || !res.HasSpatial()) {
+		return false
 	}
 	return !softReserved[key] || !nameTaken(key, res, p.match.RPC)
 }
@@ -157,6 +160,12 @@ func (p *parser) parseQueryWith(raw string, res *api.Resource, extra func(key, v
 			continue
 		case q.key == "vec" && p.isReserved(q.key, res):
 			vec, hasVec = q.val, true
+			continue
+		case q.key == "geometry" && p.isReserved(q.key, res):
+			if q.val == "" {
+				return errf(CodeInvalidFilter, "geometry= needs the key of a spatial select item")
+			}
+			p.req.Geometry = q.val
 			continue
 		case q.key == "columns" && p.isReserved(q.key, res):
 			if err := p.parseColumnsParam(q.val); err != nil {

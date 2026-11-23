@@ -1,0 +1,2 @@
+GET /api/places?select=id,pos:location(transform=3857)&order=id
+Accept: application/geo+json

@@ -1,0 +1,2 @@
+-- request: GET /api/places?select=count()
+-- error: 406 not_acceptable: application/geo+json cannot represent aggregate results

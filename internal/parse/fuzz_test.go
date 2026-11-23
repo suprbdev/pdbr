@@ -41,6 +41,8 @@ func FuzzParse(f *testing.F) {
 		{"PATCH", "/kb/docs/1", "", "", `{"attrs":{"a":null},"pages":{"start":1,"isEmpty":false},"slots":["[1,2)",{"end":9}]}`},
 		{"GET", "/users", "select=mood,count(),total:balance::numeric.sum()::text,posts(published,id.max())&posts.order=published&order=mood.desc&limit=2&offset=1", "count=exact", ""},
 		{"GET", "/places", "select=owner_id,location.extent(),u:area.union(),location.centroid(),location.collect(),n:location.count()", "text/csv", ""},
+		{"GET", "/places", "select=id,location,area&geometry=area&limit=2&order=id", "application/geo+json", ""},
+		{"GET", "/places/1", "select=id,name,location&geometry=location", "application/geo+json", ""},
 		{"GET", "/posts", "select=count,id.sum(x),title::text,users(count())&after=x&distinct=id&order=id", "", ""},
 		{"GET", "/rpc/search_posts", "term=a&select=author_id,count()&order=author_id", "", ""},
 		{"GET", "/users", `select=id,x:settings->a->>b,settings->"a.b"->-1::int,tags->0,address->>city::text&settings->>theme=eq.dark&settings->n=in.(1,2)&order=settings->>theme.desc,settings->0`, "", ""},

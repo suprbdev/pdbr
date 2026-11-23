@@ -188,6 +188,10 @@ type stmt struct {
 	// set-returning function call (RPC SETOF <table>); cursors are off since
 	// function output has no keyset.
 	rootSource string
+	// geoKey is the response key of the root select item rendered as a
+	// Feature geometry; its key is never a member of the properties object,
+	// so it must not claim a bind parameter.
+	geoKey *string
 	// deferred holds the first error raised from a helper with no error
 	// return (order rendering and the spatial builders it calls); Compile
 	// surfaces it so a bad value never reaches the database.
@@ -312,7 +316,7 @@ func (s *stmt) rowByKey() (*Statement, error) {
 		return nil, errUser(CodeInvalidFilter, "key has %d values, want %d", len(key.Values), len(key.Constraint.Columns))
 	}
 	alias := s.alias("t")
-	jsonExpr, laterals, err := s.rowJSON(s.rootNode(), alias, 0)
+	jsonExpr, laterals, err := s.rootJSON(s.rootNode(), alias)
 	if err != nil {
 		return nil, err
 	}
@@ -385,6 +389,9 @@ func (s *stmt) list() (*Statement, error) {
 	t := r.Table
 	node := s.rootNode()
 	if node.Aggregated() {
+		if s.plan.Accept == plan.AcceptGeoJSON {
+			return nil, errNotAcceptable("application/geo+json cannot represent aggregate results")
+		}
 		return s.aggList(node)
 	}
 	pp, err := s.planPage(r, s.plan.Page)
@@ -408,7 +415,7 @@ func (s *stmt) list() (*Statement, error) {
 	}
 
 	alias := s.alias("t")
-	jsonExpr, laterals, err := s.rowJSON(node, alias, 0)
+	jsonExpr, laterals, err := s.rootJSON(node, alias)
 	if err != nil {
 		return nil, err
 	}
@@ -529,7 +536,7 @@ func (s *stmt) pageEnvelope(inner string, pp pagePlan, count func() (string, err
 	}
 	pairs = append(pairs,
 		"'n'", "count(*)"+aggFilter,
-		"'rows'", "coalesce("+agg(sub+".data")+", '[]'::json)")
+		"'rows'", s.featureCollection("coalesce("+agg(sub+".data")+", '[]'::json)"))
 	sql := fmt.Sprintf("SELECT %s AS data\nFROM (\n%s\n) %s", buildJSONObject(pairs), indent(inner), sub)
 	return &Statement{SQL: sql, Args: s.ps.Args(), Shape: ShapePage, Cursors: pp.keyset, Total: s.plan.Count}, nil
 }

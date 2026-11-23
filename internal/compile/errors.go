@@ -22,6 +22,7 @@ const (
 	CodeInvalidBody        = "invalid_body"
 	CodeMissingArgument    = "missing_argument"
 	CodeNotImplemented     = "not_implemented"
+	CodeNotAcceptable      = "not_acceptable"
 	CodeColumnNotOrderable = "column_not_orderable"
 	// CodeTemporalConflict rejects a temporal (WITHOUT OVERLAPS) key as an
 	// upsert conflict target: ON CONFLICT cannot infer an exclusion
@@ -43,6 +44,11 @@ func (e *UserError) Error() string { return e.Detail }
 // NewUserError builds a 400 UserError.
 func NewUserError(code, detail string) *UserError {
 	return &UserError{Code: code, Status: http.StatusBadRequest, Detail: detail}
+}
+
+// errNotAcceptable is a 406 not_acceptable UserError.
+func errNotAcceptable(detail string) error {
+	return &UserError{Code: CodeNotAcceptable, Status: http.StatusNotAcceptable, Detail: detail}
 }
 
 func errUser(code, format string, args ...any) error {

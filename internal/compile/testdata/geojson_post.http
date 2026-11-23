@@ -1,0 +1,4 @@
+POST /api/places
+Accept: application/geo+json
+
+{"name":"x"}

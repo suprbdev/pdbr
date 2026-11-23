@@ -1,0 +1,2 @@
+-- request: POST /api/places
+-- error: 406 not_acceptable: application/geo+json is only available on GET requests

@@ -1,0 +1,2 @@
+-- request: GET /api/places?select=id,name
+-- error: 406 not_acceptable: application/geo+json needs a geometry or geography column in select=

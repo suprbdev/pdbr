@@ -16,6 +16,10 @@ import (
 // ContentTypeJSON is the media type of every successful JSON response.
 const ContentTypeJSON = "application/json; charset=utf-8"
 
+// ContentTypeGeoJSON is the media type of Accept: application/geo+json
+// responses (RFC 7946 defines no charset parameter).
+const ContentTypeGeoJSON = "application/geo+json"
+
 // Handler is the RouteHandler: parse -> Operation -> Executor -> response.
 type Handler struct {
 	Built *api.Built
@@ -133,7 +137,11 @@ func (h *Handler) ServeRoute(w http.ResponseWriter, r *http.Request, m *api.Matc
 		}
 		return
 	}
-	w.Header().Set("Content-Type", ContentTypeJSON)
+	if op.Plan != nil && op.Plan.Accept == plan.AcceptGeoJSON {
+		w.Header().Set("Content-Type", ContentTypeGeoJSON)
+	} else {
+		w.Header().Set("Content-Type", ContentTypeJSON)
+	}
 	w.WriteHeader(status)
 	if r.Method == http.MethodHead {
 		return

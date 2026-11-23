@@ -465,6 +465,22 @@ func TestUnwrapPageOffset(t *testing.T) {
 	}
 }
 
+func TestUnwrapPageFeatureCollection(t *testing.T) {
+	b := built(t)
+	op := listOp(b, "/metrics")
+	op.Plan.Page = plan.Page{Limit: 20}
+	stmt := &compile.Statement{Shape: compile.ShapePage}
+	fc := `{"type":"FeatureCollection","features":[{"type":"Feature","geometry":null,"properties":{}}]}`
+	raw := []byte(`{"has_next":false,"has_prev":false,"n":1,"rows":` + fc + `}`)
+	res, err := Unwrap(op, stmt, raw, true, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(res.Data) != fc || res.Headers.Get("Content-Range") != "0-0/*" {
+		t.Fatalf("data=%s headers=%v", res.Data, res.Headers)
+	}
+}
+
 func TestWithParam(t *testing.T) {
 	cases := []struct{ raw, key, val, want string }{
 		{"", "after", "c", "?after=c"},
