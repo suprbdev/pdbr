@@ -18,7 +18,7 @@ import (
 // parses iff the operator is documented for the column.
 func TestFilterOpsMatchParser(t *testing.T) {
 	all := []string{"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct",
-		"like", "ilike", "sw", "ew", "cs", "cd", "ov", "hk", "jpe", "jpm"}
+		"like", "ilike", "sw", "ew", "match", "imatch", "cs", "cd", "ov", "hk", "jpe", "jpm"}
 	for _, name := range api.ContribFilterNames() {
 		if !slices.Contains(all, name) {
 			all = append(all, name)
@@ -123,7 +123,7 @@ func sampleValue(op string, c *introspect.Column) string {
 		return "null"
 	case "in":
 		return `("` + scalar() + `")`
-	case "like", "ilike", "sw", "ew":
+	case "like", "ilike", "sw", "ew", "match", "imatch":
 		return "x"
 	case "hk":
 		return "a"

@@ -1,0 +1,1 @@
+GET /api/users?select=id&email=like(any).{ada*,*hopper*}&email=ilike(all).{*@*,*.COM}&id=gt(any).{1,2}&mood=eq(any).{happy,ok}&settings->>theme=match(any).{^d,^l}&email=not.eq(any).{x@y.z}&id=lte(all).{10,20}

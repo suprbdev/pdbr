@@ -103,3 +103,45 @@ func TestJSONPaths(t *testing.T) {
 		}
 	})
 }
+
+func TestMatchAndModifiers(t *testing.T) {
+	srv := testServer(t, nil)
+	base := srv.URL + "/api"
+	cases := []struct {
+		query string
+		want  []int
+	}{
+		{"email=match.^a", []int{1, 3}},
+		{"email=imatch.^GRACE", []int{2}},
+		{"email=not.match.^a", []int{2}},
+		{"email=like(any).{ada*,grace*}", []int{1, 2}},
+		{"email=like(all).{a*,*lan*}", []int{3}},
+		{"email=ilike(any).{ADA*}", []int{1}},
+		{"email=match(all).{^a,lan}", []int{3}},
+		{"email=imatch(any).{^ADA,^ALAN}", []int{1, 3}},
+		{"id=eq(any).{1,3}", []int{1, 3}},
+		{"id=gt(all).{1,2}", []int{3}},
+		{"id=lte(any).{1}", []int{1}},
+		{"mood=eq(any).{ok,sad}", []int{2}},
+		{"email=not.eq(any).{ada@example.com}", []int{2, 3}},
+		{"or=(email.match(any).{^g},id.eq(all).{3,3})", []int{2, 3}},
+		{"settings->>theme=match(any).{^d,^l}", []int{1, 2}},
+		{"id=eq(any).{}", nil},
+		{"id=gt(all).{}", []int{1, 2, 3}},
+	}
+	for _, c := range cases {
+		var rows []row
+		getJSON(t, base+"/users?select=id&order=id&"+c.query, &rows)
+		if got := ids(rows, "id"); !eq(got, c.want) {
+			t.Errorf("%s: ids = %v, want %v", c.query, got, c.want)
+		}
+	}
+	for _, q := range []string{"id=match.1", "email=neq(any).{a}", "tags=eq(any).{admin}", "email=eq(some).{a}", "id=eq(any).{x}"} {
+		res, body := get(t, base+"/users?"+q)
+		wantProblem(t, res, body, 400, "invalid_filter")
+	}
+	res, body := get(t, base+"/users?email=match.(")
+	if res.StatusCode != 400 {
+		t.Fatalf("bad regex: %d %s", res.StatusCode, body)
+	}
+}

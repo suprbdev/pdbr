@@ -69,7 +69,7 @@ func TestContribGatedOnExtensions(t *testing.T) {
 	for col, want := range map[string][]string{
 		"attrs": {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct"},
 		"path":  {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct"},
-		"email": {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew"},
+		"email": {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew", "match", "imatch"},
 	} {
 		if got := b.FilterOps(docs, docs.Table.Column(col)); !reflect.DeepEqual(got, want) {
 			t.Errorf("%s ops without its extension = %v, want %v", col, got, want)
@@ -79,10 +79,10 @@ func TestContribGatedOnExtensions(t *testing.T) {
 
 func TestContribFilterOps(t *testing.T) {
 	cases := map[string][]string{
-		"title":  {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew", "trgm_sim", "trgm_wsim", "trgm_swsim"},
-		"body":   {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew", "fts", "plfts", "phfts", "wfts", "trgm_sim", "trgm_wsim", "trgm_swsim"},
+		"title":  {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew", "match", "imatch", "trgm_sim", "trgm_wsim", "trgm_swsim"},
+		"body":   {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew", "match", "imatch", "fts", "plfts", "phfts", "wfts", "trgm_sim", "trgm_wsim", "trgm_swsim"},
 		"search": {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "fts", "plfts", "phfts", "wfts"},
-		"email":  {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew"},
+		"email":  {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew", "match", "imatch"},
 		"attrs":  {"eq", "neq", "in", "is", "isdistinct", "hk", "hk_all", "hk_any", "cs"},
 		"path":   {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "cs", "cd", "ancestor", "descendant", "lquery", "lquery_any", "ltxtquery"},
 		"paths":  {"eq", "neq", "gt", "gte", "lt", "lte", "is", "isdistinct", "cs", "cd", "ov", "descendant", "lquery", "lquery_any", "ltxtquery"},

@@ -1,0 +1,2 @@
+-- request: GET /api/users?select=id&id=match.1
+-- error: 400 invalid_filter: operator "match" requires a text column, "id" is int4

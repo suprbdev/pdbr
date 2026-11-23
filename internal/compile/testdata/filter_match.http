@@ -1,0 +1,1 @@
+GET /api/users?select=id&email=match.^a.*@&mood=eq.happy&email=not.imatch.EXAMPLE$

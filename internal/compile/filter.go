@@ -171,6 +171,9 @@ func condKey(c *plan.Cond) string {
 	if c.Negate {
 		b.WriteString(".not")
 	}
+	if c.Mod != "" {
+		b.WriteString("(" + string(c.Mod) + ")")
+	}
 	if c.Op == plan.OpIs {
 		// The is.* operand is structural (it becomes SQL text), so it is
 		// part of the shape.
@@ -229,7 +232,7 @@ func (s *stmt) opSQL(col *introspect.Column, ref string, c *plan.Cond) (string, 
 		return "", errUser(CodeInvalidFilter, "operator %q is not valid for spatial columns", c.Op)
 	}
 	cat := s.catalog()
-	if cf, ok := api.ContribFilterFor(cat, col, string(c.Op), c.Value); ok {
+	if cf, ok := api.ContribFilterFor(cat, col, string(c.Op), c.Value); ok && c.Mod == "" {
 		expr, err := s.contribFilterSQL(cf, ref, c.Value)
 		if err != nil {
 			return "", err
@@ -254,6 +257,9 @@ func (s *stmt) opSQL(col *introspect.Column, ref string, c *plan.Cond) (string, 
 			return cmp("~~") + s.ownerParam(owner, ph)
 		}
 		return " LIKE " + ph
+	}
+	if c.Mod != "" {
+		return s.modSQL(col, ref, c, cmp, owned)
 	}
 	switch c.Op {
 	case plan.OpEq:
@@ -290,6 +296,10 @@ func (s *stmt) opSQL(col *introspect.Column, ref string, c *plan.Cond) (string, 
 			return negate(ref+cmp("~~*")+s.ownerParam(owner, s.param(likePattern(c.Value))), c.Negate), nil
 		}
 		return negate(ref+" ILIKE "+s.param(likePattern(c.Value)), c.Negate), nil
+	case plan.OpMatch:
+		return negate(ref+cmp("~")+value(), c.Negate), nil
+	case plan.OpIMatch:
+		return negate(ref+cmp("~*")+value(), c.Negate), nil
 	case plan.OpSw:
 		return negate(ref+pattern(s.param(escapeLike(stringOf(c.Value)))+" || '%'"), c.Negate), nil
 	case plan.OpEw:
@@ -314,6 +324,45 @@ func (s *stmt) opSQL(col *introspect.Column, ref string, c *plan.Cond) (string, 
 		return negate(jsonbExpr(col, ref)+" @@ "+s.param(stringOf(c.Value))+"::jsonpath", c.Negate), nil
 	}
 	return "", errUser(CodeInvalidFilter, "unknown filter operator %q", c.Op)
+}
+
+// modOps are the SQL operators of the any/all-modifiable operators.
+var modOps = map[plan.Op]string{
+	plan.OpEq: "=", plan.OpGt: ">", plan.OpGte: ">=", plan.OpLt: "<", plan.OpLte: "<=",
+	plan.OpLike: "~~", plan.OpILike: "~~*", plan.OpMatch: "~", plan.OpIMatch: "~*",
+}
+
+// modSQL renders an any/all-modified operator, `ref op ANY($n)` /
+// `ref op ALL($n)` with the elements as one typed array parameter (cast to
+// the column's element type as for in.()); like/ilike patterns get the *
+// to % translation per element.
+func (s *stmt) modSQL(col *introspect.Column, ref string, c *plan.Cond, cmp func(string) string, owned bool) (string, error) {
+	op, ok := modOps[c.Op]
+	if !ok {
+		return "", errUser(CodeInvalidFilter, "operator %q takes no any/all modifier", c.Op)
+	}
+	if c.Mod != plan.ModAny && c.Mod != plan.ModAll {
+		return "", errUser(CodeInvalidFilter, "unknown operator modifier %q", c.Mod)
+	}
+	v := c.Value
+	if c.Op == plan.OpLike || c.Op == plan.OpILike {
+		if list, ok := v.([]any); ok {
+			out := make([]any, len(list))
+			for i, e := range list {
+				out[i] = likePattern(e)
+			}
+			v = out
+		}
+	}
+	sqlOp := cmp(op)
+	switch {
+	case owned:
+	case c.Op == plan.OpLike:
+		sqlOp = " LIKE "
+	case c.Op == plan.OpILike:
+		sqlOp = " ILIKE "
+	}
+	return negate(ref+sqlOp+strings.ToUpper(string(c.Mod))+"("+s.listParam(col, v)+")", c.Negate), nil
 }
 
 // catalog is the catalog the contrib vocabularies resolve extensions from

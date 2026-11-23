@@ -8,11 +8,12 @@ statement, and every operand travels as a bind parameter — the SQL text never
 varies with input values (an invariant enforced by fuzz tests).
 
 ```
-filter := column [ jsonpath ] "=" [ "not." ] op [ "(" config ")" ] "." value
+filter := column [ jsonpath ] "=" [ "not." ] op [ "(" config ")" | "(" mod ")" ] "." value
        |  relkey [ "!" quantifier ] "." column "=" [ "not." ] op "." value
        |  relkey "=" "exists." ( "true" | "false" )
        |  ( "and" | "or" | "not.and" | "not.or" ) "=" "(" item ("," item)* ")"
-item   := column [ jsonpath ] "." [ "not." ] op "." value | logic "(" item ("," item)* ")"
+item   := column [ jsonpath ] "." [ "not." ] op [ "(" mod ")" ] "." value | logic "(" item ("," item)* ")"
+mod    := "any" | "all"                                  -- eq, gt, gte, lt, lte, like, ilike, match, imatch
 ```
 
 `jsonpath` is the `select=` grammar (`->key`, `->0`, `->>key`;
@@ -41,6 +42,8 @@ compile time (`400 invalid_filter` when it does not parse) and passed as
 | `isdistinct` | `IS DISTINCT FROM $n` (`not.isdistinct` → `NOT (… IS DISTINCT FROM $n)`) | wherever `eq` applies |
 | `like`, `ilike` | `LIKE $n`, `ILIKE $n`; `*` in the value → `%` | text |
 | `sw`, `ew` | `LIKE $n \|\| '%'`, `LIKE '%' \|\| $n` — operand fully escaped | text |
+| `match`, `imatch` | `~ $n`, `~* $n` — POSIX regular expression | text |
+| `op(any).{a,b}`, `op(all).{a,b}` | `op ANY($n)`, `op ALL($n)` (typed array param) for `eq`, `gt`, `gte`, `lt`, `lte`, `like`, `ilike`, `match`, `imatch` — see [Modifiers](#modifiers-any-and-all) | scalars, enums (not arrays) |
 | `cs`, `cd`, `ov` | `@>`, `<@`, `&&` | arrays (`{a,b}` literal); `cs`/`cd` also jsonb (JSON literal); ranges, hstore, ltree, inet — see [contrib.md](contrib.md) |
 | `fts`, `plfts`, `phfts`, `wfts` (optional `(config)`) | `@@ to_tsquery` / `plainto_tsquery` / `phraseto_tsquery` / `websearch_to_tsquery` | `tsvector`; text-like through `to_tsvector` — [contrib.md](contrib.md#full-text-search-postgrest) |
 | `sl`, `sr`, `nxr`, `nxl`, `adj` | `<<`, `>>`, `&<`, `&>`, `-\|-` (range literal or JSON object operand) | ranges, multiranges — [contrib.md](contrib.md#ranges-and-multiranges-postgrest) |
@@ -68,6 +71,46 @@ single-character wildcard (PostgREST behaviour) and a literal `%` passes
 through too — only `*` is translated (`compile.likePattern`); escape `_` as
 `\_` to match literally. `sw`/`ew` operands are fully escaped
 (`compile.escapeLike`: `\`, `%`, `_`).
+
+### Regular expressions: `match`, `imatch`
+
+`match` is PostgreSQL's `~` (case-sensitive POSIX regular expression),
+`imatch` `~*` (case-insensitive); the pattern is a bind parameter, unanchored
+unless it uses `^`/`$`:
+
+```http
+GET /api/users?email=match.^a.*@example\.com$
+GET /api/posts?title=imatch.engine
+```
+
+An invalid pattern is a database error (`400 pg:2201B`). On a `citext`
+column the extension's own operators apply (`OPERATOR(ext.~)` with a
+`citext` operand), so `match` is case-insensitive there too, as
+PostgreSQL resolves it. Like `jpe`/`jpm`, a pathological pattern costs CPU
+until `database.statement_timeout`.
+
+### Modifiers: `any` and `all`
+
+`eq`, `gt`, `gte`, `lt`, `lte`, `like`, `ilike`, `match` and `imatch` take
+an `(any)` or `(all)` modifier and a PostgreSQL array literal (`{a,b}`,
+items quoted as in array filters); the condition holds when the operator
+matches any / every element:
+
+```http
+GET /api/people?last_name=like(any).{O*,P*}       -- last_name LIKE ANY($1::text[])
+GET /api/people?last_name=like(all).{O*,*n}       -- LIKE ALL
+GET /api/users?id=gt(all).{1,2}                   -- id > ALL($1::int4[])
+GET /api/users?mood=eq(any).{ok,sad}              -- like in.(ok,sad)
+GET /api/users?or=(email.match(any).{^a,^g},id.eq(all).{3})
+```
+
+Elements are coerced to the column type (enums, citext and other extension
+types get the same array casts as `in.()`), `*` becomes `%` in every
+`like`/`ilike` element, `NULL` items stay SQL `NULL`; `{}` is false under
+`any` and true under `all`. The modifier needs a `{…}` list and a scalar
+column (`400 invalid_filter` on arrays, on other operators, or with another
+word than `any`/`all`); `not.` negates the whole condition
+(`NOT (col = ANY($1))`).
 
 ### Lists: `in.(…)`
 
@@ -297,14 +340,16 @@ Errors are RFC 9457 problem documents; see [api.md](api.md#limits-and-errors).
 
 ## Differences from PostgREST
 
-- Short op names match PostgREST (`eq`, `neq`, `gt`, `like`, `cs`, `ov`,
-  `isdistinct`, `fts`/`plfts`/`phfts`/`wfts` with `(config)`, the range ops
-  `sl`/`sr`/`nxr`/`nxl`/`adj`, …) but pdbr adds `sw`/`ew` (escaped
-  prefix/suffix), `hk`, `jpe`/`jpm`, the trigram/hstore/ltree/inet words of
+- Short op names match PostgREST (`eq`, `neq`, `gt`, `like`, `match`,
+  `imatch`, `cs`, `ov`, `isdistinct`, `fts`/`plfts`/`phfts`/`wfts` with
+  `(config)`, the range ops `sl`/`sr`/`nxr`/`nxl`/`adj`, the `any`/`all`
+  modifiers, …) but pdbr adds `sw`/`ew` (escaped prefix/suffix), `hk`,
+  `jpe`/`jpm`, the trigram/hstore/ltree/inet words of
   [contrib.md](contrib.md), and the spatial and relation vocabularies;
-  PostgREST's `match`/`imatch` and `any`/`all` modifiers are not
-  implemented, and full-text search applies to `tsvector` and text columns
-  only (not json/jsonb). inet `cs`/`cd` mean `>>=`/`<<=` (containment, as on
+  full-text search applies to `tsvector` and text columns only (not
+  json/jsonb). `match`/`imatch` need a text column (`400 invalid_filter`
+  elsewhere), and the modifiers are validated element by element before the
+  database sees them. inet `cs`/`cd` mean `>>=`/`<<=` (containment, as on
   other types) rather than PostgREST's literal `@>`/`<@`.
 - Relation filters have quantifiers (`rel!none.`, `rel!every.`) and an
   existence op (`rel=exists.true|false`); PostgREST only filters through

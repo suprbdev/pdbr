@@ -169,3 +169,41 @@ func TestJSONPathAggregates(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestMatchAndModifiers(t *testing.T) {
+	b := buildFixture(t, false)
+	p := mustParse(t, b, "/api/users?email=match.^a&full_name=not.imatch(all).{x,y}&id=gt(any).{1,NULL}&mood=eq(any).{}")
+	terms := p.Filter.(plan.And).Terms
+	c0, c1, c2, c3 := terms[0].(plan.Cond), terms[1].(plan.Cond), terms[2].(plan.Cond), terms[3].(plan.Cond)
+	if c0.Op != plan.OpMatch || c0.Value != "^a" || c0.Mod != "" {
+		t.Fatalf("match = %+v", c0)
+	}
+	if c1.Op != plan.OpIMatch || c1.Mod != plan.ModAll || !c1.Negate || len(c1.Value.([]any)) != 2 {
+		t.Fatalf("imatch(all) = %+v", c1)
+	}
+	if v := c2.Value.([]any); c2.Mod != plan.ModAny || len(v) != 2 || v[0] != int64(1) || v[1] != nil {
+		t.Fatalf("gt(any) = %+v", c2)
+	}
+	if v := c3.Value.([]any); v == nil || len(v) != 0 {
+		t.Fatalf("eq(any).{} = %#v", c3.Value)
+	}
+	p = mustParse(t, b, "/api/users?or=(email.like(any).{a*,b*},settings->>theme.match(all).{^d})")
+	if or := p.Filter.(plan.Or); len(or.Terms) != 2 || or.Terms[0].(plan.Cond).Mod != plan.ModAny || or.Terms[1].(plan.Cond).Path == nil {
+		t.Fatalf("logic = %+v", p.Filter)
+	}
+	for _, u := range []string{
+		"/api/users?id=match.1",
+		"/api/users?email=neq(any).{a}",
+		"/api/users?email=in(any).(a)",
+		"/api/users?email=eq(some).{a}",
+		"/api/users?email=eq(any)",
+		"/api/users?email=eq(any).a",
+		"/api/users?tags=eq(any).{a}",
+		"/api/users?id=eq(any).{x}",
+		"/api/users?mood=eq(any).{nope}",
+		"/api/users?settings->n=like(any).{a}",
+	} {
+		_, err := doParse(t, b, req{url: u}, allOn)
+		wantCode(t, err, CodeInvalidFilter)
+	}
+}

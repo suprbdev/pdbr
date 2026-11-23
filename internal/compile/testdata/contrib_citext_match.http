@@ -1,0 +1,1 @@
+GET /api/kb/docs?select=id&email=imatch.^a&email=match(any).{^b,^c}

@@ -1,0 +1,2 @@
+-- request: GET /api/users?select=id&email=neq(any).{a}
+-- error: 400 invalid_filter: unknown operator "neq(any)"

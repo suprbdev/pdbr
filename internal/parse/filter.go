@@ -47,6 +47,7 @@ var ops = map[string]opSpec{
 	"is":         {op: plan.OpIs, structural: true},
 	"isdistinct": {op: plan.OpIsDistinct},
 	"like":       {op: plan.OpLike}, "ilike": {op: plan.OpILike},
+	"match": {op: plan.OpMatch}, "imatch": {op: plan.OpIMatch},
 	"sw": {op: plan.OpSw}, "ew": {op: plan.OpEw},
 	"cs": {op: plan.OpCs}, "cd": {op: plan.OpCd}, "ov": {op: plan.OpOv},
 	"hk": {op: plan.OpHk}, "jpe": {op: plan.OpJpe}, "jpm": {op: plan.OpJpm},
@@ -91,6 +92,14 @@ type operand struct {
 	// config is the text search configuration of a full-text operator
 	// (fts(english).value); "" when absent.
 	config string
+	// mod is the any/all modifier (eq(any).{a,b}); "" when absent.
+	mod plan.OpModifier
+}
+
+// modifiable are the operators taking the any/all modifier (PostgREST).
+var modifiable = map[string]bool{
+	"eq": true, "gt": true, "gte": true, "lt": true, "lte": true,
+	"like": true, "ilike": true, "match": true, "imatch": true,
 }
 
 // splitOperand parses "[not.]op.value" (value runs to the end); the
@@ -102,6 +111,14 @@ func splitOperand(raw string) (operand, *compile.UserError) {
 	if strings.HasPrefix(s, "not.") {
 		o.negate = true
 		s = s[len("not."):]
+	}
+	if i := strings.IndexByte(s, '('); i > 0 && modifiable[s[:i]] {
+		mod, val, ok := strings.Cut(s[i+1:], ").")
+		if !ok || (mod != string(plan.ModAny) && mod != string(plan.ModAll)) {
+			return o, errf(CodeInvalidFilter, "malformed operator modifier in %q (want %s(any).{…} or %s(all).{…})", raw, s[:i], s[:i])
+		}
+		o.op, o.spec, o.value, o.mod = s[:i], ops[s[:i]], val, plan.OpModifier(mod)
+		return o, nil
 	}
 	if i := strings.IndexByte(s, '('); i > 0 && api.IsFullTextOp(s[:i]) {
 		cfg, rest, ok := strings.Cut(s[i+1:], ")")
@@ -155,14 +172,14 @@ func (p *parser) columnCond(res *api.Resource, key string, o operand) (plan.Expr
 		if !res.FilterColumns[key] {
 			return nil, errf(CodeColumnNotFilterable, "column %q on %q is not filterable", key, res.Path)
 		}
-		if e, ok, err := p.contribCond(res, f, o); ok || err != nil {
+		if e, ok, err := p.contribCond(res, f, o); o.mod == "" && (ok || err != nil) {
 			return e, err
 		}
 		v, err := p.coerceOperand(p.typeOf(f.Column), key, o)
 		if err != nil {
 			return nil, err
 		}
-		return plan.Cond{Column: f.Column, Op: o.spec.op, Value: v, Negate: o.negate}, nil
+		return plan.Cond{Column: f.Column, Op: o.spec.op, Value: v, Negate: o.negate, Mod: o.mod}, nil
 	}
 	if c := res.Computed[key]; c != nil {
 		if !p.opts.ComputedFilters || c.Function.ReturnsSet || !c.Filterable {
@@ -173,7 +190,7 @@ func (p *parser) columnCond(res *api.Resource, key string, o operand) (plan.Expr
 		if err != nil {
 			return nil, err
 		}
-		return plan.Cond{Computed: c, Op: o.spec.op, Value: v, Negate: o.negate}, nil
+		return plan.Cond{Computed: c, Op: o.spec.op, Value: v, Negate: o.negate, Mod: o.mod}, nil
 	}
 	return nil, errf(CodeUnknownColumn, "unknown column %q on %q", key, res.Path)
 }
@@ -217,7 +234,7 @@ func (p *parser) pathCond(res *api.Resource, key string, o operand) (plan.Expr, 
 			return nil, err
 		}
 	}
-	return plan.Cond{Column: f.Column, Path: path, Op: o.spec.op, Value: v, Negate: o.negate}, nil
+	return plan.Cond{Column: f.Column, Path: path, Op: o.spec.op, Value: v, Negate: o.negate, Mod: o.mod}, nil
 }
 
 // isPathKey reports whether key is a JSON path on a column of res.
@@ -297,6 +314,9 @@ func (p *parser) coerceOperand(t colType, key string, o operand) (any, error) {
 	if spec.contrib {
 		return nil, errf(CodeInvalidFilter, "operator %q is not supported on %s column %q", o.op, t.name(), key)
 	}
+	if o.mod != "" {
+		return p.modOperand(t, key, o)
+	}
 	if t.owner == contrib.VocabHstore {
 		switch spec.op {
 		case plan.OpGt, plan.OpGte, plan.OpLt, plan.OpLte:
@@ -350,7 +370,7 @@ func (p *parser) coerceOperand(t colType, key string, o operand) (any, error) {
 			out[i] = v
 		}
 		return out, nil
-	case plan.OpLike, plan.OpILike, plan.OpSw, plan.OpEw:
+	case plan.OpLike, plan.OpILike, plan.OpSw, plan.OpEw, plan.OpMatch, plan.OpIMatch:
 		if t.kind != kindText || t.isArray {
 			return nil, errf(CodeInvalidFilter, "operator %q requires a text column, %q is %s", o.op, key, t.name())
 		}
@@ -380,6 +400,33 @@ func (p *parser) coerceOperand(t colType, key string, o operand) (any, error) {
 		return o.value, nil
 	}
 	return nil, errf(CodeInvalidFilter, "unknown operator %q", o.op)
+}
+
+// modOperand coerces the {a,b} list of an any/all modifier element by
+// element under the operator's own rules; NULL elements stay nil.
+func (p *parser) modOperand(t colType, key string, o operand) (any, error) {
+	if t.isArray {
+		return nil, errf(CodeInvalidFilter, "%s(%s) is not supported on array column %q", o.op, o.mod, key)
+	}
+	items, err := parseArrayLiteral(o.value)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]any, len(items))
+	elem := o
+	elem.mod = ""
+	for i, it := range items {
+		if it == nil {
+			continue
+		}
+		elem.value = *it
+		v, err := p.coerceOperand(t, key, elem)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = v
+	}
+	return out, nil
 }
 
 // spatialOperand parses the operand of a spatial op.

@@ -9259,7 +9259,7 @@
       "query.author_id": {
         "name": "author_id",
         "in": "query",
-        "description": "Filter: author_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (author_id=not.eq.<value>).",
+        "description": "Filter: author_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (author_id=not.eq.<value>). Modifiers: eq, gt, gte, lt, lte also take (any) or (all) with a {a,b} list (author_id=eq(any).{a,b}).",
         "schema": {
           "type": "string"
         },
@@ -9310,7 +9310,7 @@
       "query.email": {
         "name": "email",
         "in": "query",
-        "description": "Filter: email=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct, like, ilike, sw, ew. Prefix not. to negate (email=not.eq.<value>).",
+        "description": "Filter: email=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct, like, ilike, sw, ew, match, imatch. Prefix not. to negate (email=not.eq.<value>). Modifiers: eq, gt, gte, lt, lte, like, ilike, match, imatch also take (any) or (all) with a {a,b} list (email=eq(any).{a,b}).",
         "schema": {
           "type": "string"
         },
@@ -9327,13 +9327,15 @@
           "like",
           "ilike",
           "sw",
-          "ew"
+          "ew",
+          "match",
+          "imatch"
         ]
       },
       "query.id": {
         "name": "id",
         "in": "query",
-        "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>).",
+        "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>). Modifiers: eq, gt, gte, lt, lte also take (any) or (all) with a {a,b} list (id=eq(any).{a,b}).",
         "schema": {
           "type": "string"
         },
@@ -9382,7 +9384,7 @@
       "query.mood": {
         "name": "mood",
         "in": "query",
-        "description": "Filter: mood=<op>.<value> (mood). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (mood=not.eq.<value>).",
+        "description": "Filter: mood=<op>.<value> (mood). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (mood=not.eq.<value>). Modifiers: eq, gt, gte, lt, lte also take (any) or (all) with a {a,b} list (mood=eq(any).{a,b}).",
         "schema": {
           "type": "string"
         },
@@ -9401,7 +9403,7 @@
       "query.moods": {
         "name": "moods",
         "in": "query",
-        "description": "Filter: moods=<op>.<value> (mood[]). Ops: eq, neq, gt, gte, lt, lte, is, isdistinct, cs, cd, ov. Prefix not. to negate (moods=not.eq.<value>). JSON paths: moods->key=<op>.<value> compares jsonb (eq, neq, gt, gte, lt, lte, in, is, isdistinct, cs, cd, hk, jpe, jpm; JSON operands), moods->>key=<op>.<value> text (the text operators).",
+        "description": "Filter: moods=<op>.<value> (mood[]). Ops: eq, neq, gt, gte, lt, lte, is, isdistinct, cs, cd, ov. Prefix not. to negate (moods=not.eq.<value>). Modifiers: eq, gt, gte, lt, lte also take (any) or (all) with a {a,b} list (moods=eq(any).{a,b}). JSON paths: moods->key=<op>.<value> compares jsonb (eq, neq, gt, gte, lt, lte, in, is, isdistinct, cs, cd, hk, jpe, jpm; JSON operands), moods->>key=<op>.<value> text (the text operators, match and imatch included).",
         "schema": {
           "type": "string"
         },
@@ -9528,7 +9530,7 @@
       "query.owner_id": {
         "name": "owner_id",
         "in": "query",
-        "description": "Filter: owner_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (owner_id=not.eq.<value>).",
+        "description": "Filter: owner_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (owner_id=not.eq.<value>). Modifiers: eq, gt, gte, lt, lte also take (any) or (all) with a {a,b} list (owner_id=eq(any).{a,b}).",
         "schema": {
           "type": "string"
         },
@@ -9547,7 +9549,7 @@
       "query.parent_id": {
         "name": "parent_id",
         "in": "query",
-        "description": "Filter: parent_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (parent_id=not.eq.<value>).",
+        "description": "Filter: parent_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (parent_id=not.eq.<value>). Modifiers: eq, gt, gte, lt, lte also take (any) or (all) with a {a,b} list (parent_id=eq(any).{a,b}).",
         "schema": {
           "type": "string"
         },
@@ -9566,7 +9568,7 @@
       "query.post_id": {
         "name": "post_id",
         "in": "query",
-        "description": "Filter: post_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (post_id=not.eq.<value>).",
+        "description": "Filter: post_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (post_id=not.eq.<value>). Modifiers: eq, gt, gte, lt, lte also take (any) or (all) with a {a,b} list (post_id=eq(any).{a,b}).",
         "schema": {
           "type": "string"
         },
@@ -9657,7 +9659,7 @@
       "query.settings": {
         "name": "settings",
         "in": "query",
-        "description": "Filter: settings=<op>.<value> (jsonb). Ops: eq, neq, gt, gte, lt, lte, is, isdistinct, cs, cd, hk, jpe, jpm. Prefix not. to negate (settings=not.eq.<value>). JSON paths: settings->key=<op>.<value> compares jsonb (eq, neq, gt, gte, lt, lte, in, is, isdistinct, cs, cd, hk, jpe, jpm; JSON operands), settings->>key=<op>.<value> text (the text operators).",
+        "description": "Filter: settings=<op>.<value> (jsonb). Ops: eq, neq, gt, gte, lt, lte, is, isdistinct, cs, cd, hk, jpe, jpm. Prefix not. to negate (settings=not.eq.<value>). Modifiers: eq, gt, gte, lt, lte also take (any) or (all) with a {a,b} list (settings=eq(any).{a,b}). JSON paths: settings->key=<op>.<value> compares jsonb (eq, neq, gt, gte, lt, lte, in, is, isdistinct, cs, cd, hk, jpe, jpm; JSON operands), settings->>key=<op>.<value> text (the text operators, match and imatch included).",
         "schema": {
           "type": "string"
         },
@@ -9680,7 +9682,7 @@
       "query.tags": {
         "name": "tags",
         "in": "query",
-        "description": "Filter: tags=<op>.<value> (text[]). Ops: eq, neq, gt, gte, lt, lte, is, isdistinct, cs, cd, ov. Prefix not. to negate (tags=not.eq.<value>). JSON paths: tags->key=<op>.<value> compares jsonb (eq, neq, gt, gte, lt, lte, in, is, isdistinct, cs, cd, hk, jpe, jpm; JSON operands), tags->>key=<op>.<value> text (the text operators).",
+        "description": "Filter: tags=<op>.<value> (text[]). Ops: eq, neq, gt, gte, lt, lte, is, isdistinct, cs, cd, ov. Prefix not. to negate (tags=not.eq.<value>). Modifiers: eq, gt, gte, lt, lte also take (any) or (all) with a {a,b} list (tags=eq(any).{a,b}). JSON paths: tags->key=<op>.<value> compares jsonb (eq, neq, gt, gte, lt, lte, in, is, isdistinct, cs, cd, hk, jpe, jpm; JSON operands), tags->>key=<op>.<value> text (the text operators, match and imatch included).",
         "schema": {
           "type": "string"
         },
@@ -9710,7 +9712,7 @@
       "query.title": {
         "name": "title",
         "in": "query",
-        "description": "Filter: title=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct, like, ilike, sw, ew. Prefix not. to negate (title=not.eq.<value>).",
+        "description": "Filter: title=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct, like, ilike, sw, ew, match, imatch. Prefix not. to negate (title=not.eq.<value>). Modifiers: eq, gt, gte, lt, lte, like, ilike, match, imatch also take (any) or (all) with a {a,b} list (title=eq(any).{a,b}).",
         "schema": {
           "type": "string"
         },
@@ -9727,13 +9729,15 @@
           "like",
           "ilike",
           "sw",
-          "ew"
+          "ew",
+          "match",
+          "imatch"
         ]
       },
       "query.type_code": {
         "name": "type_code",
         "in": "query",
-        "description": "Filter: type_code=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (type_code=not.eq.<value>).",
+        "description": "Filter: type_code=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (type_code=not.eq.<value>). Modifiers: eq, gt, gte, lt, lte also take (any) or (all) with a {a,b} list (type_code=eq(any).{a,b}).",
         "schema": {
           "type": "string"
         },

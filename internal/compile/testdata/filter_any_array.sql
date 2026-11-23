@@ -1,0 +1,2 @@
+-- request: GET /api/users?select=id&tags=eq(any).{a}
+-- error: 400 invalid_filter: eq(any) is not supported on array column "tags"

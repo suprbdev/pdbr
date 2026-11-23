@@ -46,7 +46,7 @@ func TestOpenAPIListParams(t *testing.T) {
 	}
 	cases := map[string][]string{
 		"id":       {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct"},
-		"email":    {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew"},
+		"email":    {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew", "match", "imatch"},
 		"settings": {"eq", "neq", "gt", "gte", "lt", "lte", "is", "isdistinct", "cs", "cd", "hk", "jpe", "jpm"},
 		"tags":     {"eq", "neq", "gt", "gte", "lt", "lte", "is", "isdistinct", "cs", "cd", "ov"},
 		"mood":     {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct"},
