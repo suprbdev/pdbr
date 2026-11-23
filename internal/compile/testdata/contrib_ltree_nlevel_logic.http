@@ -1,0 +1,1 @@
+GET /api/kb/docs?select=id&or=(path_nlevel.eq.1,path_nlevel.not.in.(2,3))&path_nlevel=lt(any).{4,5}

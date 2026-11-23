@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/suprbdev/pdbcore/contrib"
 	"github.com/suprbdev/pdbcore/introspect"
 
+	"github.com/suprbdev/pdbr/internal/api"
 	"github.com/suprbdev/pdbr/internal/plan"
 )
 
@@ -18,6 +20,9 @@ import (
 // operators and their key/index kinds.
 func (s *stmt) jsonPathSQL(alias string, col *introspect.Column, path plan.JSONPath, native bool) string {
 	ref := colRef(alias, col.Name)
+	if v, ok := s.hstoreValue(col); ok && len(path) == 1 && !path[0].Array {
+		return "(" + v.Render(ref, s.param(path[0].Key)) + ")"
+	}
 	base := strings.TrimPrefix(col.PGType, "_")
 	switch {
 	case col.IsArray || strings.HasPrefix(col.PGType, "_"):
@@ -48,11 +53,21 @@ func (s *stmt) jsonPathSQL(alias string, col *introspect.Column, path plan.JSONP
 	return b.String()
 }
 
-// pathColumn describes a JSON path's result as a column: text for ->>,
-// jsonb for ->.
-func pathColumn(col *introspect.Column, path plan.JSONPath) *introspect.Column {
+// hstoreValue returns the value-by-key expression of an hstore column,
+// which a one-key path (col->key, col->>key) renders.
+func (s *stmt) hstoreValue(col *introspect.Column) (contrib.Expr, bool) {
+	v, ok := api.OwnerVocabulary(s.catalog(), col)
+	if !ok || v.Name != contrib.VocabHstore {
+		return contrib.Expr{}, false
+	}
+	return v.Expr("value")
+}
+
+// pathColumn describes a JSON path's result as a column: text for ->> and
+// an hstore key lookup, jsonb for ->.
+func (s *stmt) pathColumn(col *introspect.Column, path plan.JSONPath) *introspect.Column {
 	t := "jsonb"
-	if path.Text() {
+	if _, hs := s.hstoreValue(col); path.Text() || hs {
 		t = "text"
 	}
 	return &introspect.Column{Name: col.Name, PGType: t, TypeSchema: "pg_catalog"}

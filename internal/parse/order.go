@@ -3,6 +3,7 @@ package parse
 import (
 	"strings"
 
+	"github.com/suprbdev/pdbcore/contrib"
 	"github.com/suprbdev/pdbcore/introspect"
 	"github.com/suprbdev/pdbcore/postgis"
 
@@ -15,7 +16,9 @@ import (
 // path := column | computed | relkey[!hint](column) | spatialcol.dist |
 // column.rank | column.rank_cd | column.trgm_dist | column.trgm_wdist |
 // column.trgm_swdist | column.vec_l2 | column.vec_ip | column.vec_cos |
-// column.vec_l1.
+// column.vec_l1 | column.vec_hamming | column.vec_jaccard |
+// column.levenshtein | pseudo (an orderable pseudo-column such as
+// path_nlevel).
 func (p *parser) parseOrder(s string, res *api.Resource) ([]plan.OrderTerm, error) {
 	if strings.TrimSpace(s) == "" {
 		return nil, errf(CodeInvalidFilter, "order must not be empty")
@@ -170,6 +173,13 @@ func (p *parser) resolveOrderPath(t *plan.OrderTerm, path string, res *api.Resou
 		t.Computed = c
 		return nil
 	}
+	if pc := contribPseudo(res, path); pc != nil {
+		if !pc.Orderable {
+			return errf(CodeColumnNotOrderable, "derived column %q on %q is not orderable (only integer contrib accessors are, and under filters.indexed_only only on columns in filters.allow_columns)", path, res.Path)
+		}
+		t.Pseudo = pc
+		return nil
+	}
 	if i := strings.LastIndexByte(path, '.'); i > 0 && api.IsContribOrder(path[i+1:]) {
 		return p.resolveContribOrder(t, path[:i], path[i+1:], res)
 	}
@@ -222,8 +232,11 @@ func (p *parser) resolveContribOrder(t *plan.OrderTerm, key, mod string, res *ap
 	if res.NameTaken(param) || !p.isReserved(param, p.rootResource()) {
 		return errf(CodeColumnNotOrderable, "%s.%s needs %s=, which is a column or argument filter on this route", key, mod, param)
 	}
-	if param == "vec" {
+	switch param {
+	case "vec":
 		return errf(CodeColumnNotOrderable, "%s.%s needs an index serving it on the column under filters.indexed_only (HNSW; IVFFlat also serves vec_l2, vec_ip and vec_cos on vector and halfvec), or the column in filters.allow_columns", key, mod)
+	case "levenshtein":
+		return errf(CodeColumnNotOrderable, "%s.%s needs a text column with fuzzystrmatch installed and, under filters.indexed_only (no index serves it), the column in filters.allow_columns", key, mod)
 	}
 	return errf(CodeColumnNotOrderable, "%s.%s needs a pg_trgm text column with an ordering (GiST) index under filters.indexed_only, or the column in filters.allow_columns", key, mod)
 }
@@ -239,21 +252,25 @@ func (p *parser) rootResource() *api.Resource {
 
 // resolveContribOrders binds the contrib order terms of the root and of
 // every embed: a rank term to the one full-text filter on its column in
-// the same scope, a trigram distance term to trgm= and a vector distance
-// term to vec= (missing, or the parameter without such a term → 400, like
-// near= for .dist). vec= is checked against every vector term's column
-// type.
-func (p *parser) resolveContribOrders(trgm string, hasTrgm bool, vec string, hasVec bool) error {
+// the same scope, a trigram distance term to trgm=, a vector distance term
+// to vec= and a Levenshtein term to levenshtein= (missing, or the
+// parameter without such a term → 400, like near= for .dist). vec= is
+// checked against every vector term's column type.
+func (p *parser) resolveContribOrders(trgm string, hasTrgm bool, vec string, hasVec bool, lev string, hasLev bool) error {
 	needTrgm := ""
-	var vecTerms []*plan.ContribOrder
+	var vecTerms, levTerms []*plan.ContribOrder
 	bind := func(terms []plan.OrderTerm, filter plan.Expr) error {
 		for i := range terms {
 			co := terms[i].Contrib
 			if co == nil {
 				continue
 			}
-			if api.DistanceParam(co.Name) == "vec" {
+			switch api.DistanceParam(co.Name) {
+			case "vec":
 				vecTerms = append(vecTerms, co)
+				continue
+			case "levenshtein":
+				levTerms = append(levTerms, co)
 				continue
 			}
 			if co.Rank == "" {
@@ -311,7 +328,41 @@ func (p *parser) resolveContribOrders(trgm string, hasTrgm bool, vec string, has
 	if hasTrgm {
 		p.req.Trgm = trgm
 	}
+	if err := p.bindLevenshtein(levTerms, lev, hasLev); err != nil {
+		return err
+	}
 	return p.bindVec(vecTerms, vec, hasVec)
+}
+
+// bindLevenshtein checks levenshtein= against its consumers collected over
+// the root and every embed (Levenshtein order terms, score pseudo-columns
+// and levenshtein_lt filters): required by any of them, refused without
+// one, and at most 255 characters.
+func (p *parser) bindLevenshtein(terms []*plan.ContribOrder, lev string, hasLev bool) error {
+	score, err := p.scoreUse("levenshtein")
+	if err != nil {
+		return err
+	}
+	if len(terms) == 0 && score == nil && len(p.levFilters) == 0 {
+		if hasLev {
+			return errf(CodeInvalidFilter, "levenshtein= applies to order=<col>.levenshtein, the <col>_levenshtein_distance columns and levenshtein_lt filters only, and none is present")
+		}
+		return nil
+	}
+	if !hasLev {
+		switch {
+		case len(terms) > 0:
+			return errf(CodeInvalidFilter, "order by %s.%s requires levenshtein=<text>", terms[0].Column.Name, terms[0].Name)
+		case score != nil:
+			return errf(CodeInvalidFilter, "%s requires levenshtein=<text>", score.Key)
+		}
+		return errf(CodeInvalidFilter, "filter %s on %s requires levenshtein=<text>", p.levFilters[0].Name, p.levFilters[0].Column.Name)
+	}
+	if _, err := levenshteinExpr().Params(lev); err != nil {
+		return errf(CodeInvalidFilter, "levenshtein: %s", err.Error())
+	}
+	p.req.Levenshtein = lev
+	return nil
 }
 
 // bindVec parses vec= for the vector and bit distance terms collected over
@@ -497,5 +548,22 @@ func (p *parser) resolveNear(near string, hasNear bool) error {
 	}
 	v, _ := spatialInput(near)
 	p.req.Near = v
+	return nil
+}
+
+// levenshteinExpr is fuzzystrmatch's Levenshtein distance expression,
+// whose Params validate a levenshtein= reference.
+func levenshteinExpr() contrib.Expr {
+	e, _ := contrib.Fuzzy("text").Expr("levenshteinDistance")
+	return e
+}
+
+// contribPseudo returns res's contrib accessor or derived pseudo-column
+// named key, the only pseudo-columns filters and order terms address
+// (PostGIS accessors and scores are select-only); nil otherwise.
+func contribPseudo(res *api.Resource, key string) *api.PseudoColumn {
+	if pc := res.Pseudo[key]; pc != nil && pc.Contrib != nil {
+		return pc
+	}
 	return nil
 }

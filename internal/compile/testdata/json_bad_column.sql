@@ -1,2 +1,2 @@
 -- request: GET /api/users?select=email->a
--- error: 400 invalid_select: JSON path email->a needs a json, jsonb, array or composite column; "email" is text
+-- error: 400 invalid_select: JSON path email->a needs a json, jsonb, array, composite or hstore column; "email" is text

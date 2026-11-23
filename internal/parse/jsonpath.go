@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/suprbdev/pdbcore/contrib"
 	"github.com/suprbdev/pdbcore/introspect"
 	"github.com/suprbdev/pdbcore/postgis"
 
@@ -143,13 +144,13 @@ func isIndex(s string) bool {
 
 // jsonPathTarget reports whether a JSON path can be applied to c: json and
 // jsonb columns directly, arrays and composites through to_jsonb (as
-// PostgREST does); never spatial columns.
+// PostgREST does), hstore columns as a key lookup; never spatial columns.
 func (p *parser) jsonPathTarget(c *introspect.Column) bool {
 	t := p.typeOf(c)
 	switch {
 	case t.isArray:
 		return !postgis.IsSpatial(c.PGType)
-	case t.kind == kindJSON, t.kind == kindComposite:
+	case t.kind == kindJSON, t.kind == kindComposite, t.owner == contrib.VocabHstore:
 		return true
 	}
 	return false
@@ -166,15 +167,19 @@ func (p *parser) resolvePathField(res *api.Resource, name string, path plan.JSON
 		return nil, errf(CodeUnknownColumn, "unknown column %q on %q", name, res.Path)
 	}
 	if !p.jsonPathTarget(f.Column) {
-		return nil, errf(code, "JSON path %s%s needs a json, jsonb, array or composite column; %q is %s", name, path.String(), name, p.typeOf(f.Column).name())
+		return nil, errf(code, "JSON path %s%s needs a json, jsonb, array, composite or hstore column; %q is %s", name, path.String(), name, p.typeOf(f.Column).name())
+	}
+	if p.typeOf(f.Column).owner == contrib.VocabHstore && (len(path) != 1 || path[0].Array) {
+		return nil, errf(code, "hstore column %q takes the value of one key: %s->key or %s->>key, not %s%s", name, name, name, name, path.String())
 	}
 	return f, nil
 }
 
-// pathType is the parser's view of a JSON path's result: text for ->>,
-// jsonb for -> (json columns are compared as jsonb).
-func pathType(path plan.JSONPath) colType {
-	if path.Text() {
+// pathType is the parser's view of a JSON path's result on col: text for
+// ->> and for an hstore key lookup, jsonb for -> (json columns are
+// compared as jsonb).
+func (p *parser) pathType(col *introspect.Column, path plan.JSONPath) colType {
+	if path.Text() || p.typeOf(col).owner == contrib.VocabHstore {
 		return colType{base: "text", kind: kindText}
 	}
 	return colType{base: "jsonb", kind: kindJSON}

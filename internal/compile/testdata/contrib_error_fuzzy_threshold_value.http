@@ -1,0 +1,1 @@
+GET /api/kb/docs?body=levenshtein_lt.-1&levenshtein=x

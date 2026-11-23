@@ -1,0 +1,1 @@
+GET /api/kb/labels?select=id,tags_icount,nums_icount&tags=query_int.1%26(2%7C!3)&not.or=(tags.query_int.4,tags_icount.gt.10)&order=tags_icount.desc,id&limit=5

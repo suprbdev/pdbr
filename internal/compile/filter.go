@@ -164,6 +164,8 @@ func condKey(c *plan.Cond) string {
 		}
 	case c.Computed != nil:
 		b.WriteString("fn:" + c.Computed.Key)
+	case c.Pseudo != nil:
+		b.WriteString("pseudo:" + c.Pseudo.Key)
 	case c.Column != nil:
 		b.WriteString("col:" + c.Column.Name + c.Path.Shape())
 	}
@@ -206,8 +208,14 @@ func (s *stmt) condSQL(c *plan.Cond, alias string) (string, error) {
 			return "", errUser(CodeInvalidFilter, "computed column %q is set-returning and cannot be filtered", c.Computed.Key)
 		}
 		return s.opSQL(fnReturnColumn(fn), s.computedCallSQL(fn, t, alias, nil), c)
+	case c.Pseudo != nil:
+		expr, err := s.contribPseudoSQL(c.Pseudo, nil, alias)
+		if err != nil {
+			return "", err
+		}
+		return s.opSQL(&introspect.Column{Name: c.Pseudo.Key, PGType: "int4", TypeSchema: "pg_catalog"}, "("+expr+")", c)
 	case c.Column != nil && len(c.Path) > 0:
-		return s.opSQL(pathColumn(c.Column, c.Path), s.jsonPathSQL(alias, c.Column, c.Path, false), c)
+		return s.opSQL(s.pathColumn(c.Column, c.Path), s.jsonPathSQL(alias, c.Column, c.Path, false), c)
 	case c.Column != nil:
 		return s.opSQL(c.Column, colRef(alias, c.Column.Name), c)
 	}
@@ -416,6 +424,12 @@ func (s *stmt) contribFilterSQL(cf api.ContribFilter, ref string, v any) (string
 			return "", errUser(CodeInvalidFilter, "filter %s requires vec=", cf.Name)
 		}
 		v = map[string]any{"vector": s.plan.Vec, "distance": v}
+	}
+	if cf.Op.Arg == contrib.ArgTextDistance {
+		if s.plan.Levenshtein == nil {
+			return "", errUser(CodeInvalidFilter, "filter %s requires levenshtein=", cf.Name)
+		}
+		v = map[string]any{"text": s.plan.Levenshtein, "distance": v}
 	}
 	params, err := cf.Op.Params(v)
 	if err != nil {

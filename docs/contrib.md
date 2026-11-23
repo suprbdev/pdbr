@@ -1,4 +1,4 @@
-# Contrib types: full-text search, trigrams, unaccent, hstore, ltree, ranges, inet, pgvector
+# Contrib types: full-text search, trigrams, unaccent, fuzzystrmatch, hstore, ltree, intarray, ranges, inet, pgvector
 
 pdbr gives PostgreSQL's non-scalar built-in types and the common contrib
 extensions a filter and ordering surface, built on the operator vocabularies
@@ -9,8 +9,9 @@ vocabulary needs is read from the catalog:
   built-in range types and their multiranges, `inet`/`cidr`) always get their
   operators, and so do range types created with `CREATE TYPE … AS RANGE`
   (and their multiranges), which the catalog records with their subtype.
-- **Extension types and operators** (`pg_trgm`, `unaccent`, `hstore`,
-  `ltree`, `citext`, pgvector's `vector`) only appear when the extension is
+- **Extension types and operators** (`pg_trgm`, `unaccent`,
+  `fuzzystrmatch`, `hstore`, `ltree`, `citext`, `intarray`, pgvector's
+  `vector`) only appear when the extension is
   installed (`pg_extension`). None of them is required: without one, its
   operators, order terms and type handling are simply absent. The extension
   version matters too: `pg_trgm` older than 1.2 has no word-similarity
@@ -158,6 +159,37 @@ therefore `400 column_not_filterable` unless the column is listed in
 `filters.allow_columns` (or the policy is off); see
 [the indexed-only policy](#the-indexed-only-policy).
 
+### fuzzystrmatch (pdbr)
+
+| op | SQL | Operand |
+|---|---|---|
+| `levenshtein_lt` | `levenshtein_less_equal(col, $lev, $d) < $d` | the exclusive bound `$d`, a non-negative integer; the text is `levenshtein=` |
+| `soundex` | `soundex(col) = soundex($1)` | text |
+| `metaphone` | `metaphone(col, 255) = metaphone($1, 255)` | text, at most 255 bytes |
+| `dmetaphone` | `dmetaphone(col) = dmetaphone($1)` (primary Double Metaphone code) | text |
+
+They apply to text-like columns (`text`, `varchar`, `char(n)`, `citext`)
+when the `fuzzystrmatch` extension is installed, take `not.` and work in
+`or=`/`and=` and embed filters:
+
+```http
+GET /api/people?name=levenshtein_lt.3&levenshtein=Jon&order=name.levenshtein&limit=10
+GET /api/people?or=(name.soundex.Robert,name.dmetaphone.Smith)
+```
+
+`levenshtein_lt` measures from the request-wide `levenshtein=` text, like
+the vector thresholds measure from `vec=` (see [Ordering](#ordering) and
+[Scores](#scores)); without it the request is `400 invalid_filter`.
+fuzzystrmatch refuses texts over 255 characters (`metaphone`: bytes):
+a longer `levenshtein=` or `metaphone` operand is `400 invalid_filter`, and
+a longer column value has no distance or code, so neither an operator nor
+its `not.` form matches it (and its distance sorts last) instead of the
+request failing. Levenshtein compares case-sensitively (on citext too); the
+phonetic codes ignore case. No index serves any of them (only an expression
+index on, say, `soundex(col)` could, and it does not match the rendered
+SQL), so under `filters.indexed_only` they need the column in
+`filters.allow_columns`, like the unaccent operators.
+
 ### hstore (pdbr)
 
 | op | SQL | Operand |
@@ -167,6 +199,18 @@ therefore `400 column_not_filterable` unless the column is listed in
 | `hk_any` | `?\|` | `{a,b}` key list |
 | `cs` | `@>` | JSON object `{"color":"red"}` (→ `"ext".hstore($1::text[])`) or an hstore literal `color=>red` |
 | `cd` | `<@` | same |
+| `hk_def` | `defined(col, $1)` | key: present with a non-null value |
+
+The value of one key is the JSON-path spelling `attrs->color` (or
+`attrs->>color`; both are hstore's `->`, which yields text): in `select=`
+(answering under the key, `color`, unless aliased, and castable:
+`attrs->>n::int`), in filters with the text operators
+(`attrs->>color=eq.red`, `attrs->size=like.X*`, `attrs->color=is.null`
+for an absent or null value) and in `order=` (`attrs->color.desc`, keyset
+cursors included). The key is a bind parameter. Only one key step is
+allowed (`attrs->a->b` and `attrs->0` are `400`), and, as for JSON paths,
+the column must be filterable / orderable. `hk_def` and `cd` are not
+index-served and need `filters.allow_columns` under the policy.
 
 `eq`, `neq`, `in`, `is` and `isdistinct` compare whole values given as hstore
 literals, through the extension's `=` operator. hstore has no `<`/`>`
@@ -187,6 +231,25 @@ operators, so `gt`/`gte`/`lt`/`lte` are `400 invalid_filter`.
 `ltree[]` columns take `ancestor`, `descendant`, `lquery`, `lquery_any` and
 `ltxtquery`, which hold when some element matches, plus the array operators.
 Comparisons (`eq`, `gt`, …) use the extension's operators.
+
+Derived pseudo-columns (see [Derived columns](#derived-columns-ltree-and-intarray)):
+`<col>_nlevel`, `<col>_parent`, `<col>_lca(path=…)` and
+`<col>_subpath(offset=…[,length=…])` on ltree columns, `<col>_lca` on
+`ltree[]` columns.
+
+### intarray (pdbr)
+
+| op | SQL | Operand |
+|---|---|---|
+| `query_int` | `col @@ $1::"ext".query_int` | a `query_int` boolean query over the elements: `1&(2\|3)`, `!4` (URL-encode `&` and `\|`) |
+
+`int4[]` columns take it when the `intarray` extension is installed, besides
+the core array operators (`cs`, `cd`, `ov`), which intarray's own operator
+classes (`gin__int_ops`, `gist__int_ops`) also serve. A GIN or GiST index on
+the column admits it under `filters.indexed_only`. A malformed query is
+`400 pg:42601`; intarray rejects arrays holding NULL elements (`400
+pg:22004` when such a row is evaluated). `<col>_icount` selects, filters and
+orders by the element count (see [Derived columns](#derived-columns-ltree-and-intarray)).
 
 ### inet / cidr (pdbr; `ov` as in PostgREST)
 
@@ -246,6 +309,9 @@ hstore these are its B-tree class operators `#<#`/`#>#`, since it has no
 | `<col>.vec_ip` | `col <#> $vec::vector` (negative inner product) | `asc` |
 | `<col>.vec_cos` | `col <=> $vec::vector` (cosine distance, 1 − cosine similarity) | `asc` |
 | `<col>.vec_l1` | `col <+> $vec::vector` (taxicab distance; pgvector 0.7+) | `asc` |
+| `<col>.levenshtein` | `levenshtein(col, $levenshtein)` (fuzzystrmatch edit distance) | `asc` (default) |
+| `<col>->key` | the hstore value of `key` (text) | either |
+| `<col>_nlevel`, `<col>_icount` | `nlevel(col)`, `icount(col)` (allowlisted columns under the policy) | either |
 
 ```http
 GET /api/articles?search=wfts(english).fat%20cat&order=search.rank.desc&limit=10
@@ -275,6 +341,13 @@ GET /api/articles?title=trgm_sim.postgres&order=title.trgm_dist,id&trgm=postgres
   without one is `400 invalid_filter`, and `vec` is reserved only where no
   column, computed column or RPC argument is named so. See
   [pgvector](#pgvector-pdbr).
+- **levenshtein** measures the edit distance to the `levenshtein=` text the
+  same way (one `levenshtein=` per request, reserved only where no column,
+  computed column or RPC argument is named so; a term without it, or
+  `levenshtein=` without a term, score or `levenshtein_lt` filter, is `400
+  invalid_filter`). No index serves it, so under `filters.indexed_only` it
+  needs the column in `filters.allow_columns` (`400 column_not_orderable`
+  otherwise). Values over 255 characters have no distance and sort last.
 - The direction keyword is the usual one: the default is `asc` and nulls sort
   last. Ranks grow with relevance, so ask for `.desc`. Distances shrink with
   similarity, so `asc` (the default) is nearest-first, which a GiST trigram
@@ -413,6 +486,7 @@ score fields:
 | `<col>_strict_word_similarity` | `strict_word_similarity($trgm, col)` (1.4+) | `trgm=` |
 | `<col>_l2_distance`, `_negative_inner_product`, `_cosine_distance`, `_l1_distance` | `col <-> $vec`, `<#>`, `<=>`, `<+>` | `vec=` |
 | `<col>_hamming_distance`, `<col>_jaccard_distance` (bit columns) | `col <~> $vec::varbit`, `<%>` | `vec=` |
+| `<col>_levenshtein_distance` (integer) | `levenshtein(col, $levenshtein)`; null for values over 255 characters | `levenshtein=` |
 
 ```http
 GET /api/articles?select=id,title,title_similarity&title=trgm_sim.postgres&trgm=postgres&order=title.trgm_dist&limit=10
@@ -442,6 +516,46 @@ GET /api/docs?select=id,chunks(id,embedding_cosine_distance)&chunks.order=embedd
 - Each costs 1 per row in `server.max_cost`, like a column. OpenAPI lists
   them as read-only nullable `number` properties of the resource schema and
   in the `select` description.
+
+## Derived columns (ltree and intarray)
+
+Some accessors of the vocabularies are pseudo-columns next to the column
+they derive from, selected explicitly like the scores (never part of `*`),
+aliasable, and usable in embeds, spreads, row paths and mutation responses:
+
+| pseudo-column | value | type | filter / order |
+|---|---|---|---|
+| `<col>_nlevel` (ltree) | `nlevel(col)`, the number of labels | integer | yes |
+| `<col>_parent` (ltree) | `subpath(col, 0, nlevel(col) - 1)`: empty for a one-label path, null for the empty path | string | no |
+| `<col>_lca(path=a.b)` (ltree) | `lca(col, $path)`, the longest common ancestor with `path` | string | no |
+| `<col>_subpath(offset=1[,length=2])` (ltree) | `subpath(col, $offset[, $length])`; a negative offset counts from the end, length (≥ 0) defaults to the rest; null when offset lies outside the path | string | no |
+| `<col>_lca` (ltree[]) | `lca` of the non-null elements; null for an empty array | string | no |
+| `<col>_icount` (int4[] with intarray) | `icount(col)`, the number of elements | integer | yes |
+
+```http
+GET /api/categories?select=id,path_nlevel,path_parent,top:path_subpath(offset=0,length=1)&path_nlevel=lte.2&order=path_nlevel.desc
+GET /api/categories?select=id,common:path_lca(path=top.science.physics)
+GET /api/items?select=id,tags_icount&tags=query_int.1%26(2%7C3)&order=tags_icount.desc
+```
+
+The select arguments are bind parameters (the SQL text does not depend on
+whether `length` is given), and malformed ones are `400 invalid_select`
+(`path_subpath` without arguments, a non-integer offset, a negative length,
+an offset beyond ±65535). `<col>_nlevel` and `<col>_icount` take the integer
+filter operators (`eq … in, is, isdistinct`, `not.`, `or=`/`and=`, embed
+and relation filters, `(any)`/`(all)`) and `order=` terms (keyset cursors
+included). No index serves them, so under `filters.indexed_only` they
+filter and order only when the column is in `filters.allow_columns` (and
+filterable / orderable itself): `400 column_not_filterable` /
+`column_not_orderable` otherwise; selecting them is always allowed. A real
+or computed column owning the key keeps it (with a warning). `@omit read`
+removes them with the column, `@omit filter` / `@omit order` their filter
+and order surface. Each costs 1 per row in `server.max_cost`. OpenAPI lists
+them as read-only properties (with their select syntax) and in the `select`
+description, documents the filterable ones as filter parameters and the
+orderable ones in the `order` description. The other vocabularies'
+accessors (inet `family`, range bounds, vector `dims`/`norm`) are not
+exposed.
 
 ## Output
 
@@ -498,7 +612,11 @@ columns) need the column in `filters.allow_columns`, or
 index-served and always need `filters.allow_columns` under the policy.
 Trigram distance ordering needs a GiST index under the policy, vector
 distance ordering an HNSW index (or IVFFlat, which serves `vec_l2`,
-`vec_ip` and `vec_cos` on `vector` and `halfvec`). Rank ordering needs a
+`vec_ip` and `vec_cos` on `vector` and `halfvec`). `query_int` needs a GIN
+or GiST index. The fuzzystrmatch operators, `order=<col>.levenshtein` and
+`<col>_levenshtein_distance`, `hk_def`, and filtering or ordering by
+`<col>_nlevel` / `<col>_icount` are never index-served and need
+`filters.allow_columns`. Rank ordering needs a
 column that accepts a full-text filter. A rejected operator is `400
 column_not_filterable` (`column_not_orderable` for order terms).
 
@@ -520,9 +638,12 @@ trigram / vector distance term, score column or threshold.
   `*_any`, `lquery`, `lquery_any`, `ltxtquery`), inet
   `cs_strict`/`cd_strict`, the unaccent ops (`unaccent_*`), element
   containment `cs.5` on ranges, JSON-object range and hstore operands, and
-  the `rank`/`rank_cd`/`trgm_*`/`vec_*` order terms, the `vec_*_lt`
-  thresholds and the score pseudo-columns with `trgm=`/`vec=` are pdbr
-  extensions.
+  the `rank`/`rank_cd`/`trgm_*`/`vec_*`/`levenshtein` order terms, the
+  `vec_*_lt` and `levenshtein_lt` thresholds, the fuzzystrmatch phonetic
+  operators, `hk_def`, `query_int`, the score and derived pseudo-columns
+  with `trgm=`/`vec=`/`levenshtein=` are pdbr extensions. hstore values by
+  key (`attrs->color`) work in PostgREST too, which renders the arrow
+  literally; pdbr restricts it to one key and treats `->` and `->>` alike.
 - **pgvector output.** `vector` and `halfvec` values are JSON arrays of
   numbers. PostgREST returns their text form as a JSON string
   (`"[0.1,0.2,0.3]"`); pdbr parses it, so clients get numbers without a
@@ -560,6 +681,15 @@ thresholds → `vec_l2_lt`, … `vec_jaccard_lt`. pdbq's score fields
 pseudo-columns (`<col>_similarity`, `<col>_cosine_distance`, …); pdbq reads
 each list's own `similarTo:`/`nearVector:` and its threshold operators carry
 their own vector, where pdbr has one request-wide `trgm=`/`vec=`, and a
-pdbq score without its reference is `null` where pdbr answers `400`. The vocabulary's derived accessors
-(ltree `nlevel`, inet `family`, range bounds, vector `dims`/`norm`) are not
-exposed by pdbr.
+pdbq score without its reference is `null` where pdbr answers `400`.
+hstore `hasDefinedKey` is `hk_def`; fuzzystrmatch `levenshteinDistanceLessThan`,
+`soundexEqualTo`, `metaphoneEqualTo`, `doubleMetaphoneEqualTo` are
+`levenshtein_lt`, `soundex`, `metaphone`, `dmetaphone`, the
+`levenshteinDistance` ordering and score are `<col>.levenshtein` and
+`<col>_levenshtein_distance` against `levenshtein=` (pdbq's threshold
+carries its own `{text, distance}`); intarray `matchesQueryInt` is
+`query_int`. The hstore `value` expression is the `attrs->key` path, and
+the ltree `nlevel`, `parent`, `lca`, `subpath` and intarray `icount` values
+are the derived pseudo-columns `<col>_nlevel`, … (`subpath`/`lca` with
+select arguments). The other derived accessors (inet `family`, range
+bounds, vector `dims`/`norm`) are not exposed by pdbr.

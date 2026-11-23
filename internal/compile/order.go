@@ -25,6 +25,8 @@ type orderTerm struct {
 	dist *introspect.Column
 	// contrib set: order by full-text relevance or trigram distance.
 	contrib *plan.ContribOrder
+	// pseudo set: order by a contrib accessor pseudo-column.
+	pseudo *api.PseudoColumn
 	// pathCol and path set: order by a JSON path of pathCol.
 	pathCol *introspect.Column
 	path    plan.JSONPath
@@ -56,6 +58,9 @@ func (s *stmt) orderTerms(t *introspect.Table, terms []plan.OrderTerm) []orderTe
 		case term.Contrib != nil:
 			o.contrib = term.Contrib
 			o.nullable = term.Contrib.Column == nil || !term.Contrib.Column.NotNull
+		case term.Pseudo != nil:
+			o.pseudo = term.Pseudo
+			o.nullable = !term.Pseudo.Column.NotNull
 		case term.Relation != nil:
 			o.rel = term.Relation
 			o.nullable = true
@@ -92,7 +97,7 @@ func (s *stmt) orderTerms(t *introspect.Table, terms []plan.OrderTerm) []orderTe
 
 // plain reports whether the term orders by a column of the row itself.
 func (t orderTerm) plain() bool {
-	return t.fn == nil && t.rel == nil && t.dist == nil && t.contrib == nil && t.path == nil
+	return t.fn == nil && t.rel == nil && t.dist == nil && t.contrib == nil && t.pseudo == nil && t.path == nil
 }
 
 // cmp renders a comparison operator for the term's sort value,
@@ -161,6 +166,13 @@ func (s *stmt) orderExprSQL(term orderTerm, alias string) string {
 		return postgis.KNNSQL(colRef(alias, term.dist.Name), s.nearExpr(term.dist))
 	case term.contrib != nil:
 		return s.contribOrderSQL(term.contrib, alias)
+	case term.pseudo != nil:
+		expr, err := s.contribPseudoSQL(term.pseudo, nil, alias)
+		if err != nil {
+			s.fail(err)
+			return "NULL"
+		}
+		return "(" + expr + ")"
 	case term.rel != nil:
 		return s.relationOrderSQL(term, alias)
 	case term.fn != nil:
@@ -187,8 +199,8 @@ func (s *stmt) nearExpr(col *introspect.Column) string {
 
 // contribOrderSQL renders a contrib order term: the relevance of the
 // column's full-text filter (Op.RankSQL over fresh placeholders for the same
-// operand), the trigram distance to trgm= or the vector distance to vec=
-// (Expr.Render).
+// operand), the trigram distance to trgm=, the vector distance to vec= or
+// the Levenshtein distance to levenshtein= (Expr.Render).
 func (s *stmt) contribOrderSQL(co *plan.ContribOrder, alias string) string {
 	if co.Column == nil {
 		s.fail(fmt.Errorf("compile: contrib order term without column"))
@@ -218,8 +230,11 @@ func (s *stmt) contribOrderSQL(co *plan.ContribOrder, alias string) string {
 			continue
 		}
 		param, val := "trgm", s.plan.Trgm
-		if v.Name == contrib.VocabVector || v.Name == contrib.VocabBit {
+		switch v.Name {
+		case contrib.VocabVector, contrib.VocabBit:
 			param, val = "vec", s.plan.Vec
+		case contrib.VocabFuzzy:
+			param, val = "levenshtein", s.plan.Levenshtein
 		}
 		if val == nil {
 			s.fail(errUser(CodeInvalidFilter, "order by %s.%s requires %s=", co.Column.Name, co.Name, param))

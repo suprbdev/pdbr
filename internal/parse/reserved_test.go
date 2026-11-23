@@ -41,7 +41,7 @@ func TestSoftReservedParams(t *testing.T) {
 	wantCode(t, err, CodeColumnNotOrderable)
 	docs := b.ByPath["kb.docs"]
 	for _, o := range b.ContribOrders(docs, docs.Table.Column("title")) {
-		if o.Rank == "" {
+		if o.Param == "trgm" {
 			t.Errorf("trigram order %s offered next to a column named trgm", o.Name)
 		}
 	}
@@ -129,5 +129,34 @@ func TestContribJSONArgs(t *testing.T) {
 	for _, bad := range []string{`{"h": {"a": 1}}`, `{"r": {"start": 1.5}}`, `{"m": {"start": 1}}`} {
 		_, err := doParse(t, b, req{method: "POST", url: "/api/rpc/contrib_probe", header: map[string]string{"Content-Type": "application/json"}, body: bad}, allOn)
 		wantCode(t, err, CodeInvalidBody)
+	}
+}
+
+// TestLevenshteinSoftReserved: levenshtein= yields to a column of that
+// name, which then takes the Levenshtein order term, score and threshold
+// with it; elsewhere it binds the reference text.
+func TestLevenshteinSoftReserved(t *testing.T) {
+	cat := testcatalog.Contrib(testutil.FixtureCatalog())
+	docs := cat.Table(testcatalog.ContribSchema, "docs")
+	docs.Columns = append(docs.Columns, &introspect.Column{Name: "levenshtein", Position: 13, PGType: "text", TypeSchema: "pg_catalog"})
+	b := buildCatalog(t, cat, false, []string{"public", testcatalog.ContribSchema}, nil)
+	p := mustParse(t, b, "/api/kb/docs?levenshtein=eq.x")
+	if c, ok := p.Filter.(plan.Cond); !ok || c.Column.Name != "levenshtein" {
+		t.Errorf("levenshtein=eq.x filter = %#v", p.Filter)
+	}
+	for _, u := range []string{"/api/kb/docs?order=body.levenshtein", "/api/kb/docs?body=levenshtein_lt.2"} {
+		_, err := doParse(t, b, req{url: u}, allOn)
+		if err == nil {
+			t.Errorf("%s parsed next to a column named levenshtein", u)
+		}
+	}
+	if b.ByPath["kb.docs"].Pseudo["body_levenshtein_distance"] != nil {
+		t.Error("Levenshtein score next to a column named levenshtein")
+	}
+
+	plain := buildContrib(t, false)
+	p = mustParse(t, plain, "/api/kb/docs?select=id,body_levenshtein_distance&body=levenshtein_lt.2&order=body.levenshtein&levenshtein=Jon")
+	if p.Levenshtein != "Jon" {
+		t.Errorf("Levenshtein = %#v", p.Levenshtein)
 	}
 }

@@ -15,8 +15,8 @@ const (
 	ContribExtSchema = "ext"
 )
 
-// Contrib adds the hstore, ltree, citext, pg_trgm, unaccent and vector
-// extensions (in ContribExtSchema) and the table kb.docs, which has one
+// Contrib adds the hstore, ltree, citext, pg_trgm, unaccent, fuzzystrmatch,
+// intarray and vector extensions (in ContribExtSchema) and the table kb.docs, which has one
 // column of every non-vector type a pdbcore/contrib vocabulary covers, to
 // cat, and appends ContribSchema to cat.Schemas. Its indexes serve the
 // trigram operators and distances on title, full-text search on search, the
@@ -28,7 +28,8 @@ const (
 // extension-owned types. kb.embeddings has a pgvector column of each type:
 // emb (vector, HNSW index), half (halfvec, IVFFlat index) and sparse
 // (sparsevec, no index), plus code (bit, HNSW index) for pgvector's bit
-// distances, and kb.chunks a vector column embedded under it.
+// distances, and kb.chunks a vector column embedded under it. kb.labels has
+// two int4[] columns for intarray: tags (GIN index) and nums (no index).
 func Contrib(cat *introspect.Catalog) *introspect.Catalog {
 	cat.Schemas = append(cat.Schemas, ContribSchema)
 	cat.Extensions = append(cat.Extensions,
@@ -38,6 +39,8 @@ func Contrib(cat *introspect.Catalog) *introspect.Catalog {
 		&introspect.Extension{Name: "pg_trgm", Version: "1.6", Schema: ContribExtSchema},
 		&introspect.Extension{Name: "unaccent", Version: "1.1", Schema: ContribExtSchema},
 		&introspect.Extension{Name: "vector", Version: "0.8.0", Schema: ContribExtSchema},
+		&introspect.Extension{Name: "fuzzystrmatch", Version: "1.2", Schema: ContribExtSchema},
+		&introspect.Extension{Name: "intarray", Version: "1.5", Schema: ContribExtSchema},
 	)
 	core := func(name string, pos int, typ string) *introspect.Column {
 		return &introspect.Column{Name: name, Position: pos, PGType: typ, TypeSchema: "pg_catalog"}
@@ -138,5 +141,17 @@ func Contrib(cat *introspect.Catalog) *introspect.Catalog {
 			Privileges: priv,
 		},
 	)
+	labelID := core("id", 1, "int4")
+	labelID.NotNull = true
+	arr := func(name string, pos int) *introspect.Column {
+		return &introspect.Column{Name: name, Position: pos, PGType: "_int4", TypeSchema: "pg_catalog", IsArray: true}
+	}
+	cat.Tables = append(cat.Tables, &introspect.Table{
+		Schema: ContribSchema, Name: "labels", Kind: introspect.RelTable,
+		Columns:    []*introspect.Column{labelID, arr("tags", 2), arr("nums", 3)},
+		PrimaryKey: &introspect.Constraint{Name: "labels_pkey", Columns: []string{"id"}},
+		Indexes:    []*introspect.Index{idx("labels_tags_idx", "gin", "tags")},
+		Privileges: priv,
+	})
 	return cat
 }

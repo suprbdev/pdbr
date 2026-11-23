@@ -196,15 +196,25 @@ type Computed struct {
 }
 
 // PseudoColumn is a derived value over a real column: a PostGIS accessor
-// (postgis plugin: <col>_area, <col>_centroid, ...) or a score measured
-// against the request's reference parameter (Score set: <col>_distance from
-// near=, <col>_similarity from trgm=, <col>_cosine_distance from vec=, ...).
+// (postgis plugin: <col>_area, <col>_centroid, ...), a pdbcore/contrib
+// accessor or derived value (Contrib set: <col>_nlevel, <col>_parent,
+// <col>_lca, <col>_subpath, <col>_icount) or a score measured against the
+// request's reference parameter (Score set: <col>_distance from near=,
+// <col>_similarity from trgm=, <col>_cosine_distance from vec=,
+// <col>_levenshtein_distance from levenshtein=, ...).
 type PseudoColumn struct {
 	Key      string
 	Column   *introspect.Column
 	Accessor string
 	// Score is set on a score pseudo-column; Accessor is then empty.
 	Score *Score
+	// Contrib is set on a contrib accessor or derived pseudo-column;
+	// Accessor is then empty.
+	Contrib *ContribValue
+	// Filterable and Orderable report that the pseudo-column takes filters
+	// (<key>=<op>.<value>) and order terms (order=<key>); only integer
+	// contrib accessors the filter policy admits do.
+	Filterable, Orderable bool
 	// Schema is the OpenAPI schema of the value (nil renders as {}).
 	Schema      *Schema
 	Description string
@@ -220,6 +230,28 @@ type Score struct {
 	// cosineDistance, hammingDistance, ...); the zero Expr for the spatial
 	// distance (ST_Distance).
 	Expr contrib.Expr
+}
+
+// ContribValue binds a pseudo-column to a pdbcore/contrib accessor (no
+// arguments) or derived expression (select arguments, Args).
+type ContribValue struct {
+	// Accessor is the operand-free accessor (nlevel, parent, lca, icount);
+	// nil for a derived expression.
+	Accessor *contrib.Accessor
+	// Expr is the derived expression (ltree lca with a path, subpath);
+	// nil for an accessor.
+	Expr *contrib.Expr
+	// Args are the select arguments of a derived expression, in
+	// documentation order.
+	Args []ContribArg
+}
+
+// ContribArg is one select argument of a derived contrib pseudo-column.
+type ContribArg struct {
+	Name string
+	// Type is "string" or "integer".
+	Type     string
+	Optional bool
 }
 
 // ReturnKind classifies an RPC's result shape.

@@ -1,0 +1,2 @@
+-- request: GET /api/kb/labels?nums=query_int.1
+-- error: 400 column_not_filterable: column "nums" on "kb.labels" is not filterable

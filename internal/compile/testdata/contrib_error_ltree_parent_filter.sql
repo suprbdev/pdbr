@@ -1,0 +1,2 @@
+-- request: GET /api/kb/docs?path_parent=eq.a
+-- error: 400 column_not_filterable: derived column "path_parent" on "kb.docs" is not filterable (only integer contrib accessors are, and under filters.indexed_only only on columns in filters.allow_columns)

@@ -194,6 +194,16 @@ func (p *parser) columnCond(res *api.Resource, key string, o operand) (plan.Expr
 		}
 		return plan.Cond{Computed: c, Op: o.spec.op, Value: v, Negate: o.negate, Mod: o.mod}, nil
 	}
+	if pc := contribPseudo(res, key); pc != nil {
+		if !pc.Filterable {
+			return nil, errf(CodeColumnNotFilterable, "derived column %q on %q is not filterable (only integer contrib accessors are, and under filters.indexed_only only on columns in filters.allow_columns)", key, res.Path)
+		}
+		v, err := p.coerceOperand(p.typeFor("int4", "pg_catalog", false, ""), key, o)
+		if err != nil {
+			return nil, err
+		}
+		return plan.Cond{Pseudo: pc, Op: o.spec.op, Value: v, Negate: o.negate, Mod: o.mod}, nil
+	}
 	return nil, errf(CodeUnknownColumn, "unknown column %q on %q", key, res.Path)
 }
 
@@ -214,7 +224,7 @@ func (p *parser) pathCond(res *api.Resource, key string, o operand) (plan.Expr, 
 	if o.spec.contrib || o.spec.spatial {
 		return nil, errf(CodeInvalidFilter, "operator %q is not supported on JSON path %q", o.op, key)
 	}
-	t := pathType(path)
+	t := p.pathType(f.Column, path)
 	var v any
 	if t.kind == kindJSON && o.spec.op == plan.OpIn {
 		items, err := parseRawList(o.value)
@@ -265,8 +275,12 @@ func (p *parser) contribCond(res *api.Resource, f *api.Field, o operand) (plan.E
 	if err != nil {
 		return nil, true, err
 	}
-	if cf.Op.Arg == contrib.ArgVectorDistance {
+	switch cf.Op.Arg {
+	case contrib.ArgVectorDistance:
 		p.vecFilters = append(p.vecFilters, vecFilter{Column: c, Op: cf.Op, Name: o.op})
+		return plan.Cond{Column: c, Op: o.spec.op, Value: v, Negate: o.negate}, true, nil
+	case contrib.ArgTextDistance:
+		p.levFilters = append(p.levFilters, vecFilter{Column: c, Op: cf.Op, Name: o.op})
 		return plan.Cond{Column: c, Op: o.spec.op, Value: v, Negate: o.negate}, true, nil
 	}
 	if _, literal := v.(string); !literal || cf.Op.Arg != contrib.ArgHstore {
@@ -287,6 +301,12 @@ func contribOperand(arg contrib.ArgKind, o operand) (any, *compile.UserError) {
 		d, err := strconv.ParseFloat(strings.TrimSpace(o.value), 64)
 		if err != nil || math.IsNaN(d) || math.IsInf(d, 0) {
 			return nil, errf(CodeInvalidFilter, "%s takes a finite number (the distance threshold; the vector is vec=), got %q", o.op, o.value)
+		}
+		return d, nil
+	case contrib.ArgTextDistance:
+		d, err := strconv.ParseInt(strings.TrimSpace(o.value), 10, 32)
+		if err != nil || d < 0 {
+			return nil, errf(CodeInvalidFilter, "%s takes a non-negative integer (the distance threshold; the text is levenshtein=), got %q", o.op, o.value)
 		}
 		return d, nil
 	case contrib.ArgTextList:
@@ -657,7 +677,7 @@ func (p *parser) parseLogicItem(res *api.Resource, item string, depth int) (plan
 	if !ok || col == "" {
 		return nil, errf(CodeInvalidFilter, "malformed condition %q (want column.op.value)", item)
 	}
-	if res.Field(col) == nil && res.Computed[col] == nil && !isPathKey(res, col) {
+	if res.Field(col) == nil && res.Computed[col] == nil && contribPseudo(res, col) == nil && !isPathKey(res, col) {
 		// Relation filter inside a logic list: rel[!hint].col.op.value or
 		// rel=exists.true spelled rel.exists.true.
 		relKey, _, _ := strings.Cut(col, "!")
@@ -684,7 +704,7 @@ func (p *parser) parseLogicItem(res *api.Resource, item string, depth int) (plan
 		}
 		o.value = v
 	}
-	if res.Field(col) != nil || res.Computed[col] != nil || isPathKey(res, col) {
+	if res.Field(col) != nil || res.Computed[col] != nil || contribPseudo(res, col) != nil || isPathKey(res, col) {
 		return p.columnCond(res, col, o)
 	}
 	return p.relationCond(res, col, o)
@@ -762,7 +782,7 @@ func (p *parser) relationCond(res *api.Resource, key string, o operand) (plan.Ex
 	if o.op == "exists" {
 		return nil, errf(CodeInvalidFilter, "exists applies to the relation key itself (%s=exists.true)", relKey)
 	}
-	if rel.To.Field(rest) == nil && rel.To.Computed[rest] == nil && !isPathKey(rel.To, rest) {
+	if rel.To.Field(rest) == nil && rel.To.Computed[rest] == nil && contribPseudo(rel.To, rest) == nil && !isPathKey(rel.To, rest) {
 		if strings.Contains(rest, ".") {
 			return nil, errf(CodeInvalidFilter, "relation filter paths are one level deep (%s.<column>)", relKey)
 		}

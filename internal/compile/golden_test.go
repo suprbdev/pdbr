@@ -185,6 +185,7 @@ func goldenBuilt(t testing.TB) *api.Built {
 		AllowColumns: map[string][]string{
 			testcatalog.ContribSchema + ".docs":       {"body", "attrs", "path"},
 			testcatalog.ContribSchema + ".embeddings": {"emb", "code"},
+			testcatalog.ContribSchema + ".labels":     {"tags"},
 		},
 		Functions:   true,
 		BasePath:    goldenBasePath,

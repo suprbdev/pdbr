@@ -11,8 +11,8 @@ import (
 )
 
 // ContribFilter is one filter operator a column takes from a pdbcore/contrib
-// vocabulary (full-text search, pg_trgm, unaccent, hstore, ltree, ranges,
-// inet).
+// vocabulary (full-text search, pg_trgm, unaccent, fuzzystrmatch, hstore,
+// ltree, intarray, ranges, inet, pgvector).
 type ContribFilter struct {
 	// Name is the operator's URL spelling (fts, trgm_sim, cs, ...).
 	Name string
@@ -24,8 +24,9 @@ type ContribFilter struct {
 
 // ContribOrder is one order=<col>.<Name> term a column takes from a
 // pdbcore/contrib vocabulary: full-text relevance (rank, rank_cd), a
-// trigram distance (trgm_dist, trgm_wdist, trgm_swdist) or a pgvector
-// distance (vec_l2, vec_ip, vec_cos, vec_l1).
+// trigram distance (trgm_dist, trgm_wdist, trgm_swdist), a pgvector
+// distance (vec_l2, vec_ip, vec_cos, vec_l1) or the Levenshtein distance
+// (levenshtein).
 type ContribOrder struct {
 	// Name is the order modifier as written after the column.
 	Name string
@@ -34,7 +35,8 @@ type ContribOrder struct {
 	// Expr is the distance expression of a trigram or vector term.
 	Expr contrib.Expr
 	// Param is the query parameter holding the reference value a distance
-	// term measures against: "trgm" or "vec"; "" for a rank term.
+	// term measures against: "trgm", "vec" or "levenshtein"; "" for a rank
+	// term.
 	Param string
 }
 
@@ -69,6 +71,7 @@ var contribSpellings = map[string][]spelling{
 	},
 	contrib.VocabHstore: {
 		{"hk", "hasKey"}, {"hk_all", "hasAllKeys"}, {"hk_any", "hasAnyKeys"}, {"cs", "contains"}, {"cd", "containedBy"},
+		{"hk_def", "hasDefinedKey"},
 	},
 	contrib.VocabLtree: ltreeSpellings,
 	contrib.VocabLtreeArray: {
@@ -92,6 +95,11 @@ var contribSpellings = map[string][]spelling{
 	contrib.VocabBit: {
 		{"vec_hamming_lt", "hammingDistanceLessThan"}, {"vec_jaccard_lt", "jaccardDistanceLessThan"},
 	},
+	contrib.VocabFuzzy: {
+		{"levenshtein_lt", "levenshteinDistanceLessThan"},
+		{"soundex", "soundexEqualTo"}, {"metaphone", "metaphoneEqualTo"}, {"dmetaphone", "doubleMetaphoneEqualTo"},
+	},
+	contrib.VocabIntarray: {{"query_int", "matchesQueryInt"}},
 }
 
 var trgmOrders = []spelling{{"trgm_dist", "distance"}, {"trgm_wdist", "wordDistance"}, {"trgm_swdist", "strictWordDistance"}}
@@ -102,6 +110,8 @@ var vecOrders = []spelling{
 
 var bitOrders = []spelling{{"vec_hamming", "hammingDistance"}, {"vec_jaccard", "jaccardDistance"}}
 
+var fuzzyOrders = []spelling{{"levenshtein", "levenshteinDistance"}}
+
 // distanceOrders maps each vocabulary with distance order terms to them and
 // to the query parameter holding their reference value.
 var distanceOrders = []struct {
@@ -111,6 +121,7 @@ var distanceOrders = []struct {
 	{contrib.VocabTrgm, "trgm", trgmOrders},
 	{contrib.VocabVector, "vec", vecOrders},
 	{contrib.VocabBit, "vec", bitOrders},
+	{contrib.VocabFuzzy, "levenshtein", fuzzyOrders},
 }
 
 var rankOrders = []struct {
@@ -143,7 +154,7 @@ func IsFullTextOp(name string) bool {
 
 // IsContribOrder reports whether a modifier is a contrib order term
 // (rank, rank_cd, trgm_dist, trgm_wdist, trgm_swdist, vec_l2, vec_ip,
-// vec_cos, vec_l1, vec_hamming, vec_jaccard).
+// vec_cos, vec_l1, vec_hamming, vec_jaccard, levenshtein).
 func IsContribOrder(name string) bool {
 	for _, r := range rankOrders {
 		if r.name == name {
@@ -154,8 +165,8 @@ func IsContribOrder(name string) bool {
 }
 
 // DistanceParam returns the query parameter a distance order modifier
-// measures against ("trgm" for trgm_*, "vec" for vec_*); "" for anything
-// else.
+// measures against ("trgm" for trgm_*, "vec" for vec_*, "levenshtein" for
+// levenshtein); "" for anything else.
 func DistanceParam(mod string) string {
 	for _, d := range distanceOrders {
 		for _, sp := range d.terms {
@@ -200,15 +211,23 @@ func DistanceVocabulary(cat *introspect.Catalog, c *introspect.Column) (contrib.
 // IsVectorThreshold reports whether a filter operator spelling is a
 // pgvector distance threshold (vec_l2_lt, vec_cos_lt, vec_hamming_lt, ...),
 // which measures against vec=.
-func IsVectorThreshold(name string) bool {
+func IsVectorThreshold(name string) bool { return ThresholdParam(name) == "vec" }
+
+// ThresholdParam returns the query parameter a distance-threshold filter
+// operator measures against: "vec" for the pgvector thresholds (vec_*_lt),
+// "levenshtein" for levenshtein_lt; "" for every other operator.
+func ThresholdParam(name string) string {
+	if name == "levenshtein_lt" {
+		return "levenshtein"
+	}
 	for _, v := range []string{contrib.VocabVector, contrib.VocabBit} {
 		for _, sp := range contribSpellings[v] {
 			if sp.url == name {
-				return true
+				return "vec"
 			}
 		}
 	}
-	return false
+	return ""
 }
 
 // ScoreKey is the pseudo-column suffix of a score expression: its pdbcore
@@ -230,12 +249,14 @@ func ScoreKey(expr string) string {
 // addContribScores registers the score pseudo-columns of every resource's
 // columns: <key>_similarity, <key>_word_similarity and
 // <key>_strict_word_similarity (pg_trgm, against trgm=) on text columns the
-// filter policy admits trigram operators on, and <key>_<distance>
-// (pgvector, against vec=) on every vector column and on bit columns an
-// index (or the policy) admits pgvector's distances on. A resource with a
-// column or computed column named trgm (vec) has no trgm= (vec=) and gets
-// none of its scores; a real, computed or other pseudo-column owning a key
-// keeps it. It runs in Build, after the API hooks removed hidden columns.
+// filter policy admits trigram operators on, <key>_levenshtein_distance
+// (fuzzystrmatch, against levenshtein=) on text columns it admits the
+// fuzzystrmatch operators on, and <key>_<distance> (pgvector, against
+// vec=) on every vector column and on bit columns an index (or the policy)
+// admits pgvector's distances on. A resource with a column or computed
+// column named like the parameter has no such parameter and gets none of
+// its scores; a real, computed or other pseudo-column owning a key keeps
+// it. It runs in Build, after the API hooks removed hidden columns.
 func (b *Builder) addContribScores() {
 	for _, r := range sortedResources(b.Resources) {
 		for _, f := range r.Columns {
@@ -258,6 +279,11 @@ func (b *Builder) addContribScores() {
 						}
 					}
 					param, desc = "vec", "pgvector distance from vec= (lower is closer)"
+				case contrib.VocabFuzzy:
+					if !indexServes(b.Options, r, f.Column, nil, false) {
+						continue
+					}
+					param, desc = "levenshtein", "Levenshtein edit distance from levenshtein= (lower is closer)"
 				default:
 					continue
 				}
@@ -276,10 +302,14 @@ func (b *Builder) addContribScores() {
 					if r.Pseudo == nil {
 						r.Pseudo = map[string]*PseudoColumn{}
 					}
+					typ := "number"
+					if e.Type == "int4" {
+						typ = "integer"
+					}
 					r.Pseudo[key] = &PseudoColumn{
 						Key: key, Column: f.Column,
 						Score:       &Score{Param: param, Expr: e},
-						Schema:      &Schema{Type: "number"},
+						Schema:      &Schema{Type: typ},
 						Description: strings.TrimSuffix(e.Description, ".") + "; " + desc + ", required to select it.",
 					}
 				}
@@ -409,7 +439,7 @@ func contribFilters(cat *introspect.Catalog, opts Options, r *Resource, c *intro
 			if !ok || seen[sp.url] || !indexServes(opts, r, c, hints, false) {
 				continue
 			}
-			if IsVectorThreshold(sp.url) && r != nil && r.NameTaken("vec") {
+			if param := ThresholdParam(sp.url); param != "" && r != nil && r.NameTaken(param) {
 				continue
 			}
 			seen[sp.url] = true
@@ -446,8 +476,8 @@ func contribOrders(cat *introspect.Catalog, opts Options, r *Resource, c *intros
 }
 
 // NameTaken reports whether r has a column or computed column named key; a
-// soft-reserved query parameter (near, trgm, vec) of that name is then a
-// filter.
+// soft-reserved query parameter (near, trgm, vec, levenshtein) of that name
+// is then a filter.
 func (r *Resource) NameTaken(key string) bool {
 	return r.Field(key) != nil || r.Computed[key] != nil
 }
@@ -477,4 +507,117 @@ func indexServes(opts Options, r *Resource, c *introspect.Column, hints []contri
 		}
 	}
 	return false
+}
+
+// contribPseudo is one accessor or derived value a vocabulary exposes as a
+// pseudo-column: the accessor or expression name and, for a derived value,
+// its select arguments.
+type contribPseudo struct {
+	vocab, name string
+	derived     bool
+	args        []ContribArg
+}
+
+// contribPseudos lists the exposed contrib accessors and derived values.
+// The other vocabularies' accessors (inet family, range bounds, vector
+// dims) are not exposed.
+var contribPseudos = []contribPseudo{
+	{vocab: contrib.VocabLtree, name: "nlevel"},
+	{vocab: contrib.VocabLtree, name: "parent"},
+	{vocab: contrib.VocabLtree, name: "lca", derived: true, args: []ContribArg{{Name: "path", Type: "string"}}},
+	{vocab: contrib.VocabLtree, name: "subpath", derived: true,
+		args: []ContribArg{{Name: "offset", Type: "integer"}, {Name: "length", Type: "integer", Optional: true}}},
+	{vocab: contrib.VocabLtreeArray, name: "lca"},
+	{vocab: contrib.VocabIntarray, name: "icount"},
+}
+
+// ContribArgSyntax renders the select syntax of a derived pseudo-column's
+// arguments: "(path=<string>)", "(offset=<integer>[,length=<integer>])";
+// "" without arguments.
+func (c *ContribValue) ContribArgSyntax() string {
+	if c == nil || len(c.Args) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteByte('(')
+	for i, a := range c.Args {
+		part := a.Name + "=<" + a.Type + ">"
+		if i > 0 {
+			part = "," + part
+		}
+		if a.Optional {
+			part = "[" + part + "]"
+		}
+		sb.WriteString(part)
+	}
+	sb.WriteByte(')')
+	return sb.String()
+}
+
+// Operand builds the derived expression's operand from the coerced select
+// arguments: the value of a single argument, else an object of them.
+func (c *ContribValue) Operand(args map[string]any) any {
+	if len(c.Args) == 1 {
+		return args[c.Args[0].Name]
+	}
+	m := make(map[string]any, len(args))
+	for k, v := range args {
+		m[k] = v
+	}
+	return m
+}
+
+// addContribPseudos registers the contrib accessor and derived
+// pseudo-columns of every resource's columns: <key>_nlevel, <key>_parent,
+// <key>_lca(path=) and <key>_subpath(offset=,length=) on ltree columns,
+// <key>_lca on ltree[] columns and <key>_icount on int4[] columns with
+// intarray installed. The integer accessors (nlevel, icount) also take
+// filters and order terms where the column does and the filter policy
+// admits them: no index serves them, so under filters.indexed_only only
+// for columns in filters.allow_columns. A real, computed or other
+// pseudo-column owning a key keeps it. It runs in Build, after the API
+// hooks removed hidden columns and withdrew filter and order surface.
+func (b *Builder) addContribPseudos() {
+	for _, r := range sortedResources(b.Resources) {
+		for _, f := range r.Columns {
+			for _, v := range contrib.ForColumn(b.Catalog, f.Column) {
+				for _, cp := range contribPseudos {
+					if cp.vocab != v.Name {
+						continue
+					}
+					cv := &ContribValue{Args: cp.args}
+					typ, desc := "", ""
+					if cp.derived {
+						e, ok := v.Expr(cp.name)
+						if !ok {
+							continue
+						}
+						cv.Expr, typ, desc = &e, e.Type, e.Description
+					} else {
+						a, ok := v.Accessor(cp.name)
+						if !ok {
+							continue
+						}
+						cv.Accessor, typ, desc = &a, a.Type, a.Description
+					}
+					key := f.Key + "_" + ScoreKey(cp.name)
+					if r.Field(key) != nil || r.Computed[key] != nil || r.Pseudo[key] != nil {
+						b.Warn("contrib: pseudo-column skipped: the key is taken", "resource", r.Path, "column", f.Column.Name, "key", key)
+						continue
+					}
+					pc := &PseudoColumn{Key: key, Column: f.Column, Contrib: cv, Schema: &Schema{Type: "string"}, Description: desc}
+					if typ == "int4" {
+						pc.Schema = &Schema{Type: "integer", Format: "int32"}
+						unindexed := indexServes(b.Options, r, f.Column, nil, false)
+						pc.Filterable = r.FilterColumns[f.Key] && unindexed
+						pc.Orderable = r.OrderColumns[f.Key] && unindexed
+					}
+					if r.Pseudo == nil {
+						r.Pseudo = map[string]*PseudoColumn{}
+					}
+					r.Pseudo[key] = pc
+				}
+			}
+		}
+	}
 }

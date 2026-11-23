@@ -947,6 +947,7 @@ type Built struct {
 // Build freezes the builder.
 func (b *Builder) Build() (*Built, error) {
 	b.addContribScores()
+	b.addContribPseudos()
 	out := &Built{
 		Catalog:    b.Catalog,
 		Options:    b.Options,

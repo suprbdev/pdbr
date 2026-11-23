@@ -1,0 +1,1 @@
+GET /api/kb/docs?select=id,path_nlevel,path_parent,paths_lca,path_lca(path=a.b),path_subpath(offset=1,length=2),tail:path_subpath(offset=-1)&path_nlevel=gte.2&order=path_nlevel.desc,id&limit=5

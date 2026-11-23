@@ -165,7 +165,7 @@ return both keys. Aliases (and JSON-path keys) are bind parameters in the
 compiled SQL, never SQL text, so any character the grammar admits is safe.
 
 `*` expands to real columns only (PostgREST behaviour, as built in
-`compile.rowJSON`); computed columns and PostGIS pseudo-columns must be named
+`compile.rowJSON`); computed columns and pseudo-columns (PostGIS and contrib accessors, scores) must be named
 explicitly (`select=*,post_count`). The OpenAPI resource schema still lists
 them (`readOnly`, "Select explicitly: select=<key>").
 
@@ -191,7 +191,9 @@ GET /api/users?select=id,settings->theme,mode:settings->>theme,tags->0,address->
   `settings->"a.b"`. `->>` may only be the last step.
 - Keys and indexes travel as bind parameters (`t."settings" -> $1::text`);
   the SQL text depends only on the number of steps and their kinds.
-- Missing keys and out-of-range indexes are `null`. A path on any other
+- Missing keys and out-of-range indexes are `null`. On an hstore column a
+  path is exactly one key (`attrs->color`, `attrs->>color`), the text value
+  of that key ([contrib.md](contrib.md#hstore-pdbr)). A path on any other
   column type is `400 invalid_select`.
 - Filters (`settings->>theme=eq.dark`, [filtering.md](filtering.md#json-paths))
   and `order=` (`order=settings->>theme.desc`) take the same paths.

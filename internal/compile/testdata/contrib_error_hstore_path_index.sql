@@ -1,0 +1,2 @@
+-- request: GET /api/kb/docs?attrs->0=eq.x
+-- error: 400 invalid_filter: hstore column "attrs" takes the value of one key: attrs->key or attrs->>key, not attrs->0

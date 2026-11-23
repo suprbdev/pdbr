@@ -1,0 +1,2 @@
+-- request: GET /api/kb/docs?select=path_nlevel(path=a)
+-- error: 400 invalid_select: "path_nlevel" takes no arguments

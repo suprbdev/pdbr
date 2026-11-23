@@ -1,0 +1,1 @@
+GET /api/kb/docs?select=id&attrs=hk_def.color&or=(attrs.not.hk_def.size,attrs->>size.in.(S,M))

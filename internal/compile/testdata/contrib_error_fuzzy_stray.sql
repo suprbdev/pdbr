@@ -1,0 +1,2 @@
+-- request: GET /api/kb/docs?select=id&levenshtein=x
+-- error: 400 invalid_filter: levenshtein= applies to order=<col>.levenshtein, the <col>_levenshtein_distance columns and levenshtein_lt filters only, and none is present

@@ -130,6 +130,10 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] inet/cidr containment `cs cd cs_strict cd_strict ov` (new)
 - [x] Full-text relevance ordering `order=<col>.rank|rank_cd` against the column's fts filter; trigram distance ordering `order=<col>.trgm_dist|trgm_wdist|trgm_swdist&trgm=<text>` (new)
 - [x] Indexed-only policy per contrib operator from pdbcore index hints (new)
+- [x] hstore value by key `attrs->key` (select, text filters, `order=`) and `hk_def` (defined) — see [Contrib](contrib.md#hstore-pdbr) (new)
+- [x] Derived pseudo-columns `<col>_nlevel`, `<col>_parent`, `<col>_lca(path=)`, `<col>_subpath(offset=,length=)` (ltree), `<col>_lca` (ltree[]), `<col>_icount` (intarray); `nlevel`/`icount` filterable and orderable on allowlisted columns — see [Contrib](contrib.md#derived-columns-ltree-and-intarray) (new)
+- [x] fuzzystrmatch on text-like columns: `levenshtein_lt` thresholds, `order=<col>.levenshtein` and `<col>_levenshtein_distance` against `levenshtein=`, phonetic `soundex`, `metaphone`, `dmetaphone` (allowlisted columns under `filters.indexed_only`) — see [Contrib](contrib.md#fuzzystrmatch-pdbr) (new)
+- [x] intarray `query_int` (`@@ query_int`) on `int4[]` columns (GIN/GiST under the policy) — see [Contrib](contrib.md#intarray-pdbr) (new)
 
 ## Pagination
 

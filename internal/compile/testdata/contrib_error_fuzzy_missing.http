@@ -1,0 +1,1 @@
+GET /api/kb/docs?select=id&body=levenshtein_lt.3

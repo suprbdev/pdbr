@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/suprbdev/pdbcore/contrib"
 	"github.com/suprbdev/pdbcore/introspect"
 	"github.com/suprbdev/pdbcore/postgis"
 )
@@ -390,6 +391,9 @@ func (b *Builder) listParams(r *Resource, rpc bool) []*Parameter {
 	if vec := b.vecParam(r); vec != nil {
 		out = append(out, vec)
 	}
+	if lev := b.levenshteinParam(r); lev != nil {
+		out = append(out, lev)
+	}
 	return append(out, b.filterParams(r, nil)...)
 }
 
@@ -435,6 +439,9 @@ func (b *Builder) selectParam(r *Resource, lead string) *Parameter {
 	sb.WriteString(lead)
 	sb.WriteString(" Comma list of items; item = column | alias:column | column->key | column->>key | column::type | embed | *. JSON paths (->key, ->0, ->-1, ->>key, keys double-quoted when they hold . , : ( ) ! or spaces; ->> last) apply to json, jsonb, array and composite columns and answer under the last key; casts take built-in scalar types (int, bigint, numeric, text, date, ...) and the API's enums. Columns: ")
 	sb.WriteString(strings.Join(fieldKeys(r.Columns), ", "))
+	if keys := b.hstoreKeys(r); len(keys) > 0 {
+		sb.WriteString(". hstore columns (" + strings.Join(keys, ", ") + ") give the text value of one key as col->key (or col->>key)")
+	}
 	if len(r.Computed) > 0 {
 		keys := sortedKeys(r.Computed)
 		for i, k := range keys {
@@ -443,10 +450,13 @@ func (b *Builder) selectParam(r *Resource, lead string) *Parameter {
 		sb.WriteString(". Computed (select explicitly): " + strings.Join(keys, ", "))
 	}
 	if derived := pseudoKeys(r, false); len(derived) > 0 {
-		sb.WriteString(". Derived (postgis, select explicitly): " + strings.Join(derived, ", "))
+		for i, k := range derived {
+			derived[i] = k + r.Pseudo[k].Contrib.ContribArgSyntax()
+		}
+		sb.WriteString(". Derived (select explicitly): " + strings.Join(derived, ", "))
 	}
 	if scores := pseudoKeys(r, true); len(scores) > 0 {
-		sb.WriteString(". Scores against near=, trgm= or vec= (select explicitly; the parameter is required): " + strings.Join(scores, ", "))
+		sb.WriteString(". Scores against near=, trgm=, vec= or levenshtein= (select explicitly; the parameter is required): " + strings.Join(scores, ", "))
 	}
 	if embeds := b.embedKeys(r); len(embeds) > 0 {
 		sb.WriteString(". Embeds: " + strings.Join(embeds, ", ") + " (rel(...) with a nested select; rel!inner(...) drops parents without a match; ...rel(...) spreads the embed's items into the row: values for a to-one relation, one array per item for a to-many one; per-embed params rel.order=, rel.limit=, rel.offset=, rel.<col>=<op>.<value>)")
@@ -480,6 +490,15 @@ func (b *Builder) orderParam(r *Resource) *Parameter {
 	var sb strings.Builder
 	sb.WriteString("Comma list of <col>[.asc|.desc][.nullsfirst|.nullslast] (default asc, nulls last); json, jsonb and array columns also order by a JSON path (<col>->key, <col>->>key). Orderable columns: ")
 	sb.WriteString(strings.Join(b.orderableKeys(r), ", "))
+	var hs []string
+	for _, k := range b.hstoreKeys(r) {
+		if r.OrderColumns[k] {
+			hs = append(hs, k+"->key")
+		}
+	}
+	if len(hs) > 0 {
+		sb.WriteString(". hstore values by key: " + strings.Join(hs, ", "))
+	}
 	if b.Surface.ComputedOrder {
 		if keys := computedKeys(r, func(c *Computed) bool { return c.Orderable && !c.Function.ReturnsSet }); len(keys) > 0 {
 			sb.WriteString(". Computed: " + strings.Join(keys, ", "))
@@ -507,6 +526,12 @@ func (b *Builder) orderParam(r *Resource) *Parameter {
 	}
 	if len(dists["vec"]) > 0 {
 		sb.WriteString(". pgvector distance to vec=<vector> (lower is closer; asc is nearest first): " + strings.Join(dists["vec"], ", "))
+	}
+	if len(dists["levenshtein"]) > 0 {
+		sb.WriteString(". Levenshtein edit distance to levenshtein=<text> (lower is closer): " + strings.Join(dists["levenshtein"], ", "))
+	}
+	if keys := pseudoOrderKeys(r); len(keys) > 0 {
+		sb.WriteString(". Derived: " + strings.Join(keys, ", "))
 	}
 	sb.WriteString(".")
 	return &Parameter{Name: "order", In: "query", Schema: &Schema{Type: "string"}, Description: sb.String()}
@@ -575,20 +600,46 @@ func (b *Builder) vecParam(r *Resource) *Parameter {
 		Description: "Reference vector for order=<col>.vec_l2|vec_ip|vec_cos|vec_l1|vec_hamming|vec_jaccard, the vector distance columns (<col>_cosine_distance, ...) and the vec_*_lt threshold filters (pgvector): a JSON array of numbers ([0.1,0.2,0.3]) or the column type's text form (a bit string such as 1010 for bit columns); required whenever one is present."}
 }
 
+// levenshteinParam documents levenshtein= when the resource has a column
+// orderable by Levenshtein distance, a Levenshtein score or a
+// levenshtein_lt filter.
+func (b *Builder) levenshteinParam(r *Resource) *Parameter {
+	if _, dists := b.contribOrderKeys(r); len(dists["levenshtein"]) == 0 && !hasScore(r, "levenshtein") && !b.hasThreshold(r, "levenshtein") {
+		return nil
+	}
+	return &Parameter{Name: "levenshtein", In: "query", Schema: &Schema{Type: "string"},
+		Description: "Reference text (at most 255 characters) for order=<col>.levenshtein, the <col>_levenshtein_distance columns and the levenshtein_lt threshold filters (fuzzystrmatch); required whenever one is present."}
+}
+
 // hasVectorThreshold reports whether a filterable column of r takes a
 // vec_*_lt threshold filter.
-func (b *Builder) hasVectorThreshold(r *Resource) bool {
+func (b *Builder) hasVectorThreshold(r *Resource) bool { return b.hasThreshold(r, "vec") }
+
+// hasThreshold reports whether a filterable column of r takes a distance
+// threshold filter measured against param (vec, levenshtein).
+func (b *Builder) hasThreshold(r *Resource, param string) bool {
 	for _, f := range r.Columns {
 		if !r.FilterColumns[f.Key] {
 			continue
 		}
 		for _, cf := range contribFilters(b.Catalog, b.Options, r, f.Column) {
-			if IsVectorThreshold(cf.Name) {
+			if ThresholdParam(cf.Name) == param {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// pseudoOrderKeys lists r's orderable pseudo-columns, sorted.
+func pseudoOrderKeys(r *Resource) []string {
+	var out []string
+	for _, k := range sortedKeys(r.Pseudo) {
+		if r.Pseudo[k].Orderable {
+			out = append(out, k)
+		}
+	}
+	return out
 }
 
 // contribOrderKeys lists the contrib order terms of r's orderable columns:
@@ -629,7 +680,10 @@ func (b *Builder) filterParams(r *Resource, shadow map[string]bool) []*Parameter
 		if mods := modifiableOps(ops); len(mods) > 0 {
 			p.Description += " Modifiers: " + strings.Join(mods, ", ") + " also take (any) or (all) with a {a,b} list (" + f.Key + "=" + mods[0] + "(any).{a,b})."
 		}
-		if jsonPathFilterable(f.Column) {
+		switch {
+		case isHstore(b.Catalog, f.Column):
+			p.Description += " Values by key: " + f.Key + "->key=<op>.<value> (or ->>key) compares the key's value as text (the text operators, match and imatch included)."
+		case jsonPathFilterable(f.Column):
 			p.Description += " JSON paths: " + f.Key + "->key=<op>.<value> compares jsonb (eq, neq, gt, gte, lt, lte, in, is, isdistinct, cs, cd, hk, jpe, jpm; JSON operands), " + f.Key + "->>key=<op>.<value> text (the text operators, match and imatch included)."
 		}
 		if f.Description != "" {
@@ -637,7 +691,42 @@ func (b *Builder) filterParams(r *Resource, shadow map[string]bool) []*Parameter
 		}
 		out = append(out, p)
 	}
+	for _, k := range sortedKeys(r.Pseudo) {
+		pc := r.Pseudo[k]
+		if !pc.Filterable || shadow[k] {
+			continue
+		}
+		ops := pseudoFilterOps()
+		out = append(out, &Parameter{
+			Name: k, In: "query", Schema: &Schema{Type: "string"}, XFilterOps: ops,
+			Description: "Filter on the derived " + k + " (integer; " + strings.TrimSuffix(pc.Description, ".") + "): " + k + "=<op>.<value>. Ops: " + strings.Join(ops, ", ") + ". Prefix not. to negate.",
+		})
+	}
 	return out
+}
+
+// pseudoFilterOps is the operator vocabulary of a filterable (integer)
+// pseudo-column.
+func pseudoFilterOps() []string {
+	return []string{"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct"}
+}
+
+// hstoreKeys lists the keys of r's hstore columns, in catalog order.
+func (b *Builder) hstoreKeys(r *Resource) []string {
+	var out []string
+	for _, f := range r.Columns {
+		if isHstore(b.Catalog, f.Column) {
+			out = append(out, f.Key)
+		}
+	}
+	return out
+}
+
+// isHstore reports whether c is an hstore column of an installed hstore
+// extension: its JSON-path grammar reads the value of one key.
+func isHstore(cat *introspect.Catalog, c *introspect.Column) bool {
+	v, ok := OwnerVocabulary(cat, c)
+	return ok && v.Name == contrib.VocabHstore
 }
 
 // filterProse describes the filter forms that are not enumerated as

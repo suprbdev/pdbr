@@ -79,8 +79,9 @@ func TestContribGatedOnExtensions(t *testing.T) {
 
 func TestContribFilterOps(t *testing.T) {
 	cases := map[string][]string{
-		"title":  {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew", "match", "imatch", "trgm_sim", "trgm_wsim", "trgm_swsim"},
-		"body":   {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew", "match", "imatch", "fts", "plfts", "phfts", "wfts", "trgm_sim", "trgm_wsim", "trgm_swsim", "unaccent_eq", "unaccent_ilike", "unaccent_sw", "unaccent_includes"},
+		"title": {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew", "match", "imatch", "trgm_sim", "trgm_wsim", "trgm_swsim"},
+		"body": {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew", "match", "imatch", "fts", "plfts", "phfts", "wfts", "trgm_sim", "trgm_wsim", "trgm_swsim", "unaccent_eq", "unaccent_ilike", "unaccent_sw", "unaccent_includes",
+			"levenshtein_lt", "soundex", "metaphone", "dmetaphone"},
 		"search": {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "fts", "plfts", "phfts", "wfts"},
 		"email":  {"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew", "match", "imatch"},
 		"attrs":  {"eq", "neq", "in", "is", "isdistinct", "hk", "hk_all", "hk_any", "cs"},
@@ -184,8 +185,8 @@ func TestContribUnaccent(t *testing.T) {
 	b := build(t, testcatalog.Contrib(testutil.FixtureCatalog()), contribOptions(false))
 	docs := b.ByPath["kb.docs"]
 	for _, col := range []string{"title", "body", "email"} {
-		if got := b.FilterOps(docs, docs.Table.Column(col)); !reflect.DeepEqual(got[len(got)-4:], unaccent) {
-			t.Errorf("%s ops = %v, want the unaccent operators last", col, got)
+		if got := b.FilterOps(docs, docs.Table.Column(col)); !reflect.DeepEqual(got[len(got)-8:len(got)-4], unaccent) {
+			t.Errorf("%s ops = %v, want the unaccent operators before the fuzzystrmatch ones", col, got)
 		}
 	}
 	for _, col := range []string{"id", "attrs", "path", "pages"} {

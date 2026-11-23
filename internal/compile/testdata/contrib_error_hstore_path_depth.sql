@@ -1,0 +1,2 @@
+-- request: GET /api/kb/docs?select=attrs->a->b
+-- error: 400 invalid_select: hstore column "attrs" takes the value of one key: attrs->key or attrs->>key, not attrs->a->b
