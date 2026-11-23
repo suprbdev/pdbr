@@ -63,8 +63,9 @@ type Operation struct {
 }
 
 type Parameter struct {
-	Name        string  `json:"name"`
-	In          string  `json:"in"`
+	Ref         string  `json:"$ref,omitempty"`
+	Name        string  `json:"name,omitempty"`
+	In          string  `json:"in,omitempty"`
 	Required    bool    `json:"required,omitempty"`
 	Description string  `json:"description,omitempty"`
 	Deprecated  bool    `json:"deprecated,omitempty"`
@@ -137,13 +138,25 @@ type Schema struct {
 	XDeprecationReason string `json:"x-deprecation-reason,omitempty"`
 }
 
-// JSON renders the document (indented, trailing newline).
-func (d *Document) JSON() ([]byte, error) {
+// JSON renders the document (indented, trailing newline) with repeated
+// parameters hoisted into components/parameters.
+func (d *Document) JSON() ([]byte, error) { return d.render(true) }
+
+// CompactJSON renders the same document as JSON without indentation.
+func (d *Document) CompactJSON() ([]byte, error) { return d.render(false) }
+
+func (d *Document) render(indent bool) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(d); err != nil {
+	if indent {
+		enc.SetIndent("", "  ")
+	}
+	hoisted, err := d.hoistParameters()
+	if err != nil {
+		return nil, err
+	}
+	if err := enc.Encode(hoisted); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil

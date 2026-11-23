@@ -64,7 +64,25 @@ func validateOpenAPI(t *testing.T, schema *jsonschema.Schema, body []byte) {
 func pathOp(doc map[string]any, path, method string) map[string]any {
 	item, _ := doc["paths"].(map[string]any)[path].(map[string]any)
 	op, _ := item[method].(map[string]any)
-	return op
+	if op == nil {
+		return nil
+	}
+	resolved := map[string]any{}
+	for k, v := range op {
+		resolved[k] = v
+	}
+	if ps, ok := op["parameters"].([]any); ok {
+		out := make([]any, len(ps))
+		for i, p := range ps {
+			out[i] = p
+			if ref, ok := p.(map[string]any)["$ref"].(string); ok {
+				comps, _ := doc["components"].(map[string]any)["parameters"].(map[string]any)
+				out[i] = comps[strings.TrimPrefix(ref, "#/components/parameters/")]
+			}
+		}
+		resolved["parameters"] = out
+	}
+	return resolved
 }
 
 func opParams(op map[string]any) map[string]map[string]any {
@@ -417,7 +435,15 @@ func TestSchemaPrintMatchesServed(t *testing.T) {
 		}
 		return out
 	}
-	if printed := run(); !bytes.Equal(printed, served) {
+	printed := run()
+	var printedDoc, servedDoc any
+	if err := json.Unmarshal(printed, &printedDoc); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(served, &servedDoc); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(printedDoc, servedDoc) {
 		t.Errorf("schema print differs from GET /api/openapi.json (%d vs %d bytes)", len(printed), len(served))
 	}
 	var fromYAML, fromJSON any

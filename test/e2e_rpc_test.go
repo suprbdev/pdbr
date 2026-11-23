@@ -251,7 +251,7 @@ func TestRPCDefaultsAndVariadic(t *testing.T) {
 
 	raw, doc := fetchOpenAPI(t, srv.URL)
 	validateOpenAPI(t, oasSchema(t), raw)
-	get := doc["paths"].(map[string]any)["/rpc/e2e_sum"].(map[string]any)["get"].(map[string]any)
+	get := pathOp(doc, "/rpc/e2e_sum", "get")
 	for _, p := range get["parameters"].([]any) {
 		pm := p.(map[string]any)
 		switch pm["name"] {
