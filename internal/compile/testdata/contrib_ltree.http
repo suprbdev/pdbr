@@ -1,0 +1,1 @@
+GET /api/kb/docs?select=id,path,paths&path=cs.top.science&path=descendant.top&path=not.ancestor_any.{a.b,c}&path=descendant_any.{top}&path=lquery.*.astro*.*&path=ltxtquery.astro*%20%26%20!moon&path=gt.top.a&paths=lquery_any.{*.x,*.y}&paths=descendant.top&paths=cs.{a.b}

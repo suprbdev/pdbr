@@ -320,7 +320,7 @@ func (s *stmt) keyConds(t *introspect.Table, cols []string, vals []any, alias st
 		if col == nil {
 			return nil, fmt.Errorf("compile: key column %q not found on %s", name, t.Name)
 		}
-		conds[i] = colRef(alias, name) + " = " + s.param(coerceInput(col, vals[i]))
+		conds[i] = s.keyEqSQL(col, colRef(alias, name), s.param(coerceInput(col, vals[i])))
 	}
 	return conds, nil
 }
@@ -364,7 +364,7 @@ func (s *stmt) list() (*Statement, error) {
 	if err != nil {
 		return nil, err
 	}
-	terms := reorderForDistinct(s.orderTerms(t, s.plan.Order), dcols)
+	terms := s.reorderForDistinct(s.orderTerms(t, s.plan.Order), dcols)
 	selectCols := []string{jsonExpr + " AS data"}
 	if pp.keyset {
 		selectCols = append(selectCols, keyArraySQL(t, alias)+" AS __key")
@@ -608,7 +608,7 @@ func (s *stmt) parentConds(node *plan.Node, filter plan.Expr, alias string) ([]s
 func (s *stmt) innerExists(e *plan.Embed, parentAlias string) (string, error) {
 	rel := e.Relation
 	sub := s.alias("r")
-	conds := []string{joinConds(rel, sub, parentAlias)}
+	conds := []string{s.joinConds(rel, sub, parentAlias)}
 	child := e.Node
 	if child == nil {
 		child = &plan.Node{Resource: rel.To, Star: true}
@@ -627,15 +627,27 @@ func (s *stmt) innerExists(e *plan.Embed, parentAlias string) (string, error) {
 
 // joinConds renders the FK correlation between the embedded row at
 // childAlias and the parent row at parentAlias from the FK's join pairs:
-// equality, and range overlap (&&) for the period pair of a PERIOD key.
-func joinConds(rel *api.Relation, childAlias, parentAlias string) string {
+// equality — through the extension's operator for extension-owned key
+// types (citext, ltree) — and range overlap (&&) for the period pair of a
+// PERIOD key.
+func (s *stmt) joinConds(rel *api.Relation, childAlias, parentAlias string) string {
 	pairs := rel.FK.JoinPairs()
 	parts := make([]string, len(pairs))
 	for i, jp := range pairs {
+		op := string(jp.Op)
+		if jp.Op == introspect.JoinEqual {
+			fkTable := rel.To.Table
+			if rel.Forward {
+				fkTable = rel.From.Table
+			}
+			if owner := s.owner(fkTable.Column(jp.Column)); owner != nil {
+				op = owner.Operator("=")
+			}
+		}
 		if rel.Forward {
-			parts[i] = colRef(childAlias, jp.RefColumn) + " " + string(jp.Op) + " " + colRef(parentAlias, jp.Column)
+			parts[i] = colRef(childAlias, jp.RefColumn) + " " + op + " " + colRef(parentAlias, jp.Column)
 		} else {
-			parts[i] = colRef(childAlias, jp.Column) + " " + string(jp.Op) + " " + colRef(parentAlias, jp.RefColumn)
+			parts[i] = colRef(childAlias, jp.Column) + " " + op + " " + colRef(parentAlias, jp.RefColumn)
 		}
 	}
 	return strings.Join(parts, " AND ")

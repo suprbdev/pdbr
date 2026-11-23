@@ -1,0 +1,1 @@
+GET /api/kb/docs?select=id,net&net=cs.10.1.2.3&net=cd.10.0.0.0/8&net=cs_strict.10.1.0.0/16&net=not.cd_strict.192.168.0.0/16&net=ov.10.0.0.0/8&net=eq.10.1.2.3

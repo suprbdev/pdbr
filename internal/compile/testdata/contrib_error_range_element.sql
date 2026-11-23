@@ -1,0 +1,2 @@
+-- request: GET /api/kb/docs?pages=cs.x
+-- error: 400 invalid_filter: cs "pages": range bound "x" must be an integer

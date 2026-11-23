@@ -1,0 +1,1 @@
+GET /api/kb/authors?select=email,notes(id)&order=notes(author).asc,email&after=WyJrYi5hdXRob3JzIiwiQWRhQEV4YW1wbGUuY29tIl0&limit=2

@@ -1,8 +1,11 @@
 package parse
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
+
+	"github.com/suprbdev/pdbcore/contrib"
 
 	"github.com/suprbdev/pdbr/internal/api"
 	"github.com/suprbdev/pdbr/internal/compile"
@@ -23,16 +26,27 @@ func isLogicKey(key string) bool {
 // opSpec is one operator's shape.
 type opSpec struct {
 	op plan.Op
-	// list: value is a parenthesised list (in); structural: is; spatial: postgis.
-	list, structural, spatial bool
+	// list: value is a parenthesised list (in); structural: is; spatial:
+	// postgis; contrib: only a pdbcore/contrib vocabulary serves it (cs, cd,
+	// ov and hk are core operators that some vocabularies also serve).
+	list, structural, spatial, contrib bool
+}
+
+func init() {
+	for _, name := range api.ContribFilterNames() {
+		if _, ok := ops[name]; !ok {
+			ops[name] = opSpec{op: plan.Op(name), contrib: true}
+		}
+	}
 }
 
 var ops = map[string]opSpec{
 	"eq": {op: plan.OpEq}, "neq": {op: plan.OpNeq},
 	"gt": {op: plan.OpGt}, "gte": {op: plan.OpGte}, "lt": {op: plan.OpLt}, "lte": {op: plan.OpLte},
-	"in":   {op: plan.OpIn, list: true},
-	"is":   {op: plan.OpIs, structural: true},
-	"like": {op: plan.OpLike}, "ilike": {op: plan.OpILike},
+	"in":         {op: plan.OpIn, list: true},
+	"is":         {op: plan.OpIs, structural: true},
+	"isdistinct": {op: plan.OpIsDistinct},
+	"like":       {op: plan.OpLike}, "ilike": {op: plan.OpILike},
 	"sw": {op: plan.OpSw}, "ew": {op: plan.OpEw},
 	"cs": {op: plan.OpCs}, "cd": {op: plan.OpCd}, "ov": {op: plan.OpOv},
 	"hk": {op: plan.OpHk}, "jpe": {op: plan.OpJpe}, "jpm": {op: plan.OpJpm},
@@ -68,21 +82,41 @@ var ops = map[string]opSpec{
 	"bbox_intersectsnd":      {op: plan.OpBBoxIntersectsND, spatial: true},
 }
 
-// operand is a parsed "[not.]op.value".
+// operand is a parsed "[not.]op[(config)].value".
 type operand struct {
 	negate bool
 	op     string
 	spec   opSpec
 	value  string
+	// config is the text search configuration of a full-text operator
+	// (fts(english).value); "" when absent.
+	config string
 }
 
-// splitOperand parses "[not.]op.value" (value runs to the end).
+// splitOperand parses "[not.]op.value" (value runs to the end); the
+// full-text operators also take "op(config).value", where config may
+// contain dots (pg_catalog.english).
 func splitOperand(raw string) (operand, *compile.UserError) {
 	var o operand
 	s := raw
 	if strings.HasPrefix(s, "not.") {
 		o.negate = true
 		s = s[len("not."):]
+	}
+	if i := strings.IndexByte(s, '('); i > 0 && api.IsFullTextOp(s[:i]) {
+		cfg, rest, ok := strings.Cut(s[i+1:], ")")
+		if !ok {
+			return o, errf(CodeInvalidFilter, "unterminated text search configuration in %q", raw)
+		}
+		if strings.TrimSpace(cfg) == "" {
+			return o, errf(CodeInvalidFilter, "empty text search configuration in %q", raw)
+		}
+		val, ok := strings.CutPrefix(rest, ".")
+		if !ok {
+			return o, errf(CodeInvalidFilter, "missing value after operator %q", s[:i+len(cfg)+2])
+		}
+		o.op, o.spec, o.value, o.config = s[:i], ops[s[:i]], val, cfg
+		return o, nil
 	}
 	op, val, ok := strings.Cut(s, ".")
 	if !ok {
@@ -118,6 +152,9 @@ func (p *parser) columnCond(res *api.Resource, key string, o operand) (plan.Expr
 		if !res.FilterColumns[key] {
 			return nil, errf(CodeColumnNotFilterable, "column %q on %q is not filterable", key, res.Path)
 		}
+		if e, ok, err := p.contribCond(res, f, o); ok || err != nil {
+			return e, err
+		}
 		v, err := p.coerceOperand(p.typeOf(f.Column), key, o)
 		if err != nil {
 			return nil, err
@@ -138,11 +175,82 @@ func (p *parser) columnCond(res *api.Resource, key string, o operand) (plan.Expr
 	return nil, errf(CodeUnknownColumn, "unknown column %q on %q", key, res.Path)
 }
 
+// contribCond builds the condition for an operator a pdbcore/contrib
+// vocabulary of the column serves; ok is false when none does and the core
+// operator table applies.
+func (p *parser) contribCond(res *api.Resource, f *api.Field, o operand) (plan.Expr, bool, error) {
+	c := f.Column
+	cf, ok := api.ContribFilterFor(p.built.Catalog, c, o.op, o.value)
+	if !ok {
+		return nil, false, nil
+	}
+	allowed := false
+	for _, a := range p.built.ContribFilters(res, c) {
+		allowed = allowed || a.Name == o.op
+	}
+	if !allowed {
+		return nil, true, errf(CodeColumnNotFilterable, "operator %q on column %q of %q needs an index that serves it (filters.indexed_only) or the column in filters.allow_columns", o.op, f.Key, res.Path)
+	}
+	v, err := contribOperand(cf.Op.Arg, o)
+	if err != nil {
+		return nil, true, err
+	}
+	if _, literal := v.(string); !literal || cf.Op.Arg != contrib.ArgHstore {
+		if _, perr := cf.Op.Params(v); perr != nil {
+			return nil, true, errf(CodeInvalidFilter, "%s %q: %s", o.op, f.Key, perr.Error())
+		}
+	}
+	return plan.Cond{Column: c, Op: o.spec.op, Value: v, Negate: o.negate}, true, nil
+}
+
+// contribOperand converts the URL operand of a contrib operator into the
+// value its contrib.Op.Params accepts (plan.Cond documents the shapes).
+func contribOperand(arg contrib.ArgKind, o operand) (any, *compile.UserError) {
+	switch arg {
+	case contrib.ArgFullText:
+		return contrib.FullTextQuery{Query: o.value, Config: o.config}, nil
+	case contrib.ArgTextList:
+		items, err := parseArrayLiteral(o.value)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]string, len(items))
+		for i, it := range items {
+			if it == nil {
+				return nil, errf(CodeInvalidFilter, "%s takes a list of non-null values", o.op)
+			}
+			out[i] = *it
+		}
+		return out, nil
+	case contrib.ArgHstore, contrib.ArgRange:
+		if !strings.HasPrefix(strings.TrimSpace(o.value), "{") {
+			return o.value, nil
+		}
+		dec := json.NewDecoder(strings.NewReader(o.value))
+		dec.UseNumber()
+		var m map[string]any
+		if err := dec.Decode(&m); err != nil || dec.More() {
+			return nil, errf(CodeInvalidFilter, "%s operand %q is not a JSON object", o.op, o.value)
+		}
+		return m, nil
+	}
+	return o.value, nil
+}
+
 // coerceOperand checks op/type compatibility and coerces the operand.
 func (p *parser) coerceOperand(t colType, key string, o operand) (any, error) {
 	spec := o.spec
 	if t.kind == kindComposite {
 		return nil, errf(CodeColumnNotFilterable, "composite column %q is not filterable", key)
+	}
+	if spec.contrib {
+		return nil, errf(CodeInvalidFilter, "operator %q is not supported on %s column %q", o.op, t.name(), key)
+	}
+	if t.owner == contrib.VocabHstore {
+		switch spec.op {
+		case plan.OpGt, plan.OpGte, plan.OpLt, plan.OpLte:
+			return nil, errf(CodeInvalidFilter, "operator %q is not supported on hstore column %q", o.op, key)
+		}
 	}
 	if spec.spatial {
 		if !p.opts.spatialFilters() {
@@ -165,7 +273,7 @@ func (p *parser) coerceOperand(t colType, key string, o operand) (any, error) {
 			return strings.EqualFold(o.value, "true"), nil
 		}
 		return nil, errf(CodeInvalidFilter, "is takes null, true or false, got %q", o.value)
-	case plan.OpEq, plan.OpNeq, plan.OpGt, plan.OpGte, plan.OpLt, plan.OpLte:
+	case plan.OpEq, plan.OpNeq, plan.OpGt, plan.OpGte, plan.OpLt, plan.OpLte, plan.OpIsDistinct:
 		if t.kind == kindSpatial || (t.kind == kindJSON && t.base == "json") {
 			return nil, errf(CodeInvalidFilter, "operator %q is not supported on %s column %q", o.op, t.name(), key)
 		}

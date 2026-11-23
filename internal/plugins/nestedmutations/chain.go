@@ -328,7 +328,7 @@ func (g *chain) connectParent(n nestedIn, connect any, p string) (string, error)
 		if err != nil {
 			return "", wrapErr(err, p)
 		}
-		conds = append(conds, compile.QuoteIdent(c.Name)+" = "+expr)
+		conds = append(conds, g.c.KeyEqualSQL(c, compile.QuoteIdent(c.Name), expr))
 	}
 	list := "*"
 	if n.rel.FK.Period {

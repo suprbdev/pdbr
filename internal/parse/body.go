@@ -340,7 +340,9 @@ func sortedKeys(m map[string]any) []string {
 // table in docs/mutations.md): scalars per type, json/jsonb and composites
 // as JSON text (the compiler casts / populates them), arrays element-wise
 // (composite arrays stay one JSON text), spatial values as postgis.Value,
-// null as nil.
+// hstore objects and structured ranges / multiranges as decoded JSON (the
+// compiler converts them through their pdbcore/contrib codec; literal
+// strings pass through), null as nil.
 func (p *parser) coerceBody(col *introspect.Column, v any) (any, *compile.UserError) {
 	t := p.typeOf(col)
 	if v == nil {
@@ -377,6 +379,18 @@ func (p *parser) coerceBody(col *introspect.Column, v any) (any, *compile.UserEr
 			out[i] = g
 		}
 		return out, nil
+	}
+	if codec, ok := api.CodecFor(p.built.Catalog, col); ok {
+		switch v.(type) {
+		case string:
+			return v, nil
+		case map[string]any, []any:
+			if _, err := codec.Params(v); err != nil {
+				return nil, errf(CodeInvalidBody, "%s", err.Error())
+			}
+			return v, nil
+		}
+		return nil, errf(CodeInvalidBody, "expected a %s literal string or its JSON form", t.name())
 	}
 	out, err := p.coerceJSON(t, v)
 	if err != nil {

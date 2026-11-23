@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/suprbdev/pdbcore/contrib"
 	"github.com/suprbdev/pdbcore/introspect"
 	"github.com/suprbdev/pdbcore/postgis"
 
+	"github.com/suprbdev/pdbr/internal/api"
 	"github.com/suprbdev/pdbr/internal/plan"
 )
 
@@ -20,7 +22,12 @@ type orderTerm struct {
 	// scalar subquery; backward: MIN/MAX aggregate).
 	rel *plan.RelationOrder
 	// dist set: order by KNN distance from near to this spatial column.
-	dist       *introspect.Column
+	dist *introspect.Column
+	// contrib set: order by full-text relevance or trigram distance.
+	contrib *plan.ContribOrder
+	// owner is set for a plain column of an extension-owned type (citext,
+	// ltree): keyset comparisons must use its schema-qualified operators.
+	owner      *contrib.Vocabulary
 	desc       bool
 	nullsFirst bool
 	// nullable reports whether the sort expression can yield NULL:
@@ -43,16 +50,22 @@ func (s *stmt) orderTerms(t *introspect.Table, terms []plan.OrderTerm) []orderTe
 			o.dist = term.Distance
 			o.nullsFirst = false
 			o.nullable = !term.Distance.NotNull
+		case term.Contrib != nil:
+			o.contrib = term.Contrib
+			o.nullable = term.Contrib.Column == nil || !term.Contrib.Column.NotNull
 		case term.Relation != nil:
 			o.rel = term.Relation
 			o.nullable = true
+			o.owner = s.owner(term.Relation.Column)
 		case term.Computed != nil:
 			o.fn = term.Computed.Function
 			o.fnTable = term.Computed.Resource.Table
 			o.nullable = true
+			o.owner = s.owner(fnReturnColumn(o.fn))
 		case term.Column != nil:
 			o.col = term.Column.Name
 			o.nullable = !term.Column.NotNull
+			o.owner = s.owner(term.Column)
 			used[o.col] = true
 		default:
 			continue
@@ -65,10 +78,39 @@ func (s *stmt) orderTerms(t *introspect.Table, terms []plan.OrderTerm) []orderTe
 				continue
 			}
 			c := t.Column(name)
-			out = append(out, orderTerm{col: name, nullable: c != nil && !c.NotNull})
+			out = append(out, orderTerm{col: name, nullable: c != nil && !c.NotNull, owner: s.owner(c)})
 		}
 	}
 	return out
+}
+
+// plain reports whether the term orders by a column of the row itself.
+func (t orderTerm) plain() bool {
+	return t.fn == nil && t.rel == nil && t.dist == nil && t.contrib == nil
+}
+
+// cmp renders a comparison operator for the term's sort value,
+// schema-qualified for an extension-owned type; hstore orders through its
+// B-tree class operators #<# / #># (it has no < or >).
+func (t orderTerm) cmp(op string) string {
+	if t.owner == nil {
+		return op
+	}
+	if t.owner.Name == contrib.VocabHstore {
+		switch op {
+		case "<", ">", "<=", ">=":
+			op = "#" + op + "#"
+		}
+	}
+	return t.owner.Operator(op)
+}
+
+// owner returns the extension vocabulary owning col's type, or nil.
+func (s *stmt) owner(col *introspect.Column) *contrib.Vocabulary {
+	if v, ok := api.OwnerVocabulary(s.catalog(), col); ok {
+		return &v
+	}
+	return nil
 }
 
 // renderOrder renders terms as an ORDER BY clause over alias; reversed
@@ -111,6 +153,8 @@ func (s *stmt) orderExprSQL(term orderTerm, alias string) string {
 		// <-> is the KNN operator: a GiST index answers it directly, which is
 		// what makes "nearest N" cheap.
 		return postgis.KNNSQL(colRef(alias, term.dist.Name), s.nearExpr(term.dist))
+	case term.contrib != nil:
+		return s.contribOrderSQL(term.contrib, alias)
 	case term.rel != nil:
 		return s.relationOrderSQL(term, alias)
 	case term.fn != nil:
@@ -133,12 +177,59 @@ func (s *stmt) nearExpr(col *introspect.Column) string {
 	return expr
 }
 
+// contribOrderSQL renders a contrib order term: the relevance of the
+// column's full-text filter (Op.RankSQL over fresh placeholders for the same
+// operand) or the trigram distance to trgm= (Expr.Render).
+func (s *stmt) contribOrderSQL(co *plan.ContribOrder, alias string) string {
+	if co.Column == nil {
+		s.fail(fmt.Errorf("compile: contrib order term without column"))
+		return "NULL"
+	}
+	ref := colRef(alias, co.Column.Name)
+	if co.Rank != "" {
+		if co.Filter == nil {
+			s.fail(errUser(CodeInvalidFilter, "order by %s.%s needs a full-text filter on the column", co.Column.Name, co.Name))
+			return "NULL"
+		}
+		cf, ok := api.ContribFilterFor(s.catalog(), co.Column, string(co.Filter.Op), co.Filter.Value)
+		if !ok || !api.IsFullTextOp(cf.Name) {
+			s.fail(errUser(CodeInvalidFilter, "order by %s.%s needs a full-text filter on the column", co.Column.Name, co.Name))
+			return "NULL"
+		}
+		params, err := cf.Op.Params(co.Filter.Value)
+		if err != nil {
+			s.fail(errUser(CodeInvalidFilter, "%s: %s", cf.Name, err.Error()))
+			return "NULL"
+		}
+		return cf.Op.RankSQL(contrib.Rank(co.Rank), ref, s.params(params)...)
+	}
+	for _, v := range contrib.ForColumn(s.catalog(), co.Column) {
+		e, ok := v.Expr(co.Expr)
+		if !ok {
+			continue
+		}
+		if s.plan.Trgm == nil {
+			s.fail(errUser(CodeInvalidFilter, "order by %s.%s requires trgm=", co.Column.Name, co.Name))
+			return "NULL"
+		}
+		params, err := e.Params(s.plan.Trgm)
+		if err != nil {
+			s.fail(errUser(CodeInvalidFilter, "trgm: %s", err.Error()))
+			return "NULL"
+		}
+		return e.Render(ref, s.params(params)...)
+	}
+	s.fail(errUser(CodeInvalidFilter, "order by %s.%s is not available on this column", co.Column.Name, co.Name))
+	return "NULL"
+}
+
 // relationOrderSQL renders the correlated subquery for a related order
 // term. To-one relations select the sort column off the single referenced
 // row; to-many relations (backward, or forward over a PERIOD key) aggregate
-// over the related rows (MIN for asc, MAX for desc), yielding NULL when no
-// related row exists. The inner alias is fixed: relational subqueries never
-// nest, so it cannot collide.
+// over the related rows (MIN for asc, MAX for desc; citext's own aggregates
+// when its schema is known), yielding NULL when no related row exists. The
+// inner alias is fixed: relational subqueries never nest, so it cannot
+// collide.
 func (s *stmt) relationOrderSQL(term orderTerm, alias string) string {
 	rel := term.rel
 	const sub = "__ro"
@@ -148,15 +239,18 @@ func (s *stmt) relationOrderSQL(term orderTerm, alias string) string {
 		if term.desc {
 			agg = "MAX"
 		}
+		if term.owner != nil && term.owner.Name == contrib.VocabCitext && term.owner.Schema != "" {
+			agg = quoteIdent(term.owner.Schema) + "." + strings.ToLower(agg)
+		}
 		expr = agg + "(" + expr + ")"
 	}
-	return fmt.Sprintf("(SELECT %s FROM %s %s WHERE %s)", expr, s.sourceRef(rel.Relation.To.Table), sub, joinConds(rel.Relation, sub, alias))
+	return fmt.Sprintf("(SELECT %s FROM %s %s WHERE %s)", expr, s.sourceRef(rel.Relation.To.Table), sub, s.joinConds(rel.Relation, sub, alias))
 }
 
 // reorderForDistinct puts the DISTINCT ON columns at the head of the order
 // terms (PostgreSQL requires them leftmost in ORDER BY), keeping a matching
 // direction when one was given and dropping the duplicates.
-func reorderForDistinct(terms []orderTerm, dcols []*introspect.Column) []orderTerm {
+func (s *stmt) reorderForDistinct(terms []orderTerm, dcols []*introspect.Column) []orderTerm {
 	if len(dcols) == 0 {
 		return terms
 	}
@@ -167,9 +261,9 @@ func reorderForDistinct(terms []orderTerm, dcols []*introspect.Column) []orderTe
 			continue
 		}
 		used[dc.Name] = true
-		o := orderTerm{col: dc.Name, nullable: !dc.NotNull}
+		o := orderTerm{col: dc.Name, nullable: !dc.NotNull, owner: s.owner(dc)}
 		for _, term := range terms {
-			if term.fn == nil && term.rel == nil && term.dist == nil && term.col == dc.Name {
+			if term.plain() && term.col == dc.Name {
 				o.desc, o.nullsFirst = term.desc, term.nullsFirst
 				break
 			}
@@ -177,7 +271,7 @@ func reorderForDistinct(terms []orderTerm, dcols []*introspect.Column) []orderTe
 		out = append(out, o)
 	}
 	for _, term := range terms {
-		if term.fn == nil && term.rel == nil && term.dist == nil && used[term.col] {
+		if term.plain() && used[term.col] {
 			continue
 		}
 		out = append(out, term)

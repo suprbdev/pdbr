@@ -358,13 +358,10 @@ func TestPostGISDistanceOrder(t *testing.T) {
 	if got := ids(rows, "id"); !eq(got, []int{1, 2, 3}) {
 		t.Errorf("bare WKT near = %v", got)
 	}
-	// near= without .dist is ignored.
-	getJSON(t, q(srv.URL, "select=id", "order=id", "near="+trafalgar, "limit=1"), &rows)
-	if got := ids(rows, "id"); !eq(got, []int{1}) {
-		t.Errorf("stray near = %v", got)
-	}
+	res, out := get(t, q(srv.URL, "select=id", "order=id", "near="+trafalgar, "limit=1"))
+	wantProblem(t, res, out, 400, "invalid_filter")
 	// Keyset paging keeps the distance order.
-	res := getJSON(t, q(srv.URL, "select=id", "order=location.dist.asc", "near="+trafalgar, "limit=2"), &rows)
+	res = getJSON(t, q(srv.URL, "select=id", "order=location.dist.asc", "near="+trafalgar, "limit=2"), &rows)
 	next := res.Header.Get("X-Next-Cursor")
 	if next == "" || !eq(ids(rows, "id"), []int{1, 2}) {
 		t.Fatalf("page 1 = %v cursor=%q", ids(rows, "id"), next)

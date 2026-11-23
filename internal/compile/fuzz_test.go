@@ -2,7 +2,11 @@ package compile_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
+
+	"github.com/suprbdev/pdbcore/contrib"
+	"github.com/suprbdev/pdbcore/introspect"
 
 	"github.com/suprbdev/pdbr/internal/compile"
 	"github.com/suprbdev/pdbr/internal/plan"
@@ -11,9 +15,15 @@ import (
 // FuzzFilter drives arbitrary values through a fixed filter shape and
 // asserts the invariant that makes injection impossible: user values never
 // appear in the SQL text, only in the parameter list — any two value sets
-// produce byte-identical SQL and the same parameter count.
+// produce byte-identical SQL and the same parameter count. The second
+// statement covers the pdbcore/contrib operators and order terms over the
+// golden-only kb.docs table.
 func FuzzFilter(f *testing.F) {
 	fx := newFixture(f)
+	cfx := &fixture{t: f, built: goldenBuilt(f)}
+	cfx.c = compile.New(cfx.built)
+	docs := cfx.res("kb.docs")
+	dc := func(name string) *introspect.Column { return cfx.col("kb.docs", name) }
 	users := fx.res("users")
 	email := fx.col("users", "email")
 	id := fx.col("users", "id")
@@ -52,7 +62,53 @@ func FuzzFilter(f *testing.F) {
 		}
 		return stmt
 	}
+	compileContrib := func(t testing.TB, e, tag string, n int64) *compile.Statement {
+		t.Helper()
+		fts := contrib.FullTextQuery{Query: e, Config: "c" + tag}
+		ftsFilter := cond(dc("search"), plan.OpWFts, fts)
+		rng := contrib.RangeValue{Start: &e, End: &tag, StartInclusive: true}
+		p := list(docs)
+		p.Select = fields(docs, "id")
+		p.Filter = plan.And{Terms: []plan.Expr{
+			ftsFilter,
+			cond(dc("body"), plan.OpFts, contrib.FullTextQuery{Query: tag}),
+			cond(dc("title"), "trgm_sim", e),
+			cond(dc("title"), "trgm_swsim", tag),
+			cond(dc("email"), plan.OpEq, e),
+			cond(dc("email"), plan.OpILike, tag),
+			cond(dc("email"), plan.OpSw, e),
+			cond(dc("email"), plan.OpIn, []any{e, tag}),
+			cond(dc("email"), plan.OpIsDistinct, tag),
+			cond(dc("attrs"), plan.OpHk, e),
+			cond(dc("attrs"), "hk_all", []string{e, tag}),
+			cond(dc("attrs"), plan.OpCs, map[string]any{"k": e, "v": tag}),
+			cond(dc("attrs"), plan.OpCd, e),
+			cond(dc("path"), "ancestor", e),
+			cond(dc("path"), "lquery_any", []string{e, tag}),
+			cond(dc("paths"), "ltxtquery", tag),
+			cond(dc("valid"), plan.OpOv, rng),
+			cond(dc("valid"), plan.OpCs, "x"+tag),
+			cond(dc("valid"), plan.OpAdj, rng),
+			cond(dc("slots"), plan.OpSl, contrib.RangeValue{Start: new(fmt.Sprint(n)), End: new(fmt.Sprint(n + 1))}),
+			cond(dc("pages"), plan.OpCs, n),
+			cond(dc("net"), "cd_strict", e),
+			plan.Not{Term: cond(dc("net"), plan.OpOv, tag)},
+		}}
+		p.Order = []plan.OrderTerm{
+			{Contrib: &plan.ContribOrder{Column: dc("search"), Name: "rank", Rank: "ts_rank", Filter: &ftsFilter}, Desc: true},
+			{Contrib: &plan.ContribOrder{Column: dc("title"), Name: "trgm_dist", Expr: "distance"}},
+			{Column: dc("email")},
+		}
+		p.Trgm = e
+		p.Page = plan.Page{Limit: 10, After: []any{n}}
+		stmt, err := cfx.c.Compile(context.Background(), &compile.Request{Plan: p, Built: cfx.built})
+		if err != nil {
+			t.Fatalf("contrib compile error on valid input: %v", err)
+		}
+		return stmt
+	}
 	baseline := compileWith(f, "a@example.com", "admin", 5)
+	contribBaseline := compileContrib(f, "a@example.com", "admin", 5)
 
 	f.Add("a@example.com", "admin", int64(5))
 	f.Add(`'; DROP TABLE users; --`, `"]}`, int64(-1))
@@ -61,12 +117,16 @@ func FuzzFilter(f *testing.F) {
 	f.Add("$1 || '", "\x00", int64(7))
 
 	f.Fuzz(func(t *testing.T, e, tag string, n int64) {
-		stmt := compileWith(t, e, tag, n)
-		if stmt.SQL != baseline.SQL {
-			t.Fatalf("SQL text varied with input values:\n--- baseline ---\n%s\n--- got ---\n%s", baseline.SQL, stmt.SQL)
-		}
-		if len(stmt.Args) != len(baseline.Args) {
-			t.Fatalf("parameter count varied: %d != %d", len(stmt.Args), len(baseline.Args))
+		for _, c := range []struct{ stmt, baseline *compile.Statement }{
+			{compileWith(t, e, tag, n), baseline},
+			{compileContrib(t, e, tag, n), contribBaseline},
+		} {
+			if c.stmt.SQL != c.baseline.SQL {
+				t.Fatalf("SQL text varied with input values:\n--- baseline ---\n%s\n--- got ---\n%s", c.baseline.SQL, c.stmt.SQL)
+			}
+			if len(c.stmt.Args) != len(c.baseline.Args) {
+				t.Fatalf("parameter count varied: %d != %d", len(c.stmt.Args), len(c.baseline.Args))
+			}
 		}
 	})
 }

@@ -1,0 +1,1 @@
+GET /api/kb/docs?select=id&search=fts(english).fat%20%26%20cat:*&body=wfts(pg_catalog.english).%22fat%20cat%22%20-rat&or=(search.plfts.fat%20cat,search.not.phfts(simple).fat%20cat,body.fts.rat)

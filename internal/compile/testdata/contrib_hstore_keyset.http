@@ -1,0 +1,1 @@
+GET /api/kb/authors?select=email&meta=eq.a%3D%3E1&order=meta.desc&after=WyJrYi5hdXRob3JzIiwiQWRhQEV4YW1wbGUuY29tIl0&limit=2

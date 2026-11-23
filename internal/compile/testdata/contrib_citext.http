@@ -1,0 +1,1 @@
+GET /api/kb/docs?select=id,email&email=eq.Ada@Example.com&email=neq.x&email=ilike.*ADA*&email=like.ada*&email=sw.Ad&email=not.ew.COM&email=in.(a@b.c,A@B.C)&email=isdistinct.bob@example.com&email=gte.a

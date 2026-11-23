@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/suprbdev/pdbcore/contrib"
 	"github.com/suprbdev/pdbcore/introspect"
 	"github.com/suprbdev/pdbcore/postgis"
 
@@ -175,6 +176,18 @@ func condKey(c *plan.Cond) string {
 		// part of the shape.
 		b.WriteString("." + isOperand(c.Value))
 	}
+	switch v := c.Value.(type) {
+	case contrib.FullTextQuery:
+		if v.Config != "" {
+			b.WriteString(".cfg")
+		}
+	case map[string]any:
+		b.WriteString(".obj")
+	case string:
+		if c.Op == plan.OpCs && api.RangeOperand(v) {
+			b.WriteString(".rng")
+		}
+	}
 	return b.String()
 }
 
@@ -213,35 +226,72 @@ func (s *stmt) opSQL(col *introspect.Column, ref string, c *plan.Cond) (string, 
 	if spatial && c.Op != plan.OpIs {
 		return "", errUser(CodeInvalidFilter, "operator %q is not valid for spatial columns", c.Op)
 	}
+	cat := s.catalog()
+	if cf, ok := api.ContribFilterFor(cat, col, string(c.Op), c.Value); ok {
+		expr, err := s.contribFilterSQL(cf, ref, c.Value)
+		if err != nil {
+			return "", err
+		}
+		return negate(expr, c.Negate), nil
+	}
+	owner, owned := api.OwnerVocabulary(cat, col)
+	cmp := func(op string) string {
+		if owned {
+			return " " + owner.Operator(op) + " "
+		}
+		return " " + op + " "
+	}
+	value := func() string {
+		if owned {
+			return s.ownerParam(owner, s.param(coerceInput(col, c.Value)))
+		}
+		return s.scalarParam(col, c.Value)
+	}
+	pattern := func(ph string) string {
+		if owned {
+			return cmp("~~") + s.ownerParam(owner, ph)
+		}
+		return " LIKE " + ph
+	}
 	switch c.Op {
 	case plan.OpEq:
-		return negate(ref+" = "+s.scalarParam(col, c.Value), c.Negate), nil
+		return negate(ref+cmp("=")+value(), c.Negate), nil
 	case plan.OpNeq:
-		return negate(ref+" <> "+s.scalarParam(col, c.Value), c.Negate), nil
+		return negate(ref+cmp("<>")+value(), c.Negate), nil
 	case plan.OpGt:
-		return negate(ref+" > "+s.scalarParam(col, c.Value), c.Negate), nil
+		return negate(ref+cmp(">")+value(), c.Negate), nil
 	case plan.OpGte:
-		return negate(ref+" >= "+s.scalarParam(col, c.Value), c.Negate), nil
+		return negate(ref+cmp(">=")+value(), c.Negate), nil
 	case plan.OpLt:
-		return negate(ref+" < "+s.scalarParam(col, c.Value), c.Negate), nil
+		return negate(ref+cmp("<")+value(), c.Negate), nil
 	case plan.OpLte:
-		return negate(ref+" <= "+s.scalarParam(col, c.Value), c.Negate), nil
+		return negate(ref+cmp("<=")+value(), c.Negate), nil
+	case plan.OpIsDistinct:
+		if owned {
+			// IS DISTINCT FROM cannot name a schema-qualified operator; the
+			// operand is never NULL, so <> IS NOT FALSE is equivalent.
+			return negate("("+ref+cmp("<>")+value()+") IS NOT FALSE", c.Negate), nil
+		}
+		return negate(ref+" IS DISTINCT FROM "+value(), c.Negate), nil
 	case plan.OpIn:
 		p := s.listParam(col, c.Value)
 		if c.Negate {
-			return ref + " <> ALL(" + p + ")", nil
+			return ref + cmp("<>") + "ALL(" + p + ")", nil
 		}
-		return ref + " = ANY(" + p + ")", nil
+		return ref + cmp("=") + "ANY(" + p + ")", nil
 	case plan.OpIs:
 		return isSQL(ref, c.Value, c.Negate)
 	case plan.OpLike:
-		return negate(ref+" LIKE "+s.param(likePattern(c.Value)), c.Negate), nil
+		return negate(ref+pattern(s.param(likePattern(c.Value))), c.Negate), nil
 	case plan.OpILike:
+		if owned {
+			return negate(ref+cmp("~~*")+s.ownerParam(owner, s.param(likePattern(c.Value))), c.Negate), nil
+		}
 		return negate(ref+" ILIKE "+s.param(likePattern(c.Value)), c.Negate), nil
 	case plan.OpSw:
-		return negate(ref+" LIKE "+s.param(escapeLike(stringOf(c.Value)))+" || '%'", c.Negate), nil
+		return negate(ref+pattern(s.param(escapeLike(stringOf(c.Value)))+" || '%'"), c.Negate), nil
 	case plan.OpEw:
-		return negate(ref+" LIKE '%' || "+s.param(escapeLike(stringOf(c.Value))), c.Negate), nil
+		return negate(ref+pattern("'%' || "+s.param(escapeLike(stringOf(c.Value)))), c.Negate), nil
 	case plan.OpCs:
 		if isJSON(col) {
 			return negate(ref+" @> "+s.jsonParam(c.Value)+"::jsonb", c.Negate), nil
@@ -262,6 +312,68 @@ func (s *stmt) opSQL(col *introspect.Column, ref string, c *plan.Cond) (string, 
 		return negate(jsonbExpr(col, ref)+" @@ "+s.param(stringOf(c.Value))+"::jsonpath", c.Negate), nil
 	}
 	return "", errUser(CodeInvalidFilter, "unknown filter operator %q", c.Op)
+}
+
+// catalog is the catalog the contrib vocabularies resolve extensions from
+// (nil without a built API: core vocabularies only).
+func (s *stmt) catalog() *introspect.Catalog {
+	if s.c.Built == nil {
+		return nil
+	}
+	return s.c.Built.Catalog
+}
+
+// ownerParam casts an operand expression to the extension-owned type of
+// owner (citext, ltree through their codec; hstore literal text directly).
+func (s *stmt) ownerParam(owner contrib.Vocabulary, expr string) string {
+	if owner.Codec != nil && owner.Codec.Arg == contrib.ArgText {
+		return owner.Codec.SQL(expr)
+	}
+	if strings.Trim(strings.TrimPrefix(expr, "$"), "0123456789") != "" {
+		expr = "(" + expr + ")"
+	}
+	return expr + "::" + typeRef(owner.Schema, owner.Type)
+}
+
+// keyEqSQL renders ref = placeholder for a key or filter column, casting
+// the placeholder to an extension-owned column type.
+func (s *stmt) keyEqSQL(col *introspect.Column, ref, ph string) string {
+	if owner := s.owner(col); owner != nil {
+		return ref + " " + owner.Operator("=") + " " + s.ownerParam(*owner, ph)
+	}
+	return ref + " = " + ph
+}
+
+// contribFilterSQL renders a pdbcore/contrib operator: the operand goes
+// through Op.Params into bind parameters and Op.Render builds the predicate
+// from their placeholders. An hstore operand given as hstore literal text
+// is cast to the column type instead.
+func (s *stmt) contribFilterSQL(cf api.ContribFilter, ref string, v any) (string, error) {
+	if lit, ok := v.(string); ok && cf.Op.Arg == contrib.ArgHstore {
+		op := "@>"
+		if cf.Op.Name == "containedBy" {
+			op = "<@"
+		}
+		return "(" + ref + ") " + cf.Vocabulary.Operator(op) + " " + s.ownerParam(cf.Vocabulary, s.param(lit)), nil
+	}
+	params, err := cf.Op.Params(v)
+	if err != nil {
+		return "", errUser(CodeInvalidFilter, "%s: %s", cf.Name, err.Error())
+	}
+	expr := cf.Op.Render(ref, s.params(params)...)
+	if expr == "" {
+		return "", fmt.Errorf("compile: contrib operator %s rendered no SQL", cf.Name)
+	}
+	return expr, nil
+}
+
+// params adds every value and returns the placeholders in order.
+func (s *stmt) params(vals []any) []string {
+	out := make([]string, len(vals))
+	for i, v := range vals {
+		out[i] = s.param(v)
+	}
+	return out
 }
 
 func negate(expr string, neg bool) string {
@@ -377,10 +489,11 @@ func (s *stmt) jsonParam(v any) string {
 }
 
 // listParam adds a list-valued operand (in, array ops) as one typed array
-// parameter: `$n::text[]`, or `$n::text[]::"s"."enum"[]` for enum element
-// types (PostgreSQL would otherwise describe the parameter with the enum
-// array OID, for which the driver has no encode plan). The cast depends only
-// on the column type, never on the value.
+// parameter: `$n::text[]`, or `$n::text[]::"s"."enum"[]` for enum,
+// extension (citext, hstore, ltree), range and multirange element types
+// (PostgreSQL would otherwise describe the parameter with an array OID the
+// driver has no encode plan for). The cast depends only on the column type,
+// never on the value.
 func (s *stmt) listParam(col *introspect.Column, v any) string {
 	return s.param(coerceList(col, v)) + arrayCast(s.c.Built, col)
 }
@@ -394,10 +507,24 @@ func arrayCast(built *api.Built, col *introspect.Column) string {
 	if built != nil && built.Catalog != nil && built.Catalog.Enum(col.TypeSchema, base) != nil {
 		return "::text[]::" + quoteIdent(col.TypeSchema) + "." + quoteIdent(base) + "[]"
 	}
+	_, isRange := contrib.Range(base)
+	_, isMulti := contrib.Multirange(base)
+	if isRange || isMulti {
+		return "::text[]::" + quoteIdent(base) + "[]"
+	}
+	elem := *col
+	elem.IsArray, elem.PGType = false, base
+	var cat *introspect.Catalog
+	if built != nil {
+		cat = built.Catalog
+	}
+	if owner, ok := api.OwnerVocabulary(cat, &elem); ok {
+		return "::text[]::" + typeRef(owner.Schema, owner.Type) + "[]"
+	}
 	if col.TypeSchema == "" || col.TypeSchema == "pg_catalog" {
 		return "::" + quoteIdent(base) + "[]"
 	}
-	return "::" + quoteIdent(col.TypeSchema) + "." + quoteIdent(base) + "[]"
+	return "::text[]::" + quoteIdent(col.TypeSchema) + "." + quoteIdent(base) + "[]"
 }
 
 // coerceList coerces a list operand element-wise. A string is taken as a
@@ -519,7 +646,7 @@ func (s *stmt) relationCond(c *plan.Cond, alias string) (string, error) {
 func (s *stmt) relationExists(steps []*api.Relation, rp *plan.RelationPath, alias string, quant plan.Quantifier) (string, error) {
 	rel := steps[0]
 	sub := s.alias("r")
-	where := joinConds(rel, sub, alias)
+	where := s.joinConds(rel, sub, alias)
 	var cond string
 	var err error
 	if len(steps) > 1 {

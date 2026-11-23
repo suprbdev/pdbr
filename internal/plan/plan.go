@@ -49,7 +49,10 @@ type Request struct {
 	// OnConflict is the upsert target (nil = primary key).
 	OnConflict *introspect.Constraint
 	// Near is the reference geometry for distance ordering (postgis plugin).
-	Near        any
+	Near any
+	// Trgm is the reference text (a string) for trigram distance ordering
+	// (trgm=; nil when absent).
+	Trgm        any
 	IfMatch     string // raw ETag from If-Match ("" = absent)
 	IfNoneMatch string
 	Prefer      Prefer
@@ -145,6 +148,14 @@ type Not struct{ Term Expr }
 //   - hk: string key; jpe/jpm: the jsonpath string.
 //   - spatial ops: a postgis.Value (st_* and geometry-operand bbox_* ops),
 //     a DWithin, or a BBox.
+//   - isdistinct: as eq.
+//   - contrib ops (api.ContribFilterFor resolves the pdbcore/contrib
+//     operator): contrib.FullTextQuery for fts/plfts/phfts/wfts; a string
+//     for single-text operands (trgm_*, hk, ltree paths and queries, inet
+//     addresses, range elements); []string for list operands (hk_all,
+//     hk_any, *_any); map[string]any (decoded JSON object) or a range
+//     literal string for range operands; map[string]any or an hstore
+//     literal string for hstore cs/cd.
 type Cond struct {
 	Column   *introspect.Column // real column of the current resource
 	Computed *api.Computed      // computed-column filter (advanced-filters)
@@ -198,6 +209,17 @@ const (
 	OpJpe    Op = "jpe"
 	OpJpm    Op = "jpm"
 	OpExists Op = "exists"
+
+	OpIsDistinct Op = "isdistinct"
+	OpFts        Op = "fts"
+	OpPlFts      Op = "plfts"
+	OpPhFts      Op = "phfts"
+	OpWFts       Op = "wfts"
+	OpSl         Op = "sl"
+	OpSr         Op = "sr"
+	OpNxr        Op = "nxr"
+	OpNxl        Op = "nxl"
+	OpAdj        Op = "adj"
 
 	OpStIntersects       Op = "st_intersects"
 	OpStDisjoint         Op = "st_disjoint"
@@ -301,8 +323,26 @@ type OrderTerm struct {
 	Computed   *api.Computed
 	Relation   *RelationOrder     // users(name) — forward: scalar subquery, backward: MIN/MAX
 	Distance   *introspect.Column // spatial column for `.dist` (uses Request.Near)
+	Contrib    *ContribOrder      // .rank / .rank_cd / .trgm_dist ... (pdbcore/contrib)
 	Desc       bool
 	NullsFirst bool // both directions default to NULLS LAST
+}
+
+// ContribOrder orders by a pdbcore/contrib value expression over Column:
+// full-text relevance against Filter (Rank set) or a trigram distance to
+// Request.Trgm (Expr set).
+type ContribOrder struct {
+	Column *introspect.Column
+	// Name is the order modifier (rank, rank_cd, trgm_dist, ...).
+	Name string
+	// Rank is "ts_rank" or "ts_rank_cd" for a relevance term.
+	Rank string
+	// Filter is the full-text condition on Column whose query a relevance
+	// term ranks against (same operator, query and config).
+	Filter *Cond
+	// Expr names the trigram distance expression (distance, wordDistance,
+	// strictWordDistance) of a distance term.
+	Expr string
 }
 
 // RelationOrder orders by a related table's column.

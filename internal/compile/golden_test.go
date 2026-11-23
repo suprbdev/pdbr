@@ -27,6 +27,7 @@ import (
 	"github.com/suprbdev/pdbr/internal/parse"
 	"github.com/suprbdev/pdbr/internal/plugins/nestedmutations"
 	postgisplugin "github.com/suprbdev/pdbr/internal/plugins/postgis"
+	"github.com/suprbdev/pdbr/internal/testcatalog"
 )
 
 var update = flag.Bool("update", false, "rewrite golden files")
@@ -48,12 +49,12 @@ func goldenCompile(c *compile.Compiler) compile.Func {
 	return nestedmutations.New(nil).WrapCompile(c.Compile)
 }
 
-// goldenCatalog is the shared fixture plus golden-only tables the fixture
+// goldenCatalog is the shared fixture plus golden-only objects the fixture
 // lacks: a composite-primary-key table (memberships), a table in a second
 // schema (audit.log), the PostgreSQL 18 temporal tables (temporalTables),
-// and the golden-only functions in
-// goldenOnlyRPCs. They exist only in memory; the live fixture database does
-// not have them.
+// the contrib-typed kb tables with their extensions (testcatalog.Contrib),
+// and the golden-only functions in goldenOnlyRPCs. They exist only in
+// memory; the live fixture database does not have them.
 func goldenCatalog() *introspect.Catalog {
 	cat := testutil.FixtureCatalog()
 	cat.Schemas = []string{"public", "audit"}
@@ -114,7 +115,7 @@ func goldenCatalog() *introspect.Catalog {
 			{Name: "nums", PGType: "_int4", TypeSchema: pg, Mode: introspect.ArgModeVariadic},
 		},
 	})
-	return cat
+	return testcatalog.Contrib(cat)
 }
 
 // temporalTables are the PostgreSQL 18 key variants (tk_ prefix, the same
@@ -175,9 +176,10 @@ func goldenBuilt(t testing.TB) *api.Built {
 	t.Helper()
 	b := api.New(goldenCatalog(), inflect.Default, api.Options{
 		FilterIndexedOnly: true,
+		AllowColumns:      map[string][]string{testcatalog.ContribSchema + ".docs": {"body", "attrs", "path"}},
 		Functions:         true,
 		BasePath:          goldenBasePath,
-		Schemas:           []string{"public", "audit"},
+		Schemas:           []string{"public", "audit", testcatalog.ContribSchema},
 		MaxPageSize:       100,
 		Etags:             true,
 		JWTType:           "public.jwt",
@@ -347,7 +349,7 @@ func TestGoldenAgainstDatabase(t *testing.T) {
 		name := strings.TrimSuffix(filepath.Base(file), ".http")
 		t.Run(name, func(t *testing.T) {
 			r := readHTTPFile(t, file)
-			if strings.Contains(r.URL.Path, "/memberships") || strings.Contains(r.URL.Path, "/tk_") || strings.HasPrefix(r.URL.Path, "/api/audit/") || goldenOnlyRPCs[path.Base(r.URL.Path)] && strings.Contains(r.URL.Path, "/rpc/") {
+			if strings.Contains(r.URL.Path, "/memberships") || strings.Contains(r.URL.Path, "/tk_") || strings.HasPrefix(r.URL.Path, "/api/audit/") || strings.HasPrefix(r.URL.Path, "/api/"+testcatalog.ContribSchema+"/") || goldenOnlyRPCs[path.Base(r.URL.Path)] && strings.Contains(r.URL.Path, "/rpc/") {
 				t.Skip("golden-only table")
 			}
 			m, ok := built.Match(strings.TrimPrefix(r.URL.EscapedPath(), goldenBasePath))

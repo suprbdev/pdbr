@@ -1,0 +1,2 @@
+-- request: GET /api/kb/docs?attrs=gt.a%3D%3E1
+-- error: 400 invalid_filter: operator "gt" is not supported on hstore column "attrs"

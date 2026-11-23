@@ -143,7 +143,7 @@
           {
             "name": "id",
             "in": "query",
-            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -155,13 +155,14 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
             "name": "post_id",
             "in": "query",
-            "description": "Filter: post_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (post_id=not.eq.<value>).",
+            "description": "Filter: post_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (post_id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -173,13 +174,14 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
             "name": "parent_id",
             "in": "query",
-            "description": "Filter: parent_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (parent_id=not.eq.<value>).",
+            "description": "Filter: parent_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (parent_id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -191,7 +193,8 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
@@ -387,7 +390,7 @@
           {
             "name": "id",
             "in": "query",
-            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -399,13 +402,14 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
             "name": "post_id",
             "in": "query",
-            "description": "Filter: post_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (post_id=not.eq.<value>).",
+            "description": "Filter: post_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (post_id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -417,13 +421,14 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
             "name": "parent_id",
             "in": "query",
-            "description": "Filter: parent_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (parent_id=not.eq.<value>).",
+            "description": "Filter: parent_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (parent_id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -435,7 +440,8 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
@@ -859,7 +865,7 @@
           {
             "name": "id",
             "in": "query",
-            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -871,13 +877,14 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
             "name": "post_id",
             "in": "query",
-            "description": "Filter: post_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (post_id=not.eq.<value>).",
+            "description": "Filter: post_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (post_id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -889,13 +896,14 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
             "name": "parent_id",
             "in": "query",
-            "description": "Filter: parent_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (parent_id=not.eq.<value>).",
+            "description": "Filter: parent_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (parent_id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -907,7 +915,8 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           }
         ],
@@ -1061,7 +1070,7 @@
           {
             "name": "id",
             "in": "query",
-            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -1073,13 +1082,14 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
             "name": "post_id",
             "in": "query",
-            "description": "Filter: post_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (post_id=not.eq.<value>).",
+            "description": "Filter: post_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (post_id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -1091,13 +1101,14 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
             "name": "parent_id",
             "in": "query",
-            "description": "Filter: parent_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (parent_id=not.eq.<value>).",
+            "description": "Filter: parent_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (parent_id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -1109,7 +1120,8 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           }
         ],
@@ -1660,7 +1672,7 @@
           {
             "name": "id",
             "in": "query",
-            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -1672,13 +1684,14 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
             "name": "type_code",
             "in": "query",
-            "description": "Filter: type_code=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (type_code=not.eq.<value>).",
+            "description": "Filter: type_code=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (type_code=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -1690,7 +1703,8 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
@@ -1886,7 +1900,7 @@
           {
             "name": "id",
             "in": "query",
-            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -1898,13 +1912,14 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
             "name": "type_code",
             "in": "query",
-            "description": "Filter: type_code=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (type_code=not.eq.<value>).",
+            "description": "Filter: type_code=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (type_code=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -1916,7 +1931,8 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
@@ -2340,7 +2356,7 @@
           {
             "name": "id",
             "in": "query",
-            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -2352,13 +2368,14 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
             "name": "type_code",
             "in": "query",
-            "description": "Filter: type_code=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (type_code=not.eq.<value>).",
+            "description": "Filter: type_code=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (type_code=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -2370,7 +2387,8 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           }
         ],
@@ -2524,7 +2542,7 @@
           {
             "name": "id",
             "in": "query",
-            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -2536,13 +2554,14 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
             "name": "type_code",
             "in": "query",
-            "description": "Filter: type_code=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (type_code=not.eq.<value>).",
+            "description": "Filter: type_code=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (type_code=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -2554,7 +2573,8 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           }
         ],
@@ -3421,7 +3441,7 @@
           {
             "name": "id",
             "in": "query",
-            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -3433,13 +3453,14 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
             "name": "owner_id",
             "in": "query",
-            "description": "Filter: owner_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (owner_id=not.eq.<value>).",
+            "description": "Filter: owner_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (owner_id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -3451,7 +3472,8 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
@@ -3669,7 +3691,7 @@
           {
             "name": "id",
             "in": "query",
-            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -3681,13 +3703,14 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
             "name": "owner_id",
             "in": "query",
-            "description": "Filter: owner_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (owner_id=not.eq.<value>).",
+            "description": "Filter: owner_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (owner_id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -3699,7 +3722,8 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
@@ -4145,7 +4169,7 @@
           {
             "name": "id",
             "in": "query",
-            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -4157,13 +4181,14 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
             "name": "owner_id",
             "in": "query",
-            "description": "Filter: owner_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (owner_id=not.eq.<value>).",
+            "description": "Filter: owner_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (owner_id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -4175,7 +4200,8 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
@@ -4351,7 +4377,7 @@
           {
             "name": "id",
             "in": "query",
-            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -4363,13 +4389,14 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
             "name": "owner_id",
             "in": "query",
-            "description": "Filter: owner_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (owner_id=not.eq.<value>).",
+            "description": "Filter: owner_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (owner_id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -4381,7 +4408,8 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
@@ -4954,43 +4982,7 @@
           {
             "name": "id",
             "in": "query",
-            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
-            "schema": {
-              "type": "string"
-            },
-            "x-pdbr-filter-ops": [
-              "eq",
-              "neq",
-              "gt",
-              "gte",
-              "lt",
-              "lte",
-              "in",
-              "is"
-            ]
-          },
-          {
-            "name": "author_id",
-            "in": "query",
-            "description": "Filter: author_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (author_id=not.eq.<value>).",
-            "schema": {
-              "type": "string"
-            },
-            "x-pdbr-filter-ops": [
-              "eq",
-              "neq",
-              "gt",
-              "gte",
-              "lt",
-              "lte",
-              "in",
-              "is"
-            ]
-          },
-          {
-            "name": "title",
-            "in": "query",
-            "description": "Filter: title=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, like, ilike, sw, ew. Prefix not. to negate (title=not.eq.<value>).",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -5003,6 +4995,45 @@
               "lte",
               "in",
               "is",
+              "isdistinct"
+            ]
+          },
+          {
+            "name": "author_id",
+            "in": "query",
+            "description": "Filter: author_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (author_id=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is",
+              "isdistinct"
+            ]
+          },
+          {
+            "name": "title",
+            "in": "query",
+            "description": "Filter: title=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct, like, ilike, sw, ew. Prefix not. to negate (title=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is",
+              "isdistinct",
               "like",
               "ilike",
               "sw",
@@ -5202,43 +5233,7 @@
           {
             "name": "id",
             "in": "query",
-            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
-            "schema": {
-              "type": "string"
-            },
-            "x-pdbr-filter-ops": [
-              "eq",
-              "neq",
-              "gt",
-              "gte",
-              "lt",
-              "lte",
-              "in",
-              "is"
-            ]
-          },
-          {
-            "name": "author_id",
-            "in": "query",
-            "description": "Filter: author_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (author_id=not.eq.<value>).",
-            "schema": {
-              "type": "string"
-            },
-            "x-pdbr-filter-ops": [
-              "eq",
-              "neq",
-              "gt",
-              "gte",
-              "lt",
-              "lte",
-              "in",
-              "is"
-            ]
-          },
-          {
-            "name": "title",
-            "in": "query",
-            "description": "Filter: title=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, like, ilike, sw, ew. Prefix not. to negate (title=not.eq.<value>).",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -5251,6 +5246,45 @@
               "lte",
               "in",
               "is",
+              "isdistinct"
+            ]
+          },
+          {
+            "name": "author_id",
+            "in": "query",
+            "description": "Filter: author_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (author_id=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is",
+              "isdistinct"
+            ]
+          },
+          {
+            "name": "title",
+            "in": "query",
+            "description": "Filter: title=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct, like, ilike, sw, ew. Prefix not. to negate (title=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is",
+              "isdistinct",
               "like",
               "ilike",
               "sw",
@@ -5678,43 +5712,7 @@
           {
             "name": "id",
             "in": "query",
-            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
-            "schema": {
-              "type": "string"
-            },
-            "x-pdbr-filter-ops": [
-              "eq",
-              "neq",
-              "gt",
-              "gte",
-              "lt",
-              "lte",
-              "in",
-              "is"
-            ]
-          },
-          {
-            "name": "author_id",
-            "in": "query",
-            "description": "Filter: author_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (author_id=not.eq.<value>).",
-            "schema": {
-              "type": "string"
-            },
-            "x-pdbr-filter-ops": [
-              "eq",
-              "neq",
-              "gt",
-              "gte",
-              "lt",
-              "lte",
-              "in",
-              "is"
-            ]
-          },
-          {
-            "name": "title",
-            "in": "query",
-            "description": "Filter: title=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, like, ilike, sw, ew. Prefix not. to negate (title=not.eq.<value>).",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -5727,6 +5725,45 @@
               "lte",
               "in",
               "is",
+              "isdistinct"
+            ]
+          },
+          {
+            "name": "author_id",
+            "in": "query",
+            "description": "Filter: author_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (author_id=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is",
+              "isdistinct"
+            ]
+          },
+          {
+            "name": "title",
+            "in": "query",
+            "description": "Filter: title=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct, like, ilike, sw, ew. Prefix not. to negate (title=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is",
+              "isdistinct",
               "like",
               "ilike",
               "sw",
@@ -5884,43 +5921,7 @@
           {
             "name": "id",
             "in": "query",
-            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
-            "schema": {
-              "type": "string"
-            },
-            "x-pdbr-filter-ops": [
-              "eq",
-              "neq",
-              "gt",
-              "gte",
-              "lt",
-              "lte",
-              "in",
-              "is"
-            ]
-          },
-          {
-            "name": "author_id",
-            "in": "query",
-            "description": "Filter: author_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (author_id=not.eq.<value>).",
-            "schema": {
-              "type": "string"
-            },
-            "x-pdbr-filter-ops": [
-              "eq",
-              "neq",
-              "gt",
-              "gte",
-              "lt",
-              "lte",
-              "in",
-              "is"
-            ]
-          },
-          {
-            "name": "title",
-            "in": "query",
-            "description": "Filter: title=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, like, ilike, sw, ew. Prefix not. to negate (title=not.eq.<value>).",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -5933,6 +5934,45 @@
               "lte",
               "in",
               "is",
+              "isdistinct"
+            ]
+          },
+          {
+            "name": "author_id",
+            "in": "query",
+            "description": "Filter: author_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (author_id=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is",
+              "isdistinct"
+            ]
+          },
+          {
+            "name": "title",
+            "in": "query",
+            "description": "Filter: title=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct, like, ilike, sw, ew. Prefix not. to negate (title=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is",
+              "isdistinct",
               "like",
               "ilike",
               "sw",
@@ -7516,43 +7556,7 @@
           {
             "name": "id",
             "in": "query",
-            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
-            "schema": {
-              "type": "string"
-            },
-            "x-pdbr-filter-ops": [
-              "eq",
-              "neq",
-              "gt",
-              "gte",
-              "lt",
-              "lte",
-              "in",
-              "is"
-            ]
-          },
-          {
-            "name": "author_id",
-            "in": "query",
-            "description": "Filter: author_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (author_id=not.eq.<value>).",
-            "schema": {
-              "type": "string"
-            },
-            "x-pdbr-filter-ops": [
-              "eq",
-              "neq",
-              "gt",
-              "gte",
-              "lt",
-              "lte",
-              "in",
-              "is"
-            ]
-          },
-          {
-            "name": "title",
-            "in": "query",
-            "description": "Filter: title=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, like, ilike, sw, ew. Prefix not. to negate (title=not.eq.<value>).",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -7565,6 +7569,45 @@
               "lte",
               "in",
               "is",
+              "isdistinct"
+            ]
+          },
+          {
+            "name": "author_id",
+            "in": "query",
+            "description": "Filter: author_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (author_id=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is",
+              "isdistinct"
+            ]
+          },
+          {
+            "name": "title",
+            "in": "query",
+            "description": "Filter: title=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct, like, ilike, sw, ew. Prefix not. to negate (title=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is",
+              "isdistinct",
               "like",
               "ilike",
               "sw",
@@ -7731,43 +7774,7 @@
           {
             "name": "id",
             "in": "query",
-            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
-            "schema": {
-              "type": "string"
-            },
-            "x-pdbr-filter-ops": [
-              "eq",
-              "neq",
-              "gt",
-              "gte",
-              "lt",
-              "lte",
-              "in",
-              "is"
-            ]
-          },
-          {
-            "name": "author_id",
-            "in": "query",
-            "description": "Filter: author_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (author_id=not.eq.<value>).",
-            "schema": {
-              "type": "string"
-            },
-            "x-pdbr-filter-ops": [
-              "eq",
-              "neq",
-              "gt",
-              "gte",
-              "lt",
-              "lte",
-              "in",
-              "is"
-            ]
-          },
-          {
-            "name": "title",
-            "in": "query",
-            "description": "Filter: title=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, like, ilike, sw, ew. Prefix not. to negate (title=not.eq.<value>).",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -7780,6 +7787,45 @@
               "lte",
               "in",
               "is",
+              "isdistinct"
+            ]
+          },
+          {
+            "name": "author_id",
+            "in": "query",
+            "description": "Filter: author_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (author_id=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is",
+              "isdistinct"
+            ]
+          },
+          {
+            "name": "title",
+            "in": "query",
+            "description": "Filter: title=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct, like, ilike, sw, ew. Prefix not. to negate (title=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is",
+              "isdistinct",
               "like",
               "ilike",
               "sw",
@@ -7927,43 +7973,7 @@
           {
             "name": "id",
             "in": "query",
-            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
-            "schema": {
-              "type": "string"
-            },
-            "x-pdbr-filter-ops": [
-              "eq",
-              "neq",
-              "gt",
-              "gte",
-              "lt",
-              "lte",
-              "in",
-              "is"
-            ]
-          },
-          {
-            "name": "author_id",
-            "in": "query",
-            "description": "Filter: author_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (author_id=not.eq.<value>).",
-            "schema": {
-              "type": "string"
-            },
-            "x-pdbr-filter-ops": [
-              "eq",
-              "neq",
-              "gt",
-              "gte",
-              "lt",
-              "lte",
-              "in",
-              "is"
-            ]
-          },
-          {
-            "name": "title",
-            "in": "query",
-            "description": "Filter: title=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, like, ilike, sw, ew. Prefix not. to negate (title=not.eq.<value>).",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -7976,6 +7986,45 @@
               "lte",
               "in",
               "is",
+              "isdistinct"
+            ]
+          },
+          {
+            "name": "author_id",
+            "in": "query",
+            "description": "Filter: author_id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (author_id=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is",
+              "isdistinct"
+            ]
+          },
+          {
+            "name": "title",
+            "in": "query",
+            "description": "Filter: title=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct, like, ilike, sw, ew. Prefix not. to negate (title=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is",
+              "isdistinct",
               "like",
               "ilike",
               "sw",
@@ -8337,25 +8386,7 @@
           {
             "name": "id",
             "in": "query",
-            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
-            "schema": {
-              "type": "string"
-            },
-            "x-pdbr-filter-ops": [
-              "eq",
-              "neq",
-              "gt",
-              "gte",
-              "lt",
-              "lte",
-              "in",
-              "is"
-            ]
-          },
-          {
-            "name": "email",
-            "in": "query",
-            "description": "Filter: email=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, like, ilike, sw, ew. Prefix not. to negate (email=not.eq.<value>).",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -8368,6 +8399,26 @@
               "lte",
               "in",
               "is",
+              "isdistinct"
+            ]
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "description": "Filter: email=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct, like, ilike, sw, ew. Prefix not. to negate (email=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is",
+              "isdistinct",
               "like",
               "ilike",
               "sw",
@@ -8377,7 +8428,7 @@
           {
             "name": "mood",
             "in": "query",
-            "description": "Filter: mood=<op>.<value> (mood). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (mood=not.eq.<value>).",
+            "description": "Filter: mood=<op>.<value> (mood). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (mood=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -8389,13 +8440,14 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
             "name": "settings",
             "in": "query",
-            "description": "Filter: settings=<op>.<value> (jsonb). Ops: eq, neq, gt, gte, lt, lte, is, cs, cd, hk, jpe, jpm. Prefix not. to negate (settings=not.eq.<value>).",
+            "description": "Filter: settings=<op>.<value> (jsonb). Ops: eq, neq, gt, gte, lt, lte, is, isdistinct, cs, cd, hk, jpe, jpm. Prefix not. to negate (settings=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -8407,6 +8459,7 @@
               "lt",
               "lte",
               "is",
+              "isdistinct",
               "cs",
               "cd",
               "hk",
@@ -8417,7 +8470,7 @@
           {
             "name": "tags",
             "in": "query",
-            "description": "Filter: tags=<op>.<value> (text[]). Ops: eq, neq, gt, gte, lt, lte, is, cs, cd, ov. Prefix not. to negate (tags=not.eq.<value>).",
+            "description": "Filter: tags=<op>.<value> (text[]). Ops: eq, neq, gt, gte, lt, lte, is, isdistinct, cs, cd, ov. Prefix not. to negate (tags=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -8429,6 +8482,7 @@
               "lt",
               "lte",
               "is",
+              "isdistinct",
               "cs",
               "cd",
               "ov"
@@ -8437,7 +8491,7 @@
           {
             "name": "moods",
             "in": "query",
-            "description": "Filter: moods=<op>.<value> (mood[]). Ops: eq, neq, gt, gte, lt, lte, is, cs, cd, ov. Prefix not. to negate (moods=not.eq.<value>).",
+            "description": "Filter: moods=<op>.<value> (mood[]). Ops: eq, neq, gt, gte, lt, lte, is, isdistinct, cs, cd, ov. Prefix not. to negate (moods=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -8449,6 +8503,7 @@
               "lt",
               "lte",
               "is",
+              "isdistinct",
               "cs",
               "cd",
               "ov"
@@ -8647,25 +8702,7 @@
           {
             "name": "id",
             "in": "query",
-            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
-            "schema": {
-              "type": "string"
-            },
-            "x-pdbr-filter-ops": [
-              "eq",
-              "neq",
-              "gt",
-              "gte",
-              "lt",
-              "lte",
-              "in",
-              "is"
-            ]
-          },
-          {
-            "name": "email",
-            "in": "query",
-            "description": "Filter: email=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, like, ilike, sw, ew. Prefix not. to negate (email=not.eq.<value>).",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -8678,6 +8715,26 @@
               "lte",
               "in",
               "is",
+              "isdistinct"
+            ]
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "description": "Filter: email=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct, like, ilike, sw, ew. Prefix not. to negate (email=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is",
+              "isdistinct",
               "like",
               "ilike",
               "sw",
@@ -8687,7 +8744,7 @@
           {
             "name": "mood",
             "in": "query",
-            "description": "Filter: mood=<op>.<value> (mood). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (mood=not.eq.<value>).",
+            "description": "Filter: mood=<op>.<value> (mood). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (mood=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -8699,13 +8756,14 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
             "name": "settings",
             "in": "query",
-            "description": "Filter: settings=<op>.<value> (jsonb). Ops: eq, neq, gt, gte, lt, lte, is, cs, cd, hk, jpe, jpm. Prefix not. to negate (settings=not.eq.<value>).",
+            "description": "Filter: settings=<op>.<value> (jsonb). Ops: eq, neq, gt, gte, lt, lte, is, isdistinct, cs, cd, hk, jpe, jpm. Prefix not. to negate (settings=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -8717,6 +8775,7 @@
               "lt",
               "lte",
               "is",
+              "isdistinct",
               "cs",
               "cd",
               "hk",
@@ -8727,7 +8786,7 @@
           {
             "name": "tags",
             "in": "query",
-            "description": "Filter: tags=<op>.<value> (text[]). Ops: eq, neq, gt, gte, lt, lte, is, cs, cd, ov. Prefix not. to negate (tags=not.eq.<value>).",
+            "description": "Filter: tags=<op>.<value> (text[]). Ops: eq, neq, gt, gte, lt, lte, is, isdistinct, cs, cd, ov. Prefix not. to negate (tags=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -8739,6 +8798,7 @@
               "lt",
               "lte",
               "is",
+              "isdistinct",
               "cs",
               "cd",
               "ov"
@@ -8747,7 +8807,7 @@
           {
             "name": "moods",
             "in": "query",
-            "description": "Filter: moods=<op>.<value> (mood[]). Ops: eq, neq, gt, gte, lt, lte, is, cs, cd, ov. Prefix not. to negate (moods=not.eq.<value>).",
+            "description": "Filter: moods=<op>.<value> (mood[]). Ops: eq, neq, gt, gte, lt, lte, is, isdistinct, cs, cd, ov. Prefix not. to negate (moods=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -8759,6 +8819,7 @@
               "lt",
               "lte",
               "is",
+              "isdistinct",
               "cs",
               "cd",
               "ov"
@@ -9185,25 +9246,7 @@
           {
             "name": "id",
             "in": "query",
-            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
-            "schema": {
-              "type": "string"
-            },
-            "x-pdbr-filter-ops": [
-              "eq",
-              "neq",
-              "gt",
-              "gte",
-              "lt",
-              "lte",
-              "in",
-              "is"
-            ]
-          },
-          {
-            "name": "email",
-            "in": "query",
-            "description": "Filter: email=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, like, ilike, sw, ew. Prefix not. to negate (email=not.eq.<value>).",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -9216,6 +9259,26 @@
               "lte",
               "in",
               "is",
+              "isdistinct"
+            ]
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "description": "Filter: email=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct, like, ilike, sw, ew. Prefix not. to negate (email=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is",
+              "isdistinct",
               "like",
               "ilike",
               "sw",
@@ -9225,7 +9288,7 @@
           {
             "name": "mood",
             "in": "query",
-            "description": "Filter: mood=<op>.<value> (mood). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (mood=not.eq.<value>).",
+            "description": "Filter: mood=<op>.<value> (mood). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (mood=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -9237,13 +9300,14 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
             "name": "settings",
             "in": "query",
-            "description": "Filter: settings=<op>.<value> (jsonb). Ops: eq, neq, gt, gte, lt, lte, is, cs, cd, hk, jpe, jpm. Prefix not. to negate (settings=not.eq.<value>).",
+            "description": "Filter: settings=<op>.<value> (jsonb). Ops: eq, neq, gt, gte, lt, lte, is, isdistinct, cs, cd, hk, jpe, jpm. Prefix not. to negate (settings=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -9255,6 +9319,7 @@
               "lt",
               "lte",
               "is",
+              "isdistinct",
               "cs",
               "cd",
               "hk",
@@ -9265,7 +9330,7 @@
           {
             "name": "tags",
             "in": "query",
-            "description": "Filter: tags=<op>.<value> (text[]). Ops: eq, neq, gt, gte, lt, lte, is, cs, cd, ov. Prefix not. to negate (tags=not.eq.<value>).",
+            "description": "Filter: tags=<op>.<value> (text[]). Ops: eq, neq, gt, gte, lt, lte, is, isdistinct, cs, cd, ov. Prefix not. to negate (tags=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -9277,6 +9342,7 @@
               "lt",
               "lte",
               "is",
+              "isdistinct",
               "cs",
               "cd",
               "ov"
@@ -9285,7 +9351,7 @@
           {
             "name": "moods",
             "in": "query",
-            "description": "Filter: moods=<op>.<value> (mood[]). Ops: eq, neq, gt, gte, lt, lte, is, cs, cd, ov. Prefix not. to negate (moods=not.eq.<value>).",
+            "description": "Filter: moods=<op>.<value> (mood[]). Ops: eq, neq, gt, gte, lt, lte, is, isdistinct, cs, cd, ov. Prefix not. to negate (moods=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -9297,6 +9363,7 @@
               "lt",
               "lte",
               "is",
+              "isdistinct",
               "cs",
               "cd",
               "ov"
@@ -9453,25 +9520,7 @@
           {
             "name": "id",
             "in": "query",
-            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (id=not.eq.<value>).",
-            "schema": {
-              "type": "string"
-            },
-            "x-pdbr-filter-ops": [
-              "eq",
-              "neq",
-              "gt",
-              "gte",
-              "lt",
-              "lte",
-              "in",
-              "is"
-            ]
-          },
-          {
-            "name": "email",
-            "in": "query",
-            "description": "Filter: email=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, like, ilike, sw, ew. Prefix not. to negate (email=not.eq.<value>).",
+            "description": "Filter: id=<op>.<value> (int4). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (id=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -9484,6 +9533,26 @@
               "lte",
               "in",
               "is",
+              "isdistinct"
+            ]
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "description": "Filter: email=<op>.<value> (text). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct, like, ilike, sw, ew. Prefix not. to negate (email=not.eq.<value>).",
+            "schema": {
+              "type": "string"
+            },
+            "x-pdbr-filter-ops": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "is",
+              "isdistinct",
               "like",
               "ilike",
               "sw",
@@ -9493,7 +9562,7 @@
           {
             "name": "mood",
             "in": "query",
-            "description": "Filter: mood=<op>.<value> (mood). Ops: eq, neq, gt, gte, lt, lte, in, is. Prefix not. to negate (mood=not.eq.<value>).",
+            "description": "Filter: mood=<op>.<value> (mood). Ops: eq, neq, gt, gte, lt, lte, in, is, isdistinct. Prefix not. to negate (mood=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -9505,13 +9574,14 @@
               "lt",
               "lte",
               "in",
-              "is"
+              "is",
+              "isdistinct"
             ]
           },
           {
             "name": "settings",
             "in": "query",
-            "description": "Filter: settings=<op>.<value> (jsonb). Ops: eq, neq, gt, gte, lt, lte, is, cs, cd, hk, jpe, jpm. Prefix not. to negate (settings=not.eq.<value>).",
+            "description": "Filter: settings=<op>.<value> (jsonb). Ops: eq, neq, gt, gte, lt, lte, is, isdistinct, cs, cd, hk, jpe, jpm. Prefix not. to negate (settings=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -9523,6 +9593,7 @@
               "lt",
               "lte",
               "is",
+              "isdistinct",
               "cs",
               "cd",
               "hk",
@@ -9533,7 +9604,7 @@
           {
             "name": "tags",
             "in": "query",
-            "description": "Filter: tags=<op>.<value> (text[]). Ops: eq, neq, gt, gte, lt, lte, is, cs, cd, ov. Prefix not. to negate (tags=not.eq.<value>).",
+            "description": "Filter: tags=<op>.<value> (text[]). Ops: eq, neq, gt, gte, lt, lte, is, isdistinct, cs, cd, ov. Prefix not. to negate (tags=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -9545,6 +9616,7 @@
               "lt",
               "lte",
               "is",
+              "isdistinct",
               "cs",
               "cd",
               "ov"
@@ -9553,7 +9625,7 @@
           {
             "name": "moods",
             "in": "query",
-            "description": "Filter: moods=<op>.<value> (mood[]). Ops: eq, neq, gt, gte, lt, lte, is, cs, cd, ov. Prefix not. to negate (moods=not.eq.<value>).",
+            "description": "Filter: moods=<op>.<value> (mood[]). Ops: eq, neq, gt, gte, lt, lte, is, isdistinct, cs, cd, ov. Prefix not. to negate (moods=not.eq.<value>).",
             "schema": {
               "type": "string"
             },
@@ -9565,6 +9637,7 @@
               "lt",
               "lte",
               "is",
+              "isdistinct",
               "cs",
               "cd",
               "ov"

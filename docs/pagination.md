@@ -206,6 +206,7 @@ Bulk `PATCH`/`DELETE` also carry `Content-Range` for the written rows
 order  := term ("," term)*
 term   := path [ "." dir ] [ "." nulls ]
 path   := column | computed | relkey "(" column ")" | spatialcol ".dist"
+        | column ( ".rank" | ".rank_cd" | ".trgm_dist" | ".trgm_wdist" | ".trgm_swdist" )
 dir    := "asc" | "desc"
 nulls  := "nullsfirst" | "nullslast"
 ```
@@ -260,6 +261,20 @@ computed columns are not orderable; `@omit order` on the function comment,
 `computed_opt_in`, `computed: false` and the plugin being disabled all answer
 `400 column_not_orderable`.
 
+### Full-text relevance and trigram distance
+
+```http
+GET /api/articles?search=wfts(english).fat%20cat&order=search.rank.desc
+GET /api/articles?order=title.trgm_dist&trgm=postgres&limit=10
+```
+
+`<col>.rank` / `<col>.rank_cd` order by `ts_rank` / `ts_rank_cd` against the
+request's top-level full-text filter on the same column (missing or
+ambiguous → `400 invalid_filter`); `<col>.trgm_dist` (and `trgm_wdist`,
+`trgm_swdist`) by the `pg_trgm` distance to the `trgm=` parameter (missing →
+`400 invalid_filter`), nearest-first under `asc`. Details and the index
+policy for both in [contrib.md](contrib.md#ordering).
+
 ### Distance (`postgis` plugin)
 
 ```http
@@ -271,7 +286,9 @@ WKT/EWKT, cast to the column's flavour so geography columns rank in metres),
 which a GiST index answers directly. `near` missing or unparseable → `400
 invalid_filter` (deliberately stricter than pdbq, which drops the term
 silently); one `near=` serves the root and every per-embed `.dist` term, and
-a `near=` without any `.dist` term is ignored. The column follows the
+a `near=` without any `.dist` term is `400 invalid_filter` too (on a route
+with a column or argument named `near` the name is that filter instead,
+and `.dist` is unavailable). The column follows the
 indexed-only policy and `@omit order` like any other (`400
 column_not_orderable`); plain `order=<spatialcol>.asc` is
 `column_not_orderable` too, `.dist` on a non-spatial column

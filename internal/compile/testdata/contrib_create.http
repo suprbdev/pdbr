@@ -1,0 +1,3 @@
+POST /api/kb/docs
+
+{"id": 9, "title": "t", "attrs": {"color": "red", "size": null}, "pages": {"start": 1, "end": 5, "endInclusive": true}, "valid": "[2020-01-01,2020-02-01)", "slots": [{"start": 1, "end": 3}, "[5,7)"], "email": "X@Y.Z", "path": "top.a", "paths": ["a", "b.c"], "net": "10.0.0.1", "search": "fat:1 cat:2"}

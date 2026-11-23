@@ -1,0 +1,1 @@
+GET /api/kb/docs?select=id&search=wfts(english).fat%20cat&body=plfts.rat&order=search.rank.desc,body.rank_cd.desc.nullsfirst&limit=5

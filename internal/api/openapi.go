@@ -3,9 +3,11 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"slices"
 	"sort"
 	"strings"
 
+	"github.com/suprbdev/pdbcore/contrib"
 	"github.com/suprbdev/pdbcore/introspect"
 	"github.com/suprbdev/pdbcore/postgis"
 )
@@ -190,6 +192,11 @@ func (b *Built) typeSchema(pgType, typeSchema, enumRef string) *Schema {
 // inputTypeSchema is typeSchema for request bodies: Extra.InputTypes wins
 // over Extra.Types (postgis: GeoJSON or WKT text on the way in).
 func (b *Builder) inputTypeSchema(pgType, typeSchema, enumRef string) *Schema {
+	if b.Extra.InputTypes[pgType] == nil {
+		if s := rangeInputSchema(pgType); s != nil {
+			return s
+		}
+	}
 	if len(b.Extra.InputTypes) == 0 {
 		return b.typeSchema(pgType, typeSchema, enumRef)
 	}
@@ -250,9 +257,42 @@ func typeSchemaWith(enums map[string]*Enum, comps map[string]*Composite, types m
 		return &Schema{Type: "string", ContentEncoding: "base64"}
 	case "json", "jsonb":
 		return &Schema{}
+	case "hstore":
+		return &Schema{Type: "object", Description: "hstore, as an object of string keys to string or null values."}
 	default:
 		return &Schema{Type: "string"}
 	}
+}
+
+// rangeInputSchema is the request-body shape of a built-in range or
+// multirange value: its literal text, or the structured form the contrib
+// codec converts. Responses keep the literal text (PostgREST does too).
+func rangeInputSchema(pgType string) *Schema {
+	bound := func(side string) *Schema {
+		return &Schema{Description: side + " bound in the element type's JSON or text form; null or absent is unbounded."}
+	}
+	obj := &Schema{
+		Type: "object", AdditionalProperties: boolPtr(false),
+		Properties: map[string]*Schema{
+			"start": bound("Lower"), "end": bound("Upper"),
+			"startInclusive": {Type: "boolean", Description: "Default true."},
+			"endInclusive":   {Type: "boolean", Description: "Default false."},
+			"isEmpty":        {Type: "boolean", Description: "The empty range; other members are ignored."},
+		},
+	}
+	if _, ok := contrib.Range(pgType); ok {
+		return &Schema{OneOf: []*Schema{
+			{Type: "string", Description: pgType + " literal, e.g. [1,5) or empty."},
+			obj,
+		}}
+	}
+	if _, ok := contrib.Multirange(pgType); ok {
+		return &Schema{OneOf: []*Schema{
+			{Type: "string", Description: pgType + " literal, e.g. {[1,3), [5,7)}."},
+			{Type: "array", Items: &Schema{OneOf: []*Schema{{Type: "string"}, obj}}},
+		}}
+	}
+	return nil
 }
 
 // ColumnSchema maps a column to its (nullable-aware) OpenAPI schema; plugins
@@ -635,35 +675,50 @@ func (b *Builder) nestedInputProps(r *Resource, s *Schema, required map[string]b
 // the parser's op/type compatibility (parse.coerceOperand): plugin types
 // come from Extra.FilterOps, spatial columns without the plugin only
 // support is, arrays and json have their containment operators, text its
-// pattern operators.
-func (b *Builder) filterOps(c *introspect.Column) []string {
+// pattern operators, hstore no ordering comparisons; the contrib operators
+// the filter policy admits (ContribFilters) follow the core ones.
+func (b *Builder) filterOps(r *Resource, c *introspect.Column) []string {
 	base := strings.TrimPrefix(c.PGType, "_")
 	isArray := c.IsArray || strings.HasPrefix(c.PGType, "_")
 	if ops, ok := b.Extra.FilterOps[base]; ok && !isArray {
 		return append([]string(nil), ops...)
 	}
+	ops := coreFilterOps(b.Catalog, c, base, isArray)
+	for _, f := range contribFilters(b.Catalog, b.Options, r, c) {
+		if !slices.Contains(ops, f.Name) {
+			ops = append(ops, f.Name)
+		}
+	}
+	return ops
+}
+
+func coreFilterOps(cat *introspect.Catalog, c *introspect.Column, base string, isArray bool) []string {
 	if postgis.FlavourOf(base).Spatial() {
 		return []string{"is"}
 	}
 	if isArray {
-		return []string{"eq", "neq", "gt", "gte", "lt", "lte", "is", "cs", "cd", "ov"}
+		return []string{"eq", "neq", "gt", "gte", "lt", "lte", "is", "isdistinct", "cs", "cd", "ov"}
+	}
+	if v, ok := OwnerVocabulary(cat, c); ok && v.Name == contrib.VocabHstore {
+		return []string{"eq", "neq", "in", "is", "isdistinct"}
 	}
 	switch base {
 	case "jsonb":
-		return []string{"eq", "neq", "gt", "gte", "lt", "lte", "is", "cs", "cd", "hk", "jpe", "jpm"}
+		return []string{"eq", "neq", "gt", "gte", "lt", "lte", "is", "isdistinct", "cs", "cd", "hk", "jpe", "jpm"}
 	case "json":
 		return []string{"is", "cs", "cd", "hk", "jpe", "jpm"}
 	case "text", "varchar", "bpchar", "char", "name", "citext":
 		if c.EnumRef == "" {
-			return []string{"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "like", "ilike", "sw", "ew"}
+			return []string{"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct", "like", "ilike", "sw", "ew"}
 		}
 	}
-	return []string{"eq", "neq", "gt", "gte", "lt", "lte", "in", "is"}
+	return []string{"eq", "neq", "gt", "gte", "lt", "lte", "in", "is", "isdistinct"}
 }
 
-// FilterOps exposes the operator vocabulary of a column (docs and tests).
-func (b *Built) FilterOps(c *introspect.Column) []string {
-	return (&Builder{Extra: b.Extra}).filterOps(c)
+// FilterOps exposes the operator vocabulary of column c of r (docs and
+// tests): exactly the operators the parser accepts for it.
+func (b *Built) FilterOps(r *Resource, c *introspect.Column) []string {
+	return (&Builder{Catalog: b.Catalog, Options: b.Options, Extra: b.Extra}).filterOps(r, c)
 }
 
 func sortedKeys[V any](m map[string]V) []string {

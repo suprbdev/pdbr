@@ -19,18 +19,36 @@ import (
 	"github.com/suprbdev/pdbr/internal/compile"
 	"github.com/suprbdev/pdbr/internal/inflect"
 	"github.com/suprbdev/pdbr/internal/plan"
+	"github.com/suprbdev/pdbr/internal/testcatalog"
 )
 
 func quiet() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
 func buildFixture(t testing.TB, indexedOnly bool) *api.Built {
 	t.Helper()
-	b, err := api.New(testutil.FixtureCatalog(), inflect.Default, api.Options{
+	return buildCatalog(t, testutil.FixtureCatalog(), indexedOnly, []string{"public"}, nil)
+}
+
+// buildContrib builds the fixture plus testcatalog.Contrib's kb.docs, with
+// kb.docs.body allowed under filters.indexed_only.
+func buildContrib(t testing.TB, indexedOnly bool) *api.Built {
+	t.Helper()
+	return buildCatalog(t, testcatalog.Contrib(testutil.FixtureCatalog()), indexedOnly,
+		[]string{"public", testcatalog.ContribSchema}, map[string][]string{testcatalog.ContribSchema + ".docs": {"body"}})
+}
+
+func buildCatalog(t testing.TB, cat *introspect.Catalog, indexedOnly bool, schemas []string, allow map[string][]string) *api.Built {
+	t.Helper()
+	if allow == nil {
+		allow = map[string][]string{}
+	}
+	allow["public.posts"] = []string{"published"}
+	b, err := api.New(cat, inflect.Default, api.Options{
 		FilterIndexedOnly: indexedOnly,
-		AllowColumns:      map[string][]string{"public.posts": {"published"}},
+		AllowColumns:      allow,
 		Functions:         true,
 		BasePath:          "/api",
-		Schemas:           []string{"public"},
+		Schemas:           schemas,
 		MaxPageSize:       100,
 		Etags:             true,
 		Version:           "test",
