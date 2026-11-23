@@ -1,0 +1,1 @@
+GET /api/users?select=id,id,*,email,settings->>a,settings->>a

@@ -362,8 +362,9 @@ these are the deliberate departures (each documented in its topic page):
   pseudo-types or composites; PostgREST casts to any type.
 - **JSON paths on composite columns** work in `select=` only: composites are
   never filterable or orderable in pdbr, so `address->>city=eq.x` is
-  `400 column_not_filterable`. A JSON path item is never merged with another
-  item of the same response key; both appear (as in PostgREST).
+  `400 column_not_filterable`.
+- **Duplicate response keys** are `400 invalid_select` unless the same
+  column is selected again (`select=*,email`); PostgREST returns both keys.
 - Error codes are pdbr's stable `code` vocabulary, not `PGRST…` numbers
   ([errors.md](errors.md)).
 

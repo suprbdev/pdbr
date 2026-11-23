@@ -147,7 +147,12 @@ GET /api/users?select=id,n:email            -- alias: {"id": 1, "n": "a@b.c"}
 GET /api/users?select=*,post_count          -- all columns + a computed column
 ```
 
-Unknown names → `400 unknown_column`.
+Unknown names → `400 unknown_column`. Two items answering under the same
+response key are `400 invalid_select` (alias one of them), unless they are
+the same column selected again (`select=*,email` or `select=id,id` answer
+once): `select=id,email,email:full_name`, `select=*,mood::text` and
+`select=excerpt(max_chars=5),excerpt:title` are rejected. PostgREST would
+return both keys.
 
 `*` expands to real columns only (PostgREST behaviour, as built in
 `compile.rowJSON`); computed columns and PostGIS pseudo-columns must be named
@@ -175,9 +180,7 @@ GET /api/users?select=id,settings->theme,mode:settings->>theme,tags->0,address->
   (`.`, `,`, `:`, parentheses, `!`, spaces, an empty key) is double-quoted:
   `settings->"a.b"`. `->>` may only be the last step.
 - Keys and indexes travel as bind parameters (`t."settings" -> $1::text`);
-  the SQL text depends only on the number of steps and their kinds. A JSON
-  path item is never merged with another item answering under the same key
-  (both are returned, as in PostgREST); alias one of them.
+  the SQL text depends only on the number of steps and their kinds.
 - Missing keys and out-of-range indexes are `null`. A path on any other
   column type is `400 invalid_select`.
 - Filters (`settings->>theme=eq.dark`, [filtering.md](filtering.md#json-paths))
@@ -362,8 +365,7 @@ POST /api/rpc/search_posts            {"q": "hello"}
   nested objects (arrays of composites too). Enum labels verbatim.
 - Objects are built with `json_build_object` / `json_agg` (as PostgREST
   does), so keys follow the `select=` order (embeds after the columns,
-  composite attributes in declaration order), a key selected twice appears
-  once with its last value, `json` columns come back as stored, `float8`
+  composite attributes in declaration order), `json` columns come back as stored, `float8`
   uses PostgreSQL's float output (`1e+20`), and the text has PostgreSQL's spacing
   (`{"id" : 1}`): compare bodies as JSON, never byte for byte.
 - Body validation: unknown key → `400 invalid_body`; generated/identity

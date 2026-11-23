@@ -46,7 +46,7 @@ func (s *stmt) grouped(node *plan.Node, filter plan.Expr, corr func(childAlias s
 	t := r.Table
 	alias := s.alias("t")
 	g := &groupedQuery{alias: s.alias("g"), cols: map[string]orderTerm{}, paths: map[string]orderTerm{}}
-	var cols, groupBy, pairs []string
+	var cols, groupBy []string
 	key := func(expr string, term orderTerm) string {
 		name := "__k" + strconv.Itoa(len(g.keys))
 		cols = append(cols, expr+" AS "+name)
@@ -68,24 +68,16 @@ func (s *stmt) grouped(node *plan.Node, filter plan.Expr, corr func(childAlias s
 		kc.Name = columnKey(c)
 		return s.columnJSON(g.alias, &kc, args, depth)
 	}
-	seen := map[string]bool{}
-	pos := map[string]int{}
-	add := func(k, expr string) {
-		seen[k] = true
-		if i, ok := pos[k]; ok {
-			pairs[i+1] = expr
-			return
-		}
-		pos[k] = len(pairs)
-		pairs = append(pairs, quoteLiteral(k), expr)
-	}
+	pl := newPairList()
 	if node.Star {
 		for _, f := range r.Columns {
 			expr, err := columnJSON(f.Column, nil)
 			if err != nil {
 				return nil, err
 			}
-			add(f.Key, expr)
+			if err := pl.add(f.Key, quoteLiteral(f.Key), expr); err != nil {
+				return nil, err
+			}
 		}
 	}
 	nAgg := 0
@@ -109,14 +101,7 @@ func (s *stmt) grouped(node *plan.Node, filter plan.Expr, corr func(childAlias s
 			if f.Cast != nil {
 				expr = "to_json(" + expr + ")"
 			}
-			if len(f.Path) > 0 {
-				pairs = append(pairs, s.pairKey(f, k), expr)
-				continue
-			}
 		case f.Column != nil:
-			if node.Star && f.Alias == "" && seen[k] {
-				continue
-			}
 			expr, err = columnJSON(f.Column, f.Args)
 		default:
 			_, value, ferr := s.fieldJSON(r, f, alias, depth)
@@ -128,7 +113,9 @@ func (s *stmt) grouped(node *plan.Node, filter plan.Expr, corr func(childAlias s
 		if err != nil {
 			return nil, err
 		}
-		add(k, expr)
+		if err := pl.add(k, s.pairKey(f, k), expr); err != nil {
+			return nil, err
+		}
 	}
 	var extra []string
 	if corr != nil {
@@ -147,7 +134,7 @@ func (s *stmt) grouped(node *plan.Node, filter plan.Expr, corr func(childAlias s
 		group = "\nGROUP BY " + strings.Join(groupBy, ", ")
 	}
 	g.sql = fmt.Sprintf("SELECT %s\nFROM %s %s%s%s", strings.Join(cols, ", "), from, alias, where, group)
-	g.obj = buildJSONObject(pairs)
+	g.obj = pl.object()
 	return g, nil
 }
 

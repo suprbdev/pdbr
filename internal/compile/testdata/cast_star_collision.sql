@@ -1,0 +1,2 @@
+-- request: GET /api/users?select=*,mood::text
+-- error: 400 invalid_select: two select items answer under "mood"; alias one of them

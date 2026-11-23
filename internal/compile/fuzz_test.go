@@ -167,9 +167,9 @@ func FuzzFilter(f *testing.F) {
 		}
 		pg := func(name string) *plan.TypeRef { return &plan.TypeRef{Schema: "pg_catalog", Name: name} }
 		p := list(users)
-		p.Select = &plan.Node{Resource: users, Star: true, Fields: []plan.FieldSel{
+		p.Select = &plan.Node{Resource: users, Fields: []plan.FieldSel{
 			{Column: settings, Path: path(true)},
-			{Column: settings, Path: path(false), Cast: pg("int4")},
+			{Alias: "c", Column: settings, Path: path(false), Cast: pg("int4")},
 			{Alias: "a", Column: tags, Path: plan.JSONPath{{Array: true, Index: idx, Text: true}}},
 			{Column: id, Cast: pg("text")},
 		}}
