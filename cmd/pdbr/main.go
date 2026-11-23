@@ -49,6 +49,7 @@ func configFlags(cmd *cobra.Command) {
 	fs.String("server.addr", "", "HTTP listen address")
 	fs.String("server.base_path", "", "prefix for every API route (\"\" mounts at the root)")
 	fs.Bool("server.openapi", true, "serve the OpenAPI document at {base_path}/openapi.json")
+	fs.Bool("server.openapi_domains", true, "document domains as named OpenAPI component schemas")
 	fs.StringSlice("server.cors_origins", nil, "allowed CORS origins ('*' for any)")
 	fs.Bool("server.compression", false, "gzip responses when the client accepts it")
 	fs.Bool("server.read_only", false, "answer every write with 405 (read-only mode)")

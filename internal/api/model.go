@@ -229,6 +229,14 @@ type Composite struct {
 	Composite *introspect.Composite
 }
 
+// Domain is a domain documented as a named OpenAPI schema
+// (server.openapi_domains).
+type Domain struct {
+	// Name is the OpenAPI schema name (name, or "<schema>.<name>").
+	Name   string
+	Domain *introspect.Domain
+}
+
 // RouteKind is the shape of a route.
 type RouteKind string
 

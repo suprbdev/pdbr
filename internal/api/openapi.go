@@ -118,6 +118,7 @@ type Schema struct {
 	Ref                  string             `json:"$ref,omitempty"`
 	Type                 any                `json:"type,omitempty"`
 	Format               string             `json:"format,omitempty"`
+	Pattern              string             `json:"pattern,omitempty"`
 	Description          string             `json:"description,omitempty"`
 	Items                *Schema            `json:"items,omitempty"`
 	MinItems             *int               `json:"minItems,omitempty"`
@@ -134,6 +135,8 @@ type Schema struct {
 	ContentEncoding      string             `json:"contentEncoding,omitempty"`
 	Minimum              *int               `json:"minimum,omitempty"`
 	Maximum              *int               `json:"maximum,omitempty"`
+	ExclusiveMinimum     *int               `json:"exclusiveMinimum,omitempty"`
+	ExclusiveMaximum     *int               `json:"exclusiveMaximum,omitempty"`
 
 	XDeprecationReason string `json:"x-deprecation-reason,omitempty"`
 }
@@ -324,7 +327,7 @@ func rangeInputSchema(cat *introspect.Catalog, pgType, baseSchema string) *Schem
 func (b *Builder) ColumnSchema(c *introspect.Column) *Schema { return b.columnSchema(c, false) }
 
 func (b *Builder) columnSchema(c *introspect.Column, readOnly bool) *Schema {
-	s := b.typeSchema(c.PGType, c.TypeSchema, c.EnumRef)
+	s := b.colTypeSchema(c)
 	if !c.NotNull {
 		s = Nullable(s)
 	}
@@ -418,6 +421,9 @@ func (b *Builder) openAPI(built *Built) *Document {
 	for _, e := range b.Enums {
 		doc.Components.Schemas[e.Name] = &Schema{Type: "string", Enum: append([]string(nil), e.Values...), Description: e.Description}
 	}
+	for _, d := range b.Domains {
+		doc.Components.Schemas[d.Name] = b.domainSchema(d.Domain)
+	}
 	for _, c := range b.Composites {
 		s := &Schema{Type: "object", Properties: map[string]*Schema{}}
 		for _, f := range c.Composite.Fields {
@@ -495,9 +501,9 @@ func (b *Builder) resourceSchema(r *Resource) *Schema {
 		case c.SetOf != nil:
 			p = &Schema{Type: "array", Items: SchemaRef(c.SetOf.Path)}
 		case f.ReturnsSet:
-			p = &Schema{Type: "array", Items: b.typeSchema(f.ReturnType, f.ReturnTypeSchema, "")}
+			p = &Schema{Type: "array", Items: b.returnTypeSchema(f)}
 		default:
-			p = Nullable(b.typeSchema(f.ReturnType, f.ReturnTypeSchema, ""))
+			p = Nullable(b.returnTypeSchema(f))
 		}
 		cp := *p
 		cp.ReadOnly = true
@@ -602,7 +608,7 @@ func (b *Builder) inputSchema(r *Resource, m Method) *Schema {
 	fields := r.inputColumns(m)
 	required := map[string]bool{}
 	for _, f := range fields {
-		p := b.inputTypeSchema(f.Column.PGType, f.Column.TypeSchema, f.Column.BaseTypeSchema, f.Column.EnumRef)
+		p := b.colInputTypeSchema(f.Column)
 		if !f.Column.NotNull {
 			p = Nullable(p)
 		}

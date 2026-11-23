@@ -57,13 +57,14 @@ false` credentials are ignored, so neither the scheme nor `401` appears.
 | `<name>.connect` | `nested-mutations` plugin enabled, resource referenced by a FK of an insertable resource | key of an existing row for `{"connect": …}`: `oneOf` one object per key set (primary key, then each unique constraint), each with `required` = its columns (`internal/plugins/nestedmutations`) |
 | enum types | each pg enum | `{"type":"string","enum":[labels verbatim]}` (table-backed `@enum` tables too; per-value descriptions folded into the description) |
 | composite types | each pg composite | object with one property per attribute (nested composites/arrays reference their schemas) |
+| domains | each domain over a built-in type, while `server.openapi_domains` is on (default) | the base type's schema plus `pattern` / bounds derived from simple `CHECK`s, described by the domain's comment and constraints — see [Domains](#domains) |
 | `GeoJSON` | `postgis` plugin enabled and a spatial column exists | GeoJSON geometry object (`type` + `coordinates`, or `GeometryCollection`); used by geometry/geography columns; request-body properties are `oneOf [GeoJSON, string]` (WKT/EWKT) via `Builder.Extra.InputTypes` |
 | `Problem` | always | RFC 9457 problem details ([errors.md](errors.md)): `type`, `title`, `status` (required), `detail`, `instance`, `code`, and `pg` (object, present only under `errors.detail: dev`) |
 
 `<name>` is the resource path key: `users` for a table in `schema.schemas[0]`,
 `audit.users` for other schemas (matching the canonical `/audit/users`
-route). Enum and composite schemas follow the same rule (`mood`,
-`audit.mood`).
+route). Enum, composite and domain schemas follow the same rule (`mood`,
+`audit.mood`); a name already taken gets a `_` suffix (with a warning).
 
 Per-property details:
 
@@ -101,6 +102,7 @@ Per-property details:
 | arrays (`T[]`) | `array`, `items` = element mapping (nested arrays nest) |
 | enum | `$ref` to the enum schema |
 | composite | `$ref` to the composite schema |
+| domain | `$ref` to the domain schema (an array of a domain: `array` of the `$ref`); with `server.openapi_domains` off, or for a domain over a range, PostGIS or extension type, its base type's mapping |
 | `geometry`, `geography` (postgis plugin) | `$ref: #/components/schemas/GeoJSON` (input: `oneOf [GeoJSON, string]`) |
 | anything else | `string` |
 
@@ -111,6 +113,53 @@ are IEEE-754 doubles; many generators map `number` to `double`). This mirrors
 pdbq's `BigInt`/`BigFloat` scalars. Request bodies and filter values accept
 either a JSON number or a string for these types; the document declares
 `string` because that is what responses carry.
+
+### Domains
+
+With `server.openapi_domains` on (the default), every domain (`CREATE
+DOMAIN`) over a built-in type gets a component schema, and columns, array
+columns (`email[]` → `array` of the `$ref`), request bodies, path keys and
+RPC arguments and results reference it:
+
+```sql
+CREATE DOMAIN email AS text CHECK (VALUE ~ '^[^@]+@[^@]+$');
+COMMENT ON DOMAIN email IS 'An email address.';
+CREATE DOMAIN percent AS int CHECK (VALUE >= 0 AND VALUE <= 100);
+```
+
+```json
+"email": {
+  "type": "string",
+  "pattern": "^[^@]+@[^@]+$",
+  "description": "An email address.\n\nDomain public.email over text.\n\nConstraints: `CHECK ((VALUE ~ '^[^@]+@[^@]+$'::text))`."
+},
+"percent": {
+  "type": "integer", "format": "int32",
+  "description": "Domain public.percent over int4.\n\nConstraints: `CHECK (((VALUE >= 0) AND (VALUE <= 100)))`.",
+  "minimum": 0, "maximum": 100
+}
+```
+
+- The schema is the base type's mapping (an `int8` domain is a `string`,
+  a domain over `int[]` an `array`).
+- The description is the domain's comment (smart tags stripped), the base
+  type, and every `NOT NULL`/`CHECK` constraint of the domain and of the
+  domains it is declared over.
+- Keywords come only from constraints that map trivially: `pattern` from
+  `VALUE ~ '<regex>'` on a text-like base (only when there is exactly one
+  such constraint; PostgreSQL's regex dialect is close to, not identical
+  with, ECMA-262), and `minimum` / `exclusiveMinimum` / `maximum` /
+  `exclusiveMaximum` from `VALUE >= n`, `> n`, `<= n`, `< n` with an
+  integer `n` on an `int2`/`int4`/`float4`/`float8` base, also inside a
+  top-level `AND`. Anything else (functions, `OR`, `~*`, `NOT VALID`
+  constraints) is only listed in the description.
+- Domains over ranges, PostGIS and extension types (`citext`, `hstore`,
+  `ltree`, …) keep their base type's schemas, whose request and response
+  shapes differ.
+- Filters are unchanged: a domain column takes its base type's operators.
+
+With `server.openapi_domains: false` every domain is inlined as its base
+type's mapping.
 
 ### `paths`
 

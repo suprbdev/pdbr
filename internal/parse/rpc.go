@@ -53,7 +53,7 @@ func (p *parser) parseRPC(r *http.Request) error {
 				}
 				return false, errf(CodeUnknownArgument, "function %q has no argument %q", rpc.Function.Name, key)
 			}
-			t := p.typeFor(a.PGType, a.TypeSchema, false, "")
+			t := p.typeOf(api.ArgColumn(p.built.Catalog, a))
 			if a.Variadic() {
 				v, err := p.coerceText(t.elem(), val)
 				if err != nil {
@@ -105,7 +105,7 @@ func (p *parser) parseRPCBody(r *http.Request, argByName map[string]introspect.F
 		if !ok {
 			return errf(CodeUnknownArgument, "function %q has no argument %q", p.match.RPC.Function.Name, k)
 		}
-		t := p.typeFor(a.PGType, a.TypeSchema, false, "")
+		t := p.typeOf(api.ArgColumn(p.built.Catalog, a))
 		val, cerr := p.coerceJSON(t, v)
 		if cerr != nil {
 			return errf(CodeInvalidBody, "argument %q: %s", k, cerr.Detail)

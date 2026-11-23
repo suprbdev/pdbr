@@ -79,20 +79,20 @@ func (s *stmt) rpcCall(fn *introspect.Function, args map[string]any) (string, er
 }
 
 // argColumn views a function argument as a column so the parameter helpers
-// (typed array casts, json text, spatial constructors) apply unchanged.
-func argColumn(a introspect.FuncArg) *introspect.Column {
-	return &introspect.Column{
-		Name:       a.Name,
-		PGType:     a.PGType,
-		TypeSchema: a.TypeSchema,
-		IsArray:    strings.HasPrefix(a.PGType, "_"),
+// (typed array casts, json text, spatial constructors) apply unchanged; a
+// domain argument takes its base type (api.ArgColumn).
+func argColumn(built *api.Built, a introspect.FuncArg) *introspect.Column {
+	var cat *introspect.Catalog
+	if built != nil {
+		cat = built.Catalog
 	}
+	return api.ArgColumn(cat, a)
 }
 
 // argTypeSQL renders the SQL type name of an argument: bare for pg_catalog
 // types, schema-qualified otherwise; arrays as element[].
 func argTypeSQL(a introspect.FuncArg, built *api.Built) string {
-	col := argColumn(a)
+	col := argColumn(built, a)
 	if col.IsArray {
 		cast := arrayCast(built, col)
 		return cast[strings.LastIndex(cast, "::")+2:]
@@ -109,8 +109,8 @@ func typeRef(schema, name string) string {
 
 // argParam binds one argument value as a typed parameter expression.
 func (s *stmt) argParam(a introspect.FuncArg, v any) (string, error) {
-	col := argColumn(a)
-	base := strings.TrimPrefix(a.PGType, "_")
+	col := argColumn(s.c.Built, a)
+	base := strings.TrimPrefix(col.PGType, "_")
 	switch {
 	case s.compositeFor(col) != nil:
 		if col.IsArray {

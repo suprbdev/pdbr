@@ -504,8 +504,11 @@ func arrayCast(built *api.Built, col *introspect.Column) string {
 	if col.EnumRef != "" {
 		return "::text[]"
 	}
-	if built != nil && built.Catalog != nil && built.Catalog.Enum(col.TypeSchema, base) != nil {
-		return "::text[]::" + quoteIdent(col.TypeSchema) + "." + quoteIdent(base) + "[]"
+	if cast, ok := domainArrayCast(built, col); ok {
+		return cast
+	}
+	if built != nil && built.Catalog != nil && built.Catalog.Enum(baseSchema(col), base) != nil {
+		return "::text[]::" + quoteIdent(baseSchema(col)) + "." + quoteIdent(base) + "[]"
 	}
 	_, isRange := contrib.Range(base)
 	_, isMulti := contrib.Multirange(base)
@@ -521,10 +524,39 @@ func arrayCast(built *api.Built, col *introspect.Column) string {
 	if owner, ok := api.OwnerVocabulary(cat, &elem); ok {
 		return "::text[]::" + typeRef(owner.Schema, owner.Type) + "[]"
 	}
-	if col.TypeSchema == "" || col.TypeSchema == "pg_catalog" {
+	if schema := baseSchema(col); schema == "" || schema == "pg_catalog" {
 		return "::" + quoteIdent(base) + "[]"
 	}
-	return "::text[]::" + quoteIdent(col.TypeSchema) + "." + quoteIdent(base) + "[]"
+	return "::text[]::" + quoteIdent(baseSchema(col)) + "." + quoteIdent(base) + "[]"
+}
+
+// domainArrayCast renders the cast for a list value of a column whose
+// element type is a domain over a built-in type (the base type's array,
+// then the domain's array type), or of a domain over a built-in array type
+// (the base array type, then the domain); ok=false for any other column.
+func domainArrayCast(built *api.Built, col *introspect.Column) (string, bool) {
+	if built == nil || built.Catalog == nil {
+		return "", false
+	}
+	d := built.Catalog.DomainByRef(col.Domain)
+	if d == nil || d.BaseTypeSchema != "pg_catalog" {
+		return "", false
+	}
+	domain := quoteIdent(d.Schema) + "." + quoteIdent(d.Name)
+	if d.IsArrayBase {
+		return "::" + quoteIdent(strings.TrimPrefix(d.BaseType, "_")) + "[]::" + domain, true
+	}
+	return "::" + quoteIdent(d.BaseType) + "[]::" + domain + "[]", true
+}
+
+// baseSchema is the schema of col's PGType: BaseTypeSchema, which differs
+// from TypeSchema for a domain (or an array of one) defined in another
+// schema than its base type, or TypeSchema when it is unknown.
+func baseSchema(col *introspect.Column) string {
+	if col.BaseTypeSchema != "" {
+		return col.BaseTypeSchema
+	}
+	return col.TypeSchema
 }
 
 // coerceList coerces a list operand element-wise. A string is taken as a

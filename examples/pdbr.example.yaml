@@ -20,6 +20,8 @@ server:
   base_path: "/api"
   # Serve the OpenAPI 3.1 document at GET {base_path}/openapi.json (on by default; it reveals every table, column, relation and function to unauthenticated callers).
   openapi: true
+  # Document each domain over a built-in type as a named component schema (its base type's schema, the domain's comment and constraints, pattern/minimum/maximum when a CHECK is a simple comparison) that columns, arguments and results reference. Off inlines the base type's schema.
+  openapi_domains: true
   # Overall HTTP request timeout; expiry answers 504.
   request_timeout: "30s"
   # Maximum accepted request body size in bytes; over answers 413.

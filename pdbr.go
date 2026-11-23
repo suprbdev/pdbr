@@ -262,6 +262,7 @@ func (a *App) BuildAPI(ctx context.Context, cat *introspect.Catalog) (*api.Built
 		MaxPageSize:       a.Config.Server.MaxPageSize,
 		Etags:             a.Config.Server.Etags,
 		CSV:               a.Config.Server.CSV,
+		Domains:           a.Config.Server.OpenAPIDomains,
 		Aggregates:        a.Config.Server.Aggregates,
 		JWTType:           a.Config.RLS.Auth.JWTType,
 		AuthMode:          a.authMode(),
