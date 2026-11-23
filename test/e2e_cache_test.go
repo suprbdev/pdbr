@@ -20,7 +20,7 @@ func dumpCache(t *testing.T, dbURL string) (string, string) {
 	t.Helper()
 	cfg := config.DefaultConfig()
 	cfg.Database.URL = dbURL
-	cfg.RLS.Enabled = false
+	cfg.UseConnectionIdentity()
 	app := pdbr.New(cfg)
 	defer app.Close()
 	cat, err := app.LoadCatalog(context.Background())
@@ -89,8 +89,9 @@ func TestCacheInteropPdbq(t *testing.T) {
 		t.Skip("PDBR_TEST_DATABASE_URL and PDBR_TEST_PDBQ_DIR required")
 	}
 	path := filepath.Join(t.TempDir(), "pdbq.cache")
-	cmd := exec.Command("go", "run", "./cmd/pdbq", "schema", "dump", "-o", path, "--database.url", dbURL, "--rls.enabled=false")
+	cmd := exec.Command("go", "run", "./cmd/pdbq", "schema", "dump", "-o", path, "--database.url", dbURL)
 	cmd.Dir = pdbqDir
+	cmd.Env = append(os.Environ(), "PDBQ_AUTH_MODE=none", "PDBQ_ROLES_SWITCH=false")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("pdbq schema dump: %v\n%s", err, out)
 	}

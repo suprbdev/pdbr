@@ -720,7 +720,7 @@ func (g *chain) keyLookup(res *api.Resource, raw any, p, what string, extra ...[
 // as the core keyed DML binds it.
 func (g *chain) pathKey(res *api.Resource, key *plan.Key) (locator, error) {
 	if key == nil || key.Constraint == nil || len(key.Values) != len(key.Constraint.Columns) {
-		return nil, fmt.Errorf("nested-mutations: PATCH without a complete key")
+		return nil, fmt.Errorf("nested_mutations: PATCH without a complete key")
 	}
 	t := res.Table
 	cols := make([]*introspect.Column, len(key.Values))
@@ -728,7 +728,7 @@ func (g *chain) pathKey(res *api.Resource, key *plan.Key) (locator, error) {
 	for i, name := range key.Constraint.Columns {
 		cols[i] = t.Column(name)
 		if cols[i] == nil {
-			return nil, fmt.Errorf("nested-mutations: key column %q not found on %s", name, t.Name)
+			return nil, fmt.Errorf("nested_mutations: key column %q not found on %s", name, t.Name)
 		}
 		exprs[i] = g.ps.Add(compile.CoerceInput(g.built, cols[i], key.Values[i]))
 	}

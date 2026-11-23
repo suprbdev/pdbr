@@ -37,7 +37,7 @@ func TestTransactionBatch(t *testing.T) {
 	})
 	if _, err := conn.Exec(ctx, `CREATE OR REPLACE FUNCTION public.e2e_tx_probe() RETURNS jsonb LANGUAGE sql VOLATILE AS $$
   SELECT jsonb_build_object('iso', current_setting('transaction_isolation'), 'user', current_user::text,
-    'uid', nullif(current_setting('pdbq.claims.user_id', true), ''))
+    'uid', nullif(current_setting('jwt.claims.user_id', true), ''))
 $$`); err != nil {
 		t.Fatal(err)
 	}
@@ -52,8 +52,7 @@ $$`); err != nil {
 		{"serializable", "serializable"},
 	} {
 		srv := testServer(t, func(c *config.Config) {
-			c.RLS.Enabled = true
-			c.RLS.Auth.Mode = "headers"
+			headersAuth(c)
 			c.TX.Isolation = iso.config
 		})
 		for range 3 {

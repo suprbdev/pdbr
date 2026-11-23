@@ -69,8 +69,9 @@ has a `code`, see the note below the table):
 | (`max_affected_exceeded`) | 400 | `Prefer: handling=strict, max-affected=N` and the write touched more than `N` rows; rolled back (PostgREST `PGRST124`) |
 | `not_acceptable` | 406 | `Accept` unsatisfiable (incl. `text/csv` with embeds or on non-list responses, `application/geo+json` without a spatial column in the selection) |
 | `unsupported_media_type` | 415 | request body `Content-Type` is not `application/json` |
-| `role_not_allowed` | 403 | credential valid, but the resolved role is not in `rls.allowed_roles`, or is `none`, `public`, a `pg_*` role or not `[A-Za-z0-9_]+` |
-| `invalid_token` | 401 | JWT/headers present but invalid (signature, exp, iss/aud, JWKS miss or unavailable, malformed; a claim header misspelt, repeated, folding onto another claim or outside `rls.auth.header_claims`) |
+| `role_not_allowed` | 403 | credential valid, but the resolved role is not in `roles.allowed`, or is `none`, `public`, a `pg_*` role or not `[A-Za-z0-9_]+`, or the request resolves to no role at all; `WWW-Authenticate: Bearer error="insufficient_scope"` |
+| `invalid_token` | 401 | JWT/headers present but invalid (signature, exp, iss/aud, JWKS miss or unavailable, malformed, a role claim that is not a string; a claim header misspelt, repeated, folding onto another claim, outside `auth.headers.claims` or sent by a peer outside `auth.headers.trusted_proxies`); `WWW-Authenticate: Bearer error="invalid_token"` |
+| `auth_required` | 401 | no credentials and `roles.anonymous` empty (the default in `jwt` and `headers` mode); `WWW-Authenticate: Bearer` |
 | (`unknown_relation`) | 400 | relation key in `select=`, a filter/order path, a per-embed param, or a nested-mutation body that matches no FK of the resource; a nested-mutation operation the relation does not offer (privilege, `@omit`, FK column not writable, referenced column hidden, `NOT NULL` FK for `disconnect`) |
 | (`invalid_cursor`) | 400 | `after`/`before` cursor undecodable or minted for a different resource |
 | (`method_not_allowed`) | 405 | method not registered on the path (view, missing privilege, `@omit`, volatile GET) |
@@ -104,6 +105,7 @@ returns `{Class, SQLState, Message(detail)}`):
 | Condition | Status | `code` |
 |---|---|---|
 | URL grammar, query param, body validation errors, unfiltered bulk write, invalid `Prefer` under `handling=strict`, `max-affected` exceeded | 400 | pdbr code |
+| `21000` cardinality violation (`ON CONFLICT DO UPDATE command cannot affect row a second time`: a bulk upsert naming one conflict key twice; a scalar subquery returning several rows), message passed through in prod | 400 | `pg:21000` |
 | `22*` data exception (`22P02` invalid text representation, `22001` value too long, `22003` out of range, …) | 400 | `pg:22…` |
 | `23502` not-null violation | 400 | `pg:23502` |
 | `23514` check violation | 400 | `pg:23514` |
@@ -111,9 +113,10 @@ returns `{Class, SQLState, Message(detail)}`):
 | malformed full-text / ltree operand (`pdbcore/pgexec` contrib input errors): `42601` raised while parsing a `tsquery`/`tsvector`/`ltree`/`lquery`/`ltxtquery` value (`syntax error in tsquery: …`, `ltree syntax error …`, …), `42704` unknown text search configuration | 400 | `pg:42601` / `pg:42704` |
 | PostGIS input error (`XX000` with `Operation on mixed SRID geometries`, `parse error - invalid geometry` or an `lwgeom_*` message): an operand or body value PostGIS rejects | 400 | `pg:XX000` |
 | raster / geometry SRID mismatch (`P0001` with `Raster and geometry do not have the same SRID`, raised by PostGIS when a raster `intersects` operand in another SRID overlaps a row's raster) | 400 | `pg:P0001` |
-| missing or invalid credentials when the request cannot be served anonymously; invalid token | 401 | `invalid_token` |
+| no credentials and no anonymous role | 401 | `auth_required` |
+| invalid credentials | 401 | `invalid_token` |
 | `42501` insufficient privilege (incl. RLS `RETURNING` filtering) | 403 | `pg:42501` |
-| resolved role not in `rls.allowed_roles`, or not assumable (`none`, `public`, `pg_*`) | 403 | `role_not_allowed` |
+| resolved role not in `roles.allowed`, not assumable (`none`, `public`, `pg_*`), or no role at all | 403 | `role_not_allowed` |
 | no route; single-row path or keyed mutation matched nothing | 404 | `not_found` |
 | method not on resource / read-only / volatile via GET | 405 + `Allow` | `method_not_allowed` / `read_only` |
 | `Accept` unsatisfiable | 406 | `not_acceptable` |
@@ -122,7 +125,7 @@ returns `{Class, SQLState, Message(detail)}`):
 | `If-Match` mismatch | 412 | `etag_mismatch` |
 | body larger than `server.max_body_bytes` | 413 | `body_too_large` |
 | body `Content-Type` not JSON | 415 | `unsupported_media_type` |
-| any other PG SQLSTATE (`21000`, `2D000`, `P0001` `RAISE EXCEPTION` other than the raster SRID mismatch above, `XX000` other than the PostGIS input errors above, …) | 500 | `pg:<SQLSTATE>` |
+| any other PG SQLSTATE (`2D000`, `P0001` `RAISE EXCEPTION` other than the raster SRID mismatch above, `XX000` other than the PostGIS input errors above, …) | 500 | `pg:<SQLSTATE>` |
 | hook / plugin / internal error that is not a `UserError` | 500 | `internal` |
 | `53*` insufficient resources (`53300` too many connections, `53200` OOM), `08*` connection exceptions (*unreachable in e2e*), pool acquire / connection failure without a SQLSTATE | 503 | `pg:53…` / `pg:08…` / `unavailable` |
 | `57014` statement timeout (`database.statement_timeout`), `server.request_timeout` elapsed | 504 | `pg:57014` / `timeout` |
@@ -147,8 +150,8 @@ level, so clients can branch on `code` in every environment.
 | Level | `detail` for PG errors | `pg` object |
 |---|---|---|
 | `dev` | full PG message | present |
-| `prod` (default) | `23*` and `22*` messages pass through, and so do contrib input errors (`syntax error in tsquery: …`); PostGIS input errors → `invalid geometry`; `42501` → `permission denied`; other `42*` → `invalid operation`; everything else → `database error` | absent |
-| `strict` | `23*` → `constraint violation`; `22*`, contrib and PostGIS input errors → `invalid input value`; rest as `prod` | absent |
+| `prod` (default) | `23*`, `22*` and `21*` messages pass through, and so do contrib input errors (`syntax error in tsquery: …`); PostGIS input errors → `invalid geometry`; `42501` → `permission denied`; other `42*` → `invalid operation`; everything else → `database error` | absent |
+| `strict` | `23*` → `constraint violation`; `21*`, `22*`, contrib and PostGIS input errors → `invalid input value`; rest as `prod` | absent |
 
 In `prod`, a `23*` message is replaced by a generic one (`not-null
 violation`, `foreign key violation`, `unique violation`, `check

@@ -299,7 +299,7 @@ work (the anchor row's value is re-read by key).
 
 ### Related columns
 
-`advanced-filters` (setting `relation_order`) allows one level of related
+`advanced_filters` (setting `relation_order`) allows one level of related
 ordering:
 
 ```http

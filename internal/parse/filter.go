@@ -794,7 +794,7 @@ func (p *parser) relationCond(res *api.Resource, key string, o operand) (plan.Ex
 		return nil, errf(CodeUnknownColumn, "unknown column %q on %q", key, res.Path)
 	}
 	if !p.opts.RelationFilters {
-		return nil, errf(CodeInvalidFilter, "relation filters are not enabled (advanced-filters plugin)")
+		return nil, errf(CodeInvalidFilter, "relation filters are not enabled (advanced_filters plugin)")
 	}
 	quant := plan.Some
 	hint := ""

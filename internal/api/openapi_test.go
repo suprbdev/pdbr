@@ -382,6 +382,11 @@ func TestOpenAPISecurity(t *testing.T) {
 	if doc.Paths["/users"].Get.Responses["401"] == nil {
 		t.Error("401 missing in jwt mode")
 	}
+	opts.AuthRequired = true
+	doc = build(t, testutil.FixtureCatalog(), opts).OpenAPI
+	if !reflect.DeepEqual(doc.Security, []map[string][]string{{"bearerAuth": {}}}) {
+		t.Errorf("security without anonymous access = %v", doc.Security)
+	}
 	opts.AuthMode = "headers"
 	doc = build(t, testutil.FixtureCatalog(), opts).OpenAPI
 	if doc.Components.SecuritySchemes != nil || doc.Security != nil || doc.Paths["/users"].Get.Responses["401"] == nil {

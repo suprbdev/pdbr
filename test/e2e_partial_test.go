@@ -185,8 +185,7 @@ func TestPartialBulkRLS(t *testing.T) {
 	title := fmt.Sprintf("M3 partial rls %d", time.Now().UnixNano())
 	sweep(t)
 	base := partialServer(t, func(c *config.Config) {
-		c.RLS.Enabled = true
-		c.RLS.Auth.Mode = "headers"
+		headersAuth(c)
 	})
 	hdr := map[string]string{"X-Pdbr-Claim-Role": "app_user", "X-Pdbr-Claim-User-Id": "1"}
 	body := fmt.Sprintf(`[{"author_id":1,"title":%q},{"author_id":2,"title":%q},{"author_id":1,"title":%q}]`, title+" a", title+" b", title+" c")

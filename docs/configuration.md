@@ -9,7 +9,7 @@ precedence to highest:
 3. **Environment variables** — `PDBR_` prefix, `_` separates levels, `__`
    preserves an underscore inside a key.
 4. **Command-line flags** — named after config paths: `--database.url`,
-   `--rls.enabled=false`. Only flags that were actually set on the command
+   `--roles.switch=false`. Only flags that were actually set on the command
    line are applied, so a flag's default never overrides the file or env.
 
 The **complete annotated reference** lives at
@@ -17,6 +17,25 @@ The **complete annotated reference** lives at
 generated from the config structs' `koanf` and `doc` tags
 (`pdbr config example`), so it cannot drift from the implementation — never
 hand-edit it; regenerate with `make example-config`.
+
+## Strict loading
+
+Configuration is checked as it loads, before validation:
+
+- A key in the YAML file that pdbr does not know is an error. The message
+  names the key it moved to when it was renamed (`unknown key rls.enabled:
+  moved to roles.switch`; see [upgrading.md](upgrading.md)) or the closest
+  valid key (`unknown key server.adr: did you mean server.addr?`).
+- A `PDBR_*` environment variable whose first segment names a config
+  section (`PDBR_SERVER_…`, `PDBR_AUTH_…`, `PDBR_RLS_…` for the removed
+  section, or a near miss of one) must map to a known key, with the same
+  hints (`unknown environment variable PDBR_RLS_AUTH_JWT__SECRET
+  (rls.auth.jwt_secret): moved to PDBR_AUTH_JWT_SECRET`). Other variables
+  with the prefix, such as `PDBR_TEST_DATABASE_URL`, are ignored.
+- Values are decoded into the typed fields, so environment strings set
+  booleans, numbers, durations and lists, plugin settings included
+  (`PDBR_PLUGINS_SETTINGS_ADVANCED__FILTERS_RELATIONS=false`); a value that
+  does not fit its field is an error.
 
 ## Environment variable mapping
 
@@ -28,7 +47,9 @@ remaining `_` becomes a `.` level separator.
 | `PDBR_DATABASE_URL` | `database.url` |
 | `PDBR_SERVER_MAX__PAGE__SIZE=50` | `server.max_page_size` |
 | `PDBR_SERVER_BASE__PATH=/v1` | `server.base_path` |
-| `PDBR_RLS_AUTH_JWT__SECRET=...` | `rls.auth.jwt_secret` |
+| `PDBR_AUTH_JWT_SECRET=...` | `auth.jwt.secret` |
+| `PDBR_ROLES_ANONYMOUS=anonymous` | `roles.anonymous` |
+| `PDBR_PLUGINS_SETTINGS_NESTED__MUTATIONS_MAX__DEPTH=5` | `plugins.settings.nested_mutations.max_depth` |
 | `PDBR_FILTERS_INDEXED__ONLY=false` | `filters.indexed_only` |
 | `PDBR_SCHEMA_SCHEMAS=public,audit` | `schema.schemas` (lists are comma-separated) |
 
@@ -49,7 +70,7 @@ See [cli.md](cli.md) for details.
 | `database.url` | string | — | required; standard `PG*` env vars are honoured when empty |
 | `database.max_conns` | int | 10 | maximum pooled connections; each request uses at most one |
 | `database.connect_timeout` | duration | `10s` | timeout for establishing a connection |
-| `database.statement_timeout` | duration | `30s` | per-statement timeout on every request (`0` disables); expiry → `504` |
+| `database.statement_timeout` | duration | `25s` | per-statement timeout on every request (`0` disables); expiry → `504 pg:57014`. Keep it below `server.request_timeout` (`30s`) so a slow statement fails with a database timeout the client can act on before the request itself is cut off |
 | `server.addr` | string | `:8080` | listen address |
 | `server.base_path` | string | `/api` | prefix for every API route; `""` mounts at the root. `/healthz` and `/readyz` are never prefixed |
 | `server.openapi` | bool | `true` | serve `GET {base}/openapi.json`; see [openapi.md](openapi.md) |
@@ -78,22 +99,26 @@ See [cli.md](cli.md) for details.
 | `schema.expose_partitions` | bool | `false` | also expose each partition of a partitioned table as its own resource; off, only the partitioned parent is a resource (its rows already span every partition) — see [api.md](api.md#what-gets-generated) |
 | `filters.indexed_only` | bool | `true` | only indexed/PK/unique columns filterable and orderable; see [filtering.md](filtering.md) |
 | `filters.allow_columns` | map[string][]string | `{}` | per-table extra filterable columns keyed by `schema.table`, overriding `indexed_only`; also the only way to admit operators no index serves (unaccent, fuzzystrmatch, the earthdistance `<@>` surface on point columns) and the raster `intersects` filter, whose GiST index is on an expression |
-| `rls.enabled` | bool | `true` | switch role per request via `SET LOCAL ROLE`; see [rls.md](rls.md) |
-| `rls.default_role` | string | — | role for authenticated requests without a role claim |
-| `rls.anonymous_role` | string | `anonymous` | role for unauthenticated requests |
-| `rls.role_claim` | string | `role` | JWT claim (or header name in headers mode) carrying the role |
-| `rls.allowed_roles` | []string | `[]` | roles a request may assume; empty allows any (subject to grants); rejected → `403 role_not_allowed` |
-| `rls.claims_prefix` | string | `pdbq.claims` | `set_config` namespace; deliberately shared with pdbq so existing policies work unchanged |
-| `rls.auth.mode` | string | `jwt` | `jwt`, `headers` (behind a trusted gateway) or `none` |
-| `rls.auth.jwt_secret` | string | — | HMAC secret for HS256/384/512 (ignored when `jwks_url` set) |
-| `rls.auth.jwks_url` | string | — | JWKS endpoint for RS*/ES* verification; takes precedence over `jwt_secret` |
-| `rls.auth.jwks_cache_ttl` | duration | `1h` | JWKS cache lifetime; unknown `kid` triggers an early refresh. Keys are refreshed in the background with backoff after a failed fetch; fetch errors are logged (endpoint and cause) and clients only see `401 invalid_token` |
-| `rls.auth.jwt_issuer` | string | — | expected `iss`; empty skips |
-| `rls.auth.jwt_audience` | string | — | expected `aud`; empty skips |
-| `rls.auth.header_prefix` | string | `X-Pdbr-Claim-` | header prefix mapped to claims in headers mode; one spelling per claim (`User-Id` → `user_id`, matched in any case); a prefixed header with an underscore or other punctuation, repeated, or folding onto another claim header → `401 invalid_token`. The gateway must strip every client-supplied header with the prefix, in any letter case ([rls.md](rls.md)) |
-| `rls.auth.header_claims` | []string | `[]` | claim names (e.g. `user_id`) accepted from claim headers in headers mode; `rls.role_claim` is always accepted; any other claim header → `401 invalid_token`; empty accepts any claim. Names are lower-case letters and digits joined by single underscores (validated at startup) |
-| `rls.auth.trusted_proxies` | []string | `[]` | CIDRs/IPs allowed to supply claim headers; empty trusts every peer (startup warning) |
-| `rls.auth.jwt_type` | string | — | schema-qualified composite (e.g. `public.jwt`); functions returning it yield a minted HS256 token |
+| `auth.mode` | string | `jwt` | credential source: `jwt` (bearer JWT), `headers` (claims from a trusted gateway) or `none` (no credentials); see [rls.md](rls.md#claim-sources-authmode) |
+| `auth.jwt.secret` | string | — | HMAC secret verifying HS256/384/512 tokens (ignored for verification when `jwks_url` is set) and signing minted tokens |
+| `auth.jwt.secret_file` | string | — | file holding the HMAC secret (trailing newlines stripped), instead of `secret`; must be readable at startup |
+| `auth.jwt.jwks_url` | string | — | JWKS endpoint for RS*/ES* verification; takes precedence over the secret. `jwt` mode needs a secret, secret file or JWKS URL |
+| `auth.jwt.jwks_cache_ttl` | duration | `1h` | JWKS cache lifetime; unknown `kid` triggers an early refresh. Keys are refreshed in the background with backoff after a failed fetch; fetch errors are logged (endpoint and cause) and clients only see `401 invalid_token` |
+| `auth.jwt.issuer` | string | — | expected `iss`; empty skips |
+| `auth.jwt.audience` | string | — | expected `aud`; empty skips |
+| `auth.jwt.leeway` | duration | `0s` | clock skew tolerated on `exp`, `nbf` and `iat`; must be `>= 0` |
+| `auth.jwt.role_claim_path` | string | `role` | path of the role claim: dot-separated keys, array indexes, double-quoted keys (`app_metadata.role`, `realm_access.roles[0]`, `"https://example.com/role"`) |
+| `auth.headers.prefix` | string | `X-Pdbr-Claim-` | header prefix mapped to claims in headers mode; one spelling per claim (`User-Id` → `user_id`, matched in any case); a prefixed header with an underscore or other punctuation, repeated, or folding onto another claim header → `401 invalid_token`. The gateway must strip every client-supplied header with the prefix, in any letter case ([rls.md](rls.md)) |
+| `auth.headers.claims` | []string | `[]` | claim names (e.g. `user_id`) accepted from claim headers; the role claim is always accepted; any other claim header → `401 invalid_token`; empty accepts any claim. Names are lower-case letters and digits joined by single underscores |
+| `auth.headers.role_claim` | string | `role` | claim carrying the role in headers mode (sent as `<prefix>Role`) |
+| `auth.headers.trusted_proxies` | []string | `[]` | CIDRs/IPs allowed to send claim headers; **required** in headers mode; claim headers from other peers → `401 invalid_token` |
+| `auth.mint_type` | string | — | schema-qualified composite (e.g. `public.jwt`); functions returning it yield a minted HS256 token; needs `auth.jwt.secret` or `secret_file` |
+| `roles.switch` | bool | `true` | run each request as its resolved role (`SET LOCAL ROLE`); `false` runs every request as the connection role, still verifying credentials and setting claims (startup warning) |
+| `roles.anonymous` | string | — | role of requests without credentials; empty answers them `401 auth_required` (`jwt`/`headers` mode); required in mode `none` while `switch` is on |
+| `roles.default` | string | — | role of authenticated requests without a role claim; empty falls back to `roles.anonymous` |
+| `roles.allowed` | []string | `[]` | roles a request may assume via its role claim; empty allows any (subject to grants, startup warning); rejected → `403 role_not_allowed` |
+| `claims.prefix` | string | `jwt.claims` | namespace of the per-claim settings (`current_setting('jwt.claims.user_id', true)`); empty sets none |
+| `claims.json_setting` | string | — | setting receiving every claim as one JSON object (`{}` without credentials), e.g. `request.jwt.claims` for PostgREST/Supabase policies; must not lie under `claims.prefix` |
 | `transactions.mutations` | bool | `true` | wrap every write in a tx |
 | `transactions.isolation` | string | `read_committed` | or `repeatable_read`, `serializable`; `read_committed` runs in the pipeline's implicit transaction at the server's `default_transaction_isolation` (read committed unless changed) |
 | `transactions.max_retries` | int | 0 | automatic re-runs on serialization failure/deadlock (40001/40P01); exhausted → `409` |
@@ -101,10 +126,22 @@ See [cli.md](cli.md) for details.
 | `watch.poll_interval` | duration | `5s` | fallback polling when event triggers can't be installed |
 | `watch.channel` | string | `pdbr_ddl` | NOTIFY channel used by the DDL event trigger |
 | `errors.detail` | string | `prod` | `dev` adds full PG detail + `pg` object to problems; `strict` hides even constraint-violation messages |
-| `plugins.disabled` | []string | `[]` | e.g. `[nested-mutations]`; see [plugins.md](plugins.md) |
-| `plugins.settings.<name>` | map | `{}` | per-plugin config |
+| `plugins.disabled` | []string | `[]` | built-in plugins to disable: `smart_comments`, `advanced_filters`, `postgis`, `nested_mutations` (other names are rejected); see [plugins.md](plugins.md) |
+| `plugins.settings.advanced_filters.relations` | bool | `true` | relation filters (`rel.col=op.v`, `rel!none.`, `rel!every.`, `rel=exists.`) |
+| `plugins.settings.advanced_filters.computed` | bool | `true` | filtering and ordering on computed columns (follows `schema.functions`) |
+| `plugins.settings.advanced_filters.relation_order` | bool | `true` | ordering by a related column (`order=rel(col).asc`); off when `relations` is |
+| `plugins.settings.advanced_filters.relations_opt_in` | bool | `false` | only FKs tagged `@filterable`/`@sortable` get relation filters and ordering |
+| `plugins.settings.advanced_filters.computed_opt_in` | bool | `false` | only computed functions tagged `@filterable`/`@sortable` get filters and ordering |
+| `plugins.settings.postgis.filters` | bool | `true` | spatial filter operators (`st_*`, `bbox_*`), raster `intersects` |
+| `plugins.settings.postgis.derived` | bool | `true` | derived pseudo-columns (`<col>_area`, …, raster `<col>_width`, …) |
+| `plugins.settings.postgis.ordering` | bool | `true` | `order=<col>.dist` and `<col>_distance` with `near=` |
+| `plugins.settings.postgis.projection` | bool | `true` | `select=col(transform=…,simplify=…,buffer=…,precision=…)` |
+| `plugins.settings.postgis.aggregates` | bool | `true` | spatial aggregates (`col.extent()`, `union()`, `collect()`, `centroid()`; also needs `server.aggregates`) |
+| `plugins.settings.nested_mutations.force_transactions` | bool | `true` | run requests carrying nested keys in a transaction even with `transactions.mutations: false` |
+| `plugins.settings.nested_mutations.max_depth` | int | `3` | deepest create/update nesting (root = 1); over → `400 embed_depth_exceeded`; must be `>= 1` |
+| `plugins.settings.nested_mutations.max_operations` | int | `50` | most nested operations per request; over → `400 invalid_body`; must be `>= 1` |
 | `log.level` | string | `info` | `debug`, `info`, `warn`, `error` |
-| `log.format` | string | `text` | `text` or `json` |
+| `log.format` | string | `text` | `text` or `json` (other values are rejected) |
 | `metrics.enabled` | bool | `false` | serve Prometheus metrics and record them; see [metrics.md](metrics.md) |
 | `metrics.path` | string | `/metrics` | URL path of the metrics endpoint (outside `base_path`) |
 | `metrics.addr` | string | — | separate listen address for the metrics endpoint (e.g. `:9090`); empty serves it on `server.addr` |
@@ -117,15 +154,19 @@ effective configuration when any of these fail; all violations are reported
 together.
 
 1. `errors.detail` is one of `dev`, `prod`, `strict`.
-2. `rls.auth.mode` is one of `jwt`, `headers`, `none`.
-3. Every `rls.auth.trusted_proxies` entry is a valid IP or CIDR block.
-4. `rls.auth.jwt_secret` or `rls.auth.jwks_url` is set when `rls.enabled`
-   and mode is `jwt`.
-5. `rls.auth.jwt_type` requires `rls.auth.jwt_secret` (minting signs with
-   the HMAC secret; JWKS keys are verify-only).
-6. `rls.auth.jwt_type`, when set, is schema-qualified (`public.jwt`).
-7. `rls.anonymous_role` is non-empty when `rls.enabled` (an empty role would
-   run unauthenticated requests as the connection role).
+2. `auth.mode` is one of `jwt`, `headers`, `none`.
+3. Every `auth.headers.trusted_proxies` entry is a valid IP or CIDR block.
+4. In `jwt` mode, `auth.jwt.secret`, `auth.jwt.secret_file` or
+   `auth.jwt.jwks_url` is set; `secret` and `secret_file` are not both set;
+   a `secret_file` is readable and not empty; `jwks_url` is an http(s) URL;
+   `auth.jwt.role_claim_path` parses; `auth.jwt.leeway >= 0`.
+5. `auth.mint_type` requires `auth.jwt.secret` or `auth.jwt.secret_file`
+   (minting signs with the HMAC secret; JWKS keys are verify-only).
+6. `auth.mint_type`, when set, is schema-qualified (`public.jwt`).
+7. In `headers` mode, `auth.headers.trusted_proxies` lists at least one
+   entry, `auth.headers.prefix` is letters, digits and hyphens ending in a
+   hyphen, and `auth.headers.role_claim` and every `auth.headers.claims`
+   entry are lower-case letters and digits joined by single underscores.
 8. `transactions.isolation` is one of `read_committed`, `repeatable_read`,
    `serializable`.
 9. `watch.enabled` and `schema.cache_path` are not both set.
@@ -133,16 +174,19 @@ together.
 11. `schema.schemas` lists at least one schema.
 12. `transactions.max_retries >= 0`.
 13. `server.max_page_size >= 1`.
-14. `log.level` is one of `debug`, `info`, `warn`, `error`.
+14. `log.level` is one of `debug`, `info`, `warn`, `error`; `log.format` is
+    `text` or `json`.
 15. `server.base_path` is empty or starts with `/` and does not end with `/`.
 16. `server.max_embed_depth >= 1`.
-17. `rls.anonymous_role`, `rls.default_role` and every `rls.allowed_roles`
-    entry, when set, match `[A-Za-z0-9_]+` and are not `none`, `public` or a
+17. `roles.anonymous`, `roles.default` and every `roles.allowed` entry,
+    when set, match `[A-Za-z0-9_]+` and are not `none`, `public` or a
     `pg_*` role, in any letter case (`set_config('role', 'none', true)` is
-    `RESET ROLE`, which would run the request as the connection role).
-18. `rls.claims_prefix` is dot-separated identifiers whose first component
-    is not a server or extension settings namespace (`pg_*`, `plpgsql`,
-    `auto_explain`, `postgis`, …).
+    `RESET ROLE`, which would run the request as the connection role); in
+    `auth.mode: none` with `roles.switch` on, `roles.anonymous` is set.
+18. `claims.prefix` is empty or dot-separated identifiers whose first
+    component is not a server or extension settings namespace (`pg_*`,
+    `plpgsql`, `auto_explain`, `postgis`, …); `claims.json_setting`, when
+    set, is a valid custom setting name not under `claims.prefix`.
 19. `metrics.path` starts with `/`, is not `/` itself and has no query or
     fragment.
 20. `metrics.addr`, when set, is a `host:port` listen address and differs
@@ -157,7 +201,16 @@ together.
 23. `contracts` entries have unique names of lower-case letters, digits,
     `_` and `-` starting with a letter, a `default` of `include` or
     `exclude`, and unique, non-overlapping clean paths; they require the
-    `smart-comments` plugin (see [contracts.md](contracts.md#configuration)).
+    `smart_comments` plugin (see [contracts.md](contracts.md#configuration)).
+24. Every `plugins.disabled` entry names a built-in plugin (a near miss such
+    as `nested-mutations` suggests `nested_mutations`);
+    `plugins.settings.nested_mutations.max_depth` and `max_operations` are
+    `>= 1`.
+
+The default configuration is therefore not valid on its own: it verifies
+JWTs and needs `auth.jwt.secret`, `secret_file` or `jwks_url` (or
+`auth.mode: none`). `pdbr config init` writes a starter that runs with only
+`database.url` set.
 
 ## Removed vs pdbq
 
@@ -193,7 +246,9 @@ subcommand that loads configuration accepts them plus `--config`.
 | `--schema.schemas` | []string | comma-separated or repeated |
 | `--schema.cache_path` | string | |
 | `--schema.expose_partitions` | bool | |
-| `--rls.enabled` | bool | |
+| `--auth.mode` | string | `jwt`, `headers`, `none` (shell-completed) |
+| `--roles.switch` | bool | |
+| `--roles.anonymous` | string | |
 | `--watch.enabled` | bool | |
 | `--filters.indexed_only` | bool | |
 | `--errors.detail` | string | `dev`, `prod`, `strict` (shell-completed) |

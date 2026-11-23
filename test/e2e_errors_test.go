@@ -238,7 +238,7 @@ func TestErrorCodesNeedingConfig(t *testing.T) {
 		for _, detail := range []string{"dev", "prod"} {
 			cfg := config.DefaultConfig()
 			cfg.Database.URL = url
-			cfg.RLS.Enabled = false
+			cfg.UseConnectionIdentity()
 			cfg.Errors.Detail = detail
 			if err := cfg.Validate(); err != nil {
 				t.Fatal(err)
@@ -293,25 +293,41 @@ func TestErrorCodesNeedingConfig(t *testing.T) {
 	})
 	t.Run("invalid_token", func(t *testing.T) {
 		srv := testServer(t, func(c *config.Config) {
-			c.RLS.Enabled = true
-			c.RLS.Auth.Mode = "jwt"
-			c.RLS.Auth.JWTSecret = "e2e-secret-e2e-secret-e2e-secret"
+			jwtAuth(c, "e2e-secret-e2e-secret-e2e-secret")
 		}).URL
 		runRows(t, srv, []errorRow{
-			{name: "bad bearer", path: "/api/users", hdr: map[string]string{"Authorization": "Bearer not.a.jwt"}, status: 401, code: "invalid_token"},
+			{name: "bad bearer", path: "/api/users", hdr: map[string]string{"Authorization": "Bearer not.a.jwt"}, status: 401, code: "invalid_token", check: challenge(`Bearer error="invalid_token"`)},
+		})
+	})
+	t.Run("auth_required", func(t *testing.T) {
+		srv := testServer(t, func(c *config.Config) {
+			jwtAuth(c, "e2e-secret-e2e-secret-e2e-secret")
+			c.Roles.Anonymous = ""
+		}).URL
+		runRows(t, srv, []errorRow{
+			{name: "no credentials", path: "/api/users", status: 401, code: "auth_required", check: challenge("Bearer")},
 		})
 	})
 	t.Run("role_not_allowed", func(t *testing.T) {
 		srv := testServer(t, func(c *config.Config) {
-			c.RLS.Enabled = true
-			c.RLS.Auth.Mode = "headers"
-			c.RLS.AllowedRoles = []string{"app_user"}
+			headersAuth(c)
+			c.Roles.Allowed = []string{"app_user"}
 		}).URL
 		runRows(t, srv, []errorRow{
-			{name: "role outside allowlist", path: "/api/posts", hdr: map[string]string{"X-Pdbr-Claim-Role": "postgres"}, status: 403, code: "role_not_allowed"},
+			{name: "role outside allowlist", path: "/api/posts", hdr: map[string]string{"X-Pdbr-Claim-Role": "postgres"}, status: 403, code: "role_not_allowed", check: challenge(`Bearer error="insufficient_scope"`)},
 			{name: "42501 permission", path: "/api/comments", status: 403, code: "pg:42501"},
 		})
 	})
+}
+
+// challenge checks the WWW-Authenticate header of an auth error.
+func challenge(want string) func(*testing.T, *http.Response, problem) {
+	return func(t *testing.T, res *http.Response, _ problem) {
+		t.Helper()
+		if got := res.Header.Get("WWW-Authenticate"); got != want {
+			t.Errorf("WWW-Authenticate = %q, want %q", got, want)
+		}
+	}
 }
 
 // TestErrorStatusMapping: one assertion per reachable row of the
@@ -333,6 +349,7 @@ func TestErrorStatusMapping(t *testing.T) {
 		{name: "405 openapi.json", method: "POST", path: "/api/openapi.json", status: 405, code: "method_not_allowed", check: allowIs("GET, HEAD")},
 		{name: "405 healthz", method: "DELETE", path: "/healthz", status: 405, code: "method_not_allowed", check: allowIs("GET, HEAD")},
 		{name: "409 23505 unique", method: "POST", path: "/api/users", body: `{"email":"ada@example.com"}`, status: 409, code: "pg:23505"},
+		{name: "400 21000 duplicate conflict key", method: "PUT", path: "/api/users?on_conflict=email", body: `[{"email":"e2e-21000@example.com"},{"email":"e2e-21000@example.com"}]`, status: 400, code: "pg:21000"},
 		{name: "409 23503 fk", method: "POST", path: "/api/posts", body: `{"author_id":999999,"title":"x"}`, status: 409, code: "pg:23503"},
 		{name: "409 23P01 exclusion", method: "POST", path: "/api/e2e_spans", body: `{"span":"[5,6)"}`, status: 409, code: "pg:23P01"},
 		{name: "409 ON DELETE RESTRICT", method: "DELETE", path: "/api/e2e_restrict_parent/1", status: 409, code: restrictCode(t)},
@@ -347,6 +364,15 @@ func TestErrorStatusMapping(t *testing.T) {
 		}},
 	}
 	runRows(t, srv, rows)
+
+	prod := testServer(t, func(c *config.Config) { c.Errors.Detail = "prod" }).URL
+	runRows(t, prod, []errorRow{
+		{name: "21000 message in prod", method: "PUT", path: "/api/users?on_conflict=email", body: `[{"email":"e2e-21000@example.com"},{"email":"e2e-21000@example.com"}]`, status: 400, code: "pg:21000", check: func(t *testing.T, _ *http.Response, p problem) {
+			if !strings.Contains(p.Detail, "cannot affect row a second time") {
+				t.Errorf("prod 21000 detail = %q", p.Detail)
+			}
+		}},
+	})
 
 	// 40001 after retries are exhausted -> 409 pg:40001. retry_probe raises
 	// on odd sequence values, so one of two consecutive calls fails.
@@ -405,8 +431,7 @@ func TestErrorDetailLevels(t *testing.T) {
 		t.Run(level, func(t *testing.T) {
 			srv := testServer(t, func(c *config.Config) {
 				c.Errors.Detail = level
-				c.RLS.Enabled = true
-				c.RLS.Auth.Mode = "headers"
+				headersAuth(c)
 			}).URL
 			pgObject := func(t *testing.T, _ *http.Response, p problem) {
 				t.Helper()

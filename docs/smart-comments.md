@@ -1,6 +1,6 @@
 # Smart comments
 
-The built-in `smart-comments` plugin (enabled by default, priority 50) reads
+The built-in `smart_comments` plugin (enabled by default, priority 50) reads
 PostGraphile-style tags out of ordinary PostgreSQL `COMMENT`s and customizes
 the generated REST API — rename, hide, deprecate, and extend resources with
 plain DDL, no pdbr configuration, no redeploy (watch mode picks comment
@@ -40,7 +40,7 @@ Parsing rules (`pdbcore/smarttags.Parse`):
   `update`, `-delete` → `delete`, `-select` → `read`, `-filter` → `filter`,
   `-order` → `order`; other tokens are ignored.
 
-Disable everything with `plugins.disabled: [smart-comments]` (see
+Disable everything with `plugins.disabled: [smart_comments]` (see
 [What survives without the plugin](#what-survives-without-the-plugin)).
 
 ## Placement
@@ -67,7 +67,7 @@ Disable everything with `plugins.disabled: [smart-comments]` (see
 | `@fieldName x` / `@foreignFieldName y` | FK | forward / backward relation key (embeds, filter & order paths, nested-mutation body keys) |
 | `@deprecated [reason]` | column, function, table | OpenAPI `deprecated: true` (+ `x-deprecation-reason`) |
 | `@notNull` / `@nullable` | column | OpenAPI nullability + `.insert` required list |
-| `@filterable` (alias `@sortable`) | column, FK, computed | filter/order allowed despite `filters.indexed_only`; opt-in for advanced-filters |
+| `@filterable` (alias `@sortable`) | column, FK, computed | filter/order allowed despite `filters.indexed_only`; opt-in for advanced_filters |
 | `@primaryKey cols` | view / PK-less table | row path `/{t}/{pk}`, keyset cursors, ETag |
 | `@unique cols` | view / table | `/{t}/by/{cols}/{vals}` route |
 | `@foreignKey (…) references …` | view / table | embeds both ways, relation filters/order, nested-mutation keys |
@@ -91,7 +91,7 @@ Disable everything with `plugins.disabled: [smart-comments]` (see
 | `@name <new_name>` | Rename the resource: path segment (`/people`, `/{schema}/people`), `components.schemas` key (`people`, `people.insert`, …), and — because relation keys are table names — the embed/filter key other resources use (`posts?select=people(*)`). Use a name shaped like a table name. |
 | `@primaryKey col[, col]` | Declare a logical primary key on a view (or PK-less table): enables `/{view}/{pk}`, keyset pagination (`after`/`before`, `X-Next-Cursor`), and `ETag` on the row path. Mutations remain gated by real privileges, so views stay read-only. |
 | `@unique col[, col]` | Declare a logical unique constraint: generates `/{view}/by/{cols}/{vals}` (repeatable). |
-| `@foreignKey (col, …) references [schema.]table (col, …)` | Declare a logical foreign key (typically on views): the view gains a forward embed key, the referenced table gains a backward embed key, and `advanced-filters` treats it like a real FK (repeatable). Append `\|@fieldName x\|@foreignFieldName y` to name the keys. |
+| `@foreignKey (col, …) references [schema.]table (col, …)` | Declare a logical foreign key (typically on views): the view gains a forward embed key, the referenced table gains a backward embed key, and `advanced_filters` treats it like a real FK (repeatable). Append `\|@fieldName x\|@foreignFieldName y` to name the keys. |
 | `@enum` | Treat the table as an enum: its **rows** become the values. See [Enum tables](#enum-tables). |
 | `@deprecated [reason]` | Every operation on the resource's paths gets `deprecated: true` (+ `x-deprecation-reason`). |
 
@@ -125,8 +125,8 @@ keeps its `components.schemas` entry), and `PUT` needs both `create` and
 | `@omit many` on a foreign key | Remove only the backward side (`users?select=posts(*)`, `users?posts.title=…`, `users?order=posts(title).asc`). |
 | `@omit filter` on a foreign key | Keep the embed keys, drop the relation filter (both directions). |
 | `@omit order` on a foreign key | Keep the embed keys, drop related-column ordering (`order=users(name).asc`). |
-| `@fieldName <name>` / `@foreignFieldName <name>` | Exact relation keys for the forward / backward side. They replace the default table-name keys in `select=` embeds, filter and order paths, and nested-mutation body keys, and make a `!hint` unnecessary even when the relation is ambiguous. Applied through the shared naming pipeline, so `advanced-filters` and `nested-mutations` see the same key. |
-| `@filterable` on a foreign key | Opt the relation into filtering when `advanced-filters` runs in opt-in mode (below). |
+| `@fieldName <name>` / `@foreignFieldName <name>` | Exact relation keys for the forward / backward side. They replace the default table-name keys in `select=` embeds, filter and order paths, and nested-mutation body keys, and make a `!hint` unnecessary even when the relation is ambiguous. Applied through the shared naming pipeline, so `advanced_filters` and `nested_mutations` see the same key. |
+| `@filterable` on a foreign key | Opt the relation into filtering when `advanced_filters` runs in opt-in mode (below). |
 | `@costMultiplier <n>` on a foreign key | Expected rows per parent on the backward side, used by the cost estimator instead of the requested `limit`. See [Cost estimation for recursive relations](#cost-estimation-for-recursive-relations). |
 | `@omit` on a unique constraint | Remove the generated `/{table}/by/{cols}/…` route (and its OpenAPI path); filtering is unaffected (the backing index remains). |
 
@@ -145,8 +145,8 @@ nested create becomes `POST /posts {"title": "…", "author": {"connect": {"id":
 | `@omit` | Hide the function: no `/rpc/{fn}` route, or no computed column. |
 | `@name <new_name>` | Rename the RPC path segment (`/rpc/new_name`) or the computed column key. |
 | `@deprecated [reason]` | `deprecated: true` on the RPC operations, or on the computed column's OpenAPI property. |
-| `@omit filter` / `@omit order` on a computed column | Keep the field in `select=`, drop its `advanced-filters` filter param / `order=` value. |
-| `@filterable` (alias `@sortable`) | Opt the computed column in when `advanced-filters` runs in opt-in mode. |
+| `@omit filter` / `@omit order` on a computed column | Keep the field in `select=`, drop its `advanced_filters` filter param / `order=` value. |
+| `@filterable` (alias `@sortable`) | Opt the computed column in when `advanced_filters` runs in opt-in mode. |
 | `@anyelement <type>` / `@anycompatible <type>` | Resolve a polymorphic function: its `anyelement` family (`anyarray`, `anyrange`, … derived from it) or `anycompatible` family takes `<type>` (`@anyelement integer`, `@anycompatible numeric`, `@anyelement public.mood`), so it becomes callable; without it the function is skipped. See [rpc.md](rpc.md#polymorphic-functions). |
 
 ### Enums (`COMMENT ON TYPE`)
@@ -227,19 +227,19 @@ Rows are read **at introspection time** and values are ordered by the value
 column; adding a row is DDL-adjacent — watch mode (or a restart) picks it up
 like any other schema change. Like `@costMultiplier`, the tag is applied
 during introspection (`pdbcore/introspect`) and therefore works even with the
-`smart-comments` plugin disabled.
+`smart_comments` plugin disabled.
 
-## Tuning advanced-filters per object
+## Tuning advanced_filters per object
 
-The relation/computed filter tags above are parsed by `advanced-filters`
-directly from the catalog, so they work even if `smart-comments` is disabled.
+The relation/computed filter tags above are parsed by `advanced_filters`
+directly from the catalog, so they work even if `smart_comments` is disabled.
 Beyond the default opt-out (`@omit filter`/`@omit order`), the whole surface
 can be flipped to explicit opt-in:
 
 ```yaml
 plugins:
   settings:
-    advanced-filters:
+    advanced_filters:
       relations_opt_in: true   # only FKs tagged @filterable get relation filters
       computed_opt_in: true    # only functions tagged @filterable get filter/order
 ```
@@ -289,7 +289,7 @@ Details worth knowing:
 - **Values below 1 and unparseable values are ignored**, since a zero or
   negative multiplier would let a subtree escape the cost limit entirely.
 - **It is parsed straight from the catalog**, so it works with the
-  `smart-comments` plugin disabled.
+  `smart_comments` plugin disabled.
 - **It changes the estimate, not the query.** Rows actually returned are still
   bounded by `limit` and `server.max_page_size`. Setting the multiplier far
   below real fan-out weakens the cost limit as a guard — pick a value near
@@ -314,7 +314,7 @@ plugin.
 
 ## What survives without the plugin
 
-`plugins.disabled: [smart-comments]` removes route/method/parameter edits,
+`plugins.disabled: [smart_comments]` removes route/method/parameter edits,
 `@name`/`@fieldName` renames, `@notNull`/`@nullable`, `@deprecated`,
 `@filterable`, and logical `@primaryKey`/`@unique`/`@foreignKey`. Still in
 effect:
@@ -324,7 +324,7 @@ effect:
 - Description stripping — the builder always drops tag lines from the
   descriptions it copies into OpenAPI.
 - `@omit filter` / `@omit order` / `@filterable` on FKs and computed columns
-  — read from the catalog by `advanced-filters` itself.
+  — read from the catalog by `advanced_filters` itself.
 - `@omit filter` / `@omit order` on spatial columns — read by the `postgis`
   plugin itself (see [postgis.md](postgis.md)).
 

@@ -321,7 +321,7 @@ type RPC struct {
 	Methods map[Method]bool
 	// Mutation marks volatile functions (transaction, read-only gate).
 	Mutation bool
-	// Mint marks functions returning the rls.auth.jwt_type composite: the
+	// Mint marks functions returning the auth.mint_type composite: the
 	// exec layer signs each returned row into a JWT string.
 	Mint    bool
 	Returns ReturnKind

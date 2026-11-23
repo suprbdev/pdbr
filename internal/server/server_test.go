@@ -10,12 +10,14 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/suprbdev/pdbcore/auth"
 	"github.com/suprbdev/pdbcore/testutil"
@@ -285,6 +287,7 @@ func TestBasePathVariants(t *testing.T) {
 func TestCORS(t *testing.T) {
 	cfg := serverCfg()
 	cfg.CORSOrigins = []string{"https://app.example.com"}
+	cfg.Compression = true
 	srv := testServer(t, cfg, nil, nil)
 	res, _ := do(t, "OPTIONS", srv.URL+"/api/users", map[string]string{
 		"Origin":                        "https://app.example.com",
@@ -297,19 +300,51 @@ func TestCORS(t *testing.T) {
 		!strings.Contains(res.Header.Get("Access-Control-Allow-Methods"), "PATCH") {
 		t.Errorf("preflight headers = %v", res.Header)
 	}
-	res, _ = do(t, "GET", srv.URL+"/api/users", map[string]string{"Origin": "https://app.example.com"})
+	res, _ = do(t, "GET", srv.URL+"/api/users", map[string]string{"Origin": "https://app.example.com", "Accept-Encoding": "gzip"})
 	if res.Header.Get("Access-Control-Allow-Origin") != "https://app.example.com" {
 		t.Errorf("CORS header missing on normal response: %v", res.Header)
 	}
+	if got := strings.Join(res.Header.Values("Vary"), ", "); !strings.Contains(got, "Origin") || !strings.Contains(got, "Accept-Encoding") {
+		t.Errorf("Vary = %q, want Origin and Accept-Encoding", got)
+	}
+	expose := res.Header.Get("Access-Control-Expose-Headers")
+	for _, h := range []string{"Content-Range", "ETag", "Link", "Location", "Preference-Applied", "X-Total-Count", "WWW-Authenticate"} {
+		if !strings.Contains(expose, h) {
+			t.Errorf("Access-Control-Expose-Headers = %q, missing %s", expose, h)
+		}
+	}
+	res, _ = do(t, "GET", srv.URL+"/api/openapi.json", map[string]string{"Origin": "https://app.example.com", "Accept-Encoding": "gzip"})
+	if got := strings.Join(res.Header.Values("Vary"), ", "); !strings.Contains(got, "Origin") || !strings.Contains(got, "Accept-Encoding") {
+		t.Errorf("openapi.json Vary = %q, want Origin and Accept-Encoding", got)
+	}
 	res, _ = do(t, "GET", srv.URL+"/api/users", map[string]string{"Origin": "https://evil.example.com"})
-	if res.Header.Get("Access-Control-Allow-Origin") != "" {
-		t.Error("CORS header set for disallowed origin")
+	if res.Header.Get("Access-Control-Allow-Origin") != "" || res.Header.Get("Access-Control-Expose-Headers") != "" {
+		t.Error("CORS headers set for disallowed origin")
 	}
 }
 
+func newAuth(t *testing.T, cfg auth.Config) *auth.Authenticator {
+	t.Helper()
+	a, err := auth.New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return a
+}
+
+func token(t *testing.T, secret string, claims jwt.MapClaims) string {
+	t.Helper()
+	claims["exp"] = time.Now().Add(time.Hour).Unix()
+	s, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(secret))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
 func TestAuth(t *testing.T) {
-	authn := auth.New(auth.Config{
-		Enabled: true, Mode: "jwt", JWTSecret: "s", RoleClaim: "role", AnonymousRole: "anonymous",
+	authn := newAuth(t, auth.Config{
+		Mode: auth.ModeJWT, JWTSecret: "s", AnonymousRole: "anonymous",
 		AllowedRoles: []string{"anonymous", "app_user"},
 	})
 	var seen Identity
@@ -324,12 +359,24 @@ func TestAuth(t *testing.T) {
 		t.Errorf("anonymous = %d role %q", res.StatusCode, seen.Role)
 	}
 	res, body := do(t, "GET", srv.URL+"/api/users", map[string]string{"Authorization": "Bearer garbage"})
-	if res.StatusCode != 401 || problem(t, body).Code != CodeInvalidToken {
-		t.Errorf("bad token = %d %s", res.StatusCode, body)
+	if res.StatusCode != 401 || problem(t, body).Code != CodeInvalidToken || res.Header.Get("WWW-Authenticate") != `Bearer error="invalid_token"` {
+		t.Errorf("bad token = %d %s %v", res.StatusCode, body, res.Header)
 	}
 	res, body = do(t, "GET", srv.URL+"/api/users", map[string]string{"Authorization": "Basic abc"})
 	if res.StatusCode != 401 || problem(t, body).Code != CodeInvalidToken {
 		t.Errorf("malformed header = %d %s", res.StatusCode, body)
+	}
+	tok := token(t, "s", jwt.MapClaims{"role": "app_user", "sub": "7"})
+	for _, scheme := range []string{"Bearer", "bearer", "BEARER"} {
+		seen = Identity{}
+		res, body = do(t, "GET", srv.URL+"/api/users", map[string]string{"Authorization": scheme + " " + tok})
+		if res.StatusCode != 204 || seen.Role != "app_user" || seen.Claims["sub"] != "7" {
+			t.Errorf("%s token = %d %s, identity %+v", scheme, res.StatusCode, body, seen)
+		}
+	}
+	res, body = do(t, "GET", srv.URL+"/api/users", map[string]string{"Authorization": "Bearer " + token(t, "s", jwt.MapClaims{"role": "admin"})})
+	if res.StatusCode != 403 || problem(t, body).Code != CodeRoleNotAllowed || res.Header.Get("WWW-Authenticate") != `Bearer error="insufficient_scope"` {
+		t.Errorf("role not allowed = %d %s %v", res.StatusCode, body, res.Header)
 	}
 	// Health and the OpenAPI document ignore credentials.
 	res, _ = do(t, "GET", srv.URL+"/api/openapi.json", map[string]string{"Authorization": "Bearer garbage"})
@@ -342,9 +389,46 @@ func TestAuth(t *testing.T) {
 	}
 }
 
+func TestAuthRequired(t *testing.T) {
+	authn := newAuth(t, auth.Config{Mode: auth.ModeJWT, JWTSecret: "s"})
+	reached := false
+	h := RouteHandlerFunc(func(w http.ResponseWriter, r *http.Request, _ *api.Match) {
+		reached = true
+		w.WriteHeader(204)
+	})
+	srv := testServer(t, serverCfg(), authn, h)
+	res, body := do(t, "GET", srv.URL+"/api/users", nil)
+	if res.StatusCode != 401 || problem(t, body).Code != CodeAuthRequired || res.Header.Get("WWW-Authenticate") != "Bearer" || reached {
+		t.Errorf("no credentials = %d %s %v (handler reached %v)", res.StatusCode, body, res.Header, reached)
+	}
+	res, _ = do(t, "GET", srv.URL+"/api/users", map[string]string{"Authorization": "Bearer " + token(t, "s", jwt.MapClaims{"role": "app_user"})})
+	if res.StatusCode != 204 || !reached {
+		t.Errorf("with token = %d", res.StatusCode)
+	}
+}
+
+func TestAuthConnectionRole(t *testing.T) {
+	authn := newAuth(t, auth.Config{Mode: auth.ModeJWT, JWTSecret: "s", SkipRoleSwitch: true})
+	var seen Identity
+	h := RouteHandlerFunc(func(w http.ResponseWriter, r *http.Request, _ *api.Match) {
+		seen = IdentityFrom(r.Context())
+		w.WriteHeader(204)
+	})
+	srv := testServer(t, serverCfg(), authn, h)
+	res, body := do(t, "GET", srv.URL+"/api/users", map[string]string{"Authorization": "Bearer " + token(t, "s", jwt.MapClaims{"role": "app_user", "sub": "7"})})
+	if res.StatusCode != 204 || seen.Role != "" || seen.Claims["sub"] != "7" {
+		t.Errorf("roles.switch off = %d %s, identity %+v", res.StatusCode, body, seen)
+	}
+	res, _ = do(t, "GET", srv.URL+"/api/users", map[string]string{"Authorization": "Bearer garbage"})
+	if res.StatusCode != 401 {
+		t.Errorf("roles.switch off still verifies credentials: bad token = %d", res.StatusCode)
+	}
+}
+
 func TestAuthRejectsUnassumableRoles(t *testing.T) {
-	authn := auth.New(auth.Config{
-		Enabled: true, Mode: "headers", HeaderPrefix: "X-Pdbr-Claim-", RoleClaim: "role", AnonymousRole: "anonymous",
+	authn := newAuth(t, auth.Config{
+		Mode: auth.ModeHeaders, HeaderPrefix: "X-Pdbr-Claim-", AnonymousRole: "anonymous",
+		TrustedProxies: []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8"), netip.MustParsePrefix("::1/128")},
 	})
 	reached := false
 	h := RouteHandlerFunc(func(w http.ResponseWriter, r *http.Request, _ *api.Match) {
@@ -355,13 +439,31 @@ func TestAuthRejectsUnassumableRoles(t *testing.T) {
 	for _, role := range []string{"none", "NONE", "public", "pg_read_all_data", "web user"} {
 		reached = false
 		res, body := do(t, "GET", srv.URL+"/api/users", map[string]string{"X-Pdbr-Claim-Role": role})
-		if res.StatusCode != 403 || problem(t, body).Code != CodeRoleNotAllowed || reached {
+		if res.StatusCode != 403 || problem(t, body).Code != CodeRoleNotAllowed || reached ||
+			res.Header.Get("WWW-Authenticate") != `Bearer error="insufficient_scope"` {
 			t.Errorf("role %q = %d %s (handler reached %v)", role, res.StatusCode, body, reached)
 		}
 	}
 	res, _ := do(t, "GET", srv.URL+"/api/users", map[string]string{"X-Pdbr-Claim-Role": "app_user"})
 	if res.StatusCode != 204 || !reached {
 		t.Errorf("app_user = %d", res.StatusCode)
+	}
+}
+
+func TestHeadersAuthUntrustedPeer(t *testing.T) {
+	authn := newAuth(t, auth.Config{
+		Mode: auth.ModeHeaders, HeaderPrefix: "X-Pdbr-Claim-", AnonymousRole: "anonymous",
+		TrustedProxies: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")},
+	})
+	reached := false
+	h := RouteHandlerFunc(func(w http.ResponseWriter, r *http.Request, _ *api.Match) {
+		reached = true
+		w.WriteHeader(204)
+	})
+	srv := testServer(t, serverCfg(), authn, h)
+	res, body := do(t, "GET", srv.URL+"/api/users", map[string]string{"X-Pdbr-Claim-Role": "app_user"})
+	if res.StatusCode != 401 || problem(t, body).Code != CodeInvalidToken || reached {
+		t.Errorf("claim headers from an untrusted peer = %d %s (handler reached %v)", res.StatusCode, body, reached)
 	}
 }
 

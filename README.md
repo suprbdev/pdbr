@@ -15,7 +15,7 @@ GraphQL); the shared half lives in
 [pdbcore](docs/pdbcore.md).
 
 ```console
-$ pdbr serve --database.url postgres://localhost/mydb
+$ pdbr serve --database.url postgres://localhost/mydb --auth.mode none --roles.switch=false
 time=... msg=introspected tables=12 enums=3 functions=2 took=38ms
 time=... msg=listening addr=:8080 base_path=/api openapi=true
 $ curl 'localhost:8080/api/users?select=id,email,posts(title)&mood=eq.happy&limit=2'
@@ -32,9 +32,11 @@ $ curl 'localhost:8080/api/users?select=id,email,posts(title)&mood=eq.happy&limi
   `limit`/`offset`, keyset `after=`/`before=` cursors, `count=true`,
   `distinct=`, `/by/{cols}/{vals}` unique lookups, `/rpc/{fn}`.
 - **RLS-aware by default** — each request runs with `SET LOCAL ROLE` and
-  claims exposed via `set_config('pdbq.claims.*', ...)` from a verified JWT or
-  trusted gateway headers. The claims prefix is deliberately shared with pdbq
-  so existing policies work unchanged.
+  claims exposed via `set_config('jwt.claims.*', ...)` (and optionally as
+  one JSON object such as PostgREST's `request.jwt.claims`) from a verified
+  JWT or trusted gateway headers; requests without credentials are refused
+  unless an anonymous role is configured. The claim settings are shared
+  with pdbq and PostGraphile so existing policies work unchanged.
 - **Filters with an indexed-only policy** — only indexed columns are
   filterable/orderable out of the box (`filters.indexed_only: false` opens it
   up), with per-type operator sets and `@filterable` smart-comment opt-in.
@@ -51,8 +53,8 @@ $ curl 'localhost:8080/api/users?select=id,email,posts(title)&mood=eq.happy&limi
 - **Watch mode** — a DDL event trigger (or poll fallback) re-introspects and
   atomically swaps the API during development.
 - **Plugins** — five small hook interfaces (catalog, inflection, API,
-  compile, request) with four built-ins: `smart-comments`, `advanced-filters`,
-  `postgis`, `nested-mutations`.
+  compile, request) with four built-ins: `smart_comments`, `advanced_filters`,
+  `postgis`, `nested_mutations`.
 - **Schema contracts** — per-audience APIs (`public`, `partner`,
   `internal`) selected by `@contract` / `@behavior ±contract:<name>` smart
   comments, each under its own base path with its own OpenAPI document, see
@@ -95,9 +97,14 @@ $ curl localhost:8080/api/openapi.json | jq .paths | head
 Or against your own database:
 
 ```console
-$ pdbr config init          # writes a starter pdbr.yaml
+$ pdbr config init          # writes a starter pdbr.yaml: no auth, connection role
 $ pdbr serve
 ```
+
+The starter (and the first example above) run without authentication as the
+connection role; configure `auth` and `roles` before production
+([docs/rls.md](docs/rls.md)). The defaults verify JWTs and refuse requests
+without credentials.
 
 See [docs/quickstart.md](docs/quickstart.md) for the full tour.
 
@@ -116,6 +123,7 @@ See [docs/quickstart.md](docs/quickstart.md) for the full tour.
 | [docs/errors.md](docs/errors.md) | Problem Details format, `code` catalogue, status mapping |
 | [docs/openapi.md](docs/openapi.md) | What the generated OpenAPI 3.1 document contains |
 | [docs/configuration.md](docs/configuration.md) | Config layering; full reference in `examples/pdbr.example.yaml` |
+| [docs/upgrading.md](docs/upgrading.md) | Breaking changes and config migration between releases |
 | [docs/cli.md](docs/cli.md) | All subcommands, scripting patterns |
 | [docs/rls.md](docs/rls.md) | Roles, JWT/header claims, policies |
 | [docs/smart-comments.md](docs/smart-comments.md) | `@omit`/`@name`/`@foreignKey`/… tags with REST semantics |

@@ -278,13 +278,12 @@ func TestMutationVisibilityRLS(t *testing.T) {
 		GRANT SELECT (id, board_id, owner, body), INSERT (board_id, owner, body), UPDATE (body), DELETE ON mvis_notes TO e2e_mvis;
 		ALTER TABLE mvis_notes ENABLE ROW LEVEL SECURITY;
 		CREATE POLICY mvis_read ON mvis_notes FOR SELECT USING (true);
-		CREATE POLICY mvis_insert ON mvis_notes FOR INSERT WITH CHECK (owner = NULLIF(current_setting('pdbq.claims.user_id', true), '')::integer);
-		CREATE POLICY mvis_update ON mvis_notes FOR UPDATE USING (owner = NULLIF(current_setting('pdbq.claims.user_id', true), '')::integer);
-		CREATE POLICY mvis_delete ON mvis_notes FOR DELETE USING (owner = NULLIF(current_setting('pdbq.claims.user_id', true), '')::integer);`)
+		CREATE POLICY mvis_insert ON mvis_notes FOR INSERT WITH CHECK (owner = NULLIF(current_setting('jwt.claims.user_id', true), '')::integer);
+		CREATE POLICY mvis_update ON mvis_notes FOR UPDATE USING (owner = NULLIF(current_setting('jwt.claims.user_id', true), '')::integer);
+		CREATE POLICY mvis_delete ON mvis_notes FOR DELETE USING (owner = NULLIF(current_setting('jwt.claims.user_id', true), '')::integer);`)
 	t.Cleanup(func() { execSQL(t, dbURL, `DROP TABLE IF EXISTS mvis_notes, mvis_boards`) })
 	srv := testServer(t, func(c *config.Config) {
-		c.RLS.Enabled = true
-		c.RLS.Auth.Mode = "headers"
+		headersAuth(c)
 	})
 	as1 := map[string]string{"X-Pdbr-Claim-Role": "e2e_mvis", "X-Pdbr-Claim-User-Id": "1"}
 	call := func(method, path, body string, want int, v any) {

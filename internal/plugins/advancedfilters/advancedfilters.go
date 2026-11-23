@@ -7,7 +7,7 @@
 // those, so disabling the plugin removes the feature end to end.
 //
 // Per-object tuning is read straight from catalog comments with
-// pdbcore/smarttags, so it works with the smart-comments plugin disabled:
+// pdbcore/smarttags, so it works with the smart_comments plugin disabled:
 // "@omit filter" / "@omit order" on a foreign key or computed function drop
 // that half; with relations_opt_in / computed_opt_in only objects tagged
 // "@filterable" (alias "@sortable") get any surface.
@@ -21,7 +21,25 @@ import (
 	"github.com/suprbdev/pdbr/internal/api"
 )
 
-// Plugin is the advanced-filters plugin; build it with New.
+// Name is the plugin name (plugins.disabled entry and plugins.settings key).
+const Name = "advanced_filters"
+
+// Settings is the plugins.settings.advanced_filters section.
+type Settings struct {
+	Relations      bool `koanf:"relations" doc:"Relation filters (rel.col=op.v, rel!none., rel!every., rel=exists.true|false)."`
+	Computed       bool `koanf:"computed" doc:"Filtering and ordering on computed columns (follows schema.functions)."`
+	RelationOrder  bool `koanf:"relation_order" doc:"Ordering by a related column (order=rel(col).asc); off when relations is off."`
+	RelationsOptIn bool `koanf:"relations_opt_in" doc:"Only foreign keys tagged @filterable (or @sortable) get relation filters and ordering."`
+	ComputedOptIn  bool `koanf:"computed_opt_in" doc:"Only computed-column functions tagged @filterable (or @sortable) get filters and ordering."`
+}
+
+// DefaultSettings returns the defaults: relations, computed and
+// relation_order on, opt-in modes off.
+func DefaultSettings() Settings {
+	return Settings{Relations: true, Computed: true, RelationOrder: true}
+}
+
+// Plugin is the advanced_filters plugin; build it with New.
 type Plugin struct {
 	relations      bool
 	computed       bool
@@ -30,31 +48,24 @@ type Plugin struct {
 	computedOptIn  bool
 }
 
-// New builds the plugin from its plugins.settings.advanced-filters map.
-// Defaults: relations, computed and relation_order on; opt-in modes off.
-// Unknown keys and mistyped values are ignored.
-func New(settings map[string]any) *Plugin {
-	p := &Plugin{relations: true, computed: true, relationOrder: true}
-	set := func(dst *bool, key string) {
-		if v, ok := settings[key].(bool); ok {
-			*dst = v
-		}
+// New builds the plugin from its settings.
+func New(s Settings) *Plugin {
+	return &Plugin{
+		relations:      s.Relations,
+		computed:       s.Computed,
+		relationOrder:  s.RelationOrder,
+		relationsOptIn: s.RelationsOptIn,
+		computedOptIn:  s.ComputedOptIn,
 	}
-	set(&p.relations, "relations")
-	set(&p.computed, "computed")
-	set(&p.relationOrder, "relation_order")
-	set(&p.relationsOptIn, "relations_opt_in")
-	set(&p.computedOptIn, "computed_opt_in")
-	return p
 }
 
-func (p *Plugin) Name() string  { return "advanced-filters" }
+func (p *Plugin) Name() string  { return Name }
 func (p *Plugin) Priority() int { return 150 }
 
 // TransformAPI sets the Surface flags and narrows every relation's and
 // computed column's Filterable/Orderable to what the settings and the
 // object's comment allow. Flags already cleared by an earlier plugin
-// (smart-comments' @omit filter|order|many) are never turned back on.
+// (smart_comments' @omit filter|order|many) are never turned back on.
 func (p *Plugin) TransformAPI(_ context.Context, b *api.Builder) error {
 	relOrder := p.relations && p.relationOrder
 	computed := p.computed && b.Options.Functions

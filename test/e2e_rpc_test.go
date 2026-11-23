@@ -489,7 +489,7 @@ func TestComputedColumns(t *testing.T) {
 	if loc := res.Header.Get("Location"); loc != "" {
 		rpcCall(t, "DELETE", srv.URL+loc, "", nil)
 	}
-	// Computed filter/order (advanced-filters surface, gates open until M5).
+	// Computed filter/order (advanced_filters surface, gates open until M5).
 	getJSON(t, srv.URL+"/api/users?select=id&post_count=gte.2", &rows)
 	if !eq(ids(rows, "id"), []int{1}) {
 		t.Errorf("post_count filter = %v", rows)
@@ -535,12 +535,10 @@ func TestJWTMintRoundTrip(t *testing.T) {
 	rpcFixtures(t)
 	const secret = "e2e-mint-secret"
 	srv := testServer(t, func(c *config.Config) {
-		c.RLS.Enabled = true
-		c.RLS.Auth.Mode = "jwt"
-		c.RLS.Auth.JWTSecret = secret
-		c.RLS.Auth.JWTType = "public.jwt"
-		c.RLS.Auth.JWTIssuer = "pdbr-e2e"
-		c.RLS.AllowedRoles = []string{"app_user"}
+		jwtAuth(c, secret)
+		c.Auth.MintType = "public.jwt"
+		c.Auth.JWT.Issuer = "pdbr-e2e"
+		c.Roles.Allowed = []string{"app_user"}
 	})
 	// authenticate is volatile: POST only, minted into a token string.
 	res, body, _ := rpcCall(t, "GET", srv.URL+"/api/rpc/authenticate?user_email=ada@example.com", "", nil)
@@ -575,14 +573,12 @@ func TestJWTMintRoundTrip(t *testing.T) {
 	}
 	// A token signed with another secret is refused.
 	other := testServer(t, func(c *config.Config) {
-		c.RLS.Enabled = true
-		c.RLS.Auth.Mode = "jwt"
-		c.RLS.Auth.JWTSecret = "different"
-		c.RLS.Auth.JWTType = "public.jwt"
+		jwtAuth(c, "different")
+		c.Auth.MintType = "public.jwt"
 	})
 	res, body, _ = rpcCall(t, "GET", other.URL+"/api/posts", "", map[string]string{"Authorization": "Bearer " + tok})
 	wantProblem(t, res, body, 401, "invalid_token")
-	// Without jwt_type the composite is returned as an object.
+	// Without mint_type the composite is returned as an object.
 	plain := testServer(t, nil)
 	v = rpcOK(t, "POST", plain.URL+"/api/rpc/authenticate", `{"user_email": "ada@example.com"}`)
 	if got, _ := v.(map[string]any); got["role"] != "app_user" || got["user_id"] != json.Number("1") {

@@ -30,12 +30,16 @@ type (
 	ServerConfig   = config.Server
 	SchemaConfig   = config.Schema
 	FiltersConfig  = confx.Filters
-	RLSConfig      = confx.RLS
 	AuthConfig     = confx.Auth
+	JWTConfig      = confx.JWT
+	HeadersConfig  = confx.Headers
+	RolesConfig    = confx.Roles
+	ClaimsConfig   = confx.Claims
 	TXConfig       = confx.TX
 	WatchConfig    = confx.Watch
 	ErrorsConfig   = confx.Errors
-	PluginsConfig  = confx.Plugins
+	PluginsConfig  = confx.Plugins[config.PluginSettings]
+	PluginSettings = config.PluginSettings
 	LogConfig      = confx.Log
 	ContractConfig = confx.Contract
 )

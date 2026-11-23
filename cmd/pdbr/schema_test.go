@@ -33,7 +33,7 @@ func TestSchemaCheckRejectsBadCacheBeforeConnecting(t *testing.T) {
 	dir := t.TempDir()
 	// database.url points nowhere: every case below must fail on the cache
 	// file, never by trying to reach the database.
-	base := []string{"schema", "check", "--database.url", "postgres://nobody:x@127.0.0.1:1/none", "--rls.enabled=false"}
+	base := []string{"schema", "check", "--database.url", "postgres://nobody:x@127.0.0.1:1/none"}
 
 	_, err := runCLI(t, append(base, "--cache", filepath.Join(dir, "missing.cache"))...)
 	if err == nil || !strings.Contains(err.Error(), "cache: open") {
@@ -108,7 +108,7 @@ func TestSchemaDumpCheckLive(t *testing.T) {
 	t.Cleanup(dropProbe)
 
 	path := filepath.Join(t.TempDir(), "schema.cache")
-	flags := []string{"--database.url", dbURL, "--rls.enabled=false"}
+	flags := []string{"--database.url", dbURL, "--auth.mode=none", "--roles.switch=false"}
 	out, err := runCLI(t, append([]string{"schema", "dump", "-o", path}, flags...)...)
 	if err != nil || !strings.HasPrefix(out, "wrote "+path) {
 		t.Fatalf("dump: %v %q", err, out)

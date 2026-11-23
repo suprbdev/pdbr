@@ -111,7 +111,7 @@ func geoSetup(t *testing.T) string {
 func geoConfig(dbURL string, mutate func(*config.Config)) config.Config {
 	cfg := config.DefaultConfig()
 	cfg.Database.URL = dbURL
-	cfg.RLS.Enabled = false
+	cfg.UseConnectionIdentity()
 	cfg.Errors.Detail = "dev"
 	cfg.Schema.Schemas = []string{geoSchema}
 	if mutate != nil {

@@ -779,12 +779,12 @@ func (b *Builder) filterProse(r *Resource) string {
 	var parts []string
 	if b.Surface.ComputedFilters {
 		if keys := computedKeys(r, func(c *Computed) bool { return c.Filterable && !c.Function.ReturnsSet }); len(keys) > 0 {
-			parts = append(parts, "Computed-column filters (advanced-filters plugin): "+strings.Join(keys, ", ")+" as <computed>=<op>.<value> with the scalar operators of the return type.")
+			parts = append(parts, "Computed-column filters (advanced_filters plugin): "+strings.Join(keys, ", ")+" as <computed>=<op>.<value> with the scalar operators of the return type.")
 		}
 	}
 	if b.Surface.RelationFilters {
 		if keys := relationKeys(r, func(rel *Relation) bool { return rel.Filterable && rel.Embeddable }); len(keys) > 0 {
-			parts = append(parts, "Relation filters (advanced-filters plugin) on "+strings.Join(keys, ", ")+
+			parts = append(parts, "Relation filters (advanced_filters plugin) on "+strings.Join(keys, ", ")+
 				": <rel>.<col>=<op>.<value> (some related row matches), <rel>!none.<col>=…, <rel>!every.<col>=… (backward relations), <rel>=exists.true|false; hint ambiguous keys as <rel>!<fk>.")
 		}
 	}

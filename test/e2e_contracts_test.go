@@ -214,8 +214,7 @@ func keys(m map[string]any) []string {
 // the contract narrows the API, the policies still decide the rows.
 func TestContractsKeepRLS(t *testing.T) {
 	srv := testServer(t, func(c *config.Config) {
-		c.RLS.Enabled = true
-		c.RLS.Auth.Mode = "headers"
+		headersAuth(c)
 		c.Contracts = []confx.Contract{{Name: "public"}}
 	})
 	count := func(hdr map[string]string) int {

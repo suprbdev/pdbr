@@ -17,6 +17,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/suprbdev/pdbcore/auth"
+
 	"github.com/suprbdev/pdbr"
 	"github.com/suprbdev/pdbr/internal/config"
 )
@@ -29,7 +31,7 @@ func testServer(t *testing.T, mutate func(*config.Config)) *httptest.Server {
 	}
 	cfg := config.DefaultConfig()
 	cfg.Database.URL = url
-	cfg.RLS.Enabled = false
+	cfg.UseConnectionIdentity()
 	cfg.Errors.Detail = "dev"
 	if mutate != nil {
 		mutate(&cfg)
@@ -324,7 +326,7 @@ func TestFilters(t *testing.T) {
 		{"posts?title=sw.Notes", []int{1}},
 		{"events?type_code=eq.meetup", []int{3}},
 		{"events?type_code=in.(conference,hackathon)&order=id", []int{1, 2}},
-		// relation filters (advanced-filters gate open)
+		// relation filters (advanced_filters gate open)
 		{"users?posts.title=eq.Compilers%20101", []int{2}},
 		{"users?posts.title=sw.Un&posts.author_id=eq.1", []int{1}},
 		{"users?posts!none.title=eq.Compilers%20101&order=id", []int{1, 3}},
@@ -650,8 +652,7 @@ func TestDatabaseErrorMapping(t *testing.T) {
 // sees their own draft (4), app_user #2 sees 3 (headers auth mode).
 func TestRLSMatrix(t *testing.T) {
 	srv := testServer(t, func(c *config.Config) {
-		c.RLS.Enabled = true
-		c.RLS.Auth.Mode = "headers"
+		headersAuth(c)
 	})
 	count := func(hdr map[string]string) int {
 		t.Helper()
@@ -690,9 +691,8 @@ func TestRLSMatrix(t *testing.T) {
 	wantProblem(t, res, body, 403, "pg:42501")
 	// allowed_roles gate
 	srv2 := testServer(t, func(c *config.Config) {
-		c.RLS.Enabled = true
-		c.RLS.Auth.Mode = "headers"
-		c.RLS.AllowedRoles = []string{"app_user"}
+		headersAuth(c)
+		c.Roles.Allowed = []string{"app_user"}
 	})
 	res, body = do(t, "GET", srv2.URL+"/api/posts", map[string]string{"X-Pdbr-Claim-Role": "postgres"})
 	wantProblem(t, res, body, 403, "role_not_allowed")
@@ -703,8 +703,7 @@ func TestRLSMatrix(t *testing.T) {
 // naming none, public or a pg_ role is refused even without allowed_roles.
 func TestRLSRejectsRoleNone(t *testing.T) {
 	srv := testServer(t, func(c *config.Config) {
-		c.RLS.Enabled = true
-		c.RLS.Auth.Mode = "headers"
+		headersAuth(c)
 	})
 	for _, role := range []string{"none", "None", "public", "pg_read_all_data"} {
 		for _, path := range []string{"/api/posts?select=id&limit=100", "/api/posts/2"} {
@@ -721,9 +720,8 @@ func TestRLSRejectsRoleNone(t *testing.T) {
 // (with rls.auth.header_claims) a claim outside the allowlist is a 401.
 func TestClaimHeaderSpelling(t *testing.T) {
 	srv := testServer(t, func(c *config.Config) {
-		c.RLS.Enabled = true
-		c.RLS.Auth.Mode = "headers"
-		c.RLS.Auth.HeaderClaims = []string{"user_id"}
+		headersAuth(c)
+		c.Auth.Headers.Claims = []string{"user_id"}
 	})
 	send := func(hdr http.Header) (*http.Response, []byte) {
 		t.Helper()
@@ -809,4 +807,24 @@ func TestKeyOrderFollowsSelect(t *testing.T) {
 	if res.StatusCode != 200 || strings.Count(string(body), `"email"`) != 1 {
 		t.Errorf("repeated column = %d %s", res.StatusCode, body)
 	}
+}
+
+// headersAuth authenticates requests with claim headers sent by the test
+// client (loopback is the trusted proxy), switching to the claimed role and
+// running requests without credentials as the fixture's anonymous role.
+func headersAuth(c *config.Config) {
+	c.Auth.Mode = auth.ModeHeaders
+	c.Auth.Headers.TrustedProxies = []string{"127.0.0.1", "::1"}
+	c.Roles.Switch = true
+	c.Roles.Anonymous = "anonymous"
+}
+
+// jwtAuth authenticates requests with HS256 JWTs signed with secret,
+// switching to the claimed role and running requests without credentials
+// as the fixture's anonymous role.
+func jwtAuth(c *config.Config, secret string) {
+	c.Auth.Mode = auth.ModeJWT
+	c.Auth.JWT.Secret = secret
+	c.Roles.Switch = true
+	c.Roles.Anonymous = "anonymous"
 }

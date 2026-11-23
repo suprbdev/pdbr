@@ -268,14 +268,15 @@ func TestTransactionDecision(t *testing.T) {
 		force  bool
 		wantTx bool
 	}{
-		{"read no identity", Options{RLS: true}, "", nil, false, false, false},
-		{"read with role", Options{RLS: true}, "anonymous", nil, false, false, true},
-		{"read with claims", Options{RLS: true}, "", map[string]any{"user_id": 1}, false, false, true},
-		{"read with role, rls off", Options{RLS: false}, "anonymous", nil, false, false, false},
-		{"read forced", Options{RLS: true}, "", nil, false, true, true},
+		{"read no identity", Options{ClaimsPrefix: "jwt.claims"}, "", nil, false, false, false},
+		{"read with role", Options{ClaimsPrefix: "jwt.claims"}, "anonymous", nil, false, false, true},
+		{"read with claims", Options{ClaimsPrefix: "jwt.claims"}, "", map[string]any{"user_id": 1}, false, false, true},
+		{"read with claims, no prefix", Options{}, "", map[string]any{"user_id": 1}, false, false, false},
+		{"read with json setting", Options{ClaimsJSONSetting: "request.jwt.claims"}, "", nil, false, false, true},
+		{"read forced", Options{ClaimsPrefix: "jwt.claims"}, "", nil, false, true, true},
 		{"mutation tx policy", Options{TxMutations: true}, "", nil, true, false, true},
 		{"mutation no tx policy", Options{TxMutations: false}, "", nil, true, false, false},
-		{"mutation no policy but claims", Options{TxMutations: false, RLS: true}, "app_user", nil, true, false, true},
+		{"mutation no policy but role", Options{TxMutations: false}, "app_user", nil, true, false, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -296,7 +297,8 @@ func TestTransactionDecision(t *testing.T) {
 				if !tx.committed {
 					t.Fatal("not committed")
 				}
-				if tx.opts.RLS != tc.opts.RLS || tx.id.Role != tc.role || len(tx.id.Claims) != len(tc.claims) {
+				if !tx.opts.RLS || tx.id.Role != tc.role || len(tx.id.Claims) != len(tc.claims) ||
+					tx.id.ClaimsPrefix != tc.opts.ClaimsPrefix || tx.id.ClaimsJSONSetting != tc.opts.ClaimsJSONSetting {
 					t.Fatalf("identity = %+v rls %v", tx.id, tx.opts.RLS)
 				}
 				if tx.opts.Isolation != "" || tx.opts.ScanBeforeCommit {
@@ -323,7 +325,7 @@ func TestTransactionBatchOptions(t *testing.T) {
 		{pgx.Serializable, pgx.Serializable},
 	} {
 		db := &fakeDB{row: fakeRow{data: page}}
-		e := newExec(db, b, nil, Options{RLS: true, Isolation: tc.iso, MaxRetries: 2, ClaimsPrefix: "app.claims"})
+		e := newExec(db, b, nil, Options{Isolation: tc.iso, MaxRetries: 2, ClaimsPrefix: "app.claims"})
 		op := listOp(b, "/users")
 		op.Role, op.Claims = "app_user", map[string]any{"user_id": "1"}
 		if res := e.Execute(context.Background(), op); res.Err != nil {
@@ -339,7 +341,7 @@ func TestTransactionBatchOptions(t *testing.T) {
 func TestTransactionErrors(t *testing.T) {
 	b := built(t)
 	db := &fakeDB{}
-	e := newExec(db, b, nil, Options{RLS: true})
+	e := newExec(db, b, nil, Options{})
 	op := listOp(b, "/users")
 	op.Role = "none"
 	if xe := errOf(t, e.Execute(context.Background(), op)); xe.Status != 500 || len(db.queries) != 0 {
@@ -347,7 +349,7 @@ func TestTransactionErrors(t *testing.T) {
 	}
 
 	db = &fakeDB{row: fakeRow{err: &pgconn.PgError{Code: "42501", Message: "permission denied for table users"}}}
-	e = newExec(db, b, nil, Options{RLS: true})
+	e = newExec(db, b, nil, Options{})
 	op = listOp(b, "/users")
 	op.Role = "anonymous"
 	if xe := errOf(t, e.Execute(context.Background(), op)); xe.Status != 403 || xe.Code != "pg:42501" {

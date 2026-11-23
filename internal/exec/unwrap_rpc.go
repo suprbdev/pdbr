@@ -37,7 +37,7 @@ func (e *Executor) mint(res *Result, stmt *compile.Statement) error {
 		return nil
 	}
 	if !e.Opts.Mint.Enabled() {
-		return &Error{Status: http.StatusInternalServerError, Code: CodeInternal, Detail: "jwt minting is not configured (rls.auth.jwt_type / jwt_secret)"}
+		return &Error{Status: http.StatusInternalServerError, Code: CodeInternal, Detail: "jwt minting is not configured (auth.mint_type / auth.jwt.secret)"}
 	}
 	minted, err := jwtmint.Mint(e.Opts.Mint, res.Data, set)
 	if err != nil {

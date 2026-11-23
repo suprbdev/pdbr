@@ -24,7 +24,7 @@ import (
 // values; void yields a constant (exec answers 204); a single table row is projected over `FROM fn(...) AS t`
 // with embeds; SETOF <table> reuses the list compiler with the function call
 // as the root row source (offset paging only); SETOF <scalar|composite>
-// aggregates the function output into an array. Minted (jwt_type) functions
+// aggregates the function output into an array. Minted (auth.mint_type) functions
 // keep their composite raw so the claims stay JSON numbers.
 func (s *stmt) rpc() (*Statement, error) {
 	rpc := s.plan.RPC

@@ -18,9 +18,10 @@ All commands accept `--config` plus the config-path flags (`--database.url`,
 
 Loads config, connects (or boots from `--schema.cache_path`), builds the API
 and listens on `server.addr` until `SIGINT`/`SIGTERM`, then shuts down
-gracefully (10s). Startup warnings (RLS off, headers mode without trusted
-proxies, empty `allowed_roles`, suppressed bare aliases, skipped overloads) go
-to the log.
+gracefully (10s). An incomplete auth configuration (jwt mode without a
+secret, headers mode without trusted proxies, an unreadable secret file) is
+a startup error. Startup warnings (`roles.switch` off, empty
+`roles.allowed`, suppressed bare aliases, skipped overloads) go to the log.
 
 ```console
 $ pdbr serve
@@ -44,11 +45,13 @@ pdbr request METHOD PATH [--body @file|-|'{json}'] [--header 'K: V']... [--accep
 - `--header 'K: V'` is repeatable (`Prefer`, `If-Match`, `If-None-Match`,
   `Accept-Encoding`, ...). `--accept text/csv` is shorthand for
   `--header 'Accept: text/csv'`.
-- Auth mode is forced to `none` (`rls.auth.mode=none`): there is no
-  credential to present, so the request runs as `rls.anonymous_role` when
-  RLS is enabled, or as the connection role otherwise. To exercise a role,
-  point the config at a connection role instead or use `curl` against a
-  running server.
+- The request runs as the **connection role**, without credentials:
+  `pdbr request` forces `auth.mode: none` and `roles.switch: false` after
+  loading the config and before validating it, so it works on a default
+  config without a JWT secret. No role is switched and no claims are set,
+  so row-level security policies for request roles do not apply. To
+  exercise a role, point `database.url` at that role or use `curl` against
+  a running server.
 - Output: the status line goes to **stderr**, the body to **stdout**; `-i`
   also prints response headers (sorted by name) to stdout before the body,
   then a blank line (like `curl -i`). CSV bodies (`--accept text/csv`) are
@@ -107,6 +110,13 @@ $ pdbr schema print --contract public       # the document of one configured con
 the `contracts` config list instead of the full API (see
 [contracts.md](contracts.md)).
 
+`dump` and `check` never serve requests, so like `pdbr request` they run as
+the connection role without credentials (`auth.mode: none`,
+`roles.switch: false` are forced before validation) and need no JWT
+secret. `print` validates the configuration as `serve` would, since the
+document reflects `auth.mode` (pass `--auth.mode=none` to print without a
+secret, matching a server in that mode).
+
 `dump` always introspects the live database (it ignores `schema.cache_path`)
 and writes the gzipped catalog envelope. `check` loads the cache, introspects
 live, and prints a line-per-difference report on drift:
@@ -142,19 +152,21 @@ $ pdbr config example   # print the annotated reference generated from struct ta
 
 ```console
 $ pdbr plugins list
-smart-comments       priority=50   enabled  hooks: catalog, inflection, api
-advanced-filters     priority=150  enabled  hooks: api
+smart_comments       priority=50   enabled  hooks: catalog, inflection, api
+advanced_filters     priority=150  enabled  hooks: api
 postgis              priority=160  enabled  hooks: api
-nested-mutations     priority=200  enabled  hooks: api, compile, request
+nested_mutations     priority=200  enabled  hooks: api, compile, request
 ```
 
-With `plugins.disabled: [nested-mutations]` the last line reads
-`nested-mutations     priority=200  disabled hooks: api, compile, request`.
+With `plugins.disabled: [nested_mutations]` the last line reads
+`nested_mutations     priority=200  disabled hooks: api, compile, request`.
 
 Format: `%-20s priority=%-4d %-8s hooks: %s` — name, priority, `enabled` /
 `disabled` (per `plugins.disabled`), then the hooks the plugin implements
-(`catalog`, `inflection`, `api`, `compile`, `request`). Works without a
-valid database config. See [plugins.md](plugins.md).
+(`catalog`, `inflection`, `api`, `compile`, `request`). Runs as the
+connection role without credentials like `pdbr request`, so it needs no JWT
+secret; an invalid configuration otherwise (an unknown name in
+`plugins.disabled`, an unknown key) is reported. See [plugins.md](plugins.md).
 
 ## Shell completions
 

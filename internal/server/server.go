@@ -176,8 +176,9 @@ func (s *Server) Handler() http.Handler {
 	if s.cfg.Compression {
 		h = httpx.Gzip(h)
 	}
+	cors := s.corsPolicy()
 	if len(s.cfg.CORSOrigins) > 0 {
-		h = httpx.CORSWithPreflight(s.cfg.CORSOrigins, "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS", h)
+		h = httpx.CORSWithPreflight(cors, h)
 	}
 	if s.cfg.RequestTimeout > 0 {
 		h = withTimeout(h, s.cfg.RequestTimeout)
@@ -185,7 +186,7 @@ func (s *Server) Handler() http.Handler {
 	if s.cfg.OpenAPI {
 		var doc http.Handler = readOnlyRoute(s.handleOpenAPI)
 		if len(s.cfg.CORSOrigins) > 0 {
-			doc = httpx.CORSWithPreflight(s.cfg.CORSOrigins, "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS", doc)
+			doc = httpx.CORSWithPreflight(cors, doc)
 		}
 		full, docPath := h, base+"/openapi.json"
 		h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -208,6 +209,22 @@ func (s *Server) Handler() http.Handler {
 		})
 	}
 	return s.metrics.Middleware(s.withRecover(h), s.classify)
+}
+
+// CORSExposeHeaders are the response headers pdbr sets beyond the
+// CORS-safelisted ones, listed in Access-Control-Expose-Headers so
+// browser clients can read them.
+var CORSExposeHeaders = []string{
+	"Allow", "Content-Range", "ETag", "Link", "Location", "Preference-Applied",
+	"Retry-After", "WWW-Authenticate", "X-Next-Cursor", "X-Prev-Cursor", "X-Total-Count",
+}
+
+func (s *Server) corsPolicy() httpx.CORSPolicy {
+	return httpx.CORSPolicy{
+		Origins:       s.cfg.CORSOrigins,
+		AllowMethods:  "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS",
+		ExposeHeaders: CORSExposeHeaders,
+	}
 }
 
 func (s *Server) metricsOnMain() bool {
@@ -299,7 +316,7 @@ func (s *Server) handleOpenAPI(w http.ResponseWriter, r *http.Request) {
 	h.Set("Content-Type", "application/json; charset=utf-8")
 	h.Set("ETag", rt.OpenAPIETag)
 	h.Set("Cache-Control", "no-cache")
-	h.Add("Vary", "Accept-Encoding")
+	httpx.AddVary(h, "Accept-Encoding")
 	if etagMatches(r.Header.Get("If-None-Match"), rt.OpenAPIETag) {
 		w.WriteHeader(http.StatusNotModified)
 		return
@@ -378,13 +395,20 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 		claims, role, err := s.auth.Authenticate(r)
 		if err != nil {
 			status, code := http.StatusUnauthorized, CodeInvalidToken
-			if errors.Is(err, auth.ErrRoleNotAllowed) {
+			switch {
+			case errors.Is(err, auth.ErrRoleNotAllowed):
 				status, code = http.StatusForbidden, CodeRoleNotAllowed
+			case errors.Is(err, auth.ErrAuthRequired):
+				code = CodeAuthRequired
+			}
+			if c := auth.Challenge(err); c != "" {
+				w.Header().Set("WWW-Authenticate", c)
 			}
 			WriteProblem(w, r, status, code, err.Error())
 			return
 		}
 		if role != "" && !pgexec.ValidRole(role) {
+			w.Header().Set("WWW-Authenticate", auth.Challenge(auth.ErrRoleNotAllowed))
 			WriteProblem(w, r, http.StatusForbidden, CodeRoleNotAllowed, fmt.Sprintf("role %q is not allowed", role))
 			return
 		}

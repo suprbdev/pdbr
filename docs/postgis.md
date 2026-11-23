@@ -609,7 +609,7 @@ plugins:
 
 Per-column control uses the usual [smart comments](smart-comments.md); the
 plugin reads these tags from the catalog itself (`pdbcore/smarttags`), so
-they work even with `smart-comments` disabled. `@omit filter` withdraws the
+they work even with `smart_comments` disabled. `@omit filter` withdraws the
 column from the filter vocabulary entirely (spatial operators and `is.null`
 alike → `400 column_not_filterable`), `@omit order` from `.dist` ordering
 (`400 column_not_orderable`); a bare `@omit` and `@behavior -filter/-order`

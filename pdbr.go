@@ -204,15 +204,15 @@ func (a *App) instrumentsFor(name string) instruments {
 func (a *App) Metrics() *metrics.Metrics { return a.metrics }
 
 // builtinPlugins lists the plugins every App starts with, in priority order
-// (smart-comments 50, advanced-filters 150, postgis 160, nested-mutations
+// (smart_comments 50, advanced_filters 150, postgis 160, nested_mutations
 // 200); plugins.disabled filters them at hook time.
 func builtinPlugins(cfg config.Config) []plugin.Plugin {
 	settings := cfg.Plugins.Settings
 	return []plugin.Plugin{
-		smartcomments.New(settings["smart-comments"]),
-		advancedfilters.New(settings["advanced-filters"]),
-		postgisplugin.New(settings["postgis"]),
-		nestedmutations.New(settings["nested-mutations"]),
+		smartcomments.New(),
+		advancedfilters.New(settings.AdvancedFilters),
+		postgisplugin.New(settings.PostGIS),
+		nestedmutations.New(settings.NestedMutations),
 	}
 }
 
@@ -393,8 +393,9 @@ func (a *App) buildAPI(ctx context.Context, introspected map[string]bool, cat *i
 		CSV:               a.Config.Server.CSV,
 		Domains:           a.Config.Server.OpenAPIDomains,
 		Aggregates:        a.Config.Server.Aggregates,
-		JWTType:           a.Config.RLS.Auth.JWTType,
-		AuthMode:          a.authMode(),
+		JWTType:           a.Config.Auth.MintType,
+		AuthMode:          string(a.Config.Auth.Mode),
+		AuthRequired:      a.Config.Roles.Anonymous == "" && a.Config.Auth.Mode != auth.ModeNone,
 		Version:           a.Version,
 		Logger:            a.Log,
 	})
@@ -428,8 +429,8 @@ func (a *App) routeHandler(built *api.Built, in instruments) *server.Handler {
 		TxMutations:       a.Config.TX.Mutations,
 		Isolation:         pgexec.ParseIsolation(a.Config.TX.Isolation),
 		MaxRetries:        a.Config.TX.MaxRetries,
-		RLS:               a.Config.RLS.Enabled,
-		ClaimsPrefix:      a.Config.RLS.ClaimsPrefix,
+		ClaimsPrefix:      a.Config.Claims.Prefix,
+		ClaimsJSONSetting: a.Config.Claims.JSONSetting,
 		Detail:            pgexec.ParseDetail(a.Config.Errors.Detail),
 		MaxCost:           a.Config.Server.MaxCost,
 		MaxEmbedDepth:     a.Config.Server.MaxEmbedDepth,
@@ -454,24 +455,19 @@ func (a *App) routeHandler(built *api.Built, in instruments) *server.Handler {
 	return h
 }
 
-// authMode is rls.auth.mode when RLS is on (credentials are ignored
-// otherwise), for the OpenAPI security section.
-func (a *App) authMode() string {
-	if !a.Config.RLS.Enabled {
-		return ""
-	}
-	return a.Config.RLS.Auth.Mode
-}
-
-// mintOptions derives the JWT minting options from rls.auth (jwt_type is
-// "schema.type"; empty disables minting).
+// mintOptions derives the JWT minting options from auth (mint_type is
+// "schema.type"; empty disables minting). The secret comes from
+// auth.jwt.secret or auth.jwt.secret_file; a secret file that cannot be
+// read leaves the secret empty, which jwtmint answers with an error
+// (Validate and buildServer reject such a file first).
 func (a *App) mintOptions() jwtmint.Options {
-	auth := a.Config.RLS.Auth
-	if auth.JWTType == "" {
+	cfg := a.Config.Auth
+	if cfg.MintType == "" {
 		return jwtmint.Options{}
 	}
-	schema, name, _ := strings.Cut(auth.JWTType, ".")
-	return jwtmint.Options{Schema: schema, Type: name, Secret: auth.JWTSecret, Issuer: auth.JWTIssuer, Audience: auth.JWTAudience}
+	secret, _ := cfg.JWT.ResolveSecret()
+	schema, name, _ := strings.Cut(cfg.MintType, ".")
+	return jwtmint.Options{Schema: schema, Type: name, Secret: secret, Issuer: cfg.JWT.Issuer, Audience: cfg.JWT.Audience}
 }
 
 // CompileSQL runs the boot pipeline without connecting to the database
@@ -515,16 +511,24 @@ func (a *App) Handler(ctx context.Context) (http.Handler, error) {
 }
 
 func (a *App) startupWarnings() {
-	rls := a.Config.RLS
-	if !rls.Enabled {
-		a.Log.Warn("RLS IS DISABLED — all requests run with the privileged connection role; do not use in production")
+	for _, w := range confx.IdentityWarnings(a.Config.Auth, a.Config.Roles) {
+		a.Log.Warn(w)
 	}
-	if rls.Enabled && rls.Auth.Mode == "headers" && len(rls.Auth.TrustedProxies) == 0 {
-		a.Log.Warn("headers auth mode without rls.auth.trusted_proxies — ANY client reaching this port can forge claims and roles; set trusted_proxies or ensure only the gateway can connect")
+}
+
+// authenticator builds the request authenticator from the auth and roles
+// sections; an unreadable secret file or an incomplete mode is an error.
+func (a *App) authenticator() (*auth.Authenticator, error) {
+	cfg, err := confx.AuthConfig(a.Config.Auth, a.Config.Roles)
+	if err != nil {
+		return nil, err
 	}
-	if rls.Enabled && len(rls.AllowedRoles) == 0 && (rls.Auth.Mode == "jwt" || rls.Auth.Mode == "headers") {
-		a.Log.Warn("rls.allowed_roles is empty — any role named in a verified claim will be assumed, including privileged database roles; list the roles clients may request")
+	cfg.Logger = a.Log
+	authn, err := auth.New(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("auth: %w", err)
 	}
+	return authn, nil
 }
 
 // httpServer is what Serve and Handler run: a Server, or a server.Group
@@ -538,6 +542,10 @@ type httpServer interface {
 func (a *App) buildServer(ctx context.Context) (httpServer, error) {
 	if a.metricsErr != nil {
 		return nil, a.metricsErr
+	}
+	authn, err := a.authenticator()
+	if err != nil {
+		return nil, err
 	}
 	a.startupWarnings()
 	cat, err := a.LoadCatalog(ctx)
@@ -554,7 +562,7 @@ func (a *App) buildServer(ctx context.Context) (httpServer, error) {
 		return nil, err
 	}
 	if len(a.Config.Contracts) > 0 {
-		return a.buildContractServer(ctx, cat, bootHash)
+		return a.buildContractServer(ctx, cat, bootHash, authn)
 	}
 	built, err := a.BuildAPI(ctx, cat)
 	if err != nil {
@@ -564,9 +572,7 @@ func (a *App) buildServer(ctx context.Context) (httpServer, error) {
 	if err != nil {
 		return nil, err
 	}
-	authCfg := confx.AuthConfig(a.Config.RLS)
-	authCfg.Logger = a.Log
-	srv := server.New(a.Config.Server, auth.New(authCfg), rt, a.Log)
+	srv := server.New(a.Config.Server, authn, rt, a.Log)
 	srv.SetMetrics(a.metrics, a.Config.Metrics)
 	srv.SetReadiness(a.pool.Ping)
 	if a.Config.Watch.Enabled {
@@ -607,10 +613,7 @@ func (a *App) contractRuntime(ctx context.Context, cat *introspect.Catalog, name
 // buildContractServer builds one API, runtime and Server per contract from
 // cat, each under its contract's base path, and mounts them on a
 // server.Group; watch mode rebuilds every contract.
-func (a *App) buildContractServer(ctx context.Context, cat *introspect.Catalog, bootHash string) (*server.Group, error) {
-	authCfg := confx.AuthConfig(a.Config.RLS)
-	authCfg.Logger = a.Log
-	authn := auth.New(authCfg)
+func (a *App) buildContractServer(ctx context.Context, cat *introspect.Catalog, bootHash string, authn *auth.Authenticator) (*server.Group, error) {
 	group := server.NewGroup(a.Config.Server, a.Log)
 	group.SetMetrics(a.metrics, a.Config.Metrics)
 	group.SetReadiness(a.pool.Ping)

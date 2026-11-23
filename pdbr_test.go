@@ -35,7 +35,7 @@ func (renamer) Inflect(kind inflect.Kind, in inflect.Input, next inflect.Next) s
 
 func TestBuildAPIWithoutDatabase(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.RLS.Enabled = false
+	cfg.UseConnectionIdentity()
 	app := New(cfg, WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))), WithVersion("t"), WithPlugins(renamer{}))
 	if len(app.Plugins()) != 1+len(builtinPlugins(cfg)) || app.ReadOnly() {
 		t.Fatalf("plugins=%d readonly=%v", len(app.Plugins()), app.ReadOnly())
@@ -90,7 +90,7 @@ func TestBuildAPIWithoutDatabase(t *testing.T) {
 // the next request lands on runtime 2 (watch-mode invariant).
 func TestSwapKeepsInFlightRequests(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.RLS.Enabled = false
+	cfg.UseConnectionIdentity()
 	app := New(cfg, WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))))
 	built, err := app.BuildAPI(context.Background(), testutil.FixtureCatalog())
 	if err != nil {
@@ -149,7 +149,7 @@ func cacheBootConfig(t *testing.T) config.Config {
 		t.Fatal(err)
 	}
 	cfg := config.DefaultConfig()
-	cfg.RLS.Enabled = false
+	cfg.UseConnectionIdentity()
 	cfg.Schema.CachePath = path
 	cfg.Database.URL = "postgres://nobody@127.0.0.1:1/none"
 	return cfg

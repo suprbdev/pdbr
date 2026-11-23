@@ -19,7 +19,7 @@ func buildTiles(t *testing.T, p *Plugin, comment string) *api.Built {
 	t.Helper()
 	cat := testcatalog.Geo(testcatalog.Contrib(testutil.FixtureCatalog()))
 	cat.Table(testcatalog.ContribSchema, "tiles").Column("rast").Comment = comment
-	sc := smartcomments.New(nil)
+	sc := smartcomments.New()
 	if err := sc.TransformCatalog(context.Background(), cat); err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func rasterKeys(r *api.Resource) []string {
 // nothing; OpenAPI documents them, the near parameter, the intersects
 // filter and the summary-statistics object.
 func TestRasterPseudoColumns(t *testing.T) {
-	built := buildTiles(t, New(nil), "")
+	built := buildTiles(t, New(DefaultSettings()), "")
 	tiles := built.ByPath["kb.tiles"]
 	want := []string{"rast_envelope", "rast_height", "rast_num_bands", "rast_pixel_height", "rast_pixel_width", "rast_srid", "rast_summary_stats", "rast_value", "rast_width"}
 	if got := rasterKeys(tiles); !reflect.DeepEqual(got, want) {
@@ -94,7 +94,7 @@ func TestRasterPseudoColumns(t *testing.T) {
 		t.Errorf("select description: %s", sel)
 	}
 
-	off := buildTiles(t, New(map[string]any{"derived": false, "filters": false}), "")
+	off := buildTiles(t, New(Settings{Ordering: true, Projection: true, Aggregates: true}), "")
 	if got := rasterKeys(off.ByPath["kb.tiles"]); len(got) != 0 {
 		t.Errorf("derived: false kept %v", got)
 	}
@@ -107,14 +107,14 @@ func TestRasterPseudoColumns(t *testing.T) {
 // surface (pseudo-columns and filter) and keeps it writable; @omit filter
 // removes the filter only.
 func TestRasterOmit(t *testing.T) {
-	tiles := buildTiles(t, New(nil), "@omit read").ByPath["kb.tiles"]
+	tiles := buildTiles(t, New(DefaultSettings()), "@omit read").ByPath["kb.tiles"]
 	if got := rasterKeys(tiles); len(got) != 0 || tiles.Raster("rast") != nil || tiles.FilterColumns["rast"] {
 		t.Errorf("@omit read: pseudo %v, raster %v, filter %v", got, tiles.Raster("rast"), tiles.FilterColumns["rast"])
 	}
 	if tiles.InputColumns["rast"] == nil {
 		t.Error("@omit read made the raster column read-only")
 	}
-	tiles = buildTiles(t, New(nil), "@omit filter").ByPath["kb.tiles"]
+	tiles = buildTiles(t, New(DefaultSettings()), "@omit filter").ByPath["kb.tiles"]
 	if tiles.FilterColumns["rast"] || len(rasterKeys(tiles)) == 0 {
 		t.Errorf("@omit filter: filter %v, pseudo %v", tiles.FilterColumns["rast"], rasterKeys(tiles))
 	}
@@ -129,7 +129,7 @@ func TestRasterKeyTaken(t *testing.T) {
 		&introspect.Column{Name: "rast_width", Position: 5, PGType: "text", TypeSchema: "pg_catalog"},
 		&introspect.Column{Name: "near", Position: 6, PGType: "text", TypeSchema: "pg_catalog"})
 	b := api.New(cat, inflect.Default, api.Options{Schemas: []string{"public", testcatalog.ContribSchema}, MaxPageSize: 100, Logger: quiet()})
-	if err := New(nil).TransformAPI(context.Background(), b); err != nil {
+	if err := New(DefaultSettings()).TransformAPI(context.Background(), b); err != nil {
 		t.Fatal(err)
 	}
 	r := b.Resources[testcatalog.ContribSchema+".tiles"]

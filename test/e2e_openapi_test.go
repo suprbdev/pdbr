@@ -108,19 +108,16 @@ func TestOpenAPIValidatesAgainstMetaSchema(t *testing.T) {
 	for name, mutate := range map[string]func(*config.Config){
 		"default": nil,
 		"jwt": func(c *config.Config) {
-			c.RLS.Enabled = true
-			c.RLS.Auth.Mode = "jwt"
-			c.RLS.Auth.JWTSecret = "e2e-secret-e2e-secret-e2e-secret"
-			c.RLS.Auth.JWTType = "public.jwt"
+			jwtAuth(c, "e2e-secret-e2e-secret-e2e-secret")
+			c.Auth.MintType = "public.jwt"
 		},
 		"root-no-csv": func(c *config.Config) {
 			c.Server.BasePath = ""
 			c.Server.CSV = false
 		},
 		"headers-plugins-off": func(c *config.Config) {
-			c.RLS.Enabled = true
-			c.RLS.Auth.Mode = "headers"
-			c.Plugins.Disabled = []string{"postgis", "advanced-filters", "nested-mutations", "smart-comments"}
+			headersAuth(c)
+			c.Plugins.Disabled = []string{"postgis", "advanced_filters", "nested_mutations", "smart_comments"}
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -234,7 +231,7 @@ func TestOpenAPISurface(t *testing.T) {
 	}
 	desc, _ := list["description"].(string)
 	if !strings.Contains(desc, "Relation filters") || !strings.Contains(desc, "post_count") {
-		t.Errorf("advanced-filters prose missing: %q", desc)
+		t.Errorf("advanced_filters prose missing: %q", desc)
 	}
 	ok200 := list["responses"].(map[string]any)["200"].(map[string]any)
 	for _, h := range []string{"X-Total-Count", "X-Next-Cursor", "X-Prev-Cursor", "Link"} {
@@ -288,7 +285,7 @@ func TestOpenAPISurface(t *testing.T) {
 		t.Errorf("/users tags = %v", got)
 	}
 	if doc["components"].(map[string]any)["securitySchemes"] != nil {
-		t.Error("securitySchemes present without RLS")
+		t.Error("securitySchemes present without jwt auth")
 	}
 }
 
@@ -328,8 +325,8 @@ func TestOpenAPIPluginsDisabled(t *testing.T) {
 			t.Errorf("spatial input still GeoJSON/WKT: %v", loc)
 		}
 	})
-	t.Run("advanced-filters", func(t *testing.T) {
-		doc := disabled(t, "advanced-filters")
+	t.Run("advanced_filters", func(t *testing.T) {
+		doc := disabled(t, "advanced_filters")
 		desc, _ := pathOp(doc, "/users", "get")["description"].(string)
 		if strings.Contains(desc, "Relation filters") || strings.Contains(desc, "Computed-column filters") {
 			t.Errorf("advanced prose still present: %q", desc)
@@ -338,8 +335,8 @@ func TestOpenAPIPluginsDisabled(t *testing.T) {
 			t.Errorf("order description still advertises advanced order: %q", od)
 		}
 	})
-	t.Run("nested-mutations", func(t *testing.T) {
-		doc := disabled(t, "nested-mutations")
+	t.Run("nested_mutations", func(t *testing.T) {
+		doc := disabled(t, "nested_mutations")
 		if componentSchema(doc, "users.connect") != nil {
 			t.Error("connect schema still present")
 		}
@@ -351,7 +348,7 @@ func TestOpenAPIPluginsDisabled(t *testing.T) {
 			t.Errorf("author_id must be required again: %v", req)
 		}
 	})
-	t.Run("smart-comments", func(t *testing.T) {
+	t.Run("smart_comments", func(t *testing.T) {
 		smartFixture(t)
 		on := testServer(t, nil)
 		_, doc := fetchOpenAPI(t, on.URL)
@@ -379,10 +376,10 @@ func TestOpenAPIPluginsDisabled(t *testing.T) {
 		if tags["get"] != nil || tags["post"] == nil || tags["put"] == nil {
 			t.Errorf("@omit all path item = %v", keysOf(tags))
 		}
-		off := testServer(t, func(c *config.Config) { c.Plugins.Disabled = []string{"smart-comments"} })
+		off := testServer(t, func(c *config.Config) { c.Plugins.Disabled = []string{"smart_comments"} })
 		_, doc = fetchOpenAPI(t, off.URL)
 		if p := doc["paths"].(map[string]any); p["/sc_notes"] == nil || p["/notes"] != nil || pathOp(doc, "/sc_notes/{id}", "delete") == nil || pathOp(doc, "/sc_tags", "get") == nil {
-			t.Error("smart-comments off: comments still applied")
+			t.Error("smart_comments off: comments still applied")
 		}
 	})
 }
@@ -424,7 +421,7 @@ func TestSchemaPrintMatchesServed(t *testing.T) {
 	run := func(args ...string) []byte {
 		t.Helper()
 		cmd := exec.Command("go", append([]string{"run", "-ldflags", "-X main.version=e2e", "./cmd/pdbr", "schema", "print",
-			"--database.url", url, "--rls.enabled=false"}, args...)...)
+			"--database.url", url, "--auth.mode=none", "--roles.switch=false"}, args...)...)
 		cmd.Dir = ".."
 		cmd.Env = append(os.Environ(), "PDBR_LOG_LEVEL=error")
 		var stderr bytes.Buffer

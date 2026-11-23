@@ -52,8 +52,8 @@ compile time (`400 invalid_filter` when it does not parse) and passed as
 | `hk` | `?` (has key) | jsonb, hstore |
 | `jpe`, `jpm` | `@?`, `@@` — value is a SQL/JSON path | jsonb |
 | spatial (`postgis` plugin) | `st_intersects`, `st_disjoint`, `st_contains`, `st_containsproperly`, `st_within`, `st_covers`, `st_coveredby`, `st_crosses`, `st_overlaps`, `st_touches`, `st_equals`, `st_exactlyequals`, `st_orderingequals`, `st_intersects3d`, `bbox_leftof`, `bbox_rightof`, `bbox_below`, `bbox_above`, `bbox_overlapsorleftof`, `bbox_overlapsorrightof`, `bbox_overlapsorbelow`, `bbox_overlapsorabove`, `bbox_equals`, `bbox_intersectsnd`, `bbox_intersects2d` (value = GeoJSON or WKT/EWKT); `st_dwithin.(geom,dist[,spheroid])`, `st_beyond.(…)`; `bbox_intersects.(minx,miny,maxx,maxy[,srid])`, `bbox_contains`, `bbox_containedby` — plus `is.null`; scalar ops on a spatial column are `400 invalid_filter`, spatial ops on a scalar column too; off (`invalid_filter`) with `plugins.settings.postgis.filters: false` or the plugin disabled — see [postgis.md](postgis.md) | geometry / geography |
-| relation (`advanced-filters` plugin) | `EXISTS` subqueries — see [Relation filters](#relation-filters) | FKs |
-| computed (`advanced-filters` plugin) | `fn(t) op $n` — see [Computed columns](#computed-columns) | computed columns |
+| relation (`advanced_filters` plugin) | `EXISTS` subqueries — see [Relation filters](#relation-filters) | FKs |
+| computed (`advanced_filters` plugin) | `fn(t) op $n` — see [Computed columns](#computed-columns) | computed columns |
 
 `not.` may prefix any op. Unknown op → `400 invalid_filter`; an op applied to a
 type that does not support it (e.g. `like` on `int4`, `eq` on geometry) →
@@ -214,7 +214,7 @@ filtered inside a logic list: `and=(select.eq.x)`.
 
 ## Relation filters
 
-Provided by the built-in `advanced-filters` plugin (priority 150; settings
+Provided by the built-in `advanced_filters` plugin (priority 150; settings
 `relations`, `relations_opt_in`). Relation keys are table names, exactly as in
 `select=` embeds ([api.md](api.md#naming)); ambiguous relations take the same
 hints (`comments!parent_id.body=eq.x`).
@@ -251,10 +251,10 @@ hints (`comments!parent_id.body=eq.x`).
   `400 invalid_filter`. (The compiler already renders nested `EXISTS`
   chains; the grammar stays one-level until a use case needs more.)
 - Per-object switches, read straight from the catalog by the plugin
-  (they work with `smart-comments` disabled): `@omit filter` on the FK
+  (they work with `smart_comments` disabled): `@omit filter` on the FK
   constraint comment removes the relation from the filter surface in both
   directions (`400 column_not_filterable`), `@omit` on the FK removes
-  everything; `@omit many` (smart-comments) removes the backward direction
+  everything; `@omit many` (smart_comments) removes the backward direction
   along with the embed. With `relations_opt_in: true` only FKs tagged
   `@filterable` (alias `@sortable`) get relation filters.
 - With `relations: false` or the plugin disabled, the syntax itself is
@@ -282,7 +282,7 @@ inner lateral). Quantified forms (`posts!none.`, `posts!every.`) and
 
 ## Computed columns
 
-`advanced-filters` (setting `computed`, `computed_opt_in`) exposes computed
+`advanced_filters` (setting `computed`, `computed_opt_in`) exposes computed
 columns to filters and ordering:
 
 ```http

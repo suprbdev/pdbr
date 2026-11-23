@@ -109,10 +109,10 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Filters on embedded resources respect the embedded table's own policy (parity)
 - [x] `order=col.asc|desc[.nullsfirst|nullslast],…`; NULLS LAST default both directions; PK tiebreaker always appended (parity)
 - [x] `order=` by JSON paths (`order=settings->>theme.desc`), keyset-capable (parity)
-- [x] Filtering across relations (`posts.title=eq.x`, `posts!none.`, `posts!every.`, `users.name=eq.x`) — `advanced-filters` plugin, EXISTS subqueries; one level deep (parity)
+- [x] Filtering across relations (`posts.title=eq.x`, `posts!none.`, `posts!every.`, `users.name=eq.x`) — `advanced_filters` plugin, EXISTS subqueries; one level deep (parity)
 - [x] Relation existence (`posts=exists.true|false`, `users=exists.false`) (parity)
-- [x] Filtering/ordering on computed columns (`post_count=gt.3`, `order=post_count.desc`) — `advanced-filters` plugin (parity)
-- [x] Related-column ordering `order=users(name).asc` (forward: correlated subquery; backward: MIN/MAX) — `advanced-filters` plugin, policy of the related table applies (parity)
+- [x] Filtering/ordering on computed columns (`post_count=gt.3`, `order=post_count.desc`) — `advanced_filters` plugin (parity)
+- [x] Related-column ordering `order=users(name).asc` (forward: correlated subquery; backward: MIN/MAX) — `advanced_filters` plugin, policy of the related table applies (parity)
 - [x] Spatial filter ops (`st_intersects` … `st_equals`, `st_dwithin`, `st_beyond`, `bbox_*`) — `postgis` plugin (parity)
 - [x] Spatial values parsed for their column's typmod SRID (`pdbcore/postgis.ParseFor`): bare WKT tagged with it, GeoJSON reprojected to it on geometry columns, EWKT kept — filters, `near=`, bodies — see [PostGIS](postgis.md) (parity)
 - [x] Directional/equality bounding-box ops (`bbox_leftof`, `bbox_rightof`, `bbox_below`, `bbox_above`, `bbox_overlapsor{leftof,rightof,below,above}`, `bbox_equals`, `bbox_intersectsnd`, `bbox_intersects2d`) and `st_exactlyequals`, `st_orderingequals`, `st_intersects3d`, geometry operand — `postgis` plugin (parity)
@@ -172,10 +172,10 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Views / matviews → write methods absent → `405` + `Allow` (new)
 - [x] `server.read_only` → every write `405` `read_only`; runtime-toggleable `App.SetReadOnly` (parity)
 - [x] Not-found update/delete → `404`, transaction rolled back (parity)
-- [x] Nested mutations via `nested-mutations` plugin on `POST` create: forward `{"create":…}` **or** `{"connect":…}`, backward `{"create":[…]}`, depth ≤ `max_depth` (3), forced transaction, multi-CTE single statement, visibility CTE for response embeds (parity)
+- [x] Nested mutations via `nested_mutations` plugin on `POST` create: forward `{"create":…}` **or** `{"connect":…}`, backward `{"create":[…]}`, depth ≤ `max_depth` (3), forced transaction, multi-CTE single statement, visibility CTE for response embeds (parity)
 - [x] `PATCH|DELETE {base}/{table}?<filters>` bulk-by-filter: read filter grammar and policy, `200` + array / `204`, unfiltered → `400 unfiltered_mutation` unless `server.allow_unfiltered_mutations` (parity)
 - [x] `Prefer: handling=strict|lenient` (`400 invalid_preference`), `max-affected=N` on `PATCH`/`DELETE` (`400 max_affected_exceeded`, rolled back), `return=headers-only`, `Preference-Applied` (new)
-- [x] Nested `connect` on reverse relations (`{"connect":[{<key>}]}`) and, on single-row `PATCH`, nested update/delete/disconnect both ways (forward `{"update":{…}}`/`{"delete":true}`/`{"disconnect":true}`, backward `update:[{"where","data"}]`/`delete:[…]`/`disconnect:[…]`); guards (`404`, whole statement rolled back), RLS-scoped, `@omit` per action, `max_operations` (50), visibility CTEs exclude replaced/deleted rows — see [mutations.md](mutations.md#nested-mutations-plugin-nested-mutations) (parity)
+- [x] Nested `connect` on reverse relations (`{"connect":[{<key>}]}`) and, on single-row `PATCH`, nested update/delete/disconnect both ways (forward `{"update":{…}}`/`{"delete":true}`/`{"disconnect":true}`, backward `update:[{"where","data"}]`/`delete:[…]`/`disconnect:[…]`); guards (`404`, whole statement rolled back), RLS-scoped, `@omit` per action, `max_operations` (50), visibility CTEs exclude replaced/deleted rows — see [mutations.md](mutations.md#nested-mutations-plugin-nested_mutations) (parity)
 - [x] `PUT {base}/{table}/{pk}` and `…/by/{cols}/{vals}` single-row upsert by path key (body key columns optional, must match; writable keys only) (new)
 - [x] `POST` + `Prefer: resolution=merge-duplicates|ignore-duplicates` with `?on_conflict=` (ignore returns only inserted rows); `Prefer: missing=default` accepted (parity)
 
@@ -193,10 +193,10 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Single row (table/composite) → object `200` (`null` when the function returns NULL) (parity)
 - [x] `SETOF <table>` → array with full `select=` / filters / `order=` / `limit` / `offset` / `count=true` (offset paging only; `Accept: text/csv` supported) (parity — filters/order/count are a superset)
 - [x] `SETOF <scalar>` → array (parity)
-- [x] `rls.auth.jwt_type` composite return → minted HS256 JWT string (pdbcore/jwtmint) (parity)
+- [x] `auth.mint_type` composite return → minted HS256 JWT string (pdbcore/jwtmint) (parity)
 - [x] EXECUTE-privilege gating; extension-owned / unnamed / anonymous `record` / trigger / unresolved polymorphic signatures excluded (parity)
 - [x] Overloads / duplicate route names → keep-first + warning (parity)
-- [x] Computed columns: stable/immutable row-type functions → `select=` fields, key = function name minus `<table>_` prefix, `@name` override (via the inflector; smart-comments plugin M5), real column wins on collision (parity)
+- [x] Computed columns: stable/immutable row-type functions → `select=` fields, key = function name minus `<table>_` prefix, `@name` override (via the inflector; smart_comments plugin M5), real column wins on collision (parity)
 - [x] Set-returning computed columns → array fields (parity)
 - [x] `schema.functions: false` disables RPC + computed columns (parity)
 - [x] Computed-column extra args `select=field(k=v,…)`: validated against the function's arguments, bound as parameters, `400 missing_argument` when a required one is absent; select only (filters/order need all-defaulted args); documented in OpenAPI (parity)
@@ -205,10 +205,10 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 ## Errors
 
 - [x] RFC 9457 `application/problem+json` (`type`, `title`, `status`, `detail`, `instance`) (new)
-- [x] Stable `code` extension: `pg:<SQLSTATE>` or pdbr code (`not_found`, `invalid_filter`, `unknown_column`, `column_not_filterable`, `column_not_orderable`, `page_size_exceeded`, `keyset_unsupported`, `cost_exceeded`, `embed_depth_exceeded`, `ambiguous_relation`, `invalid_body`, `column_readonly`, `read_only`, `etag_mismatch`, `not_acceptable`, `unsupported_media_type`, `role_not_allowed`, `invalid_token`) (new)
+- [x] Stable `code` extension: `pg:<SQLSTATE>` or pdbr code (`not_found`, `invalid_filter`, `unknown_column`, `column_not_filterable`, `column_not_orderable`, `page_size_exceeded`, `keyset_unsupported`, `cost_exceeded`, `embed_depth_exceeded`, `ambiguous_relation`, `invalid_body`, `column_readonly`, `read_only`, `etag_mismatch`, `not_acceptable`, `unsupported_media_type`, `role_not_allowed`, `invalid_token`, `auth_required`) (new)
 - [x] `errors.detail: dev` adds `pg` object `{sqlstate, message, detail, hint, table, constraint}` (parity)
 - [x] `errors.detail: dev|prod|strict` message policy (22*/23* pass through in prod; everything generic in strict) (parity)
-- [x] Status mapping: 400 grammar/body/22*/23502/23514/42*, 401 credentials, 403 `42501`/role not allowed, 404 route/row, 405 + `Allow`, 406, 409 `23505`/`23503`/`23P01`/serialization exhausted, 412, 413, 415, 500 other, 503 `53*`/`08*`, 504 `57014`/request timeout (new)
+- [x] Status mapping: 400 grammar/body/21000/22*/23502/23514/42*, 401 credentials, 403 `42501`/role not allowed, 404 route/row, 405 + `Allow`, 406, 409 `23505`/`23503`/`23P01`/serialization exhausted, 412, 413, 415, 500 other, 503 `53*`/`08*`, 504 `57014`/request timeout (new)
 - [x] `Retry-After: 1` on every `503` problem (`unavailable`, `pg:08…`, `pg:53…`, `/readyz`) (new)
 - [x] PostgreSQL 18 temporal keys: `WITHOUT OVERLAPS` keys back no single-row route, `ETag` or upsert target (`400 temporal_conflict_target`; `resolution=ignore-duplicates` skips overlaps via `ON CONFLICT ON CONSTRAINT`), `PERIOD` FK embeds/filters/order join on `&&` and embed forward as arrays, nested writes copy only the equality columns, `NOT ENFORCED` and `NOT VALID` FK embeds documented nullable (new)
 - [x] `23001` restrict violation (PostgreSQL 18+) → 409; PostGIS input errors (`XX000` mixed SRID / invalid geometry) and contrib input errors (`42601` tsquery/ltree syntax, `42704` unknown text search configuration) → 400 with a sanitized message (`invalid geometry` / passthrough; `invalid input value` in strict) (new)
@@ -216,17 +216,19 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 ## RLS & auth
 
 - [x] On by default; per-request `SET LOCAL ROLE` (never plain `SET`) (parity)
-- [x] Claims via transaction-scoped `set_config('pdbq.claims.*', …)` — prefix kept for policy compatibility with pdbq (parity)
-- [x] JWT claim source (HS256/384/512, issuer/audience checks) (parity)
+- [x] Claims via transaction-scoped `set_config('jwt.claims.*', …)` (`claims.prefix`, PostGraphile's namespace, shared with pdbq) (parity)
+- [x] All claims as one JSON setting (`claims.json_setting`, e.g. PostgREST's `request.jwt.claims`; `{}` without credentials) (parity)
+- [x] JWT claim source (HS256/384/512, issuer/audience checks, `leeway`, `secret_file`, case-insensitive `Bearer`) (parity)
+- [x] Role claim path (`auth.jwt.role_claim_path`: `app_metadata.role`, `realm_access.roles[0]`, quoted namespaced keys) (parity)
 - [x] JWKS / RS256/384/512 + ES256/384/512, kid-matched, rotation-aware cache (`jwks_url`, `jwks_cache_ttl`) (parity)
-- [x] Trusted-header claim source (`X-Pdbr-Claim-*`, `trusted_proxies`) (parity)
-- [x] Anonymous role for unauthenticated requests; invalid credential → `401` (parity)
+- [x] Trusted-header claim source (`X-Pdbr-Claim-*`, `trusted_proxies` required, fail closed) (parity)
+- [x] Opt-in anonymous role (`roles.anonymous`); without it a request without credentials → `401 auth_required`; invalid credential → `401 invalid_token`; `WWW-Authenticate` challenge on every auth `401`/`403` (parity)
 - [x] Role claim configurable; default role fallback (parity)
 - [x] Role name validation before interpolation into `SET ROLE` (parity)
-- [x] `rls.allowed_roles` allowlist; disallowed → `403` `role_not_allowed` (parity)
-- [x] `rls.enabled: false` escape hatch with loud startup warning; warnings for headers without trusted proxies and empty `allowed_roles` (parity)
+- [x] `roles.allowed` allowlist; disallowed → `403` `role_not_allowed` (parity)
+- [x] `roles.switch: false` runs as the connection role (credentials still verified, claims still set) with a loud startup warning; warning for an empty `roles.allowed`; incomplete auth config is a startup error (parity)
 - [x] Claims/role exposed to plugins via `exec.Operation` and request context (parity)
-- [x] `pdbr request` forces `rls.auth.mode=none` (parity)
+- [x] `pdbr request`, `schema dump|check` and `plugins list` force `auth.mode: none` + `roles.switch: false` (connection role, no JWT secret needed) (parity)
 
 ## Transactions & execution
 
@@ -234,7 +236,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Reads transaction-free unless RLS role/claims require `SET LOCAL` (parity)
 - [x] Plugins can force a transaction (`op.ForceTx`) (parity)
 - [x] Isolation level config (read_committed / repeatable_read / serializable) (parity)
-- [x] Statement timeout per connection (`database.statement_timeout`) (parity)
+- [x] Statement timeout per connection (`database.statement_timeout`, default 25s, below the 30s request timeout) (parity)
 - [x] Automatic retry on `40001`/`40P01` (`transactions.max_retries`; whole request re-run, no backoff); exhausted → `409` (parity)
 - [x] One statement per request; zero rows on single-row path → `404` (parity)
 - [x] Wrapper-object unwrapping (`rows/total`, `etag/row`, `found/row`, `row/inserted`) in exec (new)
@@ -260,14 +262,14 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] `info` (title `pdbr`, version = binary version), `servers: [{url: base_path}]` (new)
 - [x] `tags`: one per resource (`users`, `audit.users`) + `rpc` / `<schema>.rpc`; operations tagged by resource, not schema (new)
 - [x] `components.schemas`: one per resource (`users` / `audit.users`), `<name>.insert`, `<name>.update`, `<name>.upsert` (new)
-- [x] Nested-input schema variants when `nested-mutations` is on (new) — the plugin publishes `Surface.NestedKeys`, `Surface.NestedSchema` and `<name>.connect` schemas; the core renders the `.insert` and `.update` properties (only the operations each key offers there; forward `create`/`connect` exactly-one on `.insert`, FK columns optional)
+- [x] Nested-input schema variants when `nested_mutations` is on (new) — the plugin publishes `Surface.NestedKeys`, `Surface.NestedSchema` and `<name>.connect` schemas; the core renders the `.insert` and `.update` properties (only the operations each key offers there; forward `create`/`connect` exactly-one on `.insert`, FK columns optional)
 - [x] One schema per enum and per composite; `GeoJSON`; `Problem` (new) — `GeoJSON` (+ spatial columns `$ref`, read-only pseudo-column properties, `oneOf [GeoJSON, string]` inputs) by the `postgis` plugin; enum/composite/`Problem` core
 - [x] Type map per "Type mapping" section; nullable via `type: [T, "null"]`; `readOnly` for generated and identity `ALWAYS` columns; `deprecated: true` + `x-deprecation-reason` from `@deprecated`; descriptions from pg comments (tags stripped) (new)
 - [x] `paths`: list path (GET/HEAD/POST/PUT) with all query params — one param per filterable column with op vocabulary in its description, plus `select`, `order`, `limit`, `offset`, `after`, `before`, `count`, `distinct`, `and`/`or`/`not.and`/`not.or`, `near` (new)
 - [x] `/{table}/{pk}` (GET/HEAD/PATCH/DELETE) and one concrete path per unique constraint (`/users/by/email/{email}`) (new)
 - [x] RPC paths (GET/POST per volatility) with arg params / request body (new)
 - [x] Responses reference `Problem` for 4xx/5xx; headers `X-Total-Count`, `X-Next-Cursor`, `X-Prev-Cursor`, `Link`, `ETag`, `Location`, `Allow` documented (new)
-- [x] `securitySchemes.bearerAuth` when `rls.auth.mode=jwt` (new)
+- [x] `securitySchemes.bearerAuth` when `auth.mode: jwt` (required without `roles.anonymous`, optional with it) (new)
 - [x] Tags per schema (new)
 - [x] Vendor extension `x-pdbr-filter-ops` on column params (new)
 - [x] Plugins add their surface via `APIHook` (postgis params, relation-filter prose, nested-input schemas) (new)
@@ -310,10 +312,10 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Enable/disable/configure per plugin via `plugins.*` config (parity)
 - [x] Library embedding: `pdbr.New(cfg, pdbr.WithPlugins(...), pdbr.WithLogger(...))`, `App.Handler(ctx)` (parity)
 - [x] Collision detection with warnings at API build (parity)
-- [x] Built-in: `smart-comments` (50) — catalog via pdbcore + inflection + APIHook (route/method/param removal, deprecation, description stripping) — see [smart-comments.md](smart-comments.md) (parity)
-- [x] Built-in: `advanced-filters` (150) — relation filters/existence, related order, computed filter/order; settings `relations`, `computed`, `relation_order`, `relations_opt_in`, `computed_opt_in`; `@omit filter|order` / `@filterable` read from the catalog (parity)
+- [x] Built-in: `smart_comments` (50) — catalog via pdbcore + inflection + APIHook (route/method/param removal, deprecation, description stripping) — see [smart-comments.md](smart-comments.md) (parity)
+- [x] Built-in: `advanced_filters` (150) — relation filters/existence, related order, computed filter/order; settings `relations`, `computed`, `relation_order`, `relations_opt_in`, `computed_opt_in`; `@omit filter|order` / `@filterable` read from the catalog (parity)
 - [x] Built-in: `postgis` (160) — spatial filter params, pseudo-columns, projection args, distance order and `<col>_distance` + `near`; settings `filters`, `derived`, `ordering`, `projection` (parity) — OpenAPI query params (`near`, spatial `x-pdbr-filter-ops` from `Built.Extra.FilterOps`, `oneOf [GeoJSON, string]` inputs from `Extra.InputTypes`) rendered by the core generator
-- [x] Built-in: `nested-mutations` (200) — APIHook input schemas, CompileHook multi-CTE, RequestHook `ForceTx`; settings `force_transactions`, `max_depth`, `max_operations` (parity)
+- [x] Built-in: `nested_mutations` (200) — APIHook input schemas, CompileHook multi-CTE, RequestHook `ForceTx`; settings `force_transactions`, `max_depth`, `max_operations` (parity)
 - [ ] Out-of-process plugins (go-plugin gRPC or wasm) (parity)
 
 ## Ops & delivery
@@ -417,6 +419,6 @@ these are the deliberate departures (each documented in its topic page):
 - `nodeId` / `node()` global object identification
 - `clientMutationId`
 - Relay connections / `edges` / `pageInfo` / `totalCount` — replaced by JSON arrays + `X-Total-Count`, `X-Next-Cursor`, `X-Prev-Cursor`, `Link` headers
-- `simple-names` plugin (raw pg identifiers everywhere)
+- `simple_names` plugin (raw pg identifiers everywhere)
 - `transactions.per_request` (one operation per request by construction)
 - Multiple root fields per operation

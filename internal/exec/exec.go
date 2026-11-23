@@ -113,9 +113,10 @@ type Options struct {
 	TxMutations bool
 	Isolation   pgx.TxIsoLevel
 	MaxRetries  int
-	// RLS enables SET LOCAL ROLE + claims set_config (rls.enabled).
-	RLS          bool
-	ClaimsPrefix string
+	// ClaimsPrefix and ClaimsJSONSetting are claims.prefix and
+	// claims.json_setting: where the request claims are set for SQL.
+	ClaimsPrefix      string
+	ClaimsJSONSetting string
 	// Detail is the errors.detail policy.
 	Detail pgexec.Detail
 	// MaxCost / MaxEmbedDepth / MaxPageSize are the server.* limits.
@@ -128,7 +129,7 @@ type Options struct {
 	// before it compiles or touches the database. Shared with the App so a
 	// runtime flip survives watch-mode swaps.
 	ReadOnly *atomic.Bool
-	// Mint signs the results of rls.auth.jwt_type-returning functions.
+	// Mint signs the results of auth.mint_type-returning functions.
 	Mint   jwtmint.Options
 	Logger *slog.Logger
 	// Metrics records database operation durations and errors and the
@@ -300,7 +301,19 @@ func (e *Executor) needsTx(op *Operation, stmt *compile.Statement, tz bool) bool
 		maxAffected(op) != nil ||
 		rollsBack(op) ||
 		tz ||
-		(e.Opts.RLS && (op.Role != "" || len(op.Claims) > 0))
+		op.Role != "" ||
+		(e.Opts.ClaimsPrefix != "" && len(op.Claims) > 0) ||
+		e.Opts.ClaimsJSONSetting != ""
+}
+
+// identity is the role and claims op runs with.
+func (e *Executor) identity(op *Operation) pgexec.Identity {
+	return pgexec.Identity{
+		Role:              op.Role,
+		Claims:            op.Claims,
+		ClaimsPrefix:      e.Opts.ClaimsPrefix,
+		ClaimsJSONSetting: e.Opts.ClaimsJSONSetting,
+	}
 }
 
 // run executes the statement (in a transaction when the policy asks for
@@ -358,15 +371,11 @@ func (e *Executor) run(ctx context.Context, op *Operation, stmt *compile.Stateme
 		err = queryTx(ctx, e.DB, pgexec.TxOptions{
 			Isolation:        batchIsolation(e.Opts.Isolation),
 			MaxRetries:       e.Opts.MaxRetries,
-			RLS:              e.Opts.RLS,
+			RLS:              true,
 			ScanBeforeCommit: maxAffected(op) != nil || rollsBack(op),
 			Log:              e.Opts.Logger,
 			Observer:         e.Opts.Metrics.DBObserver(),
-		}, pgexec.Identity{
-			Role:         op.Role,
-			Claims:       op.Claims,
-			ClaimsPrefix: e.Opts.ClaimsPrefix,
-		}, append(tzStmt, pgexec.Stmt{SQL: stmt.SQL, Args: stmt.Args, Scan: scan})...)
+		}, e.identity(op), append(tzStmt, pgexec.Stmt{SQL: stmt.SQL, Args: stmt.Args, Scan: scan})...)
 		if errors.Is(err, pgexec.ErrRollback) {
 			err = nil
 		}

@@ -61,8 +61,7 @@ func TestPrintSQLMatchesGolden(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Database.URL = "postgres://nobody@127.0.0.1:1/none"
 	cfg.Schema.CachePath = cachePath
-	cfg.RLS.Enabled = false
-	cfg.RLS.Auth.Mode = "none"
+	cfg.UseConnectionIdentity()
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -133,5 +132,29 @@ func TestFlagValueCompletion(t *testing.T) {
 	root.SetArgs([]string{"completion", "zsh"})
 	if err := root.Execute(); err != nil || !strings.HasPrefix(out.String(), "#compdef pdbr") {
 		t.Errorf("completion zsh: %v %q", err, out.String()[:min(len(out.String()), 40)])
+	}
+}
+
+// TestCommandsRunOnDefaultConfig: pdbr request and pdbr plugins list need
+// no JWT secret (they run as the connection role without credentials), and
+// command options such as --print-sql are not taken for config keys.
+func TestCommandsRunOnDefaultConfig(t *testing.T) {
+	t.Chdir(t.TempDir())
+	cachePath := filepath.Join(t.TempDir(), "schema.cache")
+	if err := cache.Save(cachePath, testutil.FixtureCatalog(), cache.Writer{Product: "pdbr", Version: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runCLI(t, "request", "GET", "/users?select=id", "--print-sql", "--schema.cache_path", cachePath, "--log.level", "error")
+	if err != nil || !strings.Contains(out, "-- request: GET /api/users?select=id") {
+		t.Fatalf("request --print-sql on defaults: %v\n%s", err, out)
+	}
+	if _, err := runCLI(t, "plugins", "list"); err != nil {
+		t.Fatalf("plugins list on defaults: %v", err)
+	}
+	if _, err := runCLI(t, "config", "validate"); err == nil || !strings.Contains(err.Error(), "auth.jwt.secret") {
+		t.Fatalf("config validate on defaults = %v, want the missing secret", err)
+	}
+	if _, err := runCLI(t, "request", "GET", "/users", "--rls.enabled=false"); err == nil || !strings.Contains(err.Error(), "unknown flag: --rls.enabled") {
+		t.Fatalf("removed flag: %v", err)
 	}
 }

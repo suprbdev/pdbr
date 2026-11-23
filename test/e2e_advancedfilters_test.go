@@ -161,7 +161,7 @@ func TestAdvancedFiltersComputed(t *testing.T) {
 func TestAdvancedFiltersSettings(t *testing.T) {
 	t.Run("relations off", func(t *testing.T) {
 		srv := testServer(t, func(c *config.Config) {
-			c.Plugins.Settings = map[string]map[string]any{"advanced-filters": {"relations": false}}
+			c.Plugins.Settings.AdvancedFilters.Relations = false
 		})
 		wantCode(t, srv.URL, "users?posts.title=eq.x", 400, "invalid_filter")
 		wantCode(t, srv.URL, "users?posts=exists.true", 400, "invalid_filter")
@@ -173,14 +173,14 @@ func TestAdvancedFiltersSettings(t *testing.T) {
 	})
 	t.Run("relation_order off", func(t *testing.T) {
 		srv := testServer(t, func(c *config.Config) {
-			c.Plugins.Settings = map[string]map[string]any{"advanced-filters": {"relation_order": false}}
+			c.Plugins.Settings.AdvancedFilters.RelationOrder = false
 		})
 		wantCode(t, srv.URL, "posts?order=users(email).asc", 400, "invalid_filter")
 		wantIDs(t, srv.URL, "users?posts.title=eq.Compilers%20101", []int{2})
 	})
 	t.Run("computed off", func(t *testing.T) {
 		srv := testServer(t, func(c *config.Config) {
-			c.Plugins.Settings = map[string]map[string]any{"advanced-filters": {"computed": false}}
+			c.Plugins.Settings.AdvancedFilters.Computed = false
 		})
 		wantCode(t, srv.URL, "users?post_count=gte.2", 400, "column_not_filterable")
 		wantCode(t, srv.URL, "users?order=post_count.desc", 400, "column_not_orderable")
@@ -197,8 +197,9 @@ func TestAdvancedFiltersSettings(t *testing.T) {
 			"FUNCTION users_post_count(users)":             "@sortable",
 		})
 		srv := testServer(t, func(c *config.Config) {
-			c.Plugins.Disabled = []string{"smart-comments"}
-			c.Plugins.Settings = map[string]map[string]any{"advanced-filters": {"relations_opt_in": true, "computed_opt_in": true}}
+			c.Plugins.Disabled = []string{"smart_comments"}
+			c.Plugins.Settings.AdvancedFilters.RelationsOptIn = true
+			c.Plugins.Settings.AdvancedFilters.ComputedOptIn = true
 		})
 		wantIDs(t, srv.URL, "posts?comments=exists.false&order=id", []int{1, 2, 3, 4})
 		wantIDs(t, srv.URL, "comments?posts.title=eq.x", []int{})
@@ -243,9 +244,9 @@ func TestAdvancedFiltersOmitTags(t *testing.T) {
 		"CONSTRAINT places_owner_id_fkey ON places": "@omit order",
 		"FUNCTION users_post_count(users)":          "@omit order\nHow many posts.",
 	})
-	// smart-comments disabled: the tags must still be honoured, straight
+	// smart_comments disabled: the tags must still be honoured, straight
 	// from the catalog.
-	srv := testServer(t, func(c *config.Config) { c.Plugins.Disabled = []string{"smart-comments"} })
+	srv := testServer(t, func(c *config.Config) { c.Plugins.Disabled = []string{"smart_comments"} })
 	wantCode(t, srv.URL, "users?posts.title=eq.x", 400, "column_not_filterable")
 	wantCode(t, srv.URL, "users?posts=exists.true", 400, "column_not_filterable")
 	wantCode(t, srv.URL, "posts?users.email=eq.x", 400, "column_not_filterable")
@@ -262,7 +263,7 @@ func TestAdvancedFiltersOmitTags(t *testing.T) {
 }
 
 func TestAdvancedFiltersPluginDisabled(t *testing.T) {
-	srv := testServer(t, func(c *config.Config) { c.Plugins.Disabled = []string{"advanced-filters"} })
+	srv := testServer(t, func(c *config.Config) { c.Plugins.Disabled = []string{"advanced_filters"} })
 	for q, code := range map[string]string{
 		"users?posts.title=eq.x":       "invalid_filter",
 		"users?posts!none.title=eq.x":  "invalid_filter",

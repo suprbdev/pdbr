@@ -50,14 +50,10 @@ func (e *Executor) runPartial(ctx context.Context, op *Operation, applied []stri
 	err := runTx(ctx, e.DB, pgexec.TxOptions{
 		Isolation:  e.Opts.Isolation,
 		MaxRetries: e.Opts.MaxRetries,
-		RLS:        e.Opts.RLS,
+		RLS:        true,
 		Log:        e.Opts.Logger,
 		Observer:   e.Opts.Metrics.DBObserver(),
-	}, pgexec.Identity{
-		Role:         op.Role,
-		Claims:       op.Claims,
-		ClaimsPrefix: e.Opts.ClaimsPrefix,
-	}, func(q pgexec.Querier) error {
+	}, e.identity(op), func(q pgexec.Querier) error {
 		for _, s := range tzStmt {
 			if _, err := q.Exec(ctx, s.SQL, s.Args...); err != nil {
 				return err

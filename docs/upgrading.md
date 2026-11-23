@@ -31,3 +31,143 @@
 - **PostgreSQL 14 is the minimum.** Older servers are refused at
   introspection and on every pool connection, so this also applies when
   booting from a schema cache.
+
+### Authentication, roles, claims and strict configuration
+
+pdbr 1.0 adopts pdbcore's identity configuration and strict loading. Every
+item below is breaking.
+
+- **The `rls` section is gone.** It is split into `auth` (how a request
+  proves who it is), `roles` (which database role it runs as) and `claims`
+  (where its claims are exposed to SQL); see the table below and
+  [rls.md](rls.md). Loading an old config fails and names the new key
+  (`unknown key rls.enabled: moved to roles.switch`).
+- **Anonymous access is opt-in.** `roles.anonymous` (formerly
+  `rls.anonymous_role`, default `anonymous`) is empty by default: requests
+  without credentials are answered `401` with the new code `auth_required`
+  and `WWW-Authenticate: Bearer`. Set `roles.anonymous: anonymous` to keep
+  serving them. Every authentication `401` now carries a
+  `WWW-Authenticate` challenge, and `403 role_not_allowed` carries
+  `Bearer error="insufficient_scope"`. The OpenAPI document marks
+  `bearerAuth` as required in jwt mode without `roles.anonymous`.
+- **Claims live under `jwt.claims` by default.** `claims.prefix` (formerly
+  `rls.claims_prefix`) defaults to `jwt.claims` instead of `pdbq.claims`.
+  Update policies to read `current_setting('jwt.claims.<claim>', true)`, or
+  set `claims.prefix: pdbq.claims` to keep the old ones. The new
+  `claims.json_setting` (e.g. `request.jwt.claims`) also exposes every claim
+  as one JSON object.
+- **`roles.switch: false` replaces `rls.enabled: false`** and no longer
+  turns authentication off: credentials are still verified and claims still
+  set, only the role switch is skipped. For no authentication at all also
+  set `auth.mode: none`. The `--rls.enabled` flag is now `--roles.switch`;
+  new flags `--auth.mode` and `--roles.anonymous`.
+- **Fail closed.** pdbr refuses to start in `jwt` mode without a secret,
+  secret file or JWKS URL, in `headers` mode without
+  `auth.headers.trusted_proxies` (an empty list used to trust every peer),
+  and in `none` mode with `roles.switch` on but no `roles.anonymous`. A
+  JWT role claim that is not a non-empty string is `401 invalid_token`
+  (it used to fall back to the default role); a request that resolves to no
+  role is `403 role_not_allowed`.
+- **The default configuration needs a key.** It verifies JWTs, so `pdbr
+  serve` and `pdbr config validate` on defaults fail until one of
+  `auth.jwt.secret`, `auth.jwt.secret_file` or `auth.jwt.jwks_url` is set
+  (or `auth.mode: none`). `pdbr config init` writes a starter with
+  `auth: {mode: none}` and `roles: {switch: false}` that runs with only
+  `database.url`.
+- **CLI identity.** `pdbr request`, `pdbr schema dump`, `pdbr schema check`
+  and `pdbr plugins list` run as the connection role without credentials
+  (`auth.mode: none` and `roles.switch: false` are forced before
+  validation), so they work on a default config. `pdbr request` used to run
+  as the anonymous role when RLS was on. `pdbr plugins list` reports an
+  invalid configuration instead of silently listing the defaults.
+- **Strict configuration.** Unknown keys in the YAML file are errors, and
+  so are `PDBR_*` environment variables inside a config section that name no
+  key (`PDBR_RLS_ENABLED`, a typo such as `PDBR_SERVER_ADR`); messages name
+  the replacement or the closest key. Other `PDBR_*` variables
+  (`PDBR_TEST_DATABASE_URL`) are ignored.
+- **`log.format` is validated**: only `text` and `json` are accepted.
+- **Plugin names are snake_case**, with no aliases: `smart_comments`,
+  `advanced_filters`, `nested_mutations` (`postgis` is unchanged).
+  `plugins.disabled` only accepts built-in names (a kebab-case name gets a
+  did-you-mean hint), and `plugins.settings.advanced-filters` /
+  `nested-mutations` moved to `plugins.settings.advanced_filters` /
+  `nested_mutations`.
+- **Typed plugin settings.** `plugins.settings` is a typed section per
+  built-in plugin, not a free-form map: unknown or mistyped settings are
+  errors, environment values work
+  (`PDBR_PLUGINS_SETTINGS_ADVANCED__FILTERS_RELATIONS=false`; they were
+  ignored before), and `nested_mutations.max_depth` / `max_operations` must
+  be `>= 1` (a non-positive value used to be ignored). Third-party plugins
+  cannot be configured through `plugins.settings` or disabled through
+  `plugins.disabled`; configure them where they are constructed. In Go,
+  the plugin constructors take their `Settings` struct
+  (`advancedfilters.New(advancedfilters.DefaultSettings())`), and
+  `smartcomments.New()` takes none.
+- **`database.statement_timeout` defaults to `25s`** (was `30s`), below
+  `server.request_timeout` (`30s`), so a slow statement fails with
+  `504 pg:57014` before the request itself times out.
+- **SQLSTATE class 21 is a client error.** `21000` (a bulk upsert naming one
+  conflict key twice, a scalar subquery returning several rows) is
+  `400 pg:21000` with PostgreSQL's message in `prod`, instead of a
+  sanitized `500`.
+- **CORS** responses add `Vary: Origin` without dropping
+  `Vary: Accept-Encoding`, and list the headers pdbr sets in
+  `Access-Control-Expose-Headers` (`Content-Range`, `ETag`, `Link`,
+  `Location`, `Preference-Applied`, `X-Total-Count`, …).
+- **Embedding API** (`pdbr` package): `RLSConfig` is gone; use
+  `AuthConfig`, `JWTConfig`, `HeadersConfig`, `RolesConfig`,
+  `ClaimsConfig`. `PluginsConfig` is `confx.Plugins[PluginSettings]`.
+  An invalid auth configuration is returned as an error by `App.Serve` /
+  `App.Handler` instead of falling back.
+
+| 0.x | 1.0 | Notes |
+|---|---|---|
+| `rls.enabled: true` | `roles.switch: true` | default |
+| `rls.enabled: false` | `roles.switch: false` | still verifies credentials; for no auth at all also set `auth.mode: none` |
+| `--rls.enabled` | `--roles.switch` | also new: `--auth.mode`, `--roles.anonymous` |
+| `rls.anonymous_role` (default `anonymous`) | `roles.anonymous` (default empty) | empty refuses unauthenticated requests with `401 auth_required`; set it to keep anonymous access |
+| `rls.default_role` | `roles.default` | |
+| `rls.allowed_roles` | `roles.allowed` | |
+| `rls.role_claim` | `auth.jwt.role_claim_path` / `auth.headers.role_claim` | jwt takes a path (`app_metadata.role`) |
+| `rls.claims_prefix` (default `pdbq.claims`) | `claims.prefix` (default `jwt.claims`) | set `claims.prefix: pdbq.claims` to keep old policies, or update them |
+| — | `claims.json_setting` | e.g. `request.jwt.claims` |
+| `rls.auth.mode` | `auth.mode` | |
+| `rls.auth.jwt_secret` | `auth.jwt.secret` | or `auth.jwt.secret_file` |
+| `rls.auth.jwks_url` | `auth.jwt.jwks_url` | |
+| `rls.auth.jwks_cache_ttl` | `auth.jwt.jwks_cache_ttl` | |
+| `rls.auth.jwt_issuer` | `auth.jwt.issuer` | |
+| `rls.auth.jwt_audience` | `auth.jwt.audience` | |
+| — | `auth.jwt.leeway` | default `0s` |
+| `rls.auth.header_prefix` | `auth.headers.prefix` | default `X-Pdbr-Claim-` |
+| `rls.auth.header_claims` | `auth.headers.claims` | |
+| `rls.auth.trusted_proxies` | `auth.headers.trusted_proxies` | required in headers mode |
+| `rls.auth.jwt_type` | `auth.mint_type` | |
+| `PDBR_RLS_ENABLED` | `PDBR_ROLES_SWITCH` | |
+| `PDBR_RLS_ANONYMOUS__ROLE` | `PDBR_ROLES_ANONYMOUS` | |
+| `PDBR_RLS_ALLOWED__ROLES` | `PDBR_ROLES_ALLOWED` | |
+| `PDBR_RLS_AUTH_JWT__SECRET` | `PDBR_AUTH_JWT_SECRET` | or `PDBR_AUTH_JWT_SECRET__FILE` |
+| `PDBR_RLS_AUTH_JWKS__URL` | `PDBR_AUTH_JWT_JWKS__URL` | |
+| `PDBR_RLS_AUTH_MODE` | `PDBR_AUTH_MODE` | other `PDBR_RLS_*` follow the key table |
+| `plugins.disabled: [smart-comments]` | `plugins.disabled: [smart_comments]` | same for `advanced-filters`, `nested-mutations` |
+| `plugins.settings.advanced-filters.*` | `plugins.settings.advanced_filters.*` | |
+| `plugins.settings.nested-mutations.*` | `plugins.settings.nested_mutations.*` | |
+| `database.statement_timeout` default `30s` | default `25s` | below `server.request_timeout` |
+| `log.format: <anything>` | `log.format: text` or `json` | other values are rejected |
+
+The new shape, with its defaults:
+
+```yaml
+auth:
+  mode: jwt              # jwt | headers | none
+  jwt: {secret: "", secret_file: "", jwks_url: "", jwks_cache_ttl: 1h, issuer: "", audience: "", leeway: 0s, role_claim_path: role}
+  headers: {prefix: X-Pdbr-Claim-, claims: [], role_claim: role, trusted_proxies: []}
+  mint_type: ""
+roles: {switch: true, anonymous: "", default: "", allowed: []}
+claims: {prefix: jwt.claims, json_setting: ""}
+plugins:
+  disabled: []
+  settings:
+    advanced_filters: {relations: true, computed: true, relation_order: true, relations_opt_in: false, computed_opt_in: false}
+    postgis: {filters: true, derived: true, ordering: true, projection: true, aggregates: true}
+    nested_mutations: {force_transactions: true, max_depth: 3, max_operations: 50}
+```

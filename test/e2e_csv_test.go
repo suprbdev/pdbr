@@ -169,7 +169,7 @@ func TestCSVRequestCLI(t *testing.T) {
 		t.Skip("go toolchain not on PATH")
 	}
 	cmd := exec.Command("go", "run", "./cmd/pdbr", "request", "GET", "/users?select=id,email&order=id&limit=1",
-		"--accept", "text/csv", "-i", "--database.url", url, "--rls.enabled=false")
+		"--accept", "text/csv", "-i", "--database.url", url)
 	cmd.Dir = ".."
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
