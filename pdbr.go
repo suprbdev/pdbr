@@ -129,8 +129,6 @@ func (a *App) setupMetrics() error {
 		"Requests whose select= uses an aggregate function."); err != nil {
 		return err
 	}
-	a.costRejections.Init()
-	a.aggregateRequests.Init()
 	return nil
 }
 
