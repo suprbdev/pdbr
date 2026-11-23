@@ -550,7 +550,8 @@ func (r *Resource) NameTaken(key string) bool {
 
 // indexServes applies filters.indexed_only to a contrib operator or
 // expression: some index of the table must cover the column with one of the
-// hinted access methods (ordering hints for ORDER BY, predicate hints
+// hinted access methods and, where the hint and the catalog both name one,
+// operator classes (ordering hints for ORDER BY, predicate hints
 // otherwise). Expression indexes carry no columns, so full-text search on a
 // text, json or jsonb column (served only by an index on to_tsvector) needs
 // filters.allow_columns.
@@ -567,7 +568,7 @@ func indexServes(opts Options, r *Resource, c *introspect.Column, hints []contri
 			continue
 		}
 		for _, ix := range t.Indexes {
-			if ix.Method == h.Method && slices.Contains(ix.Columns, c.Name) {
+			if i := slices.Index(ix.Columns, c.Name); i >= 0 && h.Serves(ix.Method, ix.OpClass(i)) {
 				return true
 			}
 		}

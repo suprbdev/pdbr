@@ -248,7 +248,7 @@ func (p *parser) resolveContribOrder(t *plan.OrderTerm, key, mod string, res *ap
 		if p.typeOf(f.Column).kind == kindCube {
 			return errf(CodeColumnNotOrderable, "%s.%s needs a cube column and, under filters.indexed_only, a GiST index on it, or the column in filters.allow_columns", key, mod)
 		}
-		return errf(CodeColumnNotOrderable, "%s.%s needs an index serving it on the column under filters.indexed_only (HNSW; IVFFlat also serves vec_l2, vec_ip and vec_cos on vector and halfvec), or the column in filters.allow_columns", key, mod)
+		return errf(CodeColumnNotOrderable, "%s.%s needs an index on the column built for that metric under filters.indexed_only (HNSW, or IVFFlat for vec_l2, vec_ip and vec_cos on vector and halfvec, with the metric's operator class such as vector_cosine_ops), or the column in filters.allow_columns", key, mod)
 	case "latlon":
 		return errf(CodeColumnNotOrderable, "%s.%s needs an earth column (earth_dist; under filters.indexed_only with a GiST index) or a point column (earth_miles; no index serves it, so under filters.indexed_only only in filters.allow_columns) with earthdistance installed", key, mod)
 	case "levenshtein":

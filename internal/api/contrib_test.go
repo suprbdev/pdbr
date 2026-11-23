@@ -302,3 +302,38 @@ func TestContribVector(t *testing.T) {
 		t.Error("the vec column lost its filter parameter")
 	}
 }
+
+// TestContribIndexOpClasses: under indexed_only, an index serves a contrib
+// operator or ordering only when its operator class matches the hint: a
+// btree_gist GiST index on inet serves none of the inet operators, and an
+// HNSW index serves only the metric of its operator class.
+func TestContribIndexOpClasses(t *testing.T) {
+	withOpClass := func(table, index, opClass string) *introspect.Catalog {
+		cat := testcatalog.Contrib(testutil.FixtureCatalog())
+		for _, ix := range cat.Table(testcatalog.ContribSchema, table).Indexes {
+			if ix.Name == index {
+				ix.OpClasses = []string{opClass}
+				return cat
+			}
+		}
+		t.Fatalf("index %s missing", index)
+		return nil
+	}
+	for opClass, want := range map[string]bool{"inet_ops": true, "gist_inet_ops": false} {
+		b := build(t, withOpClass("docs", "docs_net_idx", opClass), contribOptions(true))
+		docs := b.ByPath["kb.docs"]
+		if got := slices.Contains(b.FilterOps(docs, docs.Table.Column("net")), "cs_strict"); got != want {
+			t.Errorf("net led by a %s index: cs_strict offered = %v, want %v", opClass, got, want)
+		}
+	}
+
+	b := build(t, withOpClass("embeddings", "embeddings_emb_idx", "vector_cosine_ops"), contribOptions(true))
+	res := b.ByPath["kb.embeddings"]
+	var got []string
+	for _, o := range b.ContribOrders(res, res.Table.Column("emb")) {
+		got = append(got, o.Name)
+	}
+	if !reflect.DeepEqual(got, []string{"vec_cos"}) {
+		t.Errorf("emb led by a vector_cosine_ops index: orders = %v, want [vec_cos]", got)
+	}
+}

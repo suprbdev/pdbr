@@ -416,11 +416,11 @@ GET /api/docs?select=id,chunks(id,text)&chunks.order=embedding.vec_ip&chunks.lim
   and `.desc` (farthest first) works but no index serves it.
 - **Index policy**: under `filters.indexed_only` a distance term is
   accepted only when an index of the table covers the column with an access
-  method that serves it: HNSW for all four, IVFFlat for `vec_l2`, `vec_ip`
-  and `vec_cos` on `vector` and `halfvec` (not `vec_l1`, not `sparsevec`).
-  Operator classes are not introspected, so an HNSW index built with
-  `vector_l2_ops` admits `vec_cos` too, which then scans; the same
-  approximation as for trigram indexes. Otherwise the term is `400
+  method that serves it, built with that metric's operator class
+  (`vector_l2_ops`, `vector_cosine_ops`, `halfvec_ip_ops`, ...): HNSW for
+  all four, IVFFlat for `vec_l2`, `vec_ip` and `vec_cos` on `vector` and
+  `halfvec` (not `vec_l1`, not `sparsevec`). An HNSW index built with
+  `vector_l2_ops` admits `vec_l2` only. Otherwise the term is `400
   column_not_orderable` unless the column is in `filters.allow_columns`.
   HNSW and IVFFlat scans are approximate nearest-neighbour searches (see
   pgvector's `hnsw.ef_search` / `ivfflat.probes`), and these indexes do not
@@ -804,10 +804,14 @@ arguments are query text, so they take the literal (`?h=a%3D%3E1`).
 `filters.indexed_only` (the default) applies per operator. Each contrib
 operator carries pdbcore's index hints (access method and operator class),
 and it is accepted only when an index of the table covers the column with a
-hinted access method: GIN or GiST for trigram, hstore and `tsvector`
-operators, GiST for ltree, GiST or SP-GiST for range and inet operators.
-Index operator classes are not introspected, so a B-tree index on a text
-column does not admit `trgm_sim`, while any GIN index on it would. Operators
+hinted access method and, where the hint names one, that operator class at
+the column's position: GIN or GiST for trigram (`gin_trgm_ops` /
+`gist_trgm_ops`), hstore and `tsvector` operators, GiST for ltree, GiST or
+SP-GiST for range and inet operators (`inet_ops`). A B-tree index on a text
+column does not admit `trgm_sim`, nor does a btree_gist `gist_text_ops`
+GiST index. On PostgreSQL 14–18 with btree_gist installed, `USING gist
+(addr)` builds `gist_inet_ops`, which serves no inet operator: name
+`inet_ops` explicitly. PostgreSQL 19 makes `inet_ops` the default. Operators
 no index can serve (hstore `cd`, ltree `*_any`, `ancestor` on `ltree[]`) and
 full-text search on a text, json or jsonb column (only an expression index
 on `to_tsvector('<config>', col)` serves it, and expression indexes have no

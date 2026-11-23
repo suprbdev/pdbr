@@ -707,9 +707,10 @@ func (b *Builder) resourceSchema(r *Resource) *Schema {
 	return s
 }
 
-// relationNote describes the PostgreSQL 18 foreign key variants in an embed
-// property: a PERIOD key embeds every referenced row whose period overlaps,
-// a NOT ENFORCED key may reference no row at all.
+// relationNote describes the foreign key variants in an embed property: a
+// PERIOD key (PostgreSQL 18) embeds every referenced row whose period
+// overlaps, a NOT ENFORCED (PostgreSQL 18) or NOT VALID key may reference
+// no row at all.
 func relationNote(rel *Relation) string {
 	var out string
 	if rel.Forward && rel.FK.Period {
@@ -717,6 +718,8 @@ func relationNote(rel *Relation) string {
 	}
 	if rel.Forward && rel.FK.NotEnforced {
 		out += " NOT ENFORCED foreign key: the referenced row may be missing (null)."
+	} else if rel.Forward && rel.FK.NotValid {
+		out += " NOT VALID foreign key: the referenced row may be missing (null)."
 	}
 	return out
 }

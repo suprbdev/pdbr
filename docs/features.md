@@ -8,11 +8,11 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Partitions hidden by default (`Table.IsPartition`; per-partition constraint clones no longer duplicate relations), `schema.expose_partitions` to expose them (parity)
 - [x] Views (read-only) (parity)
 - [x] Materialized views (read-only) (parity)
-- [x] Columns: type, nullability, defaults, identity/generated detection (parity)
+- [x] Columns: type, nullability, defaults, identity/generated detection; a PostgreSQL 18 `NOT NULL ... NOT VALID` column stays nullable until validated (parity)
 - [x] Primary keys (parity)
 - [x] Unique constraints (parity)
 - [x] Foreign keys (including multi-column) (parity)
-- [x] Indexes (name, columns, uniqueness, method) — drives the filter policy (parity)
+- [x] Indexes (name, columns, uniqueness, method, operator classes) — drives the filter policy; contrib index hints match the operator class (parity)
 - [x] Enums (parity)
 - [x] Functions (args, return type, set-returning, volatility) (parity)
 - [x] Comments on tables, columns, enums, functions (exposed as OpenAPI descriptions), and constraints (smart comments) (parity)
@@ -210,7 +210,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] `errors.detail: dev|prod|strict` message policy (22*/23* pass through in prod; everything generic in strict) (parity)
 - [x] Status mapping: 400 grammar/body/22*/23502/23514/42*, 401 credentials, 403 `42501`/role not allowed, 404 route/row, 405 + `Allow`, 406, 409 `23505`/`23503`/`23P01`/serialization exhausted, 412, 413, 415, 500 other, 503 `53*`/`08*`, 504 `57014`/request timeout (new)
 - [x] `Retry-After: 1` on every `503` problem (`unavailable`, `pg:08…`, `pg:53…`, `/readyz`) (new)
-- [x] PostgreSQL 18 temporal keys: `WITHOUT OVERLAPS` keys back no single-row route, `ETag` or upsert target (`400 temporal_conflict_target`; `resolution=ignore-duplicates` skips overlaps via `ON CONFLICT ON CONSTRAINT`), `PERIOD` FK embeds/filters/order join on `&&` and embed forward as arrays, nested writes copy only the equality columns, `NOT ENFORCED` FK embeds documented nullable (new)
+- [x] PostgreSQL 18 temporal keys: `WITHOUT OVERLAPS` keys back no single-row route, `ETag` or upsert target (`400 temporal_conflict_target`; `resolution=ignore-duplicates` skips overlaps via `ON CONFLICT ON CONSTRAINT`), `PERIOD` FK embeds/filters/order join on `&&` and embed forward as arrays, nested writes copy only the equality columns, `NOT ENFORCED` and `NOT VALID` FK embeds documented nullable (new)
 - [x] `23001` restrict violation (PostgreSQL 18+) → 409; PostGIS input errors (`XX000` mixed SRID / invalid geometry) and contrib input errors (`42601` tsquery/ltree syntax, `42704` unknown text search configuration) → 400 with a sanitized message (`invalid geometry` / passthrough; `invalid input value` in strict) (new)
 
 ## RLS & auth
