@@ -191,7 +191,7 @@ type FieldSel struct {
 	Computed *api.Computed      // computed column (row-type function)
 	Pseudo   *api.PseudoColumn  // postgis derived accessor (<col>_<accessor>)
 	Args     map[string]any     // spatial projection args: transform, simplify (v1)
-	Agg      *Aggregate         // aggregate function (server.aggregates); Column = input, nil for count()
+	Agg      *Aggregate         // aggregate function (aggregates.enabled); Column = input, nil for count()
 }
 
 type Aggregate struct {
@@ -241,7 +241,7 @@ type OrderTerm struct {
 }
 
 type Page struct {
-	Limit  int   // always resolved: explicit or server.max_page_size
+	Limit  int   // always resolved: explicit or limits.max_page_size
 	Offset int
 	After  []any // decoded cursor pk values (nil = absent)
 	Before []any
@@ -270,7 +270,7 @@ serializable and does not need to be — `pdbr request --print-sql` re-parses.
   the embed with that key; a dotted filter whose key is not a selected embed
   is a relation filter (advanced_filters plugin, `EXISTS`); a key that matches
   no FK of the resource → 400 `unknown_relation`.
-- `select=` grammar (brief §5) → `Node` tree; depth > `server.max_embed_depth`
+- `select=` grammar (brief §5) → `Node` tree; depth > `limits.max_depth`
   → 400 `embed_depth_exceeded`; ambiguous relation key without hint → 400
   `ambiguous_relation` listing candidates.
 - Filter values are coerced by column type here (enum labels verbatim, arrays
@@ -281,7 +281,7 @@ serializable and does not need to be — `pdbr request --print-sql` re-parses.
   structurally, PK-typed, resource name must match the requested resource →
   else 400 `invalid_cursor` (code proposed in [errors.md](errors.md), not in
   the brief).
-- `limit` absent → `server.max_page_size`; over → 400 `page_size_exceeded`
+- `limit` absent → `limits.max_page_size`; over → 400 `page_size_exceeded`
   (invariant 4). `distinct` with `after`/`before`, `offset` with `before`, and
   keyset on a PK-less resource → 400 `keyset_unsupported`.
 - Body: unknown key → 400 `invalid_body`; generated/identity `ALWAYS` → 400
@@ -342,7 +342,7 @@ Body shape)`:
 | `POST` (create) | `WITH __mut AS (INSERT INTO "public"."users" ("email","full_name") VALUES ($1,$2) RETURNING "id","email",…) SELECT json_build_object('row', json_build_object(…), 'key', jsonb_build_array(t0."id")) AS data FROM __mut t0 <laterals>` (`key` only for a single-column PK; exec builds `Location` from it) — bulk: `VALUES ($1,$2),($3,DEFAULT)` + `coalesce(json_agg(…),'[]')`, no wrapper |
 | `PATCH` by key | `WITH __mut AS (UPDATE "public"."users" SET "full_name" = $1 WHERE "public"."users"."id" = $2 RETURNING …) SELECT … FROM __mut t0` (row verbatim; `return=minimal` → `RETURNING 1` + `{'n': count}`) |
 | `DELETE` by key | `WITH __mut AS (DELETE FROM … WHERE … RETURNING …) SELECT …` |
-| bulk `PATCH`/`DELETE` by filter | `WITH __mut AS (UPDATE "public"."users" m0 SET … WHERE <filter over m0> RETURNING …) SELECT json_build_object('n', count(*), 'rows', coalesce(json_agg(s.data), '[]')) FROM (SELECT … FROM __mut t1 <laterals>) s` — shape `mut_bulk`; no filter → `400 unfiltered_mutation` in the parser unless `server.allow_unfiltered_mutations` |
+| bulk `PATCH`/`DELETE` by filter | `WITH __mut AS (UPDATE "public"."users" m0 SET … WHERE <filter over m0> RETURNING …) SELECT json_build_object('n', count(*), 'rows', coalesce(json_agg(s.data), '[]')) FROM (SELECT … FROM __mut t1 <laterals>) s` — shape `mut_bulk`; no filter → `400 unfiltered_mutation` in the parser unless `mutations.allow_unfiltered` |
 | `PUT` (upsert) | `WITH __mut AS (INSERT … VALUES … ON CONFLICT ("email") DO UPDATE SET "full_name" = EXCLUDED."full_name", … RETURNING …, (xmax = 0) AS __inserted) SELECT json_build_object('row', …, 'inserted', t0.__inserted, 'key', jsonb_build_array(t0."id"))` (single) / `json_agg` (array, always 200) |
 | `POST` + `Prefer: resolution=` / `PUT {pk}` | the `POST` / `PUT` shapes with `ON CONFLICT (<on_conflict or PK>) DO UPDATE SET …` (merge) or `DO NOTHING` (ignore) appended to the `INSERT`; a single-row `PUT` takes its conflict target and key values from the path |
 | `If-Match` | `WITH cur AS (SELECT md5(to_jsonb(ROW(__cur."id", …))::text) AS h FROM "public"."users" __cur WHERE __cur."id" = $2), __mut AS (UPDATE … WHERE "public"."users"."id" = $2 AND (SELECT h FROM cur) = $3 RETURNING …) SELECT json_build_object('found', EXISTS (SELECT 1 FROM cur), 'row', (SELECT json_build_object(…) FROM __mut t0)) AS data` → exec: `!found` → 404, `found && row IS NULL` → 412 (`= ANY($3)` for several tags; `*` drops the hash predicate) |
@@ -407,14 +407,12 @@ observe but cannot rewrite `Data`.)
 
 Transaction decision table (evaluated after RequestHooks ran, once per request):
 
-| Mutation | role or claim settings to apply | `transactions.mutations` | `ForceTx` | Runs as |
-|---|---|---|---|---|
-| no | no | — | no | pool query, no tx |
-| no | yes | — | — | tx (needed for `SET LOCAL`) |
-| no | no | — | yes | tx |
-| yes | — | true (default) | — | tx |
-| yes | no | false | no | pool query (DML autocommits) |
-| yes | yes | false | — | tx (SET LOCAL forces it) |
+| Mutation | role or claim settings to apply | `ForceTx` | Runs as |
+|---|---|---|---|
+| no | no | no | pool query, no tx |
+| no | yes | — | tx (needed for `SET LOCAL`) |
+| no | no | yes | tx |
+| yes | — | — | tx (always) |
 
 Inside a tx (`pgexec.QueryTx`): one pipelined batch, so one network round
 trip per request. The identity is a single statement, `SELECT
@@ -427,7 +425,7 @@ pipeline transaction at the server's `default_transaction_isolation`;
 `repeatable_read` / `serializable` wrap it in `BEGIN ISOLATION LEVEL …` /
 `COMMIT` in the same batch. A `Prefer: max-affected` write holds the
 `COMMIT` back until the affected-row check passed (a second round trip). A
-rolled-back write (`server.tx_end` / `Prefer: tx=rollback`) uses the same
+rolled-back write (`transactions.end` / `Prefer: tx=rollback`) uses the same
 hold-back: the scan returns a sentinel error, `QueryTx` rolls back, and exec
 treats the sentinel as success. `Prefer: timezone=` queues
 `SELECT set_config('timezone', $1, true)` between the identity and the
@@ -453,7 +451,7 @@ body is assembled in `server` from `Result.Problem`.
 
 - **Router table** comes from `api.Built.Routes`: an ordered list of
   `Route{Method, Pattern, Kind, Resource/RPC, Allow []string}` registered on a
-  `net/http.ServeMux` (Go 1.22+ patterns: `GET /api/{schema}/{table}/{pk}`
+  `net/http.ServeMux` (Go 1.22+ patterns: `GET /{schema}/{table}/{pk}`
   etc.). Path segments are matched against the resource index at request
   time (bare aliases for `schema.schemas[0]`; reserved segments `rpc`,
   `openapi.json`, `healthz`, `readyz`, `by` win over bare aliases). Unknown
@@ -555,11 +553,11 @@ which pdbq did not need (SDL served that role).
    parameters (`$n`); enforced by fuzz tests. Identifiers only via
    `quoteIdent`. The only structural literals: `is.null`/`is.true`/`is.false`,
    `exists.true/false`, SRID ints, jsonb build keys, and `LIMIT` values
-   (Go integers capped by `server.max_page_size`, written as literals so
+   (Go integers capped by `limits.max_page_size`, written as literals so
    Postgres can reuse a generic plan; `OFFSET` stays a parameter).
 3. **RLS via `SET LOCAL` only**, claims via `set_config(prefix.k, v, true)`;
    role validated `[A-Za-z0-9_]+`.
-4. **No unbounded scans**: absent `limit` → `server.max_page_size`; over →
+4. **No unbounded scans**: absent `limit` → `limits.max_page_size`; over →
    400.
 5. **Determinism**: routes, OpenAPI, SQL (sorted filter keys) are
    deterministic; golden tests diff byte-for-byte.

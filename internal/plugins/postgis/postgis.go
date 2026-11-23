@@ -6,7 +6,7 @@
 // (order=<col>.dist with near=) and the <col>_distance score from near=,
 // and the spatial aggregate functions
 // (col.extent(), col.union(), col.collect(), col.centroid(); with
-// server.aggregates), and on postgis_raster columns the metadata, pixel
+// aggregates.enabled), and on postgis_raster columns the metadata, pixel
 // value and summary statistics pseudo-columns (<col>_width, ...,
 // <col>_value(band=) at near=, <col>_summary_stats(band=)) and the
 // intersects filter. Reading and writing GeoJSON, and keeping raster
@@ -44,7 +44,7 @@ type Settings struct {
 	Derived    bool `koanf:"derived" doc:"Derived pseudo-columns: <col>_area, <col>_centroid, ... on spatial columns, <col>_width, <col>_value, <col>_summary_stats, ... on raster columns."`
 	Ordering   bool `koanf:"ordering" doc:"Distance ordering (order=<col>.dist.asc|desc) and the <col>_distance score, both with near=."`
 	Projection bool `koanf:"projection" doc:"select= projection arguments: col(transform=...,simplify=...,buffer=...,precision=...)."`
-	Aggregates bool `koanf:"aggregates" doc:"Spatial aggregate functions in select= (col.extent(), col.union(), col.collect(), col.centroid()); also needs server.aggregates."`
+	Aggregates bool `koanf:"aggregates" doc:"Spatial aggregate functions in select= (col.extent(), col.union(), col.collect(), col.centroid()); also needs aggregates.enabled."`
 }
 
 // DefaultSettings returns the defaults: every half on.

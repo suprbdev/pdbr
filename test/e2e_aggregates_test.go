@@ -16,7 +16,7 @@ import (
 func aggServer(t *testing.T, mutate func(*config.Config)) string {
 	t.Helper()
 	return testServer(t, func(c *config.Config) {
-		c.Server.Aggregates = true
+		c.Aggregates.Enabled = true
 		if mutate != nil {
 			mutate(c)
 		}
@@ -179,7 +179,7 @@ func TestAggregatesRLS(t *testing.T) {
 }
 
 func TestAggregatesErrors(t *testing.T) {
-	url := aggServer(t, func(c *config.Config) { c.Server.MaxCost = 1000 })
+	url := aggServer(t, func(c *config.Config) { c.Limits.MaxCost = 1000 })
 	cases := []struct {
 		q    string
 		code string

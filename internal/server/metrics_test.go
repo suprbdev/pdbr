@@ -16,11 +16,10 @@ import (
 	"github.com/suprbdev/pdbcore/testutil"
 
 	"github.com/suprbdev/pdbr/internal/api"
-	"github.com/suprbdev/pdbr/internal/config"
 	"github.com/suprbdev/pdbr/internal/inflect"
 )
 
-func metricsServer(t *testing.T, cfg config.Server, authn *auth.Authenticator, mcfg confx.Metrics) (*Server, *metrics.Metrics) {
+func metricsServer(t *testing.T, cfg Config, authn *auth.Authenticator, mcfg confx.Metrics) (*Server, *metrics.Metrics) {
 	t.Helper()
 	built, err := api.New(testutil.FixtureCatalog(), inflect.Default, api.Options{
 		FilterIndexedOnly: true, Functions: true, BasePath: cfg.BasePath, Schemas: []string{"public"},

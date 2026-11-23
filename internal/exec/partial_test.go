@@ -216,7 +216,7 @@ func TestPartialBulkTransactionFailures(t *testing.T) {
 
 func TestPartialBulkOffByDefault(t *testing.T) {
 	db := &fakeDB{row: fakeRow{data: []byte(`[{"id":1}]`)}}
-	e := newExec(db, built(t), nil, Options{TxMutations: true})
+	e := newExec(db, built(t), nil, Options{})
 	e.runTx = func(context.Context, pgexec.TxBeginner, pgexec.TxOptions, pgexec.Identity, func(pgexec.Querier) error) error {
 		t.Fatal("RunTx used without Prefer: partial=items")
 		return nil

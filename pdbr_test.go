@@ -57,11 +57,11 @@ func TestBuildAPIWithoutDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(server.New(cfg.Server, nil, rt, app.Log).Handler())
+	srv := httptest.NewServer(server.New(server.ConfigOf(cfg), nil, rt, app.Log).Handler())
 	defer srv.Close()
 	// No pool: the request pipeline runs (route, parse, compile) and fails
 	// only at execution with 503 unavailable.
-	res, err := http.Get(srv.URL + "/api/v1_users?select=id")
+	res, err := http.Get(srv.URL + "/v1_users?select=id")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestBuildAPIWithoutDatabase(t *testing.T) {
 		t.Error("SetReadOnly")
 	}
 	// The read-only flag reaches the executor of an already-built runtime.
-	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/v1_users", nil)
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1_users", nil)
 	res, err = http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -108,7 +108,7 @@ func TestSwapKeepsInFlightRequests(t *testing.T) {
 		w.Header().Set("X-Runtime", "2")
 		w.WriteHeader(http.StatusNoContent)
 	}))
-	s := server.New(cfg.Server, nil, rt1, app.Log)
+	s := server.New(server.ConfigOf(cfg), nil, rt1, app.Log)
 	srv := httptest.NewServer(s.Handler())
 	defer srv.Close()
 
@@ -118,12 +118,12 @@ func TestSwapKeepsInFlightRequests(t *testing.T) {
 	}
 	done := make(chan outcome, 1)
 	go func() {
-		res, err := http.Get(srv.URL + "/api/users")
+		res, err := http.Get(srv.URL + "/users")
 		done <- outcome{res, err}
 	}()
 	<-started
 	s.Swap(rt2)
-	res2, err := http.Get(srv.URL + "/api/users")
+	res2, err := http.Get(srv.URL + "/users")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestMetricsWiring(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, p := range []string{"/api/users?select=id", "/api/users?select=id,posts(id,title,comments(id))"} {
+	for _, p := range []string{"/users?select=id", "/users?select=id,posts(id,title,comments(id))"} {
 		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, p, nil))
 	}
 	rec := httptest.NewRecorder()
@@ -203,6 +203,7 @@ func TestWithMetrics(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := cacheBootConfig(t)
+	cfg.Server.BasePath = "/api"
 	app := New(cfg, quiet, WithMetrics(m))
 	defer app.Close()
 	if app.Metrics() != m {

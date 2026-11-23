@@ -111,6 +111,7 @@ func geoSetup(t *testing.T) string {
 func geoConfig(dbURL string, mutate func(*config.Config)) config.Config {
 	cfg := config.DefaultConfig()
 	cfg.Database.URL = dbURL
+	cfg.Server.BasePath = "/api"
 	cfg.UseConnectionIdentity()
 	cfg.Errors.Detail = "dev"
 	cfg.Schema.Schemas = []string{geoSchema}
@@ -460,7 +461,7 @@ func TestRaster(t *testing.T) {
 	wantCode(t, srv, "tiles?select=rast_value", 400, "invalid_filter")
 	wantCode(t, srv, "tiles?select=rast_value(band=0)&near=POINT(1%201)", 400, "invalid_select")
 
-	strict := geoServer(t, dbURL, func(c *config.Config) { c.Server.MaxCost = 5000 })
+	strict := geoServer(t, dbURL, func(c *config.Config) { c.Limits.MaxCost = 5000 })
 	wantCode(t, strict, "tiles?select=rast_summary_stats", 400, "cost_exceeded")
 	wantIDs(t, strict, "tiles?select=id,rast_summary_stats&limit=10&order=id", []int{1, 2, 3, 10})
 	wantCode(t, strict, "tiles?rast=intersects.POINT(1%201)", 400, "column_not_filterable")

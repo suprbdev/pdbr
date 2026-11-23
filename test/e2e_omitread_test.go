@@ -65,7 +65,7 @@ func omitReadFixture(t *testing.T) {
 
 func TestOmitReadHidesColumnEverywhere(t *testing.T) {
 	omitReadFixture(t)
-	srv := testServer(t, func(c *config.Config) { c.Server.Aggregates = true }).URL
+	srv := testServer(t, func(c *config.Config) { c.Aggregates.Enabled = true }).URL
 	var one row
 	getJSON(t, srv+"/api/or_staff/1", &one)
 	if len(one) != 2 || one["name"] != "a" {

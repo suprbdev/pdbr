@@ -29,12 +29,12 @@ import (
 
 func quiet() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
-func testServer(t *testing.T, cfg config.Server, authn *auth.Authenticator, h RouteHandler) *httptest.Server {
+func testServer(t *testing.T, cfg Config, authn *auth.Authenticator, h RouteHandler) *httptest.Server {
 	t.Helper()
 	return testServerPing(t, cfg, authn, h, nil)
 }
 
-func testServerPing(t *testing.T, cfg config.Server, authn *auth.Authenticator, h RouteHandler, ping func(context.Context) error) *httptest.Server {
+func testServerPing(t *testing.T, cfg Config, authn *auth.Authenticator, h RouteHandler, ping func(context.Context) error) *httptest.Server {
 	t.Helper()
 	built, err := api.New(testutil.FixtureCatalog(), inflect.Default, api.Options{
 		FilterIndexedOnly: true, Functions: true, BasePath: cfg.BasePath, Schemas: []string{"public"},
@@ -54,8 +54,9 @@ func testServerPing(t *testing.T, cfg config.Server, authn *auth.Authenticator, 
 	return srv
 }
 
-func serverCfg() config.Server {
-	cfg := config.DefaultConfig().Server
+func serverCfg() Config {
+	cfg := ConfigOf(config.DefaultConfig())
+	cfg.BasePath = "/api"
 	cfg.RequestTimeout = 5 * time.Second
 	return cfg
 }

@@ -78,7 +78,7 @@ only (`make test-e2e`, project `pdbr-test`, host port 5433).
 |---|---|
 | `{base}/{table}`, `{base}/{table}/{pk}`, `{base}/{table}/by/...`, `{base}/{schema}/...` | the API ([quickstart.md](quickstart.md#what-gets-generated)) |
 | `{base}/rpc/{fn}` | functions |
-| `{base}/openapi.json` | OpenAPI 3.1 (`server.openapi`, on by default) |
+| `{base}/openapi.json` | OpenAPI 3.1 (`openapi.enabled`, on by default) |
 | `GET /healthz`, `/readyz` | liveness/readiness (outside `base_path`) |
 | `GET /metrics` | Prometheus metrics when `metrics.enabled` (`metrics.path`; on `metrics.addr` when set) — see [metrics.md](metrics.md) |
 | `OPTIONS *` | CORS preflight when `server.cors_origins` is set |
@@ -115,11 +115,13 @@ strings in intermediary log formats.
   internals do not. Use `strict` if constraint/column names in error
   messages are themselves sensitive (hides all database error messages;
   `code` remains).
-- Decide on `server.openapi`. It is on by default because a REST API without
+- Decide on `openapi.enabled`. It is on by default because a REST API without
   its contract is hard to consume, but the document is a complete map of
   every exposed table, column, relation and function to unauthenticated
-  callers. Set `server.openapi: false` and ship the document from
-  `pdbr schema print` out-of-band if that map is sensitive.
+  callers. Set `openapi.enabled: false` and ship the document from
+  `pdbr schema print` out-of-band if that map is sensitive. pdbq makes the
+  same choice for its schema document (introspection and SDL, on by
+  default, `server.introspection: false` to hide them).
 - `server.cors_origins`: list exact origins; `*` is for public read APIs
   only.
 - `server.compression: true` when no proxy compresses for you; leave it off
@@ -130,8 +132,8 @@ strings in intermediary log formats.
   below the request timeout so a slow statement fails with a database error
   before the request is cut off.
 - Resource limits: `database.max_conns` bounds the pool; each request uses
-  at most one connection. `server.max_page_size`, `server.max_cost`,
-  `server.max_embed_depth` and `server.max_body_bytes` bound the cost of a
+  at most one connection. `limits.max_page_size`, `limits.max_cost`,
+  `limits.max_depth` and `limits.max_body_bytes` bound the cost of a
   single request.
 - `server.read_only: true` for read replicas, maintenance windows and demos
   (every write → `405 read_only`).
@@ -152,7 +154,7 @@ strings in intermediary log formats.
 
 ## Reverse proxies
 
-- **`server.base_path`** (default `/api`) is part of every route pdbr
+- **`server.base_path`** (default `""`, the root) is part of every route pdbr
   serves; a proxy that strips a prefix must strip the same one, or set
   `server.base_path` to match what pdbr actually receives. Health endpoints
   are at the root regardless.
@@ -181,7 +183,7 @@ PDBR_DATABASE_URL=postgres://pdbr_conn:***@db:5432/app
 PDBR_DATABASE_MAX__CONNS=20
 PDBR_SERVER_ADDR=:8080
 PDBR_SERVER_BASE__PATH=/api
-PDBR_SERVER_OPENAPI=false
+PDBR_OPENAPI_ENABLED=false
 PDBR_SERVER_CORS__ORIGINS=https://app.example.com
 PDBR_SERVER_COMPRESSION=true
 PDBR_SCHEMA_CACHE__PATH=/etc/pdbr/schema.cache
@@ -195,7 +197,7 @@ PDBR_LOG_FORMAT=json
 ```
 
 The same as flags: `pdbr serve --schema.cache_path /etc/pdbr/schema.cache
---server.openapi=false --errors.detail prod`.
+--openapi.enabled=false --errors.detail prod`.
 
 ## Resource sizing
 

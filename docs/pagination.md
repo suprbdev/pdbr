@@ -9,11 +9,11 @@ compile into the single statement, and both are driven by `order=`.
 
 | Param | Default | Notes |
 |---|---|---|
-| `limit` | `server.max_page_size` (100) | larger than the cap → `400 page_size_exceeded`; `0` or negative → `400`; also set by the [`Range` header](#range-request-header) |
+| `limit` | `limits.max_page_size` (100) | larger than the cap → `400 page_size_exceeded`; `0` or negative → `400`; also set by the [`Range` header](#range-request-header) |
 | `offset` | `0` | negative → `400`; cannot combine with `before` |
 
 ```http
-GET /api/posts?limit=20&offset=40
+GET /posts?limit=20&offset=40
 ```
 
 Absent `limit` means the cap, not "everything". `offset` is the only paging
@@ -27,7 +27,7 @@ PostgREST's header form of `limit`/`offset`, on `GET` and `HEAD` of lists
 whose `Range` is ignored):
 
 ```http
-GET /api/posts
+GET /posts
 Range-Unit: items
 Range: 0-24
 ```
@@ -35,7 +35,7 @@ Range: 0-24
 | `Range` | Rows |
 |---|---|
 | `0-24` | the first 25 (inclusive, zero-based) |
-| `10-` | from the 11th row, up to `server.max_page_size` |
+| `10-` | from the 11th row, up to `limits.max_page_size` |
 
 - The only unit is `items`; `Range-Unit` is optional, and a `Range` sent with
   another `Range-Unit` is ignored. A `Range` that is not `<first>-<last>` or
@@ -44,7 +44,7 @@ Range: 0-24
   (PostgREST): `?offset=5&limit=10` with `Range: 0-24` returns rows 5-14;
   `?limit=5` with `Range: 0-24` returns 5 rows. An empty intersection, or a
   last item before the first (`5-2`), is `400 invalid_range`.
-- The size is **clamped** to `server.max_page_size` without an error
+- The size is **clamped** to `limits.max_page_size` without an error
   (`Range: 0-499` returns 100 rows), unlike an explicit `limit=` above the cap,
   which stays `400 page_size_exceeded`.
 - Not combinable with `after`/`before` → `400 keyset_unsupported`.
@@ -154,11 +154,11 @@ cursor headers as `GET`, and so do `text/csv` responses.
 Page 1:
 
 ```console
-$ curl -si 'localhost:8080/api/posts?order=title.asc&limit=2&count=true'
+$ curl -si 'localhost:8080/posts?order=title.asc&limit=2&count=true'
 HTTP/1.1 200 OK
 X-Total-Count: 5
 X-Next-Cursor: WyJwdWJsaWMucG9zdHMiLDJd
-Link: </api/posts?order=title.asc&limit=2&count=true&after=WyJwdWJsaWMucG9zdHMiLDJd>; rel="next"
+Link: </posts?order=title.asc&limit=2&count=true&after=WyJwdWJsaWMucG9zdHMiLDJd>; rel="next"
 
 [{"id":7,"title":"Hello","author_id":1,"published":true},
  {"id":2,"title":"Intro","author_id":1,"published":false}]
@@ -167,12 +167,12 @@ Link: </api/posts?order=title.asc&limit=2&count=true&after=WyJwdWJsaWMucG9zdHMiL
 Page 2, following `rel="next"`:
 
 ```console
-$ curl -si 'localhost:8080/api/posts?order=title.asc&limit=2&count=true&after=WyJwdWJsaWMucG9zdHMiLDJd'
+$ curl -si 'localhost:8080/posts?order=title.asc&limit=2&count=true&after=WyJwdWJsaWMucG9zdHMiLDJd'
 HTTP/1.1 200 OK
 X-Total-Count: 5
 X-Next-Cursor: WyJwdWJsaWMucG9zdHMiLDIxXQ
 X-Prev-Cursor: WyJwdWJsaWMucG9zdHMiLDEzXQ
-Link: </api/posts?order=title.asc&limit=2&count=true&after=WyJwdWJsaWMucG9zdHMiLDIxXQ>; rel="next", </api/posts?order=title.asc&limit=2&count=true&before=WyJwdWJsaWMucG9zdHMiLDEzXQ>; rel="prev"
+Link: </posts?order=title.asc&limit=2&count=true&after=WyJwdWJsaWMucG9zdHMiLDIxXQ>; rel="next", </posts?order=title.asc&limit=2&count=true&before=WyJwdWJsaWMucG9zdHMiLDEzXQ>; rel="prev"
 
 [{"id":13,"title":"Notes","author_id":2,"published":true},
  {"id":21,"title":"Plans","author_id":2,"published":true}]
@@ -181,11 +181,11 @@ Link: </api/posts?order=title.asc&limit=2&count=true&after=WyJwdWJsaWMucG9zdHMiL
 Back to page 1 via `rel="prev"` — same order, same rows as the first call:
 
 ```console
-$ curl -si 'localhost:8080/api/posts?order=title.asc&limit=2&count=true&before=WyJwdWJsaWMucG9zdHMiLDEzXQ'
+$ curl -si 'localhost:8080/posts?order=title.asc&limit=2&count=true&before=WyJwdWJsaWMucG9zdHMiLDEzXQ'
 HTTP/1.1 200 OK
 X-Total-Count: 5
 X-Next-Cursor: WyJwdWJsaWMucG9zdHMiLDJd
-Link: </api/posts?order=title.asc&limit=2&count=true&after=WyJwdWJsaWMucG9zdHMiLDJd>; rel="next"
+Link: </posts?order=title.asc&limit=2&count=true&after=WyJwdWJsaWMucG9zdHMiLDJd>; rel="next"
 
 [{"id":7,"title":"Hello","author_id":1,"published":true},
  {"id":2,"title":"Intro","author_id":1,"published":false}]
@@ -214,7 +214,7 @@ The total also decides the [status](#status-206-and-416) of the page.
 |---|---|---|
 | `count=exact` | exact, after filters, distinct-aware | the `count(*)` subquery above |
 | `count=planned` | `pg_class.reltuples` of the table — the planner's row statistic, as current as the last `ANALYZE` / autovacuum; for a partitioned table the sum over its leaf partitions (`pg_partition_tree`) | `(SELECT CASE WHEN pc.relkind = 'p' THEN coalesce(<sum of leaf reltuples>, <exact>) WHEN pc.relhassubclass OR pc.reltuples < 0 THEN <exact> ELSE pc.reltuples::bigint END FROM pg_catalog.pg_class pc WHERE pc.oid = '"public"."users"'::regclass)`; the exact count is used when the table (or any leaf partition) was never analysed (`reltuples = -1`), when a leaf is not a plain table (foreign / partitioned), and for legacy inheritance parents, whose statistic excludes the children a scan returns |
-| `count=estimated` | exact while the table has at most `server.max_page_size` rows, planned above (never below `max_page_size + 1`) | a bounded `count(*)` over `LIMIT max_page_size + 1` rows, then the planned expression |
+| `count=estimated` | exact while the table has at most `limits.max_page_size` rows, planned above (never below `max_page_size + 1`) | a bounded `count(*)` over `LIMIT max_page_size + 1` rows, then the planned expression |
 
 `planned`/`estimated` need an unfiltered scan of a table or materialized
 view **without row-level security**: with filters, `distinct=`, `!inner`
@@ -250,7 +250,7 @@ first page. An `offset` equal to the total is `206` with an empty page
 (PostgREST compares `offset > total`). Clients must treat `2xx` as success.
 
 ```console
-$ curl -sI -H 'Prefer: count=exact' 'localhost:8080/api/posts?limit=2&offset=2'
+$ curl -sI -H 'Prefer: count=exact' 'localhost:8080/posts?limit=2&offset=2'
 HTTP/1.1 206 Partial Content
 Content-Range: 2-3/5
 Preference-Applied: count=exact
@@ -274,9 +274,9 @@ nulls  := "nullsfirst" | "nullslast"
 ```
 
 ```http
-GET /api/posts?order=title                       -- ASC NULLS LAST
-GET /api/posts?order=published.desc,title.asc    -- DESC NULLS LAST, ASC NULLS LAST
-GET /api/users?order=mood.asc.nullsfirst
+GET /posts?order=title                       -- ASC NULLS LAST
+GET /posts?order=published.desc,title.asc    -- DESC NULLS LAST, ASC NULLS LAST
+GET /users?order=mood.asc.nullsfirst
 ```
 
 - Default direction `asc`. Nulls sort **last** in both directions unless
@@ -303,8 +303,8 @@ work (the anchor row's value is re-read by key).
 ordering:
 
 ```http
-GET /api/posts?order=users(email).asc            -- forward: by the author's email
-GET /api/users?order=posts(title).desc           -- backward: MAX(title) over the user's posts
+GET /posts?order=users(email).asc            -- forward: by the author's email
+GET /users?order=posts(title).desc           -- backward: MAX(title) over the user's posts
 ```
 
 Forward relations compile to a correlated scalar subquery; backward relations
@@ -324,7 +324,7 @@ orderings (the anchor's value is re-evaluated by the same subquery). With
 ### Computed columns
 
 ```http
-GET /api/users?order=post_count.desc
+GET /users?order=post_count.desc
 ```
 
 Not index-backed; bypasses the policy like computed filters. Set-returning
@@ -335,9 +335,9 @@ computed columns are not orderable; `@omit order` on the function comment,
 ### Full-text relevance, trigram and vector distance
 
 ```http
-GET /api/articles?search=wfts(english).fat%20cat&order=search.rank.desc
-GET /api/articles?order=title.trgm_dist&trgm=postgres&limit=10
-GET /api/items?order=embedding.vec_cos&vec=%5B0.1%2C0.2%2C0.3%5D&limit=10
+GET /articles?search=wfts(english).fat%20cat&order=search.rank.desc
+GET /articles?order=title.trgm_dist&trgm=postgres&limit=10
+GET /items?order=embedding.vec_cos&vec=%5B0.1%2C0.2%2C0.3%5D&limit=10
 ```
 
 `<col>.rank` / `<col>.rank_cd` order by `ts_rank` / `ts_rank_cd` against the
@@ -352,7 +352,7 @@ parameter in the same way. Details and the index policy in
 ### Distance (`postgis` plugin)
 
 ```http
-GET /api/places?order=location.dist.asc&near=SRID%3D4326%3BPOINT(-0.1281%2051.508)&limit=10
+GET /places?order=location.dist.asc&near=SRID%3D4326%3BPOINT(-0.1281%2051.508)&limit=10
 ```
 
 `<col>.dist` compiles to the KNN operator `<->` against `near=` (GeoJSON or
@@ -374,7 +374,7 @@ disabled (`400 invalid_filter`).
 ## `distinct=`
 
 ```http
-GET /api/users?distinct=mood&order=mood.asc&select=mood
+GET /users?distinct=mood&order=mood.asc&select=mood
 ```
 
 `distinct=col1,col2` compiles to `SELECT DISTINCT ON (col1, col2)`. The
@@ -390,41 +390,41 @@ effective order. Constraints:
 
 ## Cost limit
 
-`server.max_cost` (default 100000) rejects requests whose estimated row
+`limits.max_cost` (default 100000) rejects requests whose estimated row
 fan-out is too large, before any SQL runs:
 
 ```
 cost         = 1 + Σ mult(child) × cost(child)   over the selected items
-mult(list)   = explicit limit clamped to server.max_page_size,
-               else server.max_page_size                       (root list, to-many embed)
+mult(list)   = explicit limit clamped to limits.max_page_size,
+               else limits.max_page_size                       (root list, to-many embed)
 mult(other)  = 1                                                (columns, forward embeds)
-cost(column) = 1   (a headline: 10 per 8192 characters of server.max_headline_document, 80 by default; a spatial value with buffer=: 1 + 5)
+cost(column) = 1   (a headline: 10 per 8192 characters of limits.max_headline_document, 80 by default; a spatial value with buffer=: 1 + 5)
 ```
 
 A list's multiplier is the number of rows its SQL can fetch: an embed
-without `limit` fetches up to `server.max_page_size` rows per parent, so it
+without `limit` fetches up to `limits.max_page_size` rows per parent, so it
 costs exactly what the same embed with `limit=<max_page_size>` costs —
 leaving the limit out never lowers an estimate. Set an embed `limit` (or
 `@costMultiplier`) to make nested selects cheaper.
 
 An aggregated list (a root or embed selecting an [aggregate
 function](aggregates.md#cost)) is costed as if it had no `limit` — at
-`server.max_page_size` — because `limit` bounds the groups
+`limits.max_page_size` — because `limit` bounds the groups
 it returns, not the rows the aggregate reads; each aggregate costs 1 like a
-column, and a total on an aggregated root adds `server.max_page_size` × its
+column, and a total on an aggregated root adds `limits.max_page_size` × its
 grouping keys. A [spread embed](api.md#spread-embeds) costs what the same
 embed costs; the items of a to-one spread in an aggregate select are
 grouping keys of the node they are spread into (spread grouping joins one
 row per scanned row). A set-returning computed column
 ([rpc.md](rpc.md)) has no SQL limit either: it costs 1 +
-`server.max_page_size` × the cost of its rows (its nested `select=`, embeds
+`limits.max_page_size` × the cost of its rows (its nested `select=`, embeds
 included; one value per row for a set of scalars).
 
 `@costMultiplier n` on an FK comment replaces the multiplier of that backward
 embed when `n` is lower — it only ever lowers an estimate (values < 1 are
 ignored). Over the limit → `400 cost_exceeded`.
 
-Example: `GET /api/users?select=id,posts(id,comments(id))&limit=20`:
+Example: `GET /users?select=id,posts(id,comments(id))&limit=20`:
 `comments` = 1 + 100 × 1 = 101, `posts` = 1 + 100 × (1 + 101) = 10201,
 request = 1 + 20 × (1 + 10201) = 204041 → `400 cost_exceeded` with the
 defaults. With `posts.limit=5&posts.comments.limit=5`: `comments` = 1 + 5 × 1
@@ -433,10 +433,10 @@ defaults. With `posts.limit=5&posts.comments.limit=5`: `comments` = 1 + 5 × 1
 Two details the formula leaves implicit, fixed here: each named column
 costs 1 and `*` costs the number of columns it expands to (a
 [headline](contrib.md#headlines) costs 10 per started 8192 characters of
-`server.max_headline_document`, 80 by default
+`limits.max_headline_document`, 80 by default
 (`pdbcore/contrib.HeadlineDocumentCost`), and a [`buffer=`](postgis.md#reprojection-simplification-buffers-and-precision)
 argument adds `pdbcore/postgis.BufferCost`, 5); a root list without
-an explicit `limit` uses its **effective** limit (`server.max_page_size`,
+an explicit `limit` uses its **effective** limit (`limits.max_page_size`,
 default 100) as the multiplier, and so does a backward embed without an
 explicit `limit` (`limit=0` included), since that is the limit its SQL
 applies.
@@ -446,10 +446,10 @@ applies.
 Backward embeds are paged independently, with the same defaults and cap:
 
 ```http
-GET /api/users?select=id,posts(id,title)&posts.limit=5&posts.offset=5&posts.order=title.desc
+GET /users?select=id,posts(id,title)&posts.limit=5&posts.offset=5&posts.order=title.desc
 ```
 
-- `<rel>.limit` (default and cap `server.max_page_size`), `<rel>.offset`,
+- `<rel>.limit` (default and cap `limits.max_page_size`), `<rel>.offset`,
   `<rel>.order` (same grammar as `order=`, PK tiebreaker appended).
 - Addressed by the relation key, or by the alias when the embed is aliased
   (`recent:posts(id)&recent.limit=3`).
@@ -467,7 +467,7 @@ offset-only.
 
 | Code | Status | When |
 |---|---|---|
-| `page_size_exceeded` | 400 | `limit` (or `<rel>.limit`) above `server.max_page_size` |
+| `page_size_exceeded` | 400 | `limit` (or `<rel>.limit`) above `limits.max_page_size` |
 | `keyset_unsupported` | 400 | `after`/`before` on a PK-less resource, `distinct=`, or a `SETOF` RPC; `offset` combined with `before`; a `Range` header combined with `after`/`before` |
 | `invalid_range` | 400 | `Range` header whose last item precedes the first, or that does not overlap `offset`/`limit` |
 | `range_not_satisfiable` | 416 | counted list whose `offset` (or `Range` start) is beyond the total |
@@ -475,7 +475,7 @@ offset-only.
 | `column_not_orderable` | 400 | `order=`/`distinct=` column excluded by the policy or `@omit order` |
 | `unknown_column` | 400 | unknown column / computed column in `order=` or `distinct=` |
 | `unknown_relation` | 400 | relation key in an `order=` path or per-embed param matches no FK of the resource |
-| `cost_exceeded` | 400 | estimated cost above `server.max_cost` |
+| `cost_exceeded` | 400 | estimated cost above `limits.max_cost` |
 | `invalid_filter` | 400 | malformed `order=` term, unknown direction/nulls token, `near` missing or unparseable |
 | `ambiguous_relation` | 400 | related order path without a required hint |
 

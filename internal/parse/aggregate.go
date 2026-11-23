@@ -119,7 +119,7 @@ func (p *parser) castType(raw string) (*plan.TypeRef, error) {
 func (p *parser) resolveAggregate(node *plan.Node, it selectItem, fn plan.AggFunc, colPart string) error {
 	res := node.Resource
 	if !p.opts.Aggregates {
-		return errf(CodeAggregatesDisabled, "aggregate functions are disabled; enable server.aggregates to use %s()", fn)
+		return errf(CodeAggregatesDisabled, "aggregate functions are disabled; enable aggregates.enabled to use %s()", fn)
 	}
 	if len(it.hints) > 0 {
 		return errf(CodeInvalidSelect, "hints (!%s) are only valid on embeds", strings.Join(it.hints, "!"))

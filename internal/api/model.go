@@ -362,7 +362,7 @@ type Composite struct {
 }
 
 // Domain is a domain documented as a named OpenAPI schema
-// (server.openapi_domains).
+// (schema.domains).
 type Domain struct {
 	// Name is the OpenAPI schema name (name, or "<schema>.<name>").
 	Name   string

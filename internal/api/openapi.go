@@ -491,7 +491,7 @@ func annotate(s *Schema, f *Field) *Schema {
 // composites, plugin extras, Problem), reusable Problem responses and one
 // path item per route.
 func (b *Builder) openAPI(built *Built) *Document {
-	base := b.Options.BasePath
+	base := strings.TrimSuffix(b.Options.ServerURL, "/") + b.Options.BasePath
 	if base == "" {
 		base = "/"
 	}
@@ -499,9 +499,13 @@ func (b *Builder) openAPI(built *Built) *Document {
 	if version == "" {
 		version = "dev"
 	}
+	title := b.Options.Title
+	if title == "" {
+		title = "pdbr"
+	}
 	doc := &Document{
 		OpenAPI: "3.1.0",
-		Info:    Info{Title: "pdbr", Version: version},
+		Info:    Info{Title: title, Version: version},
 		Servers: []Server{{URL: base}},
 		Paths:   map[string]*PathItem{},
 		Components: &Components{

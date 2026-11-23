@@ -12,7 +12,8 @@ This document is the URL and header reference. Filters live in
 ## Base path and routes
 
 Everything except the health endpoints is mounted under `server.base_path`
-(default `/api`; `""` mounts at the root). `{base}` below is that prefix.
+(default `""`: the root, as in PostgREST; `/api` prefixes every route with
+`/api`). `{base}` below is that prefix.
 
 | Method / route | Meaning | Status |
 |---|---|---|
@@ -25,11 +26,11 @@ Everything except the health endpoints is mounted under `server.base_path`
 | `PUT {base}/{table}/{pk}`, `…/by/{cols}/{vals}` | upsert of the row the path names (key from the path; body key columns optional, must match); only where every key column is writable | `201` inserted / `200` updated |
 | `PATCH {base}/{table}/{pk}`, `…/by/{cols}/{vals}` | partial update → row | `200` / `404` / `412` |
 | `DELETE {base}/{table}/{pk}`, `…/by/{cols}/{vals}` | delete → deleted row | `200` (`204` with `Prefer: return=minimal`) / `404` / `412` |
-| `PATCH`, `DELETE {base}/{table}?<filters>` | bulk write of every row the filters select → array of written rows; no filter → `400 unfiltered_mutation` unless `server.allow_unfiltered_mutations` ([mutations.md](mutations.md#bulk-patch--delete-by-filter)) | `200` (`204` with `Prefer: return=minimal`) |
+| `PATCH`, `DELETE {base}/{table}?<filters>` | bulk write of every row the filters select → array of written rows; no filter → `400 unfiltered_mutation` unless `mutations.allow_unfiltered` ([mutations.md](mutations.md#bulk-patch--delete-by-filter)) | `200` (`204` with `Prefer: return=minimal`) |
 | `GET {base}/{schema}/{table}…` | schema-qualified form of every route above | |
 | `GET {base}/rpc/{fn}?arg=v` | stable/immutable function | see [RPC](#rpc-functions) |
 | `POST {base}/rpc/{fn}` (JSON body `{arg: v}`) | any function; volatile via `GET` → `405` (`Allow: POST`) | |
-| `GET {base}/openapi.json` | OpenAPI 3.1 document (`server.openapi`, default true) | `200` |
+| `GET {base}/openapi.json` | OpenAPI 3.1 document (`openapi.enabled`, default true) | `200` |
 | `OPTIONS *` | CORS preflight when `server.cors_origins` is set | |
 | `GET /healthz`, `GET /readyz` | `{"status":"ok"}` — **not** under `{base}`; `/readyz` pings the database (`server.readyz_timeout`) | `200`, `/readyz` `503` `unavailable` when the database is unreachable |
 
@@ -48,7 +49,7 @@ For each table/view in `schema.schemas` the connection role can `SELECT`:
 | Postgres | pdbr |
 |---|---|
 | table `users` | resource `/users` (`/public/users` canonical; bare alias for `schema.schemas[0]`) |
-| rows | `GET /users` (`select`, filters, `order`, `limit`/`offset`, `after`/`before`, `count`, `distinct`; aggregates `select=mood,count()` with `server.aggregates`, [aggregates.md](aggregates.md)) |
+| rows | `GET /users` (`select`, filters, `order`, `limit`/`offset`, `after`/`before`, `count`, `distinct`; aggregates `select=mood,count()` with `aggregates.enabled`, [aggregates.md](aggregates.md)) |
 | primary key | `GET /users/{id}`, `PATCH`/`DELETE /users/{id}`, keyset cursors, `ETag` |
 | unique constraints | `GET /users/by/email/{email}` (+ `PATCH`/`DELETE`), `PUT /users?on_conflict=email` |
 | foreign keys | embeds `posts?select=*,users(*)` (forward) and `users?select=*,posts(*)` (backward), relation filters and order |
@@ -138,14 +139,14 @@ field     := name [ "(" k "=" v ("," k "=" v)* ")" ]      -- args only for spati
            | column [ jsonpath ] [ "::" type ]             -- JSON path and/or cast
 embed     := relkey [ "!" hint ]* "(" select ")"           -- hint := fk_name | column | "inner"
 name      := column | computed column | postgis, contrib, headline or score pseudo-column
-aggregate := "count()" | column [ jsonpath ] [ "::" type ] "." fn "()" [ "::" type ]   -- server.aggregates
+aggregate := "count()" | column [ jsonpath ] [ "::" type ] "." fn "()" [ "::" type ]   -- aggregates.enabled
 fn        := count | sum | avg | max | min | extent | union | collect | centroid
 jsonpath  := ( "->" step )* [ "->>" step ]                 -- at least one arrow
 step      := key | '"' any-but-quote '"' | [ "-" ] digits  -- object key or array index
 type      := allowlisted built-in scalar type | enum of the API
 ```
 
-Aggregate functions (off by default, `server.aggregates`) group the result
+Aggregate functions (off by default, `aggregates.enabled`) group the result
 by the other items of the same `select=` (columns and computed fields, not
 embeds): `select=author_id,count()`, `select=total:amount::numeric.sum()::text`,
 `select=id,posts(count())`. See [aggregates.md](aggregates.md) for grouping,
@@ -156,9 +157,9 @@ from PostgREST.
 ### Sparse fields and aliases
 
 ```http
-GET /api/users?select=id,email
-GET /api/users?select=id,n:email            -- alias: {"id": 1, "n": "a@b.c"}
-GET /api/users?select=*,post_count          -- all columns + a computed column
+GET /users?select=id,email
+GET /users?select=id,n:email            -- alias: {"id": 1, "n": "a@b.c"}
+GET /users?select=*,post_count          -- all columns + a computed column
 ```
 
 Unknown names → `400 unknown_column`. Two items answering under the same
@@ -187,7 +188,7 @@ such a column cannot be filtered, ordered, grouped or given to `max()` /
 `min()`.
 
 ```http
-GET /api/users?select=id,settings->theme,mode:settings->>theme,tags->0,address->>city
+GET /users?select=id,settings->theme,mode:settings->>theme,tags->0,address->>city
 ```
 
 ```json
@@ -214,7 +215,7 @@ GET /api/users?select=id,settings->theme,mode:settings->>theme,tags->0,address->
 response key stays the column's (or the path's last key):
 
 ```http
-GET /api/users?select=id::text,balance::int8,n:settings->n::int
+GET /users?select=id::text,balance::int8,n:settings->n::int
 ```
 
 ```json
@@ -243,17 +244,17 @@ An embed compiles to a `LEFT JOIN LATERAL` inside the same statement:
 | backward (the FK points at this table) | referencing table name | array (possibly empty) |
 
 ```http
-GET /api/posts?select=id,title,users(id,email)          -- forward: post → author
-GET /api/posts?select=id,title,author:users(email)      -- aliased
-GET /api/users?select=id,posts(id,title,comments(id))   -- backward, nested
+GET /posts?select=id,title,users(id,email)          -- forward: post → author
+GET /posts?select=id,title,author:users(email)      -- aliased
+GET /users?select=id,posts(id,title,comments(id))   -- backward, nested
 ```
 
 ```json
 [{"id": 1, "posts": [{"id": 7, "title": "Hello", "comments": [{"id": 3}]}]}]
 ```
 
-Nesting depth is bounded by `server.max_embed_depth` (default 5); deeper →
-`400 embed_depth_exceeded`. Cost is bounded by `server.max_cost` — see
+Nesting depth is bounded by `limits.max_depth` (default 5); deeper →
+`400 embed_depth_exceeded`. Cost is bounded by `limits.max_cost` — see
 [pagination.md](pagination.md#cost-limit).
 
 ### Spread embeds
@@ -262,8 +263,8 @@ Nesting depth is bounded by `server.max_embed_depth` (default 5); deeper →
 nesting them under a key (PostgREST 12):
 
 ```http
-GET /api/posts?select=id,...users(author:email,mood)
-GET /api/users?select=id,...posts(titles:title,ids:id)&posts.order=id.desc
+GET /posts?select=id,...users(author:email,mood)
+GET /users?select=id,...posts(titles:title,ids:id)&posts.order=id.desc
 ```
 
 ```json
@@ -302,9 +303,9 @@ backward key are `comments`; `posts` and `places` both point at `users`, but
 that is one FK per table and needs no hint.
 
 ```http
-GET /api/comments?select=id,parent:comments!parent_id(id,body)             -- forward by column
-GET /api/comments?select=id,replies:comments!comments_parent_id_fkey(id)   -- backward by FK name
-GET /api/posts?select=title,users!inner(email)&users.email=eq.a@b.c        -- inner
+GET /comments?select=id,parent:comments!parent_id(id,body)             -- forward by column
+GET /comments?select=id,replies:comments!comments_parent_id_fkey(id)   -- backward by FK name
+GET /posts?select=title,users!inner(email)&users.email=eq.a@b.c        -- inner
 ```
 
 - `!fk_constraint_name` / `!column` disambiguate. `!column` names a column of
@@ -322,8 +323,8 @@ paging, ordering and filters, addressed by the relation key (or its alias
 when one is given):
 
 ```http
-GET /api/users?select=id,posts(id,title)&posts.order=title.desc&posts.limit=5&posts.offset=5
-GET /api/users?select=id,posts(id,title)&posts.published=is.true
+GET /users?select=id,posts(id,title)&posts.order=title.desc&posts.limit=5&posts.offset=5
+GET /users?select=id,posts(id,title)&posts.published=is.true
 ```
 
 Without `!inner` a filter on a backward embed only narrows the embedded list;
@@ -360,7 +361,7 @@ valid_at)`, and `NOT ENFORCED` foreign keys. pdbr handles them like this:
 | `NOT ENFORCED` FK | an ordinary relation; the forward embed is `null` when no referenced row exists, even for `NOT NULL` FK columns (the OpenAPI property is nullable and says so) |
 
 ```http
-GET /api/booking_notes?select=id,note,room_bookings(guest,valid_at)
+GET /booking_notes?select=id,note,room_bookings(guest,valid_at)
 ```
 
 ```json
@@ -375,9 +376,9 @@ Nested writes over a `PERIOD` FK copy only the equality columns: see
 ### Computed columns and PostGIS
 
 ```http
-GET /api/users?select=id,post_count                       -- users_post_count(users) → "post_count"
-GET /api/places?select=name,location,location_srid,area_area
-GET /api/places?select=name,web:location(transform=3857),coarse:area(simplify=0.01)
+GET /users?select=id,post_count                       -- users_post_count(users) → "post_count"
+GET /places?select=name,location,location_srid,area_area
+GET /places?select=name,web:location(transform=3857),coarse:area(simplify=0.01)
 ```
 
 Computed columns come from stable/immutable functions whose first argument is
@@ -399,8 +400,8 @@ on output; GeoJSON or WKT/EWKT on input.
 ## RPC (functions)
 
 ```http
-GET  /api/rpc/search_posts?q=hello
-POST /api/rpc/search_posts            {"q": "hello"}
+GET  /rpc/search_posts?q=hello
+POST /rpc/search_posts            {"q": "hello"}
 ```
 
 - `GET` for stable/immutable functions, `POST` for any volatility. Volatile
@@ -501,8 +502,8 @@ drops the `text/csv` content and the `Accept` header parameter.
 | `Prefer: handling=strict` | unknown or malformed tokens → `400 invalid_preference` (default `handling=lenient` ignores them) |
 | `Prefer: handling=strict, max-affected=N` | `PATCH`/`DELETE` writing more than `N` rows → `400 max_affected_exceeded`, rolled back |
 | `Prefer: resolution=merge-duplicates\|ignore-duplicates` | `POST` upserts / skips conflicting rows on `?on_conflict=` or the PK ([mutations.md](mutations.md#post-with-prefer-resolution)) |
-| `Prefer: partial=items` | bulk `POST`/`PUT`: each element in its own savepoint, answered as a per-element report (`207` when one failed); needs `server.partial_bulk_writes`, else ignored (`400` under `handling=strict`) |
-| `Prefer: tx=commit\|rollback` | writes: commit or roll back (the result is still returned); needs `server.tx_end` `commit-allow-override` / `rollback-allow-override`, else ignored (`400` under `handling=strict`) |
+| `Prefer: partial=items` | bulk `POST`/`PUT`: each element in its own savepoint, answered as a per-element report (`207` when one failed); needs `transactions.partial.enabled`, else ignored (`400` under `handling=strict`) |
+| `Prefer: tx=commit\|rollback` | writes: commit or roll back (the result is still returned); needs `transactions.end` `commit-allow-override` / `rollback-allow-override`, else ignored (`400` under `handling=strict`) |
 | `Prefer: timezone=<IANA name>` | the transaction runs with that `timezone` (validated against `pg_timezone_names`); unknown → ignored (`400` under `handling=strict`) |
 | `?columns=a,b` on `POST`/`PUT`/`PATCH` | only those body keys are used; others ignored, omitted ones take `DEFAULT` ([mutations.md](mutations.md#columns)) |
 | `Prefer: missing=default` | accepted on `POST`/`PUT`; omitted keys always take their default in pdbr |
@@ -562,10 +563,10 @@ Cursor and `Link` details: [pagination.md](pagination.md).
 
 | Limit | Config | Over |
 |---|---|---|
-| page size | `server.max_page_size` (100) | `400 page_size_exceeded` (`limit=`); a `Range` header is clamped instead |
-| embed depth | `server.max_embed_depth` (5) | `400 embed_depth_exceeded` |
-| request cost | `server.max_cost` (100000) | `400 cost_exceeded` |
-| body size | `server.max_body_bytes` (1 MiB) | `413` |
+| page size | `limits.max_page_size` (100) | `400 page_size_exceeded` (`limit=`); a `Range` header is clamped instead |
+| embed depth | `limits.max_depth` (5) | `400 embed_depth_exceeded` |
+| request cost | `limits.max_cost` (100000) | `400 cost_exceeded` |
+| body size | `limits.max_body_bytes` (1 MiB) | `413` |
 | request time | `server.request_timeout` (30s) | `504` |
 | statement time | `database.statement_timeout` (25s) | `504` |
 
@@ -575,7 +576,7 @@ stable `code` extension:
 ```json
 {"type":"about:blank","title":"Conflict","status":409,
  "detail":"duplicate key value violates unique constraint \"users_email_key\"",
- "instance":"/api/users","code":"pg:23505"}
+ "instance":"/users","code":"pg:23505"}
 ```
 
 `errors.detail: dev` adds a `pg` object (`sqlstate`, `message`, `detail`,
@@ -593,7 +594,7 @@ functions `search_posts(q)` and `users_post_count(users)`.
 List with sparse fields, a filter and an embed:
 
 ```console
-$ curl -s 'localhost:8080/api/users?select=id,email,posts(id,title)&mood=eq.happy&limit=2'
+$ curl -s 'localhost:8080/users?select=id,email,posts(id,title)&mood=eq.happy&limit=2'
 ```
 ```json
 [{"id":1,"email":"a@b.c","posts":[{"id":7,"title":"Hello"}]},
@@ -603,12 +604,12 @@ $ curl -s 'localhost:8080/api/users?select=id,email,posts(id,title)&mood=eq.happ
 Total count and cursors:
 
 ```console
-$ curl -si 'localhost:8080/api/posts?order=title.asc&limit=2&count=true'
+$ curl -si 'localhost:8080/posts?order=title.asc&limit=2&count=true'
 HTTP/1.1 200 OK
 Content-Type: application/json; charset=utf-8
 X-Total-Count: 41
 X-Next-Cursor: WyJwdWJsaWMucG9zdHMiLDJd
-Link: </api/posts?order=title.asc&limit=2&count=true&after=WyJwdWJsaWMucG9zdHMiLDJd>; rel="next"
+Link: </posts?order=title.asc&limit=2&count=true&after=WyJwdWJsaWMucG9zdHMiLDJd>; rel="next"
 
 [{"id":7,"title":"Hello","author_id":1,"published":true},
  {"id":2,"title":"Intro","author_id":1,"published":false}]
@@ -617,20 +618,20 @@ Link: </api/posts?order=title.asc&limit=2&count=true&after=WyJwdWJsaWMucG9zdHMiL
 Single row by PK with ETag, then a conditional re-fetch:
 
 ```console
-$ curl -si 'localhost:8080/api/users/1?select=id,email,address'
+$ curl -si 'localhost:8080/users/1?select=id,email,address'
 HTTP/1.1 200 OK
 ETag: W/"9e107d9d372bb6826bd81d3542a419d6"
 
 {"id":1,"email":"a@b.c","address":{"street":"1 Main St","city":"Leeds","mood":"ok"}}
 
-$ curl -si -H 'If-None-Match: W/"9e107d9d372bb6826bd81d3542a419d6"' 'localhost:8080/api/users/1'
+$ curl -si -H 'If-None-Match: W/"9e107d9d372bb6826bd81d3542a419d6"' 'localhost:8080/users/1'
 HTTP/1.1 304 Not Modified
 ```
 
 Lookup by unique constraint, with a computed column:
 
 ```console
-$ curl -s 'localhost:8080/api/users/by/email/a%40b.c?select=id,post_count'
+$ curl -s 'localhost:8080/users/by/email/a%40b.c?select=id,post_count'
 {"id":1,"post_count":"3"}
 ```
 
@@ -639,27 +640,27 @@ Insert with a nested forward `connect`, minimal response:
 ```console
 $ curl -si -X POST -H 'Content-Type: application/json' -H 'Prefer: return=minimal' \
     -d '{"title":"New","published":false,"users":{"connect":{"id":1}}}' \
-    'localhost:8080/api/posts'
+    'localhost:8080/posts'
 HTTP/1.1 201 Created
-Location: /api/posts/42
+Location: /posts/42
 ```
 
 Conditional update:
 
 ```console
 $ curl -si -X PATCH -H 'Content-Type: application/json' -H 'If-Match: W/"stale"' \
-    -d '{"published":true}' 'localhost:8080/api/posts/42'
+    -d '{"published":true}' 'localhost:8080/posts/42'
 HTTP/1.1 412 Precondition Failed
 Content-Type: application/problem+json
 
 {"type":"about:blank","title":"Precondition Failed","status":412,
- "detail":"row has changed since it was read","instance":"/api/posts/42","code":"etag_mismatch"}
+ "detail":"row has changed since it was read","instance":"/posts/42","code":"etag_mismatch"}
 ```
 
 Set-returning RPC as CSV, filtered and ordered:
 
 ```console
-$ curl -s -H 'Accept: text/csv' 'localhost:8080/api/rpc/search_posts?q=hello&published=is.true&order=id.desc&limit=2'
+$ curl -s -H 'Accept: text/csv' 'localhost:8080/rpc/search_posts?q=hello&published=is.true&order=id.desc&limit=2'
 id,author_id,title,published
 9,2,Hello again,true
 7,1,Hello,true
@@ -668,7 +669,7 @@ id,author_id,title,published
 Nearest places to a point, with a pseudo-column:
 
 ```console
-$ curl -s 'localhost:8080/api/places?select=name,location_srid&order=location.dist.asc&near=SRID%3D4326%3BPOINT(-0.1281%2051.508)&limit=1'
+$ curl -s 'localhost:8080/places?select=name,location_srid&order=location.dist.asc&near=SRID%3D4326%3BPOINT(-0.1281%2051.508)&limit=1'
 [{"name":"Trafalgar Square","location_srid":4326}]
 ```
 

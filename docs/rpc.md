@@ -89,7 +89,7 @@ fixture, so `POST` only —, `search_posts(term text) SETOF posts`,
 | `void` | none | `204` | |
 | single row: table type or composite | object; `null` when the function returns NULL | `200` | `select=` (embeds for table types) |
 | `SETOF <table>` | array of objects | `200` | `select=`, filters, `order=`, `limit`/`offset`, `count=true` → `X-Total-Count`, `Accept: text/csv`; **offset paging only** (no `after`/`before`, no cursors, `Link` with `offset=`) |
-| `SETOF <scalar>` / `SETOF <composite>` | array of values / objects | `200` | `limit`/`offset` (`limit` defaults to and is capped by `server.max_page_size`; no `count`) |
+| `SETOF <scalar>` / `SETOF <composite>` | array of values / objects | `200` | `limit`/`offset` (`limit` defaults to and is capped by `limits.max_page_size`; no `count`) |
 | `auth.mint_type` composite (`SETOF` too) | signed HS256 JWT string (array of strings) | `200` | minted by `pdbcore/jwtmint` from the row's fields as claims |
 | `RETURNS TABLE(...)` / `SETOF record` with `OUT` params (two or more result columns) | array of objects, one key per result column | `200` | as `SETOF <table>`: `select=` (columns and aliases; no embeds), filters and `order=` on every result column that holds no composite, table row or raster (no index policy: the output is scanned), `limit`/`offset`, `count=true`, `Accept: text/csv`; offset paging only; a `raster` result column is left out of the rows |
 | `OUT` / `INOUT` params, not `SETOF` (two or more) | one object, one key per output parameter (all-null columns stay an object) | `200` | `select=` |
@@ -109,7 +109,7 @@ exposed. OpenAPI references the resource's read schema for such a value.
 `SETOF <table>` results honour the table's filter/order policy
 (`filters.indexed_only` etc.) — the function output is scanned, so the index
 policy is advisory here, but the same rules keep the surface predictable.
-`limit` defaults to and is capped by `server.max_page_size`.
+`limit` defaults to and is capped by `limits.max_page_size`.
 
 Settled: `SETOF <scalar>` / `SETOF <composite>` get `limit`/`offset` but no
 `count=true` (ignored).
@@ -121,7 +121,7 @@ output parameters, so `RETURNS TABLE` functions get exactly the `SETOF
 documents the rows as the `rpc.<fn path>` component schema:
 
 ```http
-GET /api/rpc/mood_counts?select=mood,n&n=gt.0&order=n.desc,mood&limit=5&count=true
+GET /rpc/mood_counts?select=mood,n&n=gt.0&order=n.desc,mood&limit=5&count=true
 ```
 
 (`mood_counts() RETURNS TABLE(mood mood, n bigint)`, golden
@@ -133,7 +133,7 @@ text)` is `rpc_record_row`.)
 Scalar:
 
 ```http
-POST /api/rpc/add_numbers
+POST /rpc/add_numbers
 {"a": 2, "b": 40}
 ```
 
@@ -158,7 +158,7 @@ SELECT 'null'::jsonb AS data FROM (SELECT "public"."noop"()) AS __v
 Single row (table type), with `select=`:
 
 ```http
-POST /api/rpc/publish_post?select=title,users(email)
+POST /rpc/publish_post?select=title,users(email)
 {"post_id": 7}
 ```
 
@@ -182,7 +182,7 @@ the function row.
 `SETOF <table>` with filters/order/paging/count:
 
 ```http
-GET /api/rpc/search_posts?term=rest&author_id=eq.1&order=id.desc&limit=20&count=true&select=id,title,users(email)
+GET /rpc/search_posts?term=rest&author_id=eq.1&order=id.desc&limit=20&count=true&select=id,title,users(email)
 ```
 
 ```sql
@@ -213,10 +213,10 @@ subquery (filter parameters repeat, as on table lists). `after`/`before` →
 `400 keyset_unsupported`. (`published` is not filterable under the default
 `filters.indexed_only`; add it to `filters.allow_columns` to filter on it.)
 
-`SETOF <scalar>` (`limit` defaults to `server.max_page_size`):
+`SETOF <scalar>` (`limit` defaults to `limits.max_page_size`):
 
 ```http
-GET /api/rpc/mood_moods?limit=5&offset=1
+GET /rpc/mood_moods?limit=5&offset=1
 ```
 
 ```sql
@@ -241,7 +241,7 @@ differs.
 ## Volatile functions are mutations
 
 - `POST` only; `GET` → `405 Allow: POST` (`HEAD` likewise).
-- Wrapped in a transaction under `transactions.mutations` (default), with
+- Wrapped in a transaction (every write is), with
   `transactions.isolation` and `transactions.max_retries` on `40001`/`40P01`
   (whole request re-run — the function must be safe to re-execute after a
   rolled-back attempt, which it is by definition since nothing committed).
@@ -359,7 +359,7 @@ CREATE FUNCTION users_post_count(u users) RETURNS bigint LANGUAGE sql STABLE AS 
 | Aspect | Rule |
 |---|---|
 | key | function name minus the `<table>_` prefix: `users_post_count` → `post_count`; `@name` overrides; a name matching a real column → real column wins, computed skipped with a warning |
-| selection | only via `select=` (never in `*`): `GET /api/users?select=id,post_count` |
+| selection | only via `select=` (never in `*`): `GET /users?select=id,post_count` |
 | SQL | `"public"."users_post_count"("u" => ROW(__t_1."id", __t_1."email", …)::"public"."users")` — an explicit `ROW(...)::table` cast rather than the bare alias, so the same expression works over any row source (`__mut` CTE in mutation responses, `__vis` / `__vis_n` visibility CTEs, function row sources) |
 | set-returning (`SETOF <scalar>` / `SETOF <table>`) | array field; `SETOF <table>` accepts a nested `select=` like an embed: `select=id,recent_posts(id,title)` |
 | `int8` result (`count(*)`) | serialized as string like `int8` columns |
@@ -372,7 +372,7 @@ CREATE FUNCTION users_post_count(u users) RETURNS bigint LANGUAGE sql STABLE AS 
 | OpenAPI | listed as a `readOnly` property of the resource schema, absent from `.insert`/`.update` |
 
 ```http
-GET /api/users/1?select=id,post_count
+GET /users/1?select=id,post_count
 ```
 
 ```sql

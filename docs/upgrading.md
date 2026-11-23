@@ -169,5 +169,116 @@ plugins:
   settings:
     advanced_filters: {relations: true, computed: true, relation_order: true, relations_opt_in: false, computed_opt_in: false}
     postgis: {filters: true, derived: true, ordering: true, projection: true, aggregates: true}
-    nested_mutations: {force_transactions: true, max_depth: 3, max_operations: 50}
+    nested_mutations: {max_depth: 3, max_operations: 50}
+```
+
+### Configuration regrouped
+
+pdbr 1.0 moves the request limits, the transaction policy and the OpenAPI
+switches out of `server`, using the same section and key names as pdbq for
+the concepts both products share (`limits.*`, `transactions.partial.*`,
+`schema.domains`, `aggregates.enabled`). Every item below is breaking.
+Loading a config or environment that uses an old key fails and names the
+new one (`unknown key server.tx_end: moved to transactions.end`,
+`unknown environment variable PDBR_SERVER_MAX__COST (server.max_cost):
+moved to PDBR_LIMITS_MAX__COST`); flags are renamed the same way
+(`--server.tx_end` is `--transactions.end`).
+
+- **`server.base_path` defaults to `""`** (was `/api`): the API is mounted
+  at the root, as in PostgREST, so `GET /api/users` is now `GET /users` and
+  the OpenAPI document is at `/openapi.json`. Set `server.base_path: /api`
+  to keep the old routes. Contract paths default to `<base_path>/<name>`,
+  so they move to `/<name>` too unless they set `path`. `pdbr config init`
+  no longer writes `base_path`.
+- **`limits` section.** `server.max_body_bytes`, `max_cost`,
+  `max_page_size` and `max_headline_document` moved to `limits.*`, and
+  `server.max_embed_depth` is `limits.max_depth`. `limits.max_body_bytes`
+  and `limits.max_cost` must now be `>= 1`.
+- **`transactions` section.** `server.tx_end` is `transactions.end`;
+  `server.partial_bulk_writes` / `partial_bulk_max_items` are
+  `transactions.partial.enabled` / `max_items`, the shape pdbq uses for its
+  partial mutations.
+- **Every write runs in a transaction.** `transactions.mutations` is
+  removed, and so is `plugins.settings.nested_mutations.force_transactions`
+  (it only mattered with `transactions.mutations: false`). Turning
+  transactions off for writes saved one round trip at most, and conflicted
+  with `transactions.end: rollback`, `Prefer: tx=`, `Prefer: max-affected`
+  and partial success, which all need one. Both keys are now unknown keys
+  (`unknown key transactions.mutations`); delete them.
+- **`openapi` section.** `server.openapi` is `openapi.enabled` (still on by
+  default; pdbq's schema document, introspection plus SDL, is on by default
+  too). New: `openapi.title` (`info.title`, default `pdbr`) and
+  `openapi.server_url`, an absolute origin put before the base path in
+  `servers[0].url` (default empty: the relative base path, as before).
+- **`schema.domains`** replaces `server.openapi_domains` (same name as in
+  pdbq, where it was `schema.domain_scalars`).
+- **`mutations.allow_unfiltered`** replaces
+  `server.allow_unfiltered_mutations`.
+- **`aggregates.enabled`** replaces `server.aggregates` (pdbq uses the same
+  key). The `400 aggregates_disabled` detail and the postgis plugin's
+  `aggregates` setting now name `aggregates.enabled`.
+- **Embedding API.** `config.Server` lost the moved fields (see
+  `Config.Limits`, `Config.OpenAPI`, `Config.Mutations`,
+  `Config.Aggregates`, `Config.TX`); `Config.TX` is pdbr's own
+  `config.TX` (no `Mutations`). `exec.Options.TxMutations` and
+  `nestedmutations.Settings.ForceTransactions` are gone.
+
+| 0.x | 1.0 | Notes |
+|---|---|---|
+| `server.base_path` default `/api` | `server.base_path` default `""` | set `/api` to keep the old routes |
+| `server.max_body_bytes` | `limits.max_body_bytes` | now `>= 1` |
+| `server.max_embed_depth` | `limits.max_depth` | |
+| `server.max_cost` | `limits.max_cost` | now `>= 1` |
+| `server.max_page_size` | `limits.max_page_size` | |
+| `server.max_headline_document` | `limits.max_headline_document` | |
+| `server.tx_end` | `transactions.end` | |
+| `server.partial_bulk_writes` | `transactions.partial.enabled` | |
+| `server.partial_bulk_max_items` | `transactions.partial.max_items` | |
+| `transactions.mutations` | — | removed: every write runs in a transaction |
+| `plugins.settings.nested_mutations.force_transactions` | — | removed |
+| `server.openapi` | `openapi.enabled` | |
+| — | `openapi.title` | default `pdbr` |
+| — | `openapi.server_url` | default empty (relative `servers[0].url`) |
+| `server.openapi_domains` | `schema.domains` | |
+| `server.allow_unfiltered_mutations` | `mutations.allow_unfiltered` | |
+| `server.aggregates` | `aggregates.enabled` | |
+| `PDBR_SERVER_MAX__BODY__BYTES` | `PDBR_LIMITS_MAX__BODY__BYTES` | |
+| `PDBR_SERVER_MAX__EMBED__DEPTH` | `PDBR_LIMITS_MAX__DEPTH` | |
+| `PDBR_SERVER_MAX__COST` | `PDBR_LIMITS_MAX__COST` | |
+| `PDBR_SERVER_MAX__PAGE__SIZE` | `PDBR_LIMITS_MAX__PAGE__SIZE` | |
+| `PDBR_SERVER_MAX__HEADLINE__DOCUMENT` | `PDBR_LIMITS_MAX__HEADLINE__DOCUMENT` | |
+| `PDBR_SERVER_TX__END` | `PDBR_TRANSACTIONS_END` | |
+| `PDBR_SERVER_PARTIAL__BULK__WRITES` | `PDBR_TRANSACTIONS_PARTIAL_ENABLED` | |
+| `PDBR_SERVER_PARTIAL__BULK__MAX__ITEMS` | `PDBR_TRANSACTIONS_PARTIAL_MAX__ITEMS` | |
+| `PDBR_TRANSACTIONS_MUTATIONS` | — | removed |
+| `PDBR_SERVER_OPENAPI` | `PDBR_OPENAPI_ENABLED` | |
+| `PDBR_SERVER_OPENAPI__DOMAINS` | `PDBR_SCHEMA_DOMAINS` | |
+| `PDBR_SERVER_ALLOW__UNFILTERED__MUTATIONS` | `PDBR_MUTATIONS_ALLOW__UNFILTERED` | |
+| `PDBR_SERVER_AGGREGATES` | `PDBR_AGGREGATES_ENABLED` | |
+| `--server.openapi`, `--server.openapi_domains`, `--server.allow_unfiltered_mutations`, `--server.aggregates`, `--server.tx_end`, `--server.partial_bulk_writes`, `--server.partial_bulk_max_items`, `--server.max_headline_document` | `--openapi.enabled`, `--schema.domains`, `--mutations.allow_unfiltered`, `--aggregates.enabled`, `--transactions.end`, `--transactions.partial.enabled`, `--transactions.partial.max_items`, `--limits.max_headline_document` | new: `--openapi.title`, `--openapi.server_url` |
+
+The regrouped sections, with their defaults:
+
+```yaml
+server:
+  addr: ":8080"
+  base_path: ""
+  request_timeout: 30s
+  readyz_timeout: 2s
+  cors_origins: []
+  compression: false
+  read_only: false
+  etags: true
+  csv: true
+  csv_escape_formulas: true
+openapi: {enabled: true, title: pdbr, server_url: ""}
+limits: {max_body_bytes: 1048576, max_depth: 5, max_cost: 100000, max_page_size: 100, max_headline_document: 65536}
+schema: {schemas: [public], cache_path: "", functions: true, expose_partitions: false, domains: true}
+mutations: {allow_unfiltered: false}
+aggregates: {enabled: false}
+transactions:
+  isolation: read_committed
+  max_retries: 0
+  end: commit
+  partial: {enabled: false, max_items: 1000}
 ```

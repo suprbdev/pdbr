@@ -16,26 +16,12 @@ database:
 server:
   # Listen address for the HTTP server.
   addr: ":8080"
-  # Prefix for every API route ("" mounts at the root). /healthz and /readyz are never prefixed.
-  base_path: "/api"
-  # Serve the OpenAPI 3.1 document at GET {base_path}/openapi.json (on by default; it reveals every table, column, relation and function to unauthenticated callers).
-  openapi: true
-  # Document each domain over a built-in type as a named component schema (its base type's schema, the domain's comment and constraints, pattern/minimum/maximum when a CHECK is a simple comparison) that columns, arguments and results reference. Off inlines the base type's schema.
-  openapi_domains: true
+  # Prefix for every API route, e.g. /api ("", the default, mounts at the root like PostgREST). /healthz and /readyz are never prefixed.
+  base_path: ""
   # Overall HTTP request timeout; expiry answers 504.
   request_timeout: "30s"
   # Timeout of the database ping behind GET /readyz; an unreachable or slow database answers 503 unavailable. /healthz stays a liveness check.
   readyz_timeout: "2s"
-  # Maximum accepted request body size in bytes; over answers 413.
-  max_body_bytes: 1048576
-  # Maximum select= embed nesting depth; deeper answers 400 embed_depth_exceeded.
-  max_embed_depth: 5
-  # Maximum estimated cost (1 + list multipliers) per request; over answers 400 cost_exceeded. A list counts the rows the SQL can fetch: its limit, else max_page_size (to-many embeds included). @costMultiplier smart comments tune the estimate.
-  max_cost: 100000
-  # Largest accepted limit (larger answers 400 page_size_exceeded); also the page size when limit is absent.
-  max_page_size: 100
-  # Characters of a document a full-text headline (<col>_headline) reads: a text document is cut to its first max_headline_document characters, a json or jsonb document longer than that gives a null headline. ts_headline re-parses its document on every call, so each headline costs 10 per started 8192 characters of this bound in max_cost.
-  max_headline_document: 65536
   # Allowed CORS origins (exact match, or '*' for any). Empty disables CORS headers and preflight entirely.
   cors_origins: []
   # Gzip responses for clients that send Accept-Encoding: gzip (off by default).
@@ -48,16 +34,26 @@ server:
   csv: true
   # Prefix CSV header and string cells that start with =, +, -, @, a tab or a carriage return with a single quote, so spreadsheets do not evaluate them as formulas (CSV injection). Numbers are never escaped. Disable only when every consumer reads the CSV as data.
   csv_escape_formulas: true
-  # Allow PATCH and DELETE on a collection route without a filter (every visible row). Off by default: such requests answer 400 unfiltered_mutation.
-  allow_unfiltered_mutations: false
-  # Allow aggregate functions in select= (count(), col.sum(), col.avg(), col.max(), col.min(); col.extent(), col.union(), col.collect(), col.centroid() on spatial columns), grouped by the other selected items. Off by default (PostgREST db-aggregates-enabled): an aggregate reads every row its filters match, which limit does not bound; requests answer 400 aggregates_disabled.
-  aggregates: false
-  # Let a bulk POST or PUT opt in (Prefer: partial=items) to running each element in its own savepoint, so a failing element is reported without rolling back the others. The response is then 207 with a per-element report whenever one failed. Off by default: the token is ignored, or 400 invalid_preference under handling=strict.
-  partial_bulk_writes: false
-  # Most elements a bulk POST or PUT may carry when it opts in with Prefer: partial=items; each element is its own statement and savepoint, so this bounds the round trips one request makes. Larger bodies answer 413 body_too_large.
-  partial_bulk_max_items: 1000
-  # How a write's transaction ends (PostgREST db-tx-end): commit, commit-allow-override, rollback or rollback-allow-override. rollback runs every write (POST, PUT, PATCH, DELETE, volatile RPCs) and discards its effects while still answering with the result; the -allow-override forms honour Prefer: tx=commit|rollback, echoed in Preference-Applied. Without an override form Prefer: tx= is ignored, or 400 invalid_preference under handling=strict.
-  tx_end: "commit"
+
+openapi:
+  # Serve the OpenAPI 3.1 document at GET {base_path}/openapi.json (on by default; it reveals every table, column, relation and function to unauthenticated callers, as pdbq's introspection does).
+  enabled: true
+  # The document's info.title.
+  title: "pdbr"
+  # Absolute URL of the API's origin as clients reach it (e.g. https://api.example.com behind a proxy), put before the base path in servers[0].url; empty gives the base path alone (a relative URL).
+  server_url: ""
+
+limits:
+  # Maximum accepted request body size in bytes; over answers 413.
+  max_body_bytes: 1048576
+  # Maximum select= embed nesting depth; deeper answers 400 embed_depth_exceeded.
+  max_depth: 5
+  # Maximum estimated cost (1 + list multipliers) per request; over answers 400 cost_exceeded. A list counts the rows the SQL can fetch: its limit, else max_page_size (to-many embeds included). @costMultiplier smart comments tune the estimate.
+  max_cost: 100000
+  # Largest accepted limit (larger answers 400 page_size_exceeded); also the page size when limit is absent.
+  max_page_size: 100
+  # Characters of a document a full-text headline (<col>_headline) reads: a text document is cut to its first max_headline_document characters, a json or jsonb document longer than that gives a null headline. ts_headline re-parses its document on every call, so each headline costs 10 per started 8192 characters of this bound in max_cost.
+  max_headline_document: 65536
 
 schema:
   # PostgreSQL schemas to expose.
@@ -68,12 +64,22 @@ schema:
   functions: true
   # Expose each partition of a partitioned table as a resource of its own. Off by default: a partition's rows are already reachable (and writable) through its partitioned parent, which stays a resource either way.
   expose_partitions: false
+  # Document each domain over a built-in type as a named component schema (its base type's schema, the domain's comment and constraints, pattern/minimum/maximum when a CHECK is a simple comparison) that columns, arguments and results reference. Off inlines the base type's schema.
+  domains: true
 
 filters:
   # Only allow filtering on columns covered by an index (default policy).
   indexed_only: true
   # Per-table extra filterable columns, keyed by schema.table, overriding indexed_only.
   allow_columns: {}
+
+mutations:
+  # Allow PATCH and DELETE on a collection route without a filter (every visible row). Off by default: such requests answer 400 unfiltered_mutation.
+  allow_unfiltered: false
+
+aggregates:
+  # Allow aggregate functions in select= (count(), col.sum(), col.avg(), col.max(), col.min(); col.extent(), col.union(), col.collect(), col.centroid() on spatial columns), grouped by the other selected items, on every resource. Off by default (PostgREST db-aggregates-enabled): an aggregate reads every row its filters match, which limit does not bound; requests answer 400 aggregates_disabled.
+  enabled: false
 
 auth:
   # Credential source: 'jwt' (verify a bearer JWT), 'headers' (claims set by a trusted gateway) or 'none' (no credentials: every request is anonymous).
@@ -126,12 +132,18 @@ claims:
   json_setting: ""
 
 transactions:
-  # Wrap every mutation in a transaction.
-  mutations: true
   # Transaction isolation level: read_committed, repeatable_read, serializable.
   isolation: "read_committed"
   # Automatic retries of a transactional operation after a serialization failure or deadlock (SQLSTATE 40001/40P01). 0 disables; the whole operation re-runs, which is safe because the failed attempt rolled back.
   max_retries: 0
+  # How a write's transaction ends (PostgREST db-tx-end): commit, commit-allow-override, rollback or rollback-allow-override. rollback runs every write (POST, PUT, PATCH, DELETE, volatile RPCs) and discards its effects while still answering with the result; the -allow-override forms honour Prefer: tx=commit|rollback, echoed in Preference-Applied. Without an override form Prefer: tx= is ignored, or 400 invalid_preference under handling=strict.
+  end: "commit"
+  # Partial success: each element of a bulk POST or PUT in its own savepoint.
+  partial:
+    # Let a bulk POST or PUT opt in (Prefer: partial=items) to running each element in its own savepoint, so a failing element is reported without rolling back the others. The response is then 207 with a per-element report whenever one failed. Off by default: the token is ignored, or 400 invalid_preference under handling=strict.
+    enabled: false
+    # Most elements a bulk POST or PUT may carry when it opts in with Prefer: partial=items; each element is its own statement and savepoint, so this bounds the round trips one request makes. Larger bodies answer 413 body_too_large.
+    max_items: 1000
 
 watch:
   # Re-introspect and hot-swap the schema on DDL changes (dev only; refuses to combine with schema.cache_path).
@@ -172,12 +184,10 @@ plugins:
       ordering: true
       # select= projection arguments: col(transform=...,simplify=...,buffer=...,precision=...).
       projection: true
-      # Spatial aggregate functions in select= (col.extent(), col.union(), col.collect(), col.centroid()); also needs server.aggregates.
+      # Spatial aggregate functions in select= (col.extent(), col.union(), col.collect(), col.centroid()); also needs aggregates.enabled.
       aggregates: true
     # nested_mutations plugin: related rows written in the same statement as a POST or PATCH.
     nested_mutations:
-      # Run every request carrying nested keys in a transaction, even with transactions.mutations off.
-      force_transactions: true
       # Deepest nesting of create/update operations (the root row is depth 1; connect, delete and disconnect add no level); deeper answers 400 embed_depth_exceeded.
       max_depth: 3
       # Most nested operations per request (every list item and forward operation counts once); more answers 400 invalid_body.

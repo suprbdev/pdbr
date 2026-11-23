@@ -72,16 +72,16 @@ const (
 // Options tune the parser; zero values fall back to the documented defaults
 // (max_embed_depth 5, max_page_size 100) so a zero Options is usable.
 type Options struct {
-	// MaxEmbedDepth is server.max_embed_depth (embed nesting limit).
+	// MaxEmbedDepth is limits.max_depth (embed nesting limit).
 	MaxEmbedDepth int
-	// MaxPageSize is server.max_page_size: default and cap for limit and
+	// MaxPageSize is limits.max_page_size: default and cap for limit and
 	// <rel>.limit.
 	MaxPageSize int
 	// Etags is server.etags; when false If-Match / If-None-Match are ignored.
 	Etags bool
 	// CSV is server.csv; when false Accept: text/csv is never satisfiable.
 	CSV bool
-	// Aggregates is server.aggregates: aggregate functions in select=
+	// Aggregates is aggregates.enabled: aggregate functions in select=
 	// (count(), col.sum(), ...). When false any aggregate is 400
 	// aggregates_disabled.
 	Aggregates bool
@@ -90,21 +90,21 @@ type Options struct {
 	// geometry and geography columns (postgis plugin); they also need
 	// Aggregates.
 	SpatialAggregates bool
-	// AllowUnfilteredMutations is server.allow_unfiltered_mutations: when
+	// AllowUnfilteredMutations is mutations.allow_unfiltered: when
 	// false a PATCH or DELETE on a list route without a root filter is 400
 	// unfiltered_mutation.
 	AllowUnfilteredMutations bool
-	// PartialBulk is server.partial_bulk_writes: whether Prefer: partial=items
+	// PartialBulk is transactions.partial.enabled: whether Prefer: partial=items
 	// is honoured on bulk POST and PUT.
 	PartialBulk bool
-	// PartialBulkMaxItems is server.partial_bulk_max_items: the most
+	// PartialBulkMaxItems is transactions.partial.max_items: the most
 	// elements a Prefer: partial=items body may carry (0 means no limit).
 	PartialBulkMaxItems int
-	// MaxHeadlineDocument is server.max_headline_document: the characters
+	// MaxHeadlineDocument is limits.max_headline_document: the characters
 	// of a document a headline reads (plan.Headline.MaxDocument; <= 0:
 	// contrib.MaxHeadlineDocument).
 	MaxHeadlineDocument int
-	// TxEnd is server.tx_end: commit (default, "" too), commit-allow-override,
+	// TxEnd is transactions.end: commit (default, "" too), commit-allow-override,
 	// rollback or rollback-allow-override. It decides whether a write's
 	// transaction is rolled back and whether Prefer: tx= is honoured.
 	TxEnd string
@@ -215,7 +215,7 @@ func Parse(built *api.Built, m *api.Match, r *http.Request, opts Options) (*plan
 		}
 		if p.isBulkWrite() {
 			if req.Filter == nil && !hasInnerEmbed(req.Select) && !opts.AllowUnfilteredMutations {
-				return nil, errf(CodeUnfilteredMutation, "%s on %q without a filter would affect every row; add a filter (or enable server.allow_unfiltered_mutations)", method, resName(m.Resource))
+				return nil, errf(CodeUnfilteredMutation, "%s on %q without a filter would affect every row; add a filter (or enable mutations.allow_unfiltered)", method, resName(m.Resource))
 			}
 			if req.IfMatch != "" {
 				return nil, errf(CodeIfMatchUnsupported, "If-Match applies to single-row paths only; %s on the collection path cannot honour it", method)

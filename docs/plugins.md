@@ -10,7 +10,7 @@ app.Serve(ctx)
 
 // or mount inside an existing mux:
 h, err := app.Handler(ctx)   // introspect → plugins → api.Built → http.Handler
-mux.Handle("/api/", h)
+mux.Handle("/", h)
 ```
 
 (Out-of-process plugins — go-plugin/wasm — are a possible future direction; these interfaces
@@ -63,8 +63,8 @@ type Func func(ctx context.Context, req *compile.Request) (*compile.Statement, e
 type Request struct {
     Plan          *plan.Request // parsed URL grammar + body: selections, embeds, filters, order, page, mutation
     Built         *api.Built    // resource model + lookup tables the compiler consults
-    MaxEmbedDepth int           // server.max_embed_depth
-    MaxPageSize   int           // server.max_page_size (default and cap for limit)
+    MaxEmbedDepth int           // limits.max_depth
+    MaxPageSize   int           // limits.max_page_size (default and cap for limit)
 }
 
 type Statement struct {
@@ -83,7 +83,7 @@ type Operation struct {
     Claims   map[string]any     // verified request claims exposed to RLS policies
     Role     string             // database role this request runs as ("" = no switch)
     Mutation bool               // write semantics (tx, read_only, retries)
-    ForceTx  bool               // force a transaction even when transactions.mutations is off
+    ForceTx  bool               // force a transaction (reads; every write already runs in one)
 }
 ```
 
@@ -140,7 +140,7 @@ is passed to `pdbr.WithPlugins` already built); `plugins.settings` and
 ## Worked example: `path-prefix` + request logging
 
 A ~40-line plugin that puts every resource under a version prefix
-(`/api/v1_users`) and logs each request with its resolved role — one
+(`/v1_users`) and logs each request with its resolved role — one
 `InflectionHook`, one `RequestHook`, no core changes:
 
 ```go
@@ -194,7 +194,7 @@ app := pdbr.New(cfg, pdbr.WithPlugins(&prefix.Plugin{Prefix: "v1_", Log: logger}
 
 Because relation keys are derived from `relation_forward` /
 `relation_backward` — not from `resource_path` — embeds keep their table-name
-keys (`/api/v1_posts?select=*,users(name)`); the OpenAPI document follows the
+keys (`/v1_posts?select=*,users(name)`); the OpenAPI document follows the
 renamed paths automatically since it is generated from `api.Built`.
 
 `pdbr plugins list` then shows:
@@ -240,7 +240,7 @@ pdbr's defaults are already the raw names.
 | `smart_comments` | 50 | catalog, inflection, api | — |
 | `advanced_filters` | 150 | api | `relations` (true), `computed` (true), `relation_order` (true), `relations_opt_in` (false), `computed_opt_in` (false) |
 | `postgis` | 160 | api | `filters`, `derived`, `ordering`, `projection`, `aggregates` (all true) |
-| `nested_mutations` | 200 | api, compile, request | `force_transactions` (true), `max_depth` (3, `>= 1`), `max_operations` (50, `>= 1`) |
+| `nested_mutations` | 200 | api, compile, request | `max_depth` (3, `>= 1`), `max_operations` (50, `>= 1`) |
 
 Names are snake_case; the pre-1.0 kebab-case names (`smart-comments`,
 `advanced-filters`, `nested-mutations`) are rejected with a hint, and so
@@ -258,8 +258,7 @@ are `plugins.settings.advanced-filters` / `nested-mutations` (see
 | `postgis.derived` | `true` | `<col>_area`, `<col>_centroid`, …, raster `<col>_width`, `<col>_value`, … pseudo-columns |
 | `postgis.ordering` | `true` | `order=<col>.dist` and `<col>_distance` with `near=` |
 | `postgis.projection` | `true` | `select=col(transform=…,simplify=…,buffer=…,precision=…)` |
-| `postgis.aggregates` | `true` | spatial aggregates `col.extent()`, `union()`, `collect()`, `centroid()` (also need `server.aggregates`) |
-| `nested_mutations.force_transactions` | `true` | requests carrying nested keys run in a transaction even with `transactions.mutations: false` |
+| `postgis.aggregates` | `true` | spatial aggregates `col.extent()`, `union()`, `collect()`, `centroid()` (also need `aggregates.enabled`) |
 | `nested_mutations.max_depth` | `3` | deepest create/update nesting (root = 1) |
 | `nested_mutations.max_operations` | `50` | most nested operations per request |
 
@@ -382,7 +381,7 @@ embeds it, from a `__vis_n` visibility CTE. Every `connect`, `update` and
 `delete` (and the addressed row of a `PATCH`) carries a
 `compile.GuardSQL` guard, so a lookup that matches nothing aborts the
 statement and answers `404 not_found`. **RequestHook** — sets `op.ForceTx`
-when the plan has nested keys (`force_transactions: false` opts out). Depth
+when the plan has nested keys. Depth
 beyond `max_depth` (default 3, root = 1) → `400 embed_depth_exceeded`; an
 operation the relation does not offer → `400 unknown_relation`. Full rules
 and the exact SQL shape:

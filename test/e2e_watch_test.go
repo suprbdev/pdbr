@@ -25,6 +25,7 @@ func watchServer(t *testing.T, dbURL string, logs *syncWriter, mutate func(*conf
 	t.Helper()
 	cfg := config.DefaultConfig()
 	cfg.Database.URL = dbURL
+	cfg.Server.BasePath = "/api"
 	cfg.UseConnectionIdentity()
 	cfg.Errors.Detail = "dev"
 	cfg.Watch.Enabled = true

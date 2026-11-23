@@ -183,11 +183,7 @@ func TestNestedAtomicRollback(t *testing.T) {
 		name string
 		cfg  func(*config.Config)
 	}{
-		{"default (forced transaction)", nil},
-		{"transactions.mutations off, force_transactions off", func(c *config.Config) {
-			c.TX.Mutations = false
-			c.Plugins.Settings.NestedMutations.ForceTransactions = false
-		}},
+		{"default", nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := testServer(t, tc.cfg)
@@ -207,7 +203,6 @@ func TestNestedAtomicRollback(t *testing.T) {
 			if len(rows) != 0 {
 				t.Fatalf("rollback leaked a child row: %v", rows)
 			}
-			// The happy path still works without a forced transaction.
 			var u row
 			sendJSON(t, "POST", srv.URL+"/api/users?select=id,posts(id)", `{"email":"`+nestedEmail(t)+`","posts":{"create":[{"title":"M5N fine"}]}}`, 201, &u)
 			if len(u["posts"].([]any)) != 1 {

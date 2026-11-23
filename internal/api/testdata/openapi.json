@@ -87,7 +87,7 @@
             "$ref": "#/components/parameters/query.parent_id"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.608c0edc"
+            "$ref": "#/components/parameters/header.Prefer.bd17feb3"
           },
           {
             "$ref": "#/components/parameters/header.Range"
@@ -254,7 +254,7 @@
             "$ref": "#/components/parameters/query.parent_id"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.608c0edc"
+            "$ref": "#/components/parameters/header.Prefer.bd17feb3"
           },
           {
             "$ref": "#/components/parameters/header.Range"
@@ -364,7 +364,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.e0c4bdaf"
+            "$ref": "#/components/parameters/header.Prefer.119da127"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -563,7 +563,7 @@
             "$ref": "#/components/parameters/query.on_conflict.9f24a859"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.3d660a5b"
+            "$ref": "#/components/parameters/header.Prefer.6c2644e4"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -763,7 +763,7 @@
           "comments"
         ],
         "summary": "Update the comments rows matching the filters",
-        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless server.allow_unfiltered_mutations is on.",
+        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless mutations.allow_unfiltered is on.",
         "operationId": "comments.bulk_update",
         "parameters": [
           {
@@ -775,7 +775,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.8766eda2"
+            "$ref": "#/components/parameters/header.Prefer.e75479e4"
           },
           {
             "$ref": "#/components/parameters/query.and"
@@ -898,7 +898,7 @@
           "comments"
         ],
         "summary": "Delete the comments rows matching the filters",
-        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless server.allow_unfiltered_mutations is on.",
+        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless mutations.allow_unfiltered is on.",
         "operationId": "comments.bulk_delete",
         "parameters": [
           {
@@ -910,7 +910,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.8766eda2"
+            "$ref": "#/components/parameters/header.Prefer.e75479e4"
           },
           {
             "$ref": "#/components/parameters/query.and"
@@ -1146,7 +1146,7 @@
             "$ref": "#/components/parameters/header.If-Match"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.b9bddbbb"
+            "$ref": "#/components/parameters/header.Prefer.9b06c908"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -1253,7 +1253,7 @@
             "$ref": "#/components/parameters/header.If-Match"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.b9bddbbb"
+            "$ref": "#/components/parameters/header.Prefer.9b06c908"
           }
         ],
         "responses": {
@@ -1385,7 +1385,7 @@
             "$ref": "#/components/parameters/query.type_code"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.608c0edc"
+            "$ref": "#/components/parameters/header.Prefer.bd17feb3"
           },
           {
             "$ref": "#/components/parameters/header.Range"
@@ -1549,7 +1549,7 @@
             "$ref": "#/components/parameters/query.type_code"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.608c0edc"
+            "$ref": "#/components/parameters/header.Prefer.bd17feb3"
           },
           {
             "$ref": "#/components/parameters/header.Range"
@@ -1659,7 +1659,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.e0c4bdaf"
+            "$ref": "#/components/parameters/header.Prefer.119da127"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -1858,7 +1858,7 @@
             "$ref": "#/components/parameters/query.on_conflict.9f24a859"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.3d660a5b"
+            "$ref": "#/components/parameters/header.Prefer.6c2644e4"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -2058,7 +2058,7 @@
           "events"
         ],
         "summary": "Update the events rows matching the filters",
-        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless server.allow_unfiltered_mutations is on.",
+        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless mutations.allow_unfiltered is on.",
         "operationId": "events.bulk_update",
         "parameters": [
           {
@@ -2070,7 +2070,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.8766eda2"
+            "$ref": "#/components/parameters/header.Prefer.e75479e4"
           },
           {
             "$ref": "#/components/parameters/query.and"
@@ -2190,7 +2190,7 @@
           "events"
         ],
         "summary": "Delete the events rows matching the filters",
-        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless server.allow_unfiltered_mutations is on.",
+        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless mutations.allow_unfiltered is on.",
         "operationId": "events.bulk_delete",
         "parameters": [
           {
@@ -2202,7 +2202,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.8766eda2"
+            "$ref": "#/components/parameters/header.Prefer.e75479e4"
           },
           {
             "$ref": "#/components/parameters/query.and"
@@ -2435,7 +2435,7 @@
             "$ref": "#/components/parameters/header.If-Match"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.b9bddbbb"
+            "$ref": "#/components/parameters/header.Prefer.9b06c908"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -2542,7 +2542,7 @@
             "$ref": "#/components/parameters/header.If-Match"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.b9bddbbb"
+            "$ref": "#/components/parameters/header.Prefer.9b06c908"
           }
         ],
         "responses": {
@@ -2662,7 +2662,7 @@
             "$ref": "#/components/parameters/query.not.or"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.608c0edc"
+            "$ref": "#/components/parameters/header.Prefer.bd17feb3"
           },
           {
             "$ref": "#/components/parameters/header.Range"
@@ -2802,7 +2802,7 @@
             "$ref": "#/components/parameters/query.not.or"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.608c0edc"
+            "$ref": "#/components/parameters/header.Prefer.bd17feb3"
           },
           {
             "$ref": "#/components/parameters/header.Range"
@@ -2942,7 +2942,7 @@
             "$ref": "#/components/parameters/query.area"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.608c0edc"
+            "$ref": "#/components/parameters/header.Prefer.bd17feb3"
           },
           {
             "$ref": "#/components/parameters/header.Range"
@@ -3112,7 +3112,7 @@
             "$ref": "#/components/parameters/query.area"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.608c0edc"
+            "$ref": "#/components/parameters/header.Prefer.bd17feb3"
           },
           {
             "$ref": "#/components/parameters/header.Range"
@@ -3222,7 +3222,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.e0c4bdaf"
+            "$ref": "#/components/parameters/header.Prefer.119da127"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -3421,7 +3421,7 @@
             "$ref": "#/components/parameters/query.on_conflict.9f24a859"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.3d660a5b"
+            "$ref": "#/components/parameters/header.Prefer.6c2644e4"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -3621,7 +3621,7 @@
           "places"
         ],
         "summary": "Update the places rows matching the filters",
-        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless server.allow_unfiltered_mutations is on.",
+        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless mutations.allow_unfiltered is on.",
         "operationId": "places.bulk_update",
         "parameters": [
           {
@@ -3633,7 +3633,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.8766eda2"
+            "$ref": "#/components/parameters/header.Prefer.e75479e4"
           },
           {
             "$ref": "#/components/parameters/query.and"
@@ -3759,7 +3759,7 @@
           "places"
         ],
         "summary": "Delete the places rows matching the filters",
-        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless server.allow_unfiltered_mutations is on.",
+        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless mutations.allow_unfiltered is on.",
         "operationId": "places.bulk_delete",
         "parameters": [
           {
@@ -3771,7 +3771,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.8766eda2"
+            "$ref": "#/components/parameters/header.Prefer.e75479e4"
           },
           {
             "$ref": "#/components/parameters/query.and"
@@ -4010,7 +4010,7 @@
             "$ref": "#/components/parameters/header.If-Match"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.b9bddbbb"
+            "$ref": "#/components/parameters/header.Prefer.9b06c908"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -4117,7 +4117,7 @@
             "$ref": "#/components/parameters/header.If-Match"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.b9bddbbb"
+            "$ref": "#/components/parameters/header.Prefer.9b06c908"
           }
         ],
         "responses": {
@@ -4252,7 +4252,7 @@
             "$ref": "#/components/parameters/query.title"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.608c0edc"
+            "$ref": "#/components/parameters/header.Prefer.bd17feb3"
           },
           {
             "$ref": "#/components/parameters/header.Range"
@@ -4419,7 +4419,7 @@
             "$ref": "#/components/parameters/query.title"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.608c0edc"
+            "$ref": "#/components/parameters/header.Prefer.bd17feb3"
           },
           {
             "$ref": "#/components/parameters/header.Range"
@@ -4529,7 +4529,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.e0c4bdaf"
+            "$ref": "#/components/parameters/header.Prefer.119da127"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -4728,7 +4728,7 @@
             "$ref": "#/components/parameters/query.on_conflict.9f24a859"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.3d660a5b"
+            "$ref": "#/components/parameters/header.Prefer.6c2644e4"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -4928,7 +4928,7 @@
           "posts"
         ],
         "summary": "Update the posts rows matching the filters",
-        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless server.allow_unfiltered_mutations is on.",
+        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless mutations.allow_unfiltered is on.",
         "operationId": "posts.bulk_update",
         "parameters": [
           {
@@ -4940,7 +4940,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.8766eda2"
+            "$ref": "#/components/parameters/header.Prefer.e75479e4"
           },
           {
             "$ref": "#/components/parameters/query.and"
@@ -5063,7 +5063,7 @@
           "posts"
         ],
         "summary": "Delete the posts rows matching the filters",
-        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless server.allow_unfiltered_mutations is on.",
+        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless mutations.allow_unfiltered is on.",
         "operationId": "posts.bulk_delete",
         "parameters": [
           {
@@ -5075,7 +5075,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.8766eda2"
+            "$ref": "#/components/parameters/header.Prefer.e75479e4"
           },
           {
             "$ref": "#/components/parameters/query.and"
@@ -5311,7 +5311,7 @@
             "$ref": "#/components/parameters/header.If-Match"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.b9bddbbb"
+            "$ref": "#/components/parameters/header.Prefer.9b06c908"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -5418,7 +5418,7 @@
             "$ref": "#/components/parameters/header.If-Match"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.b9bddbbb"
+            "$ref": "#/components/parameters/header.Prefer.9b06c908"
           }
         ],
         "responses": {
@@ -6813,7 +6813,7 @@
             "$ref": "#/components/parameters/header.Range-Unit"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.608c0edc"
+            "$ref": "#/components/parameters/header.Prefer.bd17feb3"
           }
         ],
         "responses": {
@@ -6956,7 +6956,7 @@
             "$ref": "#/components/parameters/header.Range-Unit"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.608c0edc"
+            "$ref": "#/components/parameters/header.Prefer.bd17feb3"
           }
         ],
         "responses": {
@@ -7714,7 +7714,7 @@
             "$ref": "#/components/parameters/query.moods"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.608c0edc"
+            "$ref": "#/components/parameters/header.Prefer.bd17feb3"
           },
           {
             "$ref": "#/components/parameters/header.Range"
@@ -7890,7 +7890,7 @@
             "$ref": "#/components/parameters/query.moods"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.608c0edc"
+            "$ref": "#/components/parameters/header.Prefer.bd17feb3"
           },
           {
             "$ref": "#/components/parameters/header.Range"
@@ -8000,7 +8000,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.e0c4bdaf"
+            "$ref": "#/components/parameters/header.Prefer.119da127"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -8209,7 +8209,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.3d660a5b"
+            "$ref": "#/components/parameters/header.Prefer.6c2644e4"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -8409,7 +8409,7 @@
           "users"
         ],
         "summary": "Update the users rows matching the filters",
-        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless server.allow_unfiltered_mutations is on.",
+        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless mutations.allow_unfiltered is on.",
         "operationId": "users.bulk_update",
         "parameters": [
           {
@@ -8421,7 +8421,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.8766eda2"
+            "$ref": "#/components/parameters/header.Prefer.e75479e4"
           },
           {
             "$ref": "#/components/parameters/query.and"
@@ -8553,7 +8553,7 @@
           "users"
         ],
         "summary": "Delete the users rows matching the filters",
-        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless server.allow_unfiltered_mutations is on.",
+        "description": "The filters select the rows (same grammar and filter policy as the list GET); a request without any filter answers 400 unfiltered_mutation unless mutations.allow_unfiltered is on.",
         "operationId": "users.bulk_delete",
         "parameters": [
           {
@@ -8565,7 +8565,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.8766eda2"
+            "$ref": "#/components/parameters/header.Prefer.e75479e4"
           },
           {
             "$ref": "#/components/parameters/query.and"
@@ -8809,7 +8809,7 @@
           {
             "name": "Prefer",
             "in": "header",
-            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. tx=commit | rollback ends the transaction accordingly (rollback still answers with the result; honoured only when server.tx_end is commit-allow-override or rollback-allow-override). timezone=<IANA name> sets the transaction's timezone (names from pg_timezone_names; unknown names are ignored).",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. tx=commit | rollback ends the transaction accordingly (rollback still answers with the result; honoured only when transactions.end is commit-allow-override or rollback-allow-override). timezone=<IANA name> sets the transaction's timezone (names from pg_timezone_names; unknown names are ignored).",
             "schema": {
               "type": "string"
             }
@@ -9001,7 +9001,7 @@
             "$ref": "#/components/parameters/header.If-Match"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.b9bddbbb"
+            "$ref": "#/components/parameters/header.Prefer.9b06c908"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -9103,7 +9103,7 @@
             "$ref": "#/components/parameters/header.If-Match"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.b9bddbbb"
+            "$ref": "#/components/parameters/header.Prefer.9b06c908"
           }
         ],
         "responses": {
@@ -9315,7 +9315,7 @@
             "$ref": "#/components/parameters/header.If-Match"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.b9bddbbb"
+            "$ref": "#/components/parameters/header.Prefer.9b06c908"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -9417,7 +9417,7 @@
             "$ref": "#/components/parameters/header.If-Match"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.b9bddbbb"
+            "$ref": "#/components/parameters/header.Prefer.9b06c908"
           }
         ],
         "responses": {
@@ -10640,42 +10640,42 @@
           "type": "string"
         }
       },
-      "header.Prefer.3d660a5b": {
+      "header.Prefer.119da127": {
         "name": "Prefer",
         "in": "header",
-        "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. tx=commit | rollback ends the transaction accordingly (rollback still answers with the result; honoured only when server.tx_end is commit-allow-override or rollback-allow-override). timezone=<IANA name> sets the transaction's timezone (names from pg_timezone_names; unknown names are ignored). partial=items (bulk body; honoured only when server.partial_bulk_writes is on) runs each element in its own savepoint and answers the per-element report.",
+        "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. tx=commit | rollback ends the transaction accordingly (rollback still answers with the result; honoured only when transactions.end is commit-allow-override or rollback-allow-override). timezone=<IANA name> sets the transaction's timezone (names from pg_timezone_names; unknown names are ignored). partial=items (bulk body; honoured only when transactions.partial.enabled is on) runs each element in its own savepoint: a failing element is reported without rolling back the others, and the response is the per-element report (207 when one failed). resolution=merge-duplicates upserts on the conflict target (the primary key or ?on_conflict=; needs the PUT method), resolution=ignore-duplicates skips conflicting rows (only inserted rows are returned; a skipped single object answers 204). missing=default is accepted and changes nothing: keys absent from a bulk element always take the column DEFAULT.",
         "schema": {
           "type": "string"
         }
       },
-      "header.Prefer.608c0edc": {
+      "header.Prefer.6c2644e4": {
         "name": "Prefer",
         "in": "header",
-        "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to server.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
+        "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. tx=commit | rollback ends the transaction accordingly (rollback still answers with the result; honoured only when transactions.end is commit-allow-override or rollback-allow-override). timezone=<IANA name> sets the transaction's timezone (names from pg_timezone_names; unknown names are ignored). partial=items (bulk body; honoured only when transactions.partial.enabled is on) runs each element in its own savepoint and answers the per-element report.",
         "schema": {
           "type": "string"
         }
       },
-      "header.Prefer.8766eda2": {
+      "header.Prefer.9b06c908": {
         "name": "Prefer",
         "in": "header",
-        "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. tx=commit | rollback ends the transaction accordingly (rollback still answers with the result; honoured only when server.tx_end is commit-allow-override or rollback-allow-override). timezone=<IANA name> sets the transaction's timezone (names from pg_timezone_names; unknown names are ignored). max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing. count=exact|planned|estimated puts the number of written rows into the Content-Range total.",
+        "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. tx=commit | rollback ends the transaction accordingly (rollback still answers with the result; honoured only when transactions.end is commit-allow-override or rollback-allow-override). timezone=<IANA name> sets the transaction's timezone (names from pg_timezone_names; unknown names are ignored). max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
         "schema": {
           "type": "string"
         }
       },
-      "header.Prefer.b9bddbbb": {
+      "header.Prefer.bd17feb3": {
         "name": "Prefer",
         "in": "header",
-        "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. tx=commit | rollback ends the transaction accordingly (rollback still answers with the result; honoured only when server.tx_end is commit-allow-override or rollback-allow-override). timezone=<IANA name> sets the transaction's timezone (names from pg_timezone_names; unknown names are ignored). max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing.",
+        "description": "count=exact (like count=true) | planned (pg_class.reltuples) | estimated (exact up to limits.max_page_size rows, planned above) adds the total to Content-Range and X-Total-Count; planned/estimated fall back to exact for filtered, distinct, !inner or function requests and for views and RLS-enabled tables (Preference-Applied names the mode used). handling=strict answers 400 invalid_preference for unknown or malformed preferences.",
         "schema": {
           "type": "string"
         }
       },
-      "header.Prefer.e0c4bdaf": {
+      "header.Prefer.e75479e4": {
         "name": "Prefer",
         "in": "header",
-        "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. tx=commit | rollback ends the transaction accordingly (rollback still answers with the result; honoured only when server.tx_end is commit-allow-override or rollback-allow-override). timezone=<IANA name> sets the transaction's timezone (names from pg_timezone_names; unknown names are ignored). partial=items (bulk body; honoured only when server.partial_bulk_writes is on) runs each element in its own savepoint: a failing element is reported without rolling back the others, and the response is the per-element report (207 when one failed). resolution=merge-duplicates upserts on the conflict target (the primary key or ?on_conflict=; needs the PUT method), resolution=ignore-duplicates skips conflicting rows (only inserted rows are returned; a skipped single object answers 204). missing=default is accepted and changes nothing: keys absent from a bulk element always take the column DEFAULT.",
+        "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. tx=commit | rollback ends the transaction accordingly (rollback still answers with the result; honoured only when transactions.end is commit-allow-override or rollback-allow-override). timezone=<IANA name> sets the transaction's timezone (names from pg_timezone_names; unknown names are ignored). max-affected=<n> (with handling=strict): touching more than n rows answers 400 max_affected_exceeded and writes nothing. count=exact|planned|estimated puts the number of written rows into the Content-Range total.",
         "schema": {
           "type": "string"
         }
@@ -10683,7 +10683,7 @@
       "header.Range": {
         "name": "Range",
         "in": "header",
-        "description": "Row window as <first>-<last> (inclusive, zero-based) or <first>- (PostgREST Range-Unit items): an alternative to offset/limit, intersected with them when both are given. The size is clamped to server.max_page_size. Answers 206 when a known total (count=) exceeds the returned rows and 416 when <first> is past it; an empty window is 400 invalid_range; not combinable with after/before.",
+        "description": "Row window as <first>-<last> (inclusive, zero-based) or <first>- (PostgREST Range-Unit items): an alternative to offset/limit, intersected with them when both are given. The size is clamped to limits.max_page_size. Answers 206 when a known total (count=) exceeds the returned rows and 416 when <first> is past it; an empty window is 400 invalid_range; not combinable with after/before.",
         "schema": {
           "type": "string"
         }
@@ -10850,7 +10850,7 @@
       "query.limit": {
         "name": "limit",
         "in": "query",
-        "description": "Page size (default and maximum server.max_page_size).",
+        "description": "Page size (default and maximum limits.max_page_size).",
         "schema": {
           "type": "integer",
           "minimum": 1,

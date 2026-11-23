@@ -148,7 +148,7 @@ func detailIs(want string) func(t *testing.T, res *http.Response, p problem) {
 // docs/errors.md "code vocabulary" table (dev detail; default server).
 func TestErrorCodeVocabulary(t *testing.T) {
 	errorsFixture(t)
-	srv := testServer(t, func(c *config.Config) { c.Server.MaxEmbedDepth = 2 }).URL
+	srv := testServer(t, func(c *config.Config) { c.Limits.MaxDepth = 2 }).URL
 	rows := []errorRow{
 		{name: "not_found route", path: "/api/nope", status: 404, code: "not_found"},
 		{name: "not_found row", path: "/api/users/999999", status: 404, code: "not_found"},
@@ -215,7 +215,7 @@ func TestErrorCodesNeedingConfig(t *testing.T) {
 		})
 	})
 	t.Run("body_too_large", func(t *testing.T) {
-		srv := testServer(t, func(c *config.Config) { c.Server.MaxBodyBytes = 64 }).URL
+		srv := testServer(t, func(c *config.Config) { c.Limits.MaxBodyBytes = 64 }).URL
 		big := `{"email":"` + strings.Repeat("x", 100) + `"}`
 		runRows(t, srv, []errorRow{
 			{name: "content-length", method: "POST", path: "/api/users", body: big, status: 413, code: "body_too_large"},
@@ -238,6 +238,7 @@ func TestErrorCodesNeedingConfig(t *testing.T) {
 		for _, detail := range []string{"dev", "prod"} {
 			cfg := config.DefaultConfig()
 			cfg.Database.URL = url
+			cfg.Server.BasePath = "/api"
 			cfg.UseConnectionIdentity()
 			cfg.Errors.Detail = detail
 			if err := cfg.Validate(); err != nil {

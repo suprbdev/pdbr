@@ -44,7 +44,7 @@ CREATE FUNCTION spot_x(s spot) RETURNS float8
 RESET search_path;
 `
 
-// TestDomains covers server.openapi_domains (on by default): a named
+// TestDomains covers schema.domains (on by default): a named
 // component schema per domain over a built-in type with pattern and bounds
 // from simple CHECKs, $refs from columns, arrays, bodies, RPC arguments and
 // results; and that domain columns and arguments filter, write and call
@@ -142,7 +142,7 @@ func TestDomains(t *testing.T) {
 	wantProblem(t, res, body, 400, "pg:23514")
 }
 
-// TestDomainsOff checks that server.openapi_domains: false inlines the
+// TestDomainsOff checks that schema.domains: false inlines the
 // base type's schema.
 func TestDomainsOff(t *testing.T) {
 	dbURL := os.Getenv("PDBR_TEST_DATABASE_URL")
@@ -168,7 +168,7 @@ func TestDomainsOff(t *testing.T) {
 	}
 	srv := testServer(t, func(cfg *config.Config) {
 		cfg.Schema.Schemas = []string{"pdbr_domains"}
-		cfg.Server.OpenAPIDomains = false
+		cfg.Schema.Domains = false
 	}).URL
 	_, doc := fetchOpenAPI(t, srv)
 	schemas := doc["components"].(map[string]any)["schemas"].(map[string]any)

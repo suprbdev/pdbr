@@ -26,82 +26,90 @@ func TestDefaults(t *testing.T) {
 		t.Fatalf("defaults invalid: %v", err)
 	}
 	want := map[string]any{
-		"server.addr":                       ":8080",
-		"server.base_path":                  "/api",
-		"server.openapi":                    true,
-		"server.request_timeout":            30 * time.Second,
-		"server.readyz_timeout":             2 * time.Second,
-		"server.max_body_bytes":             int64(1 << 20),
-		"server.max_embed_depth":            5,
-		"server.max_cost":                   100000,
-		"server.max_page_size":              100,
-		"server.etags":                      true,
-		"server.csv":                        true,
-		"server.compression":                false,
-		"server.read_only":                  false,
-		"server.allow_unfiltered_mutations": false,
-		"server.aggregates":                 false,
-		"server.partial_bulk_writes":        false,
-		"server.partial_bulk_max_items":     1000,
-		"server.tx_end":                     "commit",
-		"database.statement_timeout":        25 * time.Second,
-		"auth.mode":                         auth.ModeJWT,
-		"auth.jwt.jwks_cache_ttl":           time.Hour,
-		"auth.jwt.role_claim_path":          "role",
-		"auth.headers.prefix":               "X-Pdbr-Claim-",
-		"auth.headers.role_claim":           "role",
-		"roles.switch":                      true,
-		"roles.anonymous":                   "",
-		"claims.prefix":                     "jwt.claims",
-		"claims.json_setting":               "",
-		"log.format":                        "text",
-		"watch.channel":                     "pdbr_ddl",
-		"database.max_conns":                int32(10),
-		"transactions.isolation":            "read_committed",
-		"transactions.max_retries":          0,
-		"errors.detail":                     "prod",
-		"metrics.enabled":                   false,
-		"metrics.path":                      "/metrics",
-		"metrics.addr":                      "",
+		"server.addr":                    ":8080",
+		"server.base_path":               "",
+		"server.request_timeout":         30 * time.Second,
+		"server.readyz_timeout":          2 * time.Second,
+		"server.etags":                   true,
+		"server.csv":                     true,
+		"server.compression":             false,
+		"server.read_only":               false,
+		"openapi.enabled":                true,
+		"openapi.title":                  "pdbr",
+		"openapi.server_url":             "",
+		"limits.max_body_bytes":          int64(1 << 20),
+		"limits.max_depth":               5,
+		"limits.max_cost":                100000,
+		"limits.max_page_size":           100,
+		"limits.max_headline_document":   65536,
+		"schema.domains":                 true,
+		"mutations.allow_unfiltered":     false,
+		"aggregates.enabled":             false,
+		"transactions.end":               "commit",
+		"transactions.partial.enabled":   false,
+		"transactions.partial.max_items": 1000,
+		"database.statement_timeout":     25 * time.Second,
+		"auth.mode":                      auth.ModeJWT,
+		"auth.jwt.jwks_cache_ttl":        time.Hour,
+		"auth.jwt.role_claim_path":       "role",
+		"auth.headers.prefix":            "X-Pdbr-Claim-",
+		"auth.headers.role_claim":        "role",
+		"roles.switch":                   true,
+		"roles.anonymous":                "",
+		"claims.prefix":                  "jwt.claims",
+		"claims.json_setting":            "",
+		"log.format":                     "text",
+		"watch.channel":                  "pdbr_ddl",
+		"database.max_conns":             int32(10),
+		"transactions.isolation":         "read_committed",
+		"transactions.max_retries":       0,
+		"errors.detail":                  "prod",
+		"metrics.enabled":                false,
+		"metrics.path":                   "/metrics",
+		"metrics.addr":                   "",
 	}
 	got := map[string]any{
-		"server.addr":                       cfg.Server.Addr,
-		"server.base_path":                  cfg.Server.BasePath,
-		"server.openapi":                    cfg.Server.OpenAPI,
-		"server.request_timeout":            cfg.Server.RequestTimeout,
-		"server.readyz_timeout":             cfg.Server.ReadyzTimeout,
-		"server.max_body_bytes":             cfg.Server.MaxBodyBytes,
-		"server.max_embed_depth":            cfg.Server.MaxEmbedDepth,
-		"server.max_cost":                   cfg.Server.MaxCost,
-		"server.max_page_size":              cfg.Server.MaxPageSize,
-		"server.etags":                      cfg.Server.Etags,
-		"server.csv":                        cfg.Server.CSV,
-		"server.compression":                cfg.Server.Compression,
-		"server.read_only":                  cfg.Server.ReadOnly,
-		"server.allow_unfiltered_mutations": cfg.Server.AllowUnfilteredMutations,
-		"server.aggregates":                 cfg.Server.Aggregates,
-		"server.partial_bulk_writes":        cfg.Server.PartialBulkWrites,
-		"server.partial_bulk_max_items":     cfg.Server.PartialBulkMaxItems,
-		"server.tx_end":                     cfg.Server.TxEnd,
-		"database.statement_timeout":        cfg.Database.StatementTimeout,
-		"auth.mode":                         cfg.Auth.Mode,
-		"auth.jwt.jwks_cache_ttl":           cfg.Auth.JWT.JWKSCacheTTL,
-		"auth.jwt.role_claim_path":          cfg.Auth.JWT.RoleClaimPath,
-		"auth.headers.prefix":               cfg.Auth.Headers.Prefix,
-		"auth.headers.role_claim":           cfg.Auth.Headers.RoleClaim,
-		"roles.switch":                      cfg.Roles.Switch,
-		"roles.anonymous":                   cfg.Roles.Anonymous,
-		"claims.prefix":                     cfg.Claims.Prefix,
-		"claims.json_setting":               cfg.Claims.JSONSetting,
-		"log.format":                        cfg.Log.Format,
-		"watch.channel":                     cfg.Watch.Channel,
-		"database.max_conns":                cfg.Database.MaxConns,
-		"transactions.isolation":            cfg.TX.Isolation,
-		"transactions.max_retries":          cfg.TX.MaxRetries,
-		"errors.detail":                     cfg.Errors.Detail,
-		"metrics.enabled":                   cfg.Metrics.Enabled,
-		"metrics.path":                      cfg.Metrics.Path,
-		"metrics.addr":                      cfg.Metrics.Addr,
+		"server.addr":                    cfg.Server.Addr,
+		"server.base_path":               cfg.Server.BasePath,
+		"server.request_timeout":         cfg.Server.RequestTimeout,
+		"server.readyz_timeout":          cfg.Server.ReadyzTimeout,
+		"server.etags":                   cfg.Server.Etags,
+		"server.csv":                     cfg.Server.CSV,
+		"server.compression":             cfg.Server.Compression,
+		"server.read_only":               cfg.Server.ReadOnly,
+		"openapi.enabled":                cfg.OpenAPI.Enabled,
+		"openapi.title":                  cfg.OpenAPI.Title,
+		"openapi.server_url":             cfg.OpenAPI.ServerURL,
+		"limits.max_body_bytes":          cfg.Limits.MaxBodyBytes,
+		"limits.max_depth":               cfg.Limits.MaxDepth,
+		"limits.max_cost":                cfg.Limits.MaxCost,
+		"limits.max_page_size":           cfg.Limits.MaxPageSize,
+		"limits.max_headline_document":   cfg.Limits.MaxHeadlineDocument,
+		"schema.domains":                 cfg.Schema.Domains,
+		"mutations.allow_unfiltered":     cfg.Mutations.AllowUnfiltered,
+		"aggregates.enabled":             cfg.Aggregates.Enabled,
+		"transactions.end":               cfg.TX.End,
+		"transactions.partial.enabled":   cfg.TX.Partial.Enabled,
+		"transactions.partial.max_items": cfg.TX.Partial.MaxItems,
+		"database.statement_timeout":     cfg.Database.StatementTimeout,
+		"auth.mode":                      cfg.Auth.Mode,
+		"auth.jwt.jwks_cache_ttl":        cfg.Auth.JWT.JWKSCacheTTL,
+		"auth.jwt.role_claim_path":       cfg.Auth.JWT.RoleClaimPath,
+		"auth.headers.prefix":            cfg.Auth.Headers.Prefix,
+		"auth.headers.role_claim":        cfg.Auth.Headers.RoleClaim,
+		"roles.switch":                   cfg.Roles.Switch,
+		"roles.anonymous":                cfg.Roles.Anonymous,
+		"claims.prefix":                  cfg.Claims.Prefix,
+		"claims.json_setting":            cfg.Claims.JSONSetting,
+		"log.format":                     cfg.Log.Format,
+		"watch.channel":                  cfg.Watch.Channel,
+		"database.max_conns":             cfg.Database.MaxConns,
+		"transactions.isolation":         cfg.TX.Isolation,
+		"transactions.max_retries":       cfg.TX.MaxRetries,
+		"errors.detail":                  cfg.Errors.Detail,
+		"metrics.enabled":                cfg.Metrics.Enabled,
+		"metrics.path":                   cfg.Metrics.Path,
+		"metrics.addr":                   cfg.Metrics.Addr,
 	}
 	for k, w := range want {
 		if !reflect.DeepEqual(got[k], w) {
@@ -200,12 +208,17 @@ func TestValidateRules(t *testing.T) {
 		"10 watch channel":           {func(c *Config) { c.Watch.Enabled = true; c.Watch.Channel = "bad$$chan" }, "watch.channel"},
 		"11 no schemas":              {func(c *Config) { c.Schema.Schemas = nil }, "schema.schemas"},
 		"12 max_retries":             {func(c *Config) { c.TX.MaxRetries = -1 }, "max_retries"},
-		"13 max page size":           {func(c *Config) { c.Server.MaxPageSize = 0 }, "max_page_size"},
+		"13 max page size":           {func(c *Config) { c.Limits.MaxPageSize = 0 }, "limits.max_page_size"},
 		"14 log level":               {func(c *Config) { c.Log.Level = "loud" }, "log.level"},
 		"15a base_path no slash":     {func(c *Config) { c.Server.BasePath = "api" }, "base_path"},
 		"15b base_path trailing":     {func(c *Config) { c.Server.BasePath = "/api/" }, "base_path"},
-		"16b tx_end":                 {func(c *Config) { c.Server.TxEnd = "maybe" }, "server.tx_end"},
-		"16 embed depth":             {func(c *Config) { c.Server.MaxEmbedDepth = 0 }, "max_embed_depth"},
+		"16b transactions.end":       {func(c *Config) { c.TX.End = "maybe" }, "transactions.end"},
+		"16 max depth":               {func(c *Config) { c.Limits.MaxDepth = 0 }, "limits.max_depth"},
+		"25a max body bytes":         {func(c *Config) { c.Limits.MaxBodyBytes = 0 }, "limits.max_body_bytes"},
+		"25b max cost":               {func(c *Config) { c.Limits.MaxCost = 0 }, "limits.max_cost"},
+		"26 partial max_items":       {func(c *Config) { c.TX.Partial.MaxItems = 0 }, "transactions.partial.max_items"},
+		"27a server_url relative":    {func(c *Config) { c.OpenAPI.ServerURL = "/api" }, "openapi.server_url"},
+		"27b server_url query":       {func(c *Config) { c.OpenAPI.ServerURL = "https://x.example?a=1" }, "openapi.server_url"},
 		"17a anon role none":         {func(c *Config) { c.Roles.Anonymous = "none" }, "roles.anonymous"},
 		"17b default role NONE":      {func(c *Config) { c.Roles.Default = "NONE" }, "roles.default"},
 		"17c allowed role none":      {func(c *Config) { c.Roles.Allowed = []string{"web_user", "None"} }, "roles.allowed"},
@@ -222,15 +235,15 @@ func TestValidateRules(t *testing.T) {
 		"20b metrics addr main":      {func(c *Config) { c.Metrics.Addr = ":8080" }, "metrics.addr"},
 		"21a metrics healthz":        {func(c *Config) { c.Metrics.Enabled = true; c.Metrics.Path = "/healthz" }, "collides"},
 		"21b metrics readyz":         {func(c *Config) { c.Metrics.Enabled = true; c.Metrics.Path = "/readyz" }, "collides"},
-		"21c metrics base_path":      {func(c *Config) { c.Metrics.Enabled = true; c.Metrics.Path = "/api" }, "collides"},
-		"21d metrics under base":     {func(c *Config) { c.Metrics.Enabled = true; c.Metrics.Path = "/api/metrics" }, "collides"},
+		"21c metrics base_path":      {func(c *Config) { c.Metrics.Enabled = true; c.Server.BasePath = "/api"; c.Metrics.Path = "/api" }, "collides"},
+		"21d metrics under base":     {func(c *Config) { c.Metrics.Enabled = true; c.Server.BasePath = "/api"; c.Metrics.Path = "/api/metrics" }, "collides"},
 		"21e metrics openapi": {func(c *Config) {
 			c.Metrics.Enabled = true
 			c.Server.BasePath = ""
 			c.Metrics.Path = "/openapi.json"
 		}, "collides"},
 		"22a contract name":    {func(c *Config) { c.Contracts = []confx.Contract{{Name: "Public"}} }, "contracts[0].name"},
-		"22b contract overlap": {func(c *Config) { c.Contracts = []confx.Contract{{Name: "a"}, {Name: "b", Path: "/api/a/b"}} }, "overlaps"},
+		"22b contract overlap": {func(c *Config) { c.Contracts = []confx.Contract{{Name: "a"}, {Name: "b", Path: "/a/b"}} }, "overlaps"},
 		"22c contract root":    {func(c *Config) { c.Contracts = []confx.Contract{{Name: "a", Path: "/"}, {Name: "b"}} }, "overlaps"},
 		"22d contract smart_comments": {func(c *Config) {
 			c.Contracts = []confx.Contract{{Name: "a"}}
@@ -239,7 +252,7 @@ func TestValidateRules(t *testing.T) {
 		"22e contract metrics": {func(c *Config) {
 			c.Contracts = []confx.Contract{{Name: "a"}}
 			c.Metrics.Enabled = true
-			c.Metrics.Path = "/api/a/metrics"
+			c.Metrics.Path = "/a/metrics"
 		}, "collides"},
 	}
 	for name, tc := range cases {
@@ -299,12 +312,12 @@ func TestValidateReportsAllViolations(t *testing.T) {
 	cfg := valid()
 	cfg.Errors.Detail = "x"
 	cfg.Log.Level = "y"
-	cfg.Server.MaxEmbedDepth = 0
+	cfg.Limits.MaxDepth = 0
 	err := cfg.Validate()
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	for _, s := range []string{"errors.detail", "log.level", "max_embed_depth"} {
+	for _, s := range []string{"errors.detail", "log.level", "limits.max_depth"} {
 		if !strings.Contains(err.Error(), s) {
 			t.Errorf("error %q missing %q", err, s)
 		}
@@ -336,7 +349,7 @@ roles:
 
 	fs := flag.NewFlagSet("t", flag.ContinueOnError)
 	fs.String("server.addr", "", "")
-	fs.Int("server.max_page_size", 0, "")
+	fs.Int("limits.max_page_size", 0, "")
 	if err := fs.Parse([]string{"--server.addr=:5555"}); err != nil {
 		t.Fatal(err)
 	}
@@ -362,11 +375,11 @@ roles:
 	if !cfg.Schema.ExposePartitions || !cfg.Schema.Functions {
 		t.Errorf("schema section = %+v", cfg.Schema)
 	}
-	if cfg.Server.MaxPageSize != 100 {
-		t.Errorf("unset flag clobbered default: %d", cfg.Server.MaxPageSize)
+	if cfg.Limits.MaxPageSize != 100 {
+		t.Errorf("unset flag clobbered default: %d", cfg.Limits.MaxPageSize)
 	}
-	if cfg.Server.MaxEmbedDepth != 5 {
-		t.Errorf("default lost: %d", cfg.Server.MaxEmbedDepth)
+	if cfg.Limits.MaxDepth != 5 {
+		t.Errorf("default lost: %d", cfg.Limits.MaxDepth)
 	}
 }
 
@@ -518,7 +531,7 @@ func TestExampleYAMLCoversEverything(t *testing.T) {
 			t.Errorf("pdbq wording leaked: %q", s)
 		}
 	}
-	if !strings.Contains(out, "base_path: \"/api\"") {
+	if !strings.Contains(out, "base_path: \"\"") || !strings.Contains(out, "title: \"pdbr\"") {
 		t.Error("defaults not rendered")
 	}
 }
@@ -535,6 +548,10 @@ func TestExampleYAMLMatchesCommittedFile(t *testing.T) {
 
 func TestContractBase(t *testing.T) {
 	cfg := DefaultConfig()
+	if got := cfg.ContractBase(confx.Contract{Name: "public"}); got != "/public" {
+		t.Errorf("ContractBase(public) at the root = %q", got)
+	}
+	cfg.Server.BasePath = "/api"
 	for _, tc := range []struct {
 		ct   confx.Contract
 		want string
@@ -554,5 +571,157 @@ func TestContractBase(t *testing.T) {
 	}
 	if _, err := cfg.Contract("nope"); err == nil {
 		t.Error("unknown contract accepted")
+	}
+}
+
+func TestLoadRegroupedKeysMoved(t *testing.T) {
+	values := map[string]string{
+		"server.max_body_bytes":             "10",
+		"server.max_embed_depth":            "2",
+		"server.max_cost":                   "10",
+		"server.max_page_size":              "10",
+		"server.max_headline_document":      "10",
+		"server.tx_end":                     "rollback",
+		"server.partial_bulk_writes":        "true",
+		"server.partial_bulk_max_items":     "10",
+		"server.openapi":                    "false",
+		"server.openapi_domains":            "false",
+		"server.allow_unfiltered_mutations": "true",
+		"server.aggregates":                 "true",
+	}
+	for old, to := range MovedKeys {
+		if !strings.HasPrefix(old, "server.") {
+			continue
+		}
+		v, ok := values[old]
+		if !ok {
+			t.Errorf("no test value for moved key %s", old)
+			continue
+		}
+		t.Run(old, func(t *testing.T) {
+			leaf := strings.TrimPrefix(old, "server.")
+			path := writeConfig(t, "auth:\n  mode: none\nroles:\n  switch: false\nserver:\n  "+leaf+": "+v+"\n")
+			_, err := Load(path, nil)
+			if want := "unknown key " + old + ": moved to " + to; err == nil || !strings.Contains(err.Error(), want) {
+				t.Errorf("yaml: err = %v, want %q", err, want)
+			}
+			env := "PDBR_SERVER_" + strings.ToUpper(strings.ReplaceAll(leaf, "_", "__"))
+			t.Setenv("PDBR_AUTH_MODE", "none")
+			t.Setenv("PDBR_ROLES_SWITCH", "false")
+			t.Setenv(env, v)
+			newEnv := "PDBR_" + strings.ToUpper(strings.ReplaceAll(strings.ReplaceAll(to, "_", "__"), ".", "_"))
+			_, err = Load("", nil)
+			if want := env + " (" + old + "): moved to " + newEnv; err == nil || !strings.Contains(err.Error(), want) {
+				t.Errorf("env: err = %v, want %q", err, want)
+			}
+		})
+	}
+}
+
+func TestLoadRemovedKeys(t *testing.T) {
+	for name, yaml := range map[string]string{
+		"transactions.mutations":                               "transactions:\n  mutations: true\n",
+		"plugins.settings.nested_mutations.force_transactions": "plugins:\n  settings:\n    nested_mutations:\n      force_transactions: true\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := Load(writeConfig(t, "auth:\n  mode: none\nroles:\n  switch: false\n"+yaml), nil)
+			if err == nil || !strings.Contains(err.Error(), "unknown key "+name) {
+				t.Fatalf("err = %v", err)
+			}
+		})
+	}
+	t.Setenv("PDBR_AUTH_MODE", "none")
+	t.Setenv("PDBR_ROLES_SWITCH", "false")
+	t.Setenv("PDBR_TRANSACTIONS_MUTATIONS", "false")
+	if _, err := Load("", nil); err == nil || !strings.Contains(err.Error(), "unknown environment variable PDBR_TRANSACTIONS_MUTATIONS") {
+		t.Fatalf("env err = %v", err)
+	}
+}
+
+func TestLoadRegroupedKeys(t *testing.T) {
+	path := writeConfig(t, `
+auth:
+  mode: none
+roles:
+  switch: false
+openapi:
+  enabled: false
+  title: Orders API
+  server_url: https://api.example.com
+limits:
+  max_body_bytes: 2048
+  max_depth: 3
+  max_cost: 500
+  max_page_size: 20
+  max_headline_document: 100
+schema:
+  domains: false
+mutations:
+  allow_unfiltered: true
+aggregates:
+  enabled: true
+transactions:
+  end: rollback-allow-override
+  partial:
+    enabled: true
+    max_items: 50
+`)
+	cfg, err := Load(path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.OpenAPI != (OpenAPI{Title: "Orders API", ServerURL: "https://api.example.com"}) {
+		t.Errorf("openapi = %+v", cfg.OpenAPI)
+	}
+	if cfg.Limits != (Limits{MaxBodyBytes: 2048, MaxDepth: 3, MaxCost: 500, MaxPageSize: 20, MaxHeadlineDocument: 100}) {
+		t.Errorf("limits = %+v", cfg.Limits)
+	}
+	if cfg.Schema.Domains || !cfg.Mutations.AllowUnfiltered || !cfg.Aggregates.Enabled {
+		t.Errorf("schema.domains / mutations / aggregates = %v %+v %+v", cfg.Schema.Domains, cfg.Mutations, cfg.Aggregates)
+	}
+	if cfg.TX.End != "rollback-allow-override" || cfg.TX.Partial != (Partial{Enabled: true, MaxItems: 50}) {
+		t.Errorf("transactions = %+v", cfg.TX)
+	}
+
+	for k, v := range map[string]string{
+		"PDBR_AUTH_MODE":                       "none",
+		"PDBR_ROLES_SWITCH":                    "false",
+		"PDBR_OPENAPI_ENABLED":                 "false",
+		"PDBR_OPENAPI_TITLE":                   "Env API",
+		"PDBR_OPENAPI_SERVER__URL":             "https://env.example.com",
+		"PDBR_LIMITS_MAX__DEPTH":               "4",
+		"PDBR_LIMITS_MAX__COST":                "700",
+		"PDBR_SCHEMA_DOMAINS":                  "false",
+		"PDBR_MUTATIONS_ALLOW__UNFILTERED":     "true",
+		"PDBR_AGGREGATES_ENABLED":              "true",
+		"PDBR_TRANSACTIONS_END":                "rollback",
+		"PDBR_TRANSACTIONS_PARTIAL_ENABLED":    "true",
+		"PDBR_TRANSACTIONS_PARTIAL_MAX__ITEMS": "200",
+	} {
+		t.Setenv(k, v)
+	}
+	cfg, err = Load("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.OpenAPI.Enabled || cfg.OpenAPI.Title != "Env API" || cfg.OpenAPI.ServerURL != "https://env.example.com" ||
+		cfg.Limits.MaxDepth != 4 || cfg.Limits.MaxCost != 700 || cfg.Schema.Domains || !cfg.Mutations.AllowUnfiltered ||
+		!cfg.Aggregates.Enabled || cfg.TX.End != "rollback" || cfg.TX.Partial != (Partial{Enabled: true, MaxItems: 200}) {
+		t.Errorf("env config = %+v %+v %+v %+v %+v", cfg.OpenAPI, cfg.Limits, cfg.Mutations, cfg.Aggregates, cfg.TX)
+	}
+
+	fs := flag.NewFlagSet("t", flag.ContinueOnError)
+	fs.String("transactions.end", "", "")
+	fs.Int("transactions.partial.max_items", 0, "")
+	fs.Bool("openapi.enabled", true, "")
+	if err := fs.Parse([]string{"--transactions.end=commit", "--transactions.partial.max_items=9", "--openapi.enabled=true"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = Load("", confx.ChangedFlags(fs, "config"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.TX.End != "commit" || cfg.TX.Partial.MaxItems != 9 || !cfg.OpenAPI.Enabled {
+		t.Errorf("flags = %+v %+v", cfg.TX, cfg.OpenAPI)
 	}
 }

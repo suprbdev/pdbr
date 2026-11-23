@@ -141,7 +141,7 @@ type FieldSel struct {
 	// Node is the nested select= of a SETOF <table> computed column
 	// (Computed.SetOf != nil); nil means "*".
 	Node *Node
-	// Agg is set for an aggregate function item (server.aggregates):
+	// Agg is set for an aggregate function item (aggregates.enabled):
 	// Column is its input column, nil for count() over whole rows.
 	Agg *Aggregate
 	// Path is the JSON path applied to Column (data->a->>b); for an
@@ -171,7 +171,7 @@ type Headline struct {
 	// parsed.
 	Filter *Cond
 	// MaxDocument is the number of characters of Document the headline
-	// reads (server.max_headline_document, contrib.HeadlineDocumentSQL); it
+	// reads (limits.max_headline_document, contrib.HeadlineDocumentSQL); it
 	// is bound as a parameter and prices the headline
 	// (contrib.HeadlineDocumentCost). <= 0 means
 	// contrib.MaxHeadlineDocument.
@@ -687,10 +687,10 @@ type RelationOrder struct {
 }
 
 // Page is the resolved paging. The parser always sets Limit (explicit or
-// server.max_page_size), on the request and on every Embed (forward embeds
+// limits.max_page_size), on the request and on every Embed (forward embeds
 // carry the default too; the compiler ignores it there).
 type Page struct {
-	Limit  int // always resolved: explicit or server.max_page_size
+	Limit  int // always resolved: explicit or limits.max_page_size
 	Offset int
 	After  []any // decoded cursor pk values (nil = absent)
 	Before []any
@@ -725,10 +725,10 @@ type Prefer struct {
 	// for keys absent from a bulk element, so it changes nothing).
 	MissingDefault bool
 	// Partial reports that Prefer: partial=items applies: a bulk POST or PUT
-	// whose elements each run in their own savepoint (server.partial_bulk_writes).
+	// whose elements each run in their own savepoint (transactions.partial.enabled).
 	Partial bool
 	// Rollback reports that the request runs in a transaction that is rolled
-	// back instead of committed: the server.tx_end default or an honoured
+	// back instead of committed: the transactions.end default or an honoured
 	// Prefer: tx=rollback. Only ever set on writes.
 	Rollback bool
 	// Timezone is the Prefer: timezone= value as written (surrounding quotes
@@ -758,7 +758,7 @@ const (
 	CountExact CountMode = "exact"
 	// CountPlanned is the table's pg_class.reltuples statistic.
 	CountPlanned CountMode = "planned"
-	// CountEstimated is exact up to server.max_page_size rows, planned above.
+	// CountEstimated is exact up to limits.max_page_size rows, planned above.
 	CountEstimated CountMode = "estimated"
 )
 

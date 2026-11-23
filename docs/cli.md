@@ -38,7 +38,7 @@ pdbr request METHOD PATH [--body @file|-|'{json}'] [--header 'K: V']... [--accep
 ```
 
 - `PATH` may omit `server.base_path`: `/users?select=id` and
-  `/api/users?select=id` are the same request. Everything after `?` is the
+  `/users?select=id` are the same request. Everything after `?` is the
   query string, so quote it for the shell.
 - `--body` takes inline JSON, `@file`, or `-` for stdin. Bodies are sent as
   `application/json`.
@@ -83,7 +83,7 @@ real request, so what you see is exactly what would run:
 
 ```console
 $ pdbr request GET '/users?select=id,email&mood=eq.happy&limit=2' --print-sql
--- request: GET /api/users?select=id,email&mood=eq.happy&limit=2
+-- request: GET /users?select=id,email&mood=eq.happy&limit=2
 SELECT coalesce(json_agg(...), '[]'::json) AS data FROM ...
 -- args: ["happy",2]
 ```

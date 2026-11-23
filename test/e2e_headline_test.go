@@ -286,7 +286,7 @@ func TestHeadlineDocumentBound(t *testing.T) {
 		return rows[0]
 	}
 
-	bounded := headlineServer(t, func(cfg *config.Config) { cfg.Server.MaxHeadlineDocument = 60 })
+	bounded := headlineServer(t, func(cfg *config.Config) { cfg.Limits.MaxHeadlineDocument = 60 })
 	execDDL(t, os.Getenv("PDBR_TEST_DATABASE_URL"), insert)
 	if r := headlines(bounded, 4); strings.Contains(r["h"].(string), "<b>") || r["r"] != nil {
 		t.Errorf("match past the bound: %v", r)
@@ -302,12 +302,12 @@ func TestHeadlineDocumentBound(t *testing.T) {
 	}
 
 	page := []string{"select=id,a:body_headline,b:body_headline(max_words=20)", "body=fts(english).cat", "limit=10"}
-	costly := headlineServer(t, func(cfg *config.Config) { cfg.Server.MaxCost = 1000 })
+	costly := headlineServer(t, func(cfg *config.Config) { cfg.Limits.MaxCost = 1000 })
 	res, body := get(t, hlURL(costly+"/api", "articles", page...))
 	wantProblem(t, res, body, 400, "cost_exceeded")
 	cheap := headlineServer(t, func(cfg *config.Config) {
-		cfg.Server.MaxCost = 1000
-		cfg.Server.MaxHeadlineDocument = 8192
+		cfg.Limits.MaxCost = 1000
+		cfg.Limits.MaxHeadlineDocument = 8192
 	})
 	if res, body := get(t, hlURL(cheap+"/api", "articles", page...)); res.StatusCode != 200 {
 		t.Errorf("headlines over an 8192-character bound = %d %s", res.StatusCode, body)

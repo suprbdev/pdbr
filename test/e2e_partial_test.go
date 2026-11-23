@@ -30,7 +30,7 @@ type partialReport struct {
 func partialServer(t *testing.T, mutate func(*config.Config)) string {
 	t.Helper()
 	return testServer(t, func(c *config.Config) {
-		c.Server.PartialBulkWrites = true
+		c.TX.Partial.Enabled = true
 		if mutate != nil {
 			mutate(c)
 		}
@@ -165,7 +165,7 @@ func TestPartialBulkConfigOff(t *testing.T) {
 
 func TestPartialBulkRollback(t *testing.T) {
 	sweep(t)
-	base := partialServer(t, func(c *config.Config) { c.Server.TxEnd = "commit-allow-override" })
+	base := partialServer(t, func(c *config.Config) { c.TX.End = "commit-allow-override" })
 	prefix := fmt.Sprintf("m3-partial-rb-%d", time.Now().UnixNano())
 	body := fmt.Sprintf(`[{"email":"%[1]s-a@example.com"},{"email":"%[1]s-a@example.com"},{"email":"%[1]s-b@example.com"}]`, prefix)
 	rep, hdr := partialPost(t, base, "/api/users", body, 207, map[string]string{"Prefer": "tx=rollback, partial=items"})

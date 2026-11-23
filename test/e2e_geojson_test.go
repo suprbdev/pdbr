@@ -214,7 +214,7 @@ func TestGeoJSONRejections(t *testing.T) {
 	acc := map[string]string{"Accept": geoJSON}
 	geoProblem(t, srv+"/api/users", acc, 406, "not_acceptable")
 	geoProblem(t, srv+"/api/places?select=id,name", acc, 406, "not_acceptable")
-	agg := testServer(t, func(c *config.Config) { c.Server.Aggregates = true }).URL
+	agg := testServer(t, func(c *config.Config) { c.Aggregates.Enabled = true }).URL
 	geoProblem(t, agg+"/api/places?select=count()", acc, 406, "not_acceptable")
 	geoProblem(t, srv+"/api/places?select=id,location&geometry=name", acc, 400, "invalid_select")
 	geoProblem(t, srv+"/api/places?select=id,location&geometry=nope", acc, 400, "invalid_select")

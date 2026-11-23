@@ -922,3 +922,23 @@ func mustJSON(t *testing.T, v any) []byte {
 	}
 	return out
 }
+
+func TestOpenAPITitleAndServerURL(t *testing.T) {
+	for _, tc := range []struct {
+		title, serverURL, base string
+		wantTitle, wantURL     string
+	}{
+		{"", "", "", "pdbr", "/"},
+		{"", "", "/api", "pdbr", "/api"},
+		{"Orders API", "https://api.example.com", "", "Orders API", "https://api.example.com"},
+		{"Orders API", "https://api.example.com/", "/v1", "Orders API", "https://api.example.com/v1"},
+		{"", "https://gw.example.com/edge", "/v1", "pdbr", "https://gw.example.com/edge/v1"},
+	} {
+		opts := defaultOptions()
+		opts.Title, opts.ServerURL, opts.BasePath = tc.title, tc.serverURL, tc.base
+		doc := build(t, testutil.FixtureCatalog(), opts).OpenAPI
+		if doc.Info.Title != tc.wantTitle || len(doc.Servers) != 1 || doc.Servers[0].URL != tc.wantURL {
+			t.Errorf("%+v: title %q, servers %+v", tc, doc.Info.Title, doc.Servers)
+		}
+	}
+}

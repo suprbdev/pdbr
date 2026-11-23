@@ -38,7 +38,7 @@ type partialItem struct {
 // A serialization failure or deadlock is not an element failure: it aborts
 // the transaction, which RunTx re-runs up to transactions.max_retries times,
 // and when the retries run out the request is a plain 409 and nothing was
-// written. A rolled-back request (server.tx_end, Prefer: tx=rollback) runs
+// written. A rolled-back request (transactions.end, Prefer: tx=rollback) runs
 // every element and reports them, then discards them all.
 func (e *Executor) runPartial(ctx context.Context, op *Operation, applied []string, tzStmt []pgexec.Stmt) *Result {
 	body := op.Plan.Body

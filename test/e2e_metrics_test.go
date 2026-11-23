@@ -38,7 +38,7 @@ func scrapeMetrics(t *testing.T, url string) string {
 func TestMetrics(t *testing.T) {
 	srv := testServer(t, func(c *config.Config) {
 		c.Metrics.Enabled = true
-		c.Server.Aggregates = true
+		c.Aggregates.Enabled = true
 	})
 
 	var rows []row

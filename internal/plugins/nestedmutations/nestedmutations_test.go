@@ -78,11 +78,11 @@ func wantCode(t *testing.T, err error, code, detail string) {
 
 func TestSettings(t *testing.T) {
 	p := New(DefaultSettings())
-	if p.Name() != "nested_mutations" || p.Priority() != 200 || !p.ForceTransactions() || p.MaxDepth() != 3 || p.MaxOperations() != DefaultMaxOperations {
+	if p.Name() != "nested_mutations" || p.Priority() != 200 || p.MaxDepth() != 3 || p.MaxOperations() != DefaultMaxOperations {
 		t.Fatalf("defaults: %+v", p)
 	}
 	p = New(Settings{MaxDepth: 5, MaxOperations: 7})
-	if p.ForceTransactions() || p.MaxDepth() != 5 || p.MaxOperations() != 7 {
+	if p.MaxDepth() != 5 || p.MaxOperations() != 7 {
 		t.Fatalf("settings: %+v", p)
 	}
 	p = New(Settings{})
@@ -406,12 +406,11 @@ func TestBeforeRequest(t *testing.T) {
 	nested := &plan.Request{Body: &plan.Body{Nested: map[string]*plan.Nested{"posts": {}}}}
 	plain := &plan.Request{Body: &plan.Body{Object: map[string]any{}}}
 	on := New(DefaultSettings())
-	off := New(with(func(s *Settings) { s.ForceTransactions = false }))
 	for _, tc := range []struct {
 		p    *Plugin
 		plan *plan.Request
 		want bool
-	}{{on, nested, true}, {on, plain, false}, {off, nested, false}, {on, nil, false}} {
+	}{{on, nested, true}, {on, plain, false}, {on, nil, false}} {
 		op := &exec.Operation{Plan: tc.plan}
 		if _, err := tc.p.BeforeRequest(context.Background(), op); err != nil {
 			t.Fatal(err)

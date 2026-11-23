@@ -38,11 +38,17 @@ type Options struct {
 	// and arrays) are not exposed, and columns of such a type are hidden,
 	// since their rows would otherwise be rendered whole as JSON.
 	HiddenTables map[string]bool
-	// BasePath is server.base_path (OpenAPI servers[0].url).
+	// BasePath is server.base_path (OpenAPI servers[0].url, after
+	// ServerURL).
 	BasePath string
+	// Title is openapi.title (OpenAPI info.title; "" is "pdbr").
+	Title string
+	// ServerURL is openapi.server_url: the absolute origin put before
+	// BasePath in servers[0].url ("" leaves it relative).
+	ServerURL string
 	// Schemas is schema.schemas; Schemas[0] gets bare aliases.
 	Schemas []string
-	// MaxPageSize is server.max_page_size (documented limit maximum).
+	// MaxPageSize is limits.max_page_size (documented limit maximum).
 	MaxPageSize int
 	// Etags is server.etags.
 	Etags bool
@@ -58,10 +64,10 @@ type Options struct {
 	AuthRequired bool
 	// CSV is server.csv (text/csv on list responses).
 	CSV bool
-	// Domains is server.openapi_domains: domains over built-in types get a
+	// Domains is schema.domains: domains over built-in types get a
 	// named component schema that columns, arguments and results reference.
 	Domains bool
-	// Aggregates is server.aggregates: the list select= parameters
+	// Aggregates is aggregates.enabled: the list select= parameters
 	// document the aggregate grammar.
 	Aggregates bool
 	// Version is the binary version (OpenAPI info.version).
@@ -132,7 +138,7 @@ type Surface struct {
 	SpatialProjection bool
 	// SpatialAggregates enables the spatial aggregate functions of select=
 	// (col.extent(), col.union(), col.collect(), col.centroid()); they
-	// also need server.aggregates.
+	// also need aggregates.enabled.
 	SpatialAggregates bool
 	// NestedKeys names the nested-mutation body keys a resource accepts
 	// (relation key -> relation); nil while the nested_mutations plugin is
