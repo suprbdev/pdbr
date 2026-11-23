@@ -203,10 +203,11 @@ func (b *Built) typeSchema(pgType, typeSchema, enumRef string) *Schema {
 }
 
 // inputTypeSchema is typeSchema for request bodies: Extra.InputTypes wins
-// over Extra.Types (postgis: GeoJSON or WKT text on the way in).
-func (b *Builder) inputTypeSchema(pgType, typeSchema, enumRef string) *Schema {
+// over Extra.Types (postgis: GeoJSON or WKT text on the way in). baseSchema
+// is the schema of the resolved base type ("" matches range types by name).
+func (b *Builder) inputTypeSchema(pgType, typeSchema, baseSchema, enumRef string) *Schema {
 	if b.Extra.InputTypes[pgType] == nil {
-		if s := rangeInputSchema(pgType); s != nil {
+		if s := rangeInputSchema(b.Catalog, pgType, baseSchema); s != nil {
 			return s
 		}
 	}
@@ -277,10 +278,11 @@ func typeSchemaWith(enums map[string]*Enum, comps map[string]*Composite, types m
 	}
 }
 
-// rangeInputSchema is the request-body shape of a built-in range or
-// multirange value: its literal text, or the structured form the contrib
-// codec converts. Responses keep the literal text (PostgREST does too).
-func rangeInputSchema(pgType string) *Schema {
+// rangeInputSchema is the request-body shape of a range or multirange value
+// (built-in, or a range type recorded in cat.Ranges): its literal text, or
+// the structured form the contrib codec converts. Responses keep the literal
+// text (PostgREST does too).
+func rangeInputSchema(cat *introspect.Catalog, pgType, baseSchema string) *Schema {
 	bound := func(side string) *Schema {
 		return &Schema{Description: side + " bound in the element type's JSON or text form; null or absent is unbounded."}
 	}
@@ -293,17 +295,26 @@ func rangeInputSchema(pgType string) *Schema {
 			"isEmpty":        {Type: "boolean", Description: "The empty range; other members are ignored."},
 		},
 	}
-	if _, ok := contrib.Range(pgType); ok {
-		return &Schema{OneOf: []*Schema{
-			{Type: "string", Description: pgType + " literal, e.g. [1,5) or empty."},
-			obj,
-		}}
+	if strings.HasPrefix(pgType, "_") {
+		return nil
 	}
-	if _, ok := contrib.Multirange(pgType); ok {
-		return &Schema{OneOf: []*Schema{
-			{Type: "string", Description: pgType + " literal, e.g. {[1,3), [5,7)}."},
-			{Type: "array", Items: &Schema{OneOf: []*Schema{{Type: "string"}, obj}}},
-		}}
+	qualified := pgType
+	if baseSchema != "" {
+		qualified = baseSchema + "." + pgType
+	}
+	for _, v := range contrib.ForType(cat, qualified, false) {
+		switch v.Name {
+		case contrib.VocabRange:
+			return &Schema{OneOf: []*Schema{
+				{Type: "string", Description: pgType + " literal, e.g. [1,5) or empty."},
+				obj,
+			}}
+		case contrib.VocabMultirange:
+			return &Schema{OneOf: []*Schema{
+				{Type: "string", Description: pgType + " literal, e.g. {[1,3), [5,7)}."},
+				{Type: "array", Items: &Schema{OneOf: []*Schema{{Type: "string"}, obj}}},
+			}}
+		}
 	}
 	return nil
 }
@@ -591,7 +602,7 @@ func (b *Builder) inputSchema(r *Resource, m Method) *Schema {
 	fields := r.inputColumns(m)
 	required := map[string]bool{}
 	for _, f := range fields {
-		p := b.inputTypeSchema(f.Column.PGType, f.Column.TypeSchema, f.Column.EnumRef)
+		p := b.inputTypeSchema(f.Column.PGType, f.Column.TypeSchema, f.Column.BaseTypeSchema, f.Column.EnumRef)
 		if !f.Column.NotNull {
 			p = Nullable(p)
 		}

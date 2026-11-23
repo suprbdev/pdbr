@@ -285,6 +285,29 @@ func TestAuth(t *testing.T) {
 	}
 }
 
+func TestAuthRejectsUnassumableRoles(t *testing.T) {
+	authn := auth.New(auth.Config{
+		Enabled: true, Mode: "headers", HeaderPrefix: "X-Pdbr-Claim-", RoleClaim: "role", AnonymousRole: "anonymous",
+	})
+	reached := false
+	h := RouteHandlerFunc(func(w http.ResponseWriter, r *http.Request, _ *api.Match) {
+		reached = true
+		w.WriteHeader(204)
+	})
+	srv := testServer(t, serverCfg(), authn, h)
+	for _, role := range []string{"none", "NONE", "public", "pg_read_all_data", "web user"} {
+		reached = false
+		res, body := do(t, "GET", srv.URL+"/api/users", map[string]string{"X-Pdbr-Claim-Role": role})
+		if res.StatusCode != 403 || problem(t, body).Code != CodeRoleNotAllowed || reached {
+			t.Errorf("role %q = %d %s (handler reached %v)", role, res.StatusCode, body, reached)
+		}
+	}
+	res, _ := do(t, "GET", srv.URL+"/api/users", map[string]string{"X-Pdbr-Claim-Role": "app_user"})
+	if res.StatusCode != 204 || !reached {
+		t.Errorf("app_user = %d", res.StatusCode)
+	}
+}
+
 func TestBodyLimit(t *testing.T) {
 	cfg := serverCfg()
 	cfg.MaxBodyBytes = 10

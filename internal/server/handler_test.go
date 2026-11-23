@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/suprbdev/pdbcore/pgexec"
 	"github.com/suprbdev/pdbcore/testutil"
@@ -72,7 +73,7 @@ func (s *scriptedDB) Exec(context.Context, string, ...any) (pgconn.CommandTag, e
 	return pgconn.CommandTag{}, nil
 }
 
-func (s *scriptedDB) BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error) {
+func (s *scriptedDB) Acquire(context.Context) (*pgxpool.Conn, error) {
 	return nil, errors.New("scriptedDB never begins transactions")
 }
 

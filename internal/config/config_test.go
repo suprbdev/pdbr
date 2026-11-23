@@ -108,6 +108,15 @@ func TestValidateRules(t *testing.T) {
 		"15a base_path no slash": {func(c *Config) { c.Server.BasePath = "api" }, "base_path"},
 		"15b base_path trailing": {func(c *Config) { c.Server.BasePath = "/api/" }, "base_path"},
 		"16 embed depth":         {func(c *Config) { c.Server.MaxEmbedDepth = 0 }, "max_embed_depth"},
+		"17a anon role none":     {func(c *Config) { c.RLS.AnonymousRole = "none" }, "rls.anonymous_role"},
+		"17b default role NONE":  {func(c *Config) { c.RLS.DefaultRole = "NONE" }, "rls.default_role"},
+		"17c allowed role none":  {func(c *Config) { c.RLS.AllowedRoles = []string{"web_user", "None"} }, "rls.allowed_roles"},
+		"17d anon role public":   {func(c *Config) { c.RLS.AnonymousRole = "public" }, "rls.anonymous_role"},
+		"17e default role pg_":   {func(c *Config) { c.RLS.DefaultRole = "pg_read_all_data" }, "rls.default_role"},
+		"17f role not ident":     {func(c *Config) { c.RLS.AnonymousRole = "web anon" }, "rls.anonymous_role"},
+		"18a claims prefix":      {func(c *Config) { c.RLS.ClaimsPrefix = "plpgsql.claims" }, "rls.claims_prefix"},
+		"18b claims prefix pg_":  {func(c *Config) { c.RLS.ClaimsPrefix = "pg_x.claims" }, "rls.claims_prefix"},
+		"18c claims prefix syn":  {func(c *Config) { c.RLS.ClaimsPrefix = "a..b" }, "rls.claims_prefix"},
 	}
 	for name, tc := range cases {
 		cfg := valid()

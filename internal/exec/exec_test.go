@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/suprbdev/pdbcore/pgexec"
 	"github.com/suprbdev/pdbcore/testutil"
@@ -52,7 +54,8 @@ func (r fakeRow) Scan(dest ...any) error {
 }
 
 // fakeDB answers every QueryRow with the configured row and records the
-// SQL it saw; BeginTx hands out a fakeTx that records identity statements.
+// SQL it saw. Transactions go through queryTx (installed by newExec in
+// place of pgexec.QueryTx), which records each batch as a fakeTx.
 type fakeDB struct {
 	row     fakeRow
 	queries []string
@@ -72,31 +75,46 @@ func (f *fakeDB) Exec(context.Context, string, ...any) (pgconn.CommandTag, error
 	return pgconn.CommandTag{}, nil
 }
 
-func (f *fakeDB) BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error) {
-	tx := &fakeTx{db: f}
-	f.txs = append(f.txs, tx)
-	return tx, nil
+func (f *fakeDB) Acquire(context.Context) (*pgxpool.Conn, error) {
+	return nil, errors.New("fakeDB: transactions go through queryTx")
 }
 
+// fakeTx is one pgexec.QueryTx batch as the fake saw it.
 type fakeTx struct {
-	pgx.Tx
-	db        *fakeDB
-	execs     []string
+	opts      pgexec.TxOptions
+	id        pgexec.Identity
+	stmts     []string
 	committed bool
 	rolled    bool
 }
 
-func (t *fakeTx) Exec(_ context.Context, sql string, _ ...any) (pgconn.CommandTag, error) {
-	t.execs = append(t.execs, sql)
-	return pgconn.CommandTag{}, nil
+// queryTx mimics pgexec.QueryTx: the role is validated before anything is
+// sent, every statement's Scan gets the configured row, a statement error
+// (the row's err) rolls back, and an error of the Scan callback itself
+// rolls back only under ScanBeforeCommit (otherwise the batch has already
+// committed).
+func (f *fakeDB) queryTx(_ context.Context, _ pgexec.ConnAcquirer, opts pgexec.TxOptions, id pgexec.Identity, stmts ...pgexec.Stmt) error {
+	if opts.RLS && id.Role != "" && !pgexec.ValidRole(id.Role) {
+		return fmt.Errorf("invalid role %q", id.Role)
+	}
+	tx := &fakeTx{opts: opts, id: id}
+	f.txs = append(f.txs, tx)
+	for _, st := range stmts {
+		tx.stmts = append(tx.stmts, st.SQL)
+		f.queries = append(f.queries, st.SQL)
+		if st.Scan == nil {
+			continue
+		}
+		if err := st.Scan(f.row); err != nil {
+			stmtErr := f.row.err != nil && errors.Is(err, f.row.err)
+			tx.rolled = stmtErr || opts.ScanBeforeCommit
+			tx.committed = !tx.rolled
+			return err
+		}
+	}
+	tx.committed = true
+	return nil
 }
-
-func (t *fakeTx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
-	return t.db.QueryRow(ctx, sql, args...)
-}
-
-func (t *fakeTx) Commit(context.Context) error   { t.committed = true; return nil }
-func (t *fakeTx) Rollback(context.Context) error { t.rolled = true; return nil }
 
 type recHook struct {
 	before, after int
@@ -124,7 +142,11 @@ func newExec(db DB, b *api.Built, hooks []RequestHook, opts Options) *Executor {
 	if opts.Logger == nil {
 		opts.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	return New(db, b, compile.New(b).Compile, hooks, opts)
+	e := New(db, b, compile.New(b).Compile, hooks, opts)
+	if f, ok := db.(*fakeDB); ok {
+		e.queryTx = f.queryTx
+	}
+	return e
 }
 
 func asErr(err error) *Error {
@@ -270,15 +292,65 @@ func TestTransactionDecision(t *testing.T) {
 				if !tx.committed {
 					t.Fatal("not committed")
 				}
-				execs := strings.Join(tx.execs, ";")
-				if tc.role != "" && tc.opts.RLS && !strings.Contains(execs, `SET LOCAL ROLE "`+tc.role+`"`) {
-					t.Fatalf("role not applied: %v", tx.execs)
+				if tx.opts.RLS != tc.opts.RLS || tx.id.Role != tc.role || len(tx.id.Claims) != len(tc.claims) {
+					t.Fatalf("identity = %+v rls %v", tx.id, tx.opts.RLS)
 				}
-				if len(tc.claims) > 0 && !strings.Contains(execs, "set_config") {
-					t.Fatalf("claims not applied: %v", tx.execs)
+				if tx.opts.Isolation != "" || tx.opts.ScanBeforeCommit {
+					t.Fatalf("read committed without max-affected must be one implicit batch: %+v", tx.opts)
+				}
+				if len(tx.stmts) != 1 || len(db.queries) != 1 {
+					t.Fatalf("statements = %v, queries = %v", tx.stmts, db.queries)
 				}
 			}
 		})
+	}
+}
+
+func TestTransactionBatchOptions(t *testing.T) {
+	b := built(t)
+	page := []byte(`{"rows":[],"has_next":false,"has_prev":false}`)
+	for _, tc := range []struct {
+		iso  pgx.TxIsoLevel
+		want pgx.TxIsoLevel
+	}{
+		{"", ""},
+		{pgx.ReadCommitted, ""},
+		{pgx.RepeatableRead, pgx.RepeatableRead},
+		{pgx.Serializable, pgx.Serializable},
+	} {
+		db := &fakeDB{row: fakeRow{data: page}}
+		e := newExec(db, b, nil, Options{RLS: true, Isolation: tc.iso, MaxRetries: 2, ClaimsPrefix: "app.claims"})
+		op := listOp(b, "/users")
+		op.Role, op.Claims = "app_user", map[string]any{"user_id": "1"}
+		if res := e.Execute(context.Background(), op); res.Err != nil {
+			t.Fatalf("%q: %v", tc.iso, res.Err)
+		}
+		got := db.txs[0]
+		if got.opts.Isolation != tc.want || got.opts.MaxRetries != 2 || got.opts.ScanBeforeCommit || got.id.ClaimsPrefix != "app.claims" {
+			t.Errorf("isolation %q: batch %+v id %+v", tc.iso, got.opts, got.id)
+		}
+	}
+}
+
+func TestTransactionErrors(t *testing.T) {
+	b := built(t)
+	db := &fakeDB{}
+	e := newExec(db, b, nil, Options{RLS: true})
+	op := listOp(b, "/users")
+	op.Role = "none"
+	if xe := errOf(t, e.Execute(context.Background(), op)); xe.Status != 500 || len(db.queries) != 0 {
+		t.Fatalf("role none: %+v, queries %v", xe, db.queries)
+	}
+
+	db = &fakeDB{row: fakeRow{err: &pgconn.PgError{Code: "42501", Message: "permission denied for table users"}}}
+	e = newExec(db, b, nil, Options{RLS: true})
+	op = listOp(b, "/users")
+	op.Role = "anonymous"
+	if xe := errOf(t, e.Execute(context.Background(), op)); xe.Status != 403 || xe.Code != "pg:42501" {
+		t.Fatalf("statement error: %+v", xe)
+	}
+	if len(db.txs) != 1 || db.txs[0].committed || !db.txs[0].rolled {
+		t.Fatalf("statement error must roll back: %+v", db.txs[0])
 	}
 }
 
@@ -517,7 +589,7 @@ func TestExecuteMaxAffected(t *testing.T) {
 	if xe := errOf(t, res); xe.Status != 400 || xe.Code != CodeMaxAffectedExceeded || !strings.Contains(xe.Detail, "affects 3 rows") {
 		t.Fatalf("exceeded: %+v", xe)
 	}
-	if len(db.txs) != 1 || db.txs[0].committed || !db.txs[0].rolled {
+	if len(db.txs) != 1 || db.txs[0].committed || !db.txs[0].rolled || !db.txs[0].opts.ScanBeforeCommit {
 		t.Fatalf("exceeded must run in a rolled-back tx even with transactions.mutations off: %+v", db.txs)
 	}
 

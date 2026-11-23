@@ -535,15 +535,20 @@ otherwise, or `n == 0` → `404`; `201` for `POST` and inserted `PUT` (with
 `return=minimal`. The wrapper key names are internal: goldens pin them,
 clients never see them (resolved in M3).
 
-Zero rows from `__mut` on a keyed path → `404` (mutation), transaction rolled
-back (nothing to roll back, but the tx still ends in `ROLLBACK`).
+Zero rows from `__mut` on a keyed path → `404` (mutation); the transaction
+commits, having written nothing.
 
 ## Transactions
 
 - `transactions.mutations` (default `true`): every write (POST/PATCH/DELETE/PUT
-  and volatile RPC) runs in `BEGIN … COMMIT` with `transactions.isolation`
+  and volatile RPC) runs in a transaction with `transactions.isolation`
   (`read_committed` default; `repeatable_read`, `serializable`), plus
-  `SET LOCAL ROLE` / `set_config` when RLS claims are present. `false` → the
+  `SET LOCAL ROLE` / `set_config` when RLS claims are present. The
+  transaction is one pipelined batch: under `read_committed` it is
+  PostgreSQL's implicit pipeline transaction (no `BEGIN`/`COMMIT` sent, the
+  server's `default_transaction_isolation` applies), the stricter levels
+  send `BEGIN ISOLATION LEVEL …` and `COMMIT` in the same batch, and a
+  `Prefer: max-affected` write commits only after its row-count check. `false` → the
   statement autocommits (still one statement, still atomic per PG semantics;
   RLS claims force a tx anyway because `SET LOCAL` needs one).
 - `transactions.max_retries` (default `0`): on SQLSTATE `40001`

@@ -8,13 +8,18 @@
 RLS support is **on by default**. Whenever a request resolves to a role or
 carries claims (under `rls.enabled` that is every request, since anonymous
 requests still switch to `rls.anonymous_role`), the statement runs inside a
-transaction that:
+transaction that first applies the identity, in one statement sent in the
+same pipelined batch as the request's statement (one network round trip):
 
-1. `SET LOCAL ROLE "<role>"` — the role from the request's claims
+1. `SET LOCAL ROLE "<role>"` (as `set_config('role', $1, true)`, the same
+   operation with the role as a bind parameter) — the role from the request's claims
    (`rls.role_claim`, default claim `role`), falling back to
    `rls.default_role`, then `rls.anonymous_role` for unauthenticated
-   requests. Role names are validated against `[A-Za-z0-9_]+` before being
-   quoted.
+   requests. A role must match `[A-Za-z0-9_]+` and must not be `none`,
+   `public` or a `pg_*` role, in any letter case: the configured roles are
+   checked at startup, and a credential naming such a role is rejected with
+   `403 role_not_allowed` before any SQL runs (`none` would otherwise reset
+   the role to the connection role and bypass RLS).
 2. `SELECT set_config('<rls.claims_prefix>.<key>', $n, true)` for every
    claim whose key matches `[A-Za-z0-9_]+` (others are skipped). String
    claims are set verbatim; any other JSON value is set as its JSON text.

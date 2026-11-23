@@ -3,7 +3,7 @@ SELECT jsonb_build_object('rows', coalesce(jsonb_agg(s1.data ORDER BY s1.__rn AS
 FROM (
   SELECT jsonb_build_object('id', t0."id", 'name', t0."name") AS data, jsonb_build_array(t0."id") AS __key, row_number() OVER (ORDER BY t0."id" ASC) AS __rn
   FROM "public"."places" t0
-  WHERE NOT (ST_Within(t0."area"::geometry, ST_SetSRID(ST_GeomFromGeoJSON($1), 4326))) AND ST_Intersects(t0."location", ST_GeomFromEWKT($2)) AND (ST_Covers(t0."area", (ST_GeomFromEWKT($3))::geography) OR t0."location" @ ST_MakeEnvelope($4, $5, $6, $7, 3857) OR t0."location" && ST_MakeEnvelope($8, $9, $10, $11, 4326) OR t0."location" IS NULL)
+  WHERE NOT (ST_Within(t0."area"::geometry, CASE WHEN left($1, 1) = '{' THEN ST_GeomFromGeoJSON($1) ELSE ST_GeomFromEWKT($1) END)) AND ST_Intersects(t0."location", CASE WHEN left($2, 1) = '{' THEN ST_Transform(ST_GeomFromGeoJSON($2), 4326) ELSE ST_GeomFromEWKT($2) END) AND (ST_Covers(t0."area", (CASE WHEN left($3, 1) = '{' THEN ST_GeomFromGeoJSON($3) ELSE ST_GeomFromEWKT($3) END)::geography) OR t0."location" @ ST_MakeEnvelope($4, $5, $6, $7, 3857) OR t0."location" && ST_MakeEnvelope($8, $9, $10, $11, 4326) OR t0."location" IS NULL)
   ORDER BY t0."id" ASC
   LIMIT $12
 ) s1

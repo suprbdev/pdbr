@@ -58,8 +58,9 @@ Not moved at all (GraphQL-only, listed for completeness): `internal/schema`,
 ### `introspect`
 
 ```go
-const CatalogFormatVersion = 3
-type Catalog struct { FormatVersion int; Schemas []string; Tables []*Table; Enums []*Enum; Composites []*Composite; Functions []*Function; PostGIS *PostGISInfo }
+const CatalogFormatVersion = 7 // v0.4.0; 3 at extraction
+type Catalog struct { FormatVersion int; Schemas []string; Tables []*Table; Enums []*Enum; Composites []*Composite; Functions []*Function; Ranges []*RangeType; PostGIS *PostGISInfo }
+type Column struct { …; TypeSchema, PGType, BaseTypeSchema string; … } // BaseTypeSchema: schema of the resolved base type (domains unwrapped)
 type Table struct { Schema, Name string; Kind RelKind; Columns []*Column; PrimaryKey *Constraint; Uniques []*Constraint; ForeignKeys []*ForeignKey; Indexes []*Index; Privileges Privileges; RLSEnabled bool; Comment string }
 func Introspect(ctx context.Context, q Querier, schemas []string) (*Catalog, error)
 func (c *Catalog) Table(schema, name string) *Table
@@ -107,7 +108,8 @@ func Check(path string, live *introspect.Catalog) (diff string, err error)
 ### `watch`
 
 ```go
-type Watcher struct { Pool *pgxpool.Pool; Schemas []string; Channel string; PollInterval time.Duration; Log *slog.Logger; OnChange func(*introspect.Catalog) }
+type Watcher struct { Pool *pgxpool.Pool; Schemas []string; Channel string; PollInterval time.Duration; Log *slog.Logger; OnChange func(*introspect.Catalog); TriggerName string; InitialHash string }
+// InitialHash (v0.4.0): Catalog.Hash of the boot catalog; Run re-introspects once when listening and only calls OnChange when the hash differs
 func (w *Watcher) Run(ctx context.Context) error
 ```
 
@@ -117,7 +119,8 @@ func (w *Watcher) Run(ctx context.Context) error
 type Flavour int // None, Geometry, Geography
 func Detect(cat *introspect.Catalog) Flavour
 func ParseGeom(v any) (Geom, error)          // GeoJSON object/string, WKT, EWKT → canonical
-func ConstructorSQL(param string, srid int) string // ST_GeomFromGeoJSON / ST_GeomFromEWKT over ONE $n
+func ConstructorSQL(param string, srid int) string // one value-independent CASE over ONE $n (v0.4.0):
+// CASE WHEN left($n, 1) = '{' THEN [ST_Transform(]ST_GeomFromGeoJSON($n)[, srid)] ELSE ST_GeomFromEWKT($n) END
 var Ops map[string]Op                          // 30 predicates: name → SQL template + arity
 var Accessors map[string]Accessor              // 25 derived accessors
 func TransformSQL(expr string, srid int) string; func SimplifySQL(expr, tolParam string) string; func KNNSQL(col, param string) string
@@ -148,15 +151,22 @@ type PoolConfig struct { URL string; MaxConns int32; ConnectTimeout, StatementTi
 func Connect(ctx context.Context, cfg PoolConfig) (*pgxpool.Pool, error)
 
 type Identity struct { Role string; Claims map[string]any; ClaimsPrefix string } // ClaimsPrefix "" → "pdbq.claims"
-type TxOptions struct { Isolation pgx.TxIsoLevel; MaxRetries int; RLS bool }
+type TxOptions struct { Isolation pgx.TxIsoLevel; MaxRetries int; RLS bool; ScanBeforeCommit bool; Log *slog.Logger }
 
 // RunTx begins a tx, applies SET LOCAL ROLE + set_config claims (RLS true), calls fn,
 // commits unless fn returned an error (rollback). On 40001/40P01 the whole thing
 // re-runs up to MaxRetries times (no backoff). fn may run more than once.
 func RunTx(ctx context.Context, pool *pgxpool.Pool, opts TxOptions, id Identity, fn func(q Querier) error) error
 
+// QueryTx (v0.4.0) sends identity + stmts (+ BEGIN/COMMIT when Isolation is set or
+// ScanBeforeCommit) as one pipelined batch: one round trip instead of RunTx's four or more.
+type ConnAcquirer interface { Acquire(ctx context.Context) (*pgxpool.Conn, error) }
+type Stmt struct { SQL string; Args []any; Scan func(row pgx.Row) error }
+func QueryTx(ctx context.Context, db ConnAcquirer, opts TxOptions, id Identity, stmts ...Stmt) error
+
 func QuoteIdent(s string) string
-func ValidRole(s string) bool      // [A-Za-z0-9_]+
+func ValidRole(s string) bool      // [A-Za-z0-9_]+, not none/public/pg_* in any case (v0.4.0: "none" is RESET ROLE)
+func ValidateClaimsPrefix(prefix string) error // v0.4.0; confx.ValidateRLS checks both at config load
 func ValidClaimKey(s string) bool
 
 type Class int // OK, UserInput (22*, 23502, 23514, 42* other), Permission (42501), Conflict (23505, 23503, 23P01, 40001/40P01 exhausted), Resource (53*, 08*), Timeout (57014), Internal

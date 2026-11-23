@@ -45,14 +45,15 @@ value pasted straight out of a map library works without editing.
 
 **SRIDs.** Every spatial value — filter operand, `near=`, body value — is
 parsed for the column it targets (`pdbcore/postgis.ParseFor` with the
-column's typmod SRID). GeoJSON is WGS84 (4326) per RFC 7946, so GeoJSON input
-is tagged `ST_SetSRID(..., 4326)` unless it carries an explicit legacy `crs`
-member; on a `geometry` column declared with a different SRID (say
-`geometry(Point, 3857)`) it is then reprojected with
-`ST_Transform(…, 3857)`. EWKT (`SRID=3857;POINT(...)`) carries its own SRID
-and is passed through unchanged. Bare WKT is tagged with the column's SRID
-(`geometry(Point, 4326)` → `ST_SetSRID(…, 4326)`); on a `geography` column it
-is tagged 4326, since geography requires a real CRS.
+column's typmod SRID), and the parameter alone carries the SRID. GeoJSON is
+WGS84 (4326) per RFC 7946, which is what `ST_GeomFromGeoJSON` assigns; a
+legacy `crs` member naming another SRID is kept in the parameter. On a
+`geometry` column declared with an SRID (say `geometry(Point, 3857)`) the
+GeoJSON branch is reprojected with `ST_Transform(…, 3857)` (a no-op when the
+SRIDs already match). EWKT (`SRID=3857;POINT(...)`) carries its own SRID and
+is passed through unchanged. Bare WKT is rewritten to EWKT with the column's
+SRID (`POINT(1 2)` → `SRID=4326;POINT(1 2)` for `geometry(Point, 4326)`); on a
+`geography` column it is tagged 4326, since geography requires a real CRS.
 
 Bare WKT on an unconstrained `geometry` column keeps PostGIS's own default,
 SRID 0. EWKT whose SRID differs from the column's is not reprojected: a
@@ -63,12 +64,20 @@ mixed SRID geometries` (`400 pg:XX000`, detail `invalid geometry` outside
 `LineString` into `geometry(Point, 4326)` is `400 pg:22023`. Function
 arguments carry no typmod, so RPC arguments follow the unconstrained rules.
 
-**One parameter, one constructor.** Every spatial value reaches SQL as a
-single bind parameter wrapped in exactly one constructor —
-`ST_GeomFromGeoJSON($n)` or `ST_GeomFromEWKT($n)`, optionally inside
-`ST_SetSRID(…, <srid>)`, `ST_Transform(…, <srid>)` and `(…)::geography` —
-chosen from the *shape* of the input (GeoJSON / EWKT / bare WKT) and the
-column's catalog SRID, never its content. Parsing, unwrapping and
+**One parameter, one expression.** Every spatial value reaches SQL as a
+single bind parameter inside one constructor expression whose text depends
+only on the target column (flavour and catalog SRID), never on the value or
+its input form:
+
+```sql
+CASE WHEN left($n, 1) = '{' THEN ST_Transform(ST_GeomFromGeoJSON($n), <srid>) ELSE ST_GeomFromEWKT($n) END
+```
+
+The `ST_Transform` appears only for a geometry column with a declared SRID,
+and a geography target wraps the whole expression in `(…)::geography`.
+GeoJSON, EWKT and bare WKT input therefore compile to the same SQL text (one
+prepared statement per request shape); PostgreSQL folds the `CASE` at plan
+time. Parsing, unwrapping and
 constructor selection live in `pdbcore/postgis` (`ParseFor`, `Value.SQL`), shared
 with pdbq. A value that is neither valid GeoJSON nor plausible WKT is rejected
 with `400 invalid_filter` / `400 invalid_body` before any SQL is built.
@@ -147,7 +156,7 @@ SRID of a bounding box is a structural integer literal in the SQL text.
 **Geography columns.** PostGIS defines only `&&`, `=`, `ST_Intersects`,
 `ST_Covers`, `ST_CoveredBy` and `ST_DWithin` for `geography`. The other
 operators are still accepted on a geography column: pdbr casts both sides
-to `geometry` (`ST_Within("area"::geometry, ST_SetSRID(…, 4326))`,
+to `geometry` (`ST_Within("area"::geometry, CASE … END)`,
 `"area"::geometry ~ ST_MakeEnvelope(…)`, `"area"::geometry << …`), i.e. planar semantics in the
 column's SRID, exactly as pdbq compiles them (`pdbcore/postgis.Op.Geography`
 marks the native ones).
@@ -210,8 +219,9 @@ GET /api/places?select=name&location=st_dwithin.("POINT(-0.1281 51.508)",5000,tr
 ```
 
 compiles the predicate as
-`ST_DWithin("location"::geography, (ST_SetSRID(ST_GeomFromEWKT($1), 4326))::geography, $2)`
-(the bare-WKT operand is tagged with the column's SRID, 4326).
+`ST_DWithin("location"::geography, (CASE WHEN left($1, 1) = '{' THEN ST_Transform(ST_GeomFromGeoJSON($1), 4326) ELSE ST_GeomFromEWKT($1) END)::geography, $2)`
+with `$1 = 'SRID=4326;POINT(-0.1281 51.508)'` (the bare-WKT operand is tagged
+with the column's SRID, 4326).
 
 ## Derived accessors (pseudo-columns)
 

@@ -13,6 +13,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/suprbdev/pdbcore/auth"
 	"github.com/suprbdev/pdbcore/httpx"
+	"github.com/suprbdev/pdbcore/pgexec"
 
 	"github.com/suprbdev/pdbr/internal/api"
 	"github.com/suprbdev/pdbr/internal/config"
@@ -262,6 +264,10 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 				status, code = http.StatusForbidden, CodeRoleNotAllowed
 			}
 			WriteProblem(w, r, status, code, err.Error())
+			return
+		}
+		if role != "" && !pgexec.ValidRole(role) {
+			WriteProblem(w, r, http.StatusForbidden, CodeRoleNotAllowed, fmt.Sprintf("role %q is not allowed", role))
 			return
 		}
 		ctx := context.WithValue(r.Context(), identityKey{}, Identity{Claims: claims, Role: role})

@@ -333,6 +333,12 @@ func (a *App) buildServer(ctx context.Context) (*server.Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	var bootHash string
+	if a.Config.Watch.Enabled {
+		if bootHash, err = cat.Hash(); err != nil {
+			return nil, err
+		}
+	}
 	if err := a.Connect(ctx); err != nil {
 		return nil, err
 	}
@@ -353,6 +359,7 @@ func (a *App) buildServer(ctx context.Context) (*server.Server, error) {
 			PollInterval: a.Config.Watch.PollInterval,
 			Log:          a.Log,
 			TriggerName:  "pdbr_watch",
+			InitialHash:  bootHash,
 			OnChange: func(cat *introspect.Catalog) {
 				nb, err := a.BuildAPI(ctx, cat)
 				if err != nil {

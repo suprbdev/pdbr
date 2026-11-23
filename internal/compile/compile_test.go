@@ -611,26 +611,31 @@ func TestFilterSpatial(t *testing.T) {
 	places := f.res("places")
 	loc := f.col("places", "location")
 	area := f.col("places", "area")
+	const (
+		geom4326    = `CASE WHEN left($1, 1) = '{' THEN ST_Transform(ST_GeomFromGeoJSON($1), 4326) ELSE ST_GeomFromEWKT($1) END`
+		geogOperand = `CASE WHEN left($1, 1) = '{' THEN ST_GeomFromGeoJSON($1) ELSE ST_GeomFromEWKT($1) END`
+	)
 	cases := []struct {
 		name string
 		cond plan.Cond
 		want string
 		n    int
+		arg  any
 	}{
-		{"intersects-wkt", cond(loc, "st_intersects", "POINT(1 2)"), `WHERE ST_Intersects(t0."location", ST_SetSRID(ST_GeomFromEWKT($1), 4326))`, 1},
-		{"intersects-ewkt", cond(loc, "st_intersects", "SRID=3857;POINT(1 2)"), `WHERE ST_Intersects(t0."location", ST_GeomFromEWKT($1))`, 1},
-		{"within-geojson", cond(loc, "st_within", map[string]any{"type": "Point", "coordinates": []any{1.0, 2.0}}), `WHERE ST_Within(t0."location", ST_SetSRID(ST_GeomFromGeoJSON($1), 4326))`, 1},
-		{"not.within", plan.Cond{Column: loc, Op: "st_within", Value: "POINT(1 2)", Negate: true}, `WHERE NOT (ST_Within(t0."location", ST_SetSRID(ST_GeomFromEWKT($1), 4326)))`, 1},
-		{"dwithin-list", cond(loc, "st_dwithin", []any{"POINT(1 2)", "5000", "true"}), `WHERE ST_DWithin(t0."location"::geography, (ST_SetSRID(ST_GeomFromEWKT($1), 4326))::geography, $2)`, 2},
-		{"dwithin-geog", cond(area, "st_dwithin", []any{"POINT(1 2)", 5000.0}), `WHERE ST_DWithin(t0."area", (ST_SetSRID(ST_GeomFromEWKT($1), 4326))::geography, $2)`, 2},
-		{"beyond", cond(loc, "st_beyond", map[string]any{"geometry": "POINT(1 2)", "distance": 1}), `WHERE NOT ST_DWithin(t0."location", ST_SetSRID(ST_GeomFromEWKT($1), 4326), $2)`, 2},
-		{"bbox", cond(loc, "bbox_intersects", []any{"-0.5", "51.3", "0.3", "51.7"}), `WHERE t0."location" && ST_MakeEnvelope($1, $2, $3, $4, 4326)`, 4},
-		{"bbox-srid", cond(loc, "bbox_containedby", []any{1, 2, 3, 4, 3857}), `WHERE t0."location" @ ST_MakeEnvelope($1, $2, $3, $4, 3857)`, 4},
+		{"intersects-wkt", cond(loc, "st_intersects", "POINT(1 2)"), `WHERE ST_Intersects(t0."location", ` + geom4326 + `)`, 1, "SRID=4326;POINT(1 2)"},
+		{"intersects-ewkt", cond(loc, "st_intersects", "SRID=3857;POINT(1 2)"), `WHERE ST_Intersects(t0."location", ` + geom4326 + `)`, 1, "SRID=3857;POINT(1 2)"},
+		{"within-geojson", cond(loc, "st_within", map[string]any{"type": "Point", "coordinates": []any{1.0, 2.0}}), `WHERE ST_Within(t0."location", ` + geom4326 + `)`, 1, `{"coordinates":[1,2],"type":"Point"}`},
+		{"not.within", plan.Cond{Column: loc, Op: "st_within", Value: "POINT(1 2)", Negate: true}, `WHERE NOT (ST_Within(t0."location", ` + geom4326 + `))`, 1, "SRID=4326;POINT(1 2)"},
+		{"dwithin-list", cond(loc, "st_dwithin", []any{"POINT(1 2)", "5000", "true"}), `WHERE ST_DWithin(t0."location"::geography, (` + geom4326 + `)::geography, $2)`, 2, "SRID=4326;POINT(1 2)"},
+		{"dwithin-geog", cond(area, "st_dwithin", []any{"POINT(1 2)", 5000.0}), `WHERE ST_DWithin(t0."area", (` + geogOperand + `)::geography, $2)`, 2, "SRID=4326;POINT(1 2)"},
+		{"beyond", cond(loc, "st_beyond", map[string]any{"geometry": "POINT(1 2)", "distance": 1}), `WHERE NOT ST_DWithin(t0."location", ` + geom4326 + `, $2)`, 2, "SRID=4326;POINT(1 2)"},
+		{"bbox", cond(loc, "bbox_intersects", []any{"-0.5", "51.3", "0.3", "51.7"}), `WHERE t0."location" && ST_MakeEnvelope($1, $2, $3, $4, 4326)`, 4, nil},
+		{"bbox-srid", cond(loc, "bbox_containedby", []any{1, 2, 3, 4, 3857}), `WHERE t0."location" @ ST_MakeEnvelope($1, $2, $3, $4, 3857)`, 4, nil},
 		// ~ / @ have no geography overload: both sides fall back to geometry.
-		{"bbox-geog", cond(area, "bbox_contains", []any{1, 2, 3, 4}), `WHERE t0."area"::geometry ~ ST_MakeEnvelope($1, $2, $3, $4, 4326)`, 4},
-		{"bbox-geog-and", cond(area, "bbox_intersects", []any{1, 2, 3, 4}), `WHERE t0."area" && (ST_MakeEnvelope($1, $2, $3, $4, 4326))::geography`, 4},
-		{"within-geog", cond(area, "st_within", "POINT(1 2)"), `WHERE ST_Within(t0."area"::geometry, ST_SetSRID(ST_GeomFromEWKT($1), 4326))`, 1},
-		{"is.null", cond(loc, plan.OpIs, nil), `WHERE t0."location" IS NULL`, 0},
+		{"bbox-geog", cond(area, "bbox_contains", []any{1, 2, 3, 4}), `WHERE t0."area"::geometry ~ ST_MakeEnvelope($1, $2, $3, $4, 4326)`, 4, nil},
+		{"bbox-geog-and", cond(area, "bbox_intersects", []any{1, 2, 3, 4}), `WHERE t0."area" && (ST_MakeEnvelope($1, $2, $3, $4, 4326))::geography`, 4, nil},
+		{"within-geog", cond(area, "st_within", "POINT(1 2)"), `WHERE ST_Within(t0."area"::geometry, ` + geogOperand + `)`, 1, "SRID=4326;POINT(1 2)"},
+		{"is.null", cond(loc, plan.OpIs, nil), `WHERE t0."location" IS NULL`, 0, nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -643,6 +648,9 @@ func TestFilterSpatial(t *testing.T) {
 			}
 			if len(stmt.Args) != tc.n+2 {
 				t.Errorf("args: %v", stmt.Args)
+			}
+			if tc.arg != nil && stmt.Args[0] != tc.arg {
+				t.Errorf("operand arg = %v, want %v", stmt.Args[0], tc.arg)
 			}
 		})
 	}
@@ -661,22 +669,27 @@ func TestSpatialColumnSRID(t *testing.T) {
 	merc := *f.col("places", "location")
 	merc.Spatial = &introspect.SpatialType{Subtype: introspect.SpatialPoint, SRID: 3857}
 	point := map[string]any{"type": "Point", "coordinates": []any{-0.1281, 51.508}}
+	const merc3857 = `CASE WHEN left($1, 1) = '{' THEN ST_Transform(ST_GeomFromGeoJSON($1), 3857) ELSE ST_GeomFromEWKT($1) END`
 	cases := []struct {
 		name  string
 		value any
-		want  string
+		arg   string
 	}{
-		{"geojson-reprojected", point, `ST_Intersects(t0."location", ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326), 3857))`},
-		{"wkt-tagged", "POINT(1 2)", `ST_Intersects(t0."location", ST_SetSRID(ST_GeomFromEWKT($1), 3857))`},
-		{"ewkt-kept", "SRID=4326;POINT(1 2)", `ST_Intersects(t0."location", ST_GeomFromEWKT($1))`},
+		{"geojson-reprojected", point, `{"coordinates":[-0.1281,51.508],"type":"Point"}`},
+		{"wkt-tagged", "POINT(1 2)", "SRID=3857;POINT(1 2)"},
+		{"ewkt-kept", "SRID=4326;POINT(1 2)", "SRID=4326;POINT(1 2)"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			p := list(places)
 			p.Select = fields(places, "id")
 			p.Filter = cond(&merc, "st_intersects", tc.value)
-			if stmt := f.compile(p); !strings.Contains(stmt.SQL, tc.want) {
-				t.Errorf("want %s\n%s", tc.want, stmt.SQL)
+			stmt := f.compile(p)
+			if !strings.Contains(stmt.SQL, `ST_Intersects(t0."location", `+merc3857+`)`) {
+				t.Errorf("want %s\n%s", merc3857, stmt.SQL)
+			}
+			if stmt.Args[0] != tc.arg {
+				t.Errorf("operand arg = %v, want %v", stmt.Args[0], tc.arg)
 			}
 		})
 	}
@@ -684,7 +697,7 @@ func TestSpatialColumnSRID(t *testing.T) {
 	p.Select = fields(places, "id")
 	p.Order = []plan.OrderTerm{{Distance: &merc}}
 	p.Near = point
-	if stmt := f.compile(p); !strings.Contains(stmt.SQL, `t0."location" <-> ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326), 3857)`) {
+	if stmt := f.compile(p); !strings.Contains(stmt.SQL, `t0."location" <-> `+merc3857) {
 		t.Errorf("near reprojected:\n%s", stmt.SQL)
 	}
 }
@@ -741,7 +754,7 @@ func TestOrderRelatedComputedDistance(t *testing.T) {
 	p.Order = []plan.OrderTerm{{Distance: f.col("places", "location"), NullsFirst: true}}
 	p.Near = "SRID=4326;POINT(-0.1281 51.508)"
 	stmt = f.compile(p)
-	if !strings.Contains(stmt.SQL, `ORDER BY t0."location" <-> ST_GeomFromEWKT($1) ASC, t0."id" ASC`) {
+	if !strings.Contains(stmt.SQL, `ORDER BY t0."location" <-> CASE WHEN left($1, 1) = '{' THEN ST_Transform(ST_GeomFromGeoJSON($1), 4326) ELSE ST_GeomFromEWKT($1) END ASC, t0."id" ASC`) {
 		t.Errorf("distance order:\n%s", stmt.SQL)
 	}
 	if stmt.Args[0] != "SRID=4326;POINT(-0.1281 51.508)" {
@@ -1044,7 +1057,7 @@ func TestHooksHelpers(t *testing.T) {
 		t.Error("ParamSet")
 	}
 	expr, err := ps.SpatialValue(f.col("places", "location"), "POINT(1 2)")
-	if err != nil || expr != "ST_SetSRID(ST_GeomFromEWKT($3), 4326)" {
+	if err != nil || expr != "CASE WHEN left($3, 1) = '{' THEN ST_Transform(ST_GeomFromGeoJSON($3), 4326) ELSE ST_GeomFromEWKT($3) END" || ps.Args()[2] != "SRID=4326;POINT(1 2)" {
 		t.Errorf("SpatialValue: %s %v", expr, err)
 	}
 	if _, err := ps.SpatialValue(f.col("users", "id"), "x"); err == nil {
@@ -1159,10 +1172,10 @@ func TestSpatialParsedValues(t *testing.T) {
 	p.Order = []plan.OrderTerm{{Distance: loc, Desc: true}}
 	p.Near = geom
 	stmt := f.compile(p)
-	if !strings.Contains(stmt.SQL, `WHERE t0."location" && ST_MakeEnvelope($2, $3, $4, $5, 3857) AND ST_DWithin(t0."location"::geography, (ST_GeomFromEWKT($6))::geography, $7) AND ST_Intersects(t0."location", ST_GeomFromEWKT($8))`) {
+	if !strings.Contains(stmt.SQL, `WHERE t0."location" && ST_MakeEnvelope($2, $3, $4, $5, 3857) AND ST_DWithin(t0."location"::geography, (CASE WHEN left($6, 1) = '{' THEN ST_GeomFromGeoJSON($6) ELSE ST_GeomFromEWKT($6) END)::geography, $7) AND ST_Intersects(t0."location", CASE WHEN left($8, 1) = '{' THEN ST_GeomFromGeoJSON($8) ELSE ST_GeomFromEWKT($8) END)`) {
 		t.Errorf("parsed spatial values:\n%s", stmt.SQL)
 	}
-	if !strings.Contains(stmt.SQL, `ORDER BY t0."location" <-> ST_GeomFromEWKT($1) DESC NULLS LAST, t0."id" ASC`) {
+	if !strings.Contains(stmt.SQL, `ORDER BY t0."location" <-> CASE WHEN left($1, 1) = '{' THEN ST_GeomFromGeoJSON($1) ELSE ST_GeomFromEWKT($1) END DESC NULLS LAST, t0."id" ASC`) {
 		t.Errorf("near as postgis.Value:\n%s", stmt.SQL)
 	}
 }

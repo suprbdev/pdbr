@@ -87,7 +87,7 @@ See [cli.md](cli.md) for details.
 | `rls.auth.trusted_proxies` | []string | `[]` | CIDRs/IPs allowed to supply claim headers; empty trusts every peer (startup warning) |
 | `rls.auth.jwt_type` | string | — | schema-qualified composite (e.g. `public.jwt`); functions returning it yield a minted HS256 token |
 | `transactions.mutations` | bool | `true` | wrap every write in a tx |
-| `transactions.isolation` | string | `read_committed` | or `repeatable_read`, `serializable` |
+| `transactions.isolation` | string | `read_committed` | or `repeatable_read`, `serializable`; `read_committed` runs in the pipeline's implicit transaction at the server's `default_transaction_isolation` (read committed unless changed) |
 | `transactions.max_retries` | int | 0 | automatic re-runs on serialization failure/deadlock (40001/40P01); exhausted → `409` |
 | `watch.enabled` | bool | `false` | dev only; refuses to combine with cache |
 | `watch.poll_interval` | duration | `5s` | fallback polling when event triggers can't be installed |
@@ -124,6 +124,13 @@ together.
 14. `log.level` is one of `debug`, `info`, `warn`, `error`.
 15. `server.base_path` is empty or starts with `/` and does not end with `/`.
 16. `server.max_embed_depth >= 1`.
+17. `rls.anonymous_role`, `rls.default_role` and every `rls.allowed_roles`
+    entry, when set, match `[A-Za-z0-9_]+` and are not `none`, `public` or a
+    `pg_*` role, in any letter case (`set_config('role', 'none', true)` is
+    `RESET ROLE`, which would run the request as the connection role).
+18. `rls.claims_prefix` is dot-separated identifiers whose first component
+    is not a server or extension settings namespace (`pg_*`, `plpgsql`,
+    `auto_explain`, `postgis`, …).
 
 ## Removed vs pdbq
 

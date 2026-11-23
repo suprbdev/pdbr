@@ -688,6 +688,24 @@ func TestRLSMatrix(t *testing.T) {
 	wantProblem(t, res, body, 403, "role_not_allowed")
 }
 
+// TestRLSRejectsRoleNone: set_config('role', 'none') is RESET ROLE, which
+// would run the request as the (RLS-bypassing) connection role, so a claim
+// naming none, public or a pg_ role is refused even without allowed_roles.
+func TestRLSRejectsRoleNone(t *testing.T) {
+	srv := testServer(t, func(c *config.Config) {
+		c.RLS.Enabled = true
+		c.RLS.Auth.Mode = "headers"
+	})
+	for _, role := range []string{"none", "None", "public", "pg_read_all_data"} {
+		for _, path := range []string{"/api/posts?select=id&limit=100", "/api/posts/2"} {
+			res, body := do(t, "GET", srv.URL+path, map[string]string{"X-Pdbr-Claim-Role": role, "X-Pdbr-Claim-User-Id": "1"})
+			wantProblem(t, res, body, 403, "role_not_allowed")
+		}
+		res, body := do(t, "POST", srv.URL+"/api/posts", map[string]string{"X-Pdbr-Claim-Role": role, "Content-Type": "application/json"})
+		wantProblem(t, res, body, 403, "role_not_allowed")
+	}
+}
+
 func TestReadOnly(t *testing.T) {
 	srv := testServer(t, func(c *config.Config) { c.Server.ReadOnly = true })
 	res, body := do(t, "POST", srv.URL+"/api/users", nil)

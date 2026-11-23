@@ -66,7 +66,7 @@ fixture, so `POST` only —, `search_posts(term text) SETOF posts`,
 | array | `{a,b}` PG literal | JSON array |
 | composite | JSON text | JSON object → `jsonb_populate_record(NULL::type, $n::jsonb)`; composite arrays → `ARRAY(SELECT jsonb_populate_recordset(NULL::type, $n::jsonb))` |
 | `json`/`jsonb` | JSON text | any JSON value |
-| geometry/geography (postgis plugin) | GeoJSON or WKT/EWKT text | GeoJSON object or WKT/EWKT string → `ST_GeomFromGeoJSON` / `ST_GeomFromEWKT` |
+| geometry/geography (postgis plugin) | GeoJSON or WKT/EWKT text | GeoJSON object or WKT/EWKT string → one `CASE WHEN left($n, 1) = '{' THEN ST_GeomFromGeoJSON($n) ELSE ST_GeomFromEWKT($n) END` whatever the input form |
 | any other | text `::type` | string `::type` |
 
 - Uncoercible value → `400 invalid_body` (POST) / `400 invalid_filter` (GET)

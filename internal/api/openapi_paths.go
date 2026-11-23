@@ -717,7 +717,7 @@ func (b *Builder) enumByRef(ref string) *Enum {
 func (b *Builder) rpcBodySchema(rpc *RPC) *Schema {
 	s := &Schema{Type: "object", Properties: map[string]*Schema{}, AdditionalProperties: boolPtr(false)}
 	for _, a := range rpc.Args {
-		prop := *Nullable(b.inputTypeSchema(a.PGType, a.TypeSchema, ""))
+		prop := *Nullable(b.inputTypeSchema(a.PGType, a.TypeSchema, "", ""))
 		if a.HasDefault {
 			prop.Description = strings.TrimPrefix(argDefaultProse(a), "; ")
 		} else {
