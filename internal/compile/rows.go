@@ -43,6 +43,9 @@ func (s *stmt) rowJSON(node *plan.Node, alias string, depth int) (string, []stri
 	}
 	for i := range node.Fields {
 		f := &node.Fields[i]
+		if f.Agg != nil {
+			return "", nil, errUser(CodeInvalidSelect, "aggregate functions are only valid on list reads and in to-many embeds")
+		}
 		key, expr, err := s.fieldJSON(r, f, alias, depth)
 		if err != nil {
 			return "", nil, err

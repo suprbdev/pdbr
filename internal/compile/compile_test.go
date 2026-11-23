@@ -1214,6 +1214,11 @@ func TestAggregateOrderGuard(t *testing.T) {
 	if !errors.As(err, &ue) || ue.Code != compile.CodeColumnNotOrderable {
 		t.Fatalf("err = %v, want column_not_orderable", err)
 	}
+	row := &plan.Request{Method: plan.GET, Resource: posts, Key: &plan.Key{Constraint: posts.Table.PrimaryKey, Values: []any{int64(1)}}, Select: p.Select}
+	_, err = f.c.Compile(context.Background(), &compile.Request{Plan: row, Built: f.built})
+	if !errors.As(err, &ue) || ue.Code != compile.CodeInvalidSelect {
+		t.Fatalf("row err = %v, want invalid_select", err)
+	}
 	p.Order = nil
 	p.Page.After = []any{int64(1)}
 	_, err = f.c.Compile(context.Background(), &compile.Request{Plan: p, Built: f.built})
