@@ -724,3 +724,49 @@ func TestPolymorphicArgumentsResolvedBySmartComments(t *testing.T) {
 		t.Error("array_first has no tag and must stay skipped")
 	}
 }
+
+func TestFunctionsOverUnexposedTypesSkipped(t *testing.T) {
+	cat := testutil.FixtureCatalog()
+	pg := "pg_catalog"
+	stable := introspect.VolatilityStable
+	users := introspect.FuncArg{Name: "u", PGType: "users", TypeSchema: "public"}
+	cat.Extensions = append(cat.Extensions, &introspect.Extension{Name: "citext", Schema: "ext"})
+	cat.Ranges = append(cat.Ranges, &introspect.RangeType{Schema: "ext", Name: "floatrange", Multirange: "floatmultirange", MultirangeSchema: "ext"})
+	cat.Functions = append(cat.Functions,
+		&introspect.Function{Schema: "public", Name: "get_stash", ReturnType: "stash", ReturnTypeSchema: "priv", Volatility: stable},
+		&introspect.Function{Schema: "public", Name: "stash_arg", Args: []introspect.FuncArg{{Name: "s", PGType: "_stash", TypeSchema: "priv"}}, ReturnType: "int4", ReturnTypeSchema: pg, Volatility: stable},
+		&introspect.Function{Schema: "public", Name: "users_stash", Args: []introspect.FuncArg{users}, ReturnType: "stash", ReturnTypeSchema: "priv", ReturnsSet: true, Volatility: stable},
+		&introspect.Function{Schema: "public", Name: "get_vault", ReturnType: "vault", ReturnTypeSchema: "public", Volatility: stable},
+		&introspect.Function{Schema: "public", Name: "users_vault", Args: []introspect.FuncArg{users}, ReturnType: "_vault", ReturnTypeSchema: "public", Volatility: stable},
+		&introspect.Function{Schema: "public", Name: "get_ci", ReturnType: "citext", ReturnTypeSchema: "ext", Volatility: stable},
+		&introspect.Function{Schema: "public", Name: "get_fmr", ReturnType: "floatmultirange", ReturnTypeSchema: "ext", Volatility: stable},
+		&introspect.Function{Schema: "public", Name: "login", ReturnType: "jwt", ReturnTypeSchema: "auth", Volatility: introspect.VolatilityVolatile},
+	)
+	u := cat.Table("public", "users")
+	u.Columns = append(u.Columns, &introspect.Column{Name: "vault_copy", PGType: "vault", TypeSchema: "public", Position: len(u.Columns) + 1})
+	opts := defaultOptions()
+	opts.HiddenTables = map[string]bool{"public.vault": true}
+	opts.JWTType = "auth.jwt"
+	b := build(t, cat, opts)
+	for _, name := range []string{"get_stash", "stash_arg", "get_vault"} {
+		if _, ok := b.RPCByPath[name]; ok {
+			t.Errorf("function %s should be excluded", name)
+		}
+	}
+	for _, key := range []string{"stash", "vault"} {
+		if b.ByPath["users"].Computed[key] != nil {
+			t.Errorf("computed column %s should be excluded", key)
+		}
+	}
+	if b.ByPath["users"].Field("vault_copy") != nil || b.ByPath["users"].InputColumns["vault_copy"] != nil {
+		t.Error("a column typed as a hidden table's row type must be hidden")
+	}
+	for _, name := range []string{"get_ci", "get_fmr", "login"} {
+		if _, ok := b.RPCByPath[name]; !ok {
+			t.Errorf("function %s over an extension or range type should stay", name)
+		}
+	}
+	if !hasWarning(b.Warnings, "outside schema.schemas") {
+		t.Errorf("get_stash should warn: %v", b.Warnings)
+	}
+}

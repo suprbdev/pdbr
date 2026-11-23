@@ -333,7 +333,7 @@ func (a *App) LoadCatalog(ctx context.Context) (*introspect.Catalog, error) {
 // BuildAPI runs the model pipeline: catalog hooks -> inflection -> default
 // generation -> API hooks -> Build. Warnings are logged as they arise.
 func (a *App) BuildAPI(ctx context.Context, cat *introspect.Catalog) (*api.Built, error) {
-	return a.buildAPI(ctx, cat, a.Config.Server.BasePath)
+	return a.buildAPI(ctx, tableKeys(cat), cat, a.Config.Server.BasePath)
 }
 
 // BuildContractAPI builds the API of the configured contract name, under
@@ -351,23 +351,41 @@ func (a *App) BuildContractAPI(ctx context.Context, cat *introspect.Catalog, nam
 	view, sum := ct.Spec().View(cat)
 	a.Log.Debug("contract view", "contract", name, "hidden_tables", sum.Tables, "hidden_columns", sum.Columns,
 		"hidden_functions", sum.Functions, "hidden_foreign_keys", sum.ForeignKeys)
-	built, err := a.buildAPI(ctx, view, a.Config.ContractBase(ct))
+	built, err := a.buildAPI(ctx, tableKeys(cat), view, a.Config.ContractBase(ct))
 	if err != nil {
 		return nil, fmt.Errorf("contract %s: %w", name, err)
 	}
 	return built, nil
 }
 
-func (a *App) buildAPI(ctx context.Context, cat *introspect.Catalog, basePath string) (*api.Built, error) {
+// tableKeys returns the "schema.table" keys of cat's tables.
+func tableKeys(cat *introspect.Catalog) map[string]bool {
+	keys := make(map[string]bool, len(cat.Tables))
+	for _, t := range cat.Tables {
+		keys[t.Schema+"."+t.Name] = true
+	}
+	return keys
+}
+
+// buildAPI builds the API from cat. introspected holds the table keys of
+// the catalog as introspected (before any contract): those missing from
+// cat once the catalog hooks ran are the hidden tables (api.Options.
+// HiddenTables); it is modified.
+func (a *App) buildAPI(ctx context.Context, introspected map[string]bool, cat *introspect.Catalog, basePath string) (*api.Built, error) {
 	disabled := a.Config.DisabledPlugins()
 	if err := a.Registry.TransformCatalog(ctx, disabled, cat); err != nil {
 		return nil, fmt.Errorf("catalog hooks: %w", err)
+	}
+	hidden := introspected
+	for _, t := range cat.Tables {
+		delete(hidden, t.Schema+"."+t.Name)
 	}
 	b := api.New(cat, a.Registry.Inflector(disabled, inflect.Default), api.Options{
 		FilterIndexedOnly: a.Config.Filters.IndexedOnly,
 		AllowColumns:      a.Config.Filters.AllowColumns,
 		Functions:         a.Config.Schema.Functions,
 		ExposePartitions:  a.Config.Schema.ExposePartitions,
+		HiddenTables:      hidden,
 		BasePath:          basePath,
 		Schemas:           a.Config.Schema.Schemas,
 		MaxPageSize:       a.Config.Server.MaxPageSize,

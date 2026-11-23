@@ -331,6 +331,8 @@ where noted):
 | overloads (same schema + name, different signature) | keep-first by `oid`, warn — later overloads are unreachable |
 | function returns a table that is not an exposed resource (`SETOF`/row) | no resource to compile the row against → excluded with warning |
 | row-type argument (or array of rows) of a table that is not an exposed resource | no row shape to accept (`info` log line) |
+| result, argument or `OUT`/`TABLE` column typed as the row (or array of rows) of a table hidden by a bare `@omit` or a [schema contract](contracts.md), including through a resolved `@anyelement` / `@anycompatible` tag | the row would be rendered whole as JSON, hidden columns included (`info` log line); columns typed as such a row are hidden the same way |
+| result, argument or `OUT`/`TABLE` column typed in a schema outside `schema.schemas` that is no known enum, composite, domain, range, spatial or extension type (typically the row of a table in an unexposed schema) | same reason, excluded with warning |
 | row-type argument in first position, stable/immutable | [computed column](#computed-columns) instead of RPC; volatile → RPC with a [row argument](#table-valued-row-arguments) |
 
 ## Computed columns

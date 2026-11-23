@@ -82,7 +82,7 @@ Disable everything with `plugins.disabled: [smart-comments]` (see
 
 | Tag | Effect |
 |---|---|
-| `@omit` | Hide the table entirely: no routes, no `components.schemas` entry, not embeddable, no relation keys or filters referencing it. |
+| `@omit` | Hide the table entirely: no routes, no `components.schemas` entry, not embeddable, no relation keys or filters referencing it, no function returning or taking its rows (RPCs and computed columns, also through a resolved `@anyelement` tag), and no column typed as its row type. |
 | `@omit read` | (table) No `GET`/`HEAD` on `/{table}`, `/{table}/{pk}` and `/{table}/by/…`; the resource stays reachable through `select=` embeds from related resources — useful for detail/join tables. Write methods on those paths are unaffected. |
 | `@omit all` | No collection `GET`/`HEAD /{table}`; `/{table}/{pk}` and `/{table}/by/…` stay. |
 | `@omit many` | Never embedded, filtered or ordered as a backward relation from other resources (no `users?select=posts(*)`, no `users?posts.title=…`); forward embeds (`posts?select=users(*)`) stay. |
