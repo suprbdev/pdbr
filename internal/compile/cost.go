@@ -1,6 +1,9 @@
 package compile
 
 import (
+	"github.com/suprbdev/pdbcore/contrib"
+	"github.com/suprbdev/pdbcore/postgis"
+
 	"github.com/suprbdev/pdbr/internal/api"
 	"github.com/suprbdev/pdbr/internal/plan"
 )
@@ -13,7 +16,9 @@ import (
 //	               to-many embed or spread)
 //	mult(other)  = 1 (columns, forward embeds, single rows)
 //	cost(column) = 1; `*` costs the number of columns it expands to; an
-//	               aggregate function costs 1 like a column
+//	               aggregate function costs 1 like a column; a headline
+//	               costs contrib.HeadlineCost, a buffer argument adds
+//	               postgis.BufferCost
 //
 // Spread embeds cost like embeds (a to-one spread joins one row, a to-many
 // spread aggregates its related rows). An aggregated list (a node selecting
@@ -117,10 +122,17 @@ func nodeCost(node *plan.Node, maxPageSize int) int {
 	return cost
 }
 
-// fieldCost is the cost of one selected field: 1, or for a set-returning
-// computed column 1 + maxPageSize × the cost of its rows (one value per row
-// for a set of scalars).
+// fieldCost is the cost of one selected field: 1; contrib.HeadlineCost for
+// a headline; 1 + postgis.BufferCost for a spatial value with a buffer
+// argument; or for a set-returning computed column 1 + maxPageSize × the
+// cost of its rows (one value per row for a set of scalars).
 func fieldCost(f *plan.FieldSel, maxPageSize int) int {
+	if f.Pseudo != nil && f.Pseudo.Headline != nil {
+		return contrib.HeadlineCost
+	}
+	if _, ok := f.Args["buffer"]; ok {
+		return 1 + postgis.BufferCost
+	}
 	c := f.Computed
 	if c == nil || c.Function == nil || !c.Function.ReturnsSet {
 		return 1

@@ -116,7 +116,7 @@ type Surface struct {
 	ComputedFilters bool // computed=op.v
 	RelationOrder   bool // order=rel(col).asc
 	ComputedOrder   bool // order=computed.desc
-	Spatial         bool // st_*/bbox_* ops, .dist+near=, col(transform=,simplify=) all at once
+	Spatial         bool // st_*/bbox_* ops, .dist+near=, col(transform=,simplify=,buffer=,precision=) all at once
 	// SpatialFilters / SpatialOrder / SpatialProjection switch the spatial
 	// halves on individually (postgis settings filters / ordering /
 	// projection); Spatial implies all three. Pseudo-columns need no flag:
@@ -962,6 +962,7 @@ type Built struct {
 func (b *Builder) Build() (*Built, error) {
 	b.addContribScores()
 	b.addContribPseudos()
+	b.addContribHeadlines()
 	out := &Built{
 		Catalog:    b.Catalog,
 		Options:    b.Options,

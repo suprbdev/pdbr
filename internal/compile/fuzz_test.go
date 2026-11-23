@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 
@@ -80,10 +81,13 @@ func FuzzFilter(f *testing.F) {
 		rng := contrib.RangeValue{Start: &e, End: &tag, StartInclusive: true}
 		p := list(docs)
 		p.Select = fields(docs, "id")
-		p.Select.Fields = append(p.Select.Fields, plan.FieldSel{Pseudo: docs.Pseudo["title_similarity"]}, plan.FieldSel{Pseudo: docs.Pseudo["title_strict_word_similarity"]})
+		bodyFilter := cond(dc("body"), plan.OpFts, contrib.FullTextQuery{Query: tag})
+		p.Select.Fields = append(p.Select.Fields, plan.FieldSel{Pseudo: docs.Pseudo["title_similarity"]}, plan.FieldSel{Pseudo: docs.Pseudo["title_strict_word_similarity"]},
+			plan.FieldSel{Pseudo: docs.Pseudo["search_headline"], Headline: &plan.Headline{Document: dc("title"), Options: `StartSel="` + e + `"`, Filter: &ftsFilter}},
+			plan.FieldSel{Alias: "b", Pseudo: docs.Pseudo["body_headline"], Headline: &plan.Headline{Document: dc("body"), Options: tag, Filter: &bodyFilter}})
 		p.Filter = plan.And{Terms: []plan.Expr{
 			ftsFilter,
-			cond(dc("body"), plan.OpFts, contrib.FullTextQuery{Query: tag}),
+			bodyFilter,
 			cond(dc("title"), "trgm_sim", e),
 			cond(dc("title"), "trgm_swsim", tag),
 			cond(dc("email"), plan.OpEq, e),
@@ -494,9 +498,12 @@ func FuzzSpatial(f *testing.F) {
 		t.Helper()
 		p := list(places)
 		p.Select = fields(places, "id")
+		digits := int64(math.Abs(math.Mod(x, 16)))
 		p.Select.Fields = append(p.Select.Fields,
 			plan.FieldSel{Pseudo: places.Pseudo["location_distance"], Args: map[string]any{"spheroid": true}},
-			plan.FieldSel{Pseudo: places.Pseudo["area_distance"]})
+			plan.FieldSel{Pseudo: places.Pseudo["area_distance"]},
+			plan.FieldSel{Alias: "b", Column: places.Table.Column("area"), Args: map[string]any{"buffer": d, "simplify": math.Abs(x), "precision": digits}},
+			plan.FieldSel{Alias: "c", Pseudo: places.Pseudo["area_centroid"], Args: map[string]any{"buffer": x, "precision": digits}})
 		p.Filter = plan.And{Terms: []plan.Expr{
 			cond(loc, "st_intersects", wkt),
 			cond(loc, "bbox_intersects", []any{x, x, x, x}),

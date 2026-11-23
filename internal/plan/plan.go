@@ -121,8 +121,9 @@ type FieldSel struct {
 	Column   *introspect.Column // real column
 	Computed *api.Computed      // computed column (row-type function)
 	Pseudo   *api.PseudoColumn  // derived pseudo-column (<col>_<accessor>, scores)
-	// Args are spatial projection args: "transform" (int SRID) and/or
-	// "simplify" (float64 tolerance); a geometry distance score's
+	// Args are spatial projection args: "transform" (int SRID),
+	// "simplify" (float64 tolerance), "buffer" (float64 distance) and
+	// "precision" (int64 decimal digits); a geometry distance score's
 	// "spheroid" (bool); or the arguments of a derived contrib
 	// pseudo-column ("path" string; "offset", "length" int64). Nil when
 	// absent.
@@ -143,6 +144,26 @@ type FieldSel struct {
 	// Cast is the type the selected value is cast to (col::text); nil for
 	// none. Aggregates carry their casts on Agg instead.
 	Cast *TypeRef
+	// Headline binds a headline pseudo-column (Pseudo.Headline set) to its
+	// document and the full-text filter it highlights against.
+	Headline *Headline
+}
+
+// Headline is a selected <col>_headline: ts_headline over Document against
+// the query of Filter, the single non-negated full-text condition on the
+// pseudo-column's column among the conjuncts of the item's scope (the root
+// filters, or the embed's).
+type Headline struct {
+	// Document is the highlighted column: the pseudo-column's own column,
+	// or the document= column of a tsvector column's headline.
+	Document *introspect.Column
+	// Options is the ts_headline options text
+	// (contrib.HeadlineOptions.String; "" for the defaults). It is a value
+	// and is bound as a parameter.
+	Options string
+	// Filter is the full-text condition, bound once the whole query is
+	// parsed.
+	Filter *Cond
 }
 
 // Key is the response key of the selected field on res: its alias, else

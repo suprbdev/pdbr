@@ -1,0 +1,2 @@
+-- request: GET /api/kb/docs?select=id,body_headline&or=(body.fts.cat,id.eq.1)
+-- error: 400 invalid_filter: body_headline needs a non-negated fts, plfts, phfts or wfts filter on body outside or=/not.

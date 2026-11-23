@@ -1,0 +1,1 @@
+GET /api/kb/docs?select=id,body_headline(max_words=500)&body=fts.cat

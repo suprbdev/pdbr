@@ -339,6 +339,48 @@ func TestPostGISProjection(t *testing.T) {
 	}
 }
 
+func TestPostGISPrecisionAndBuffer(t *testing.T) {
+	srv := testServer(t, nil)
+	var rows []row
+	getJSON(t, q(srv.URL, "select=p2:location(precision=2),p0:location(precision=0),ring:location(buffer=0.01,precision=3),"+
+		"geo:area(buffer=100),wm:area(buffer=100,transform=3857,precision=1),c:area_centroid(buffer=100,precision=4),"+
+		"m2:area_area(buffer=100),plain:area_area", "id=eq.1"), &rows)
+	r := rows[0]
+	if got := mustJSON(t, r["p2"].(map[string]any)["coordinates"]); string(got) != "[-0.13,51.51]" {
+		t.Errorf("precision=2 coordinates %s", got)
+	}
+	if got := mustJSON(t, r["p0"].(map[string]any)["coordinates"]); string(got) != "[0,52]" {
+		t.Errorf("precision=0 coordinates %s", got)
+	}
+	ring := r["ring"].(map[string]any)
+	if ring["type"] != "Polygon" || !strings.Contains(string(mustJSON(t, ring["coordinates"])), "51.508") {
+		t.Errorf("buffered point %v", ring)
+	}
+	if g, _ := r["geo"].(map[string]any); g["type"] != "Polygon" {
+		t.Errorf("geography buffer %v", r["geo"])
+	}
+	if wm, _ := r["wm"].(map[string]any); wm["type"] != "Polygon" || !strings.Contains(string(mustJSON(t, wm["coordinates"])), "671") {
+		t.Errorf("buffered, transformed geography %v", r["wm"])
+	}
+	if c, _ := r["c"].(map[string]any); c["type"] != "Point" {
+		t.Errorf("buffered centroid %v", r["c"])
+	}
+	if m2, plain := r["m2"].(float64), r["plain"].(float64); m2 <= plain+math.Pi*100*100*0.5 {
+		t.Errorf("a 100 m buffer should add area in m²: %v -> %v", plain, m2)
+	}
+	res, body := do(t, "GET", q(srv.URL, "select=id,location(precision=3)", "id=eq.1"), map[string]string{"Accept": "application/geo+json"})
+	if res.StatusCode != 200 || !strings.Contains(string(body), "51.508") || strings.Contains(string(body), "51.5080") {
+		t.Errorf("geo+json with precision: %d %s", res.StatusCode, body)
+	}
+	for _, sel := range []string{
+		"location(precision=16)", "location(precision=-1)", "location(precision=1.5)", "location(buffer=abc)",
+		"location(buffer=Inf)", "area_area(precision=2)", "name(buffer=1)",
+	} {
+		res, body := get(t, q(srv.URL, "select="+sel))
+		wantProblem(t, res, body, 400, "invalid_select")
+	}
+}
+
 func TestPostGISDistanceOrder(t *testing.T) {
 	srv := testServer(t, nil)
 	var rows []row

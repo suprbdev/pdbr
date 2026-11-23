@@ -1,0 +1,2 @@
+-- request: GET /api/kb/articles?select=id,search_headline(document=meta2)&search=fts.cat
+-- error: 400 invalid_select: "search_headline": document "meta2" is not a readable text, json or jsonb column of this resource

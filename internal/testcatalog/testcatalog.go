@@ -30,6 +30,11 @@ const (
 // (sparsevec, no index), plus code (bit, HNSW index) for pgvector's bit
 // distances, and kb.chunks a vector column embedded under it. kb.labels has
 // two int4[] columns for intarray: tags (GIN index) and nums (no index).
+// kb.articles has jsonb and json documents for full-text search over json
+// (meta, GIN-indexed for the jsonb operators, which no index serves for
+// full-text search; raw, which the goldens allowlist), a GIN-indexed
+// tsvector column (search) for headlines over another column, and a foreign
+// key to kb.docs for embedded headlines.
 func Contrib(cat *introspect.Catalog) *introspect.Catalog {
 	cat.Schemas = append(cat.Schemas, ContribSchema)
 	cat.Extensions = append(cat.Extensions,
@@ -151,6 +156,21 @@ func Contrib(cat *introspect.Catalog) *introspect.Catalog {
 		Columns:    []*introspect.Column{labelID, arr("tags", 2), arr("nums", 3)},
 		PrimaryKey: &introspect.Constraint{Name: "labels_pkey", Columns: []string{"id"}},
 		Indexes:    []*introspect.Index{idx("labels_tags_idx", "gin", "tags")},
+		Privileges: priv,
+	})
+	articleID := core("id", 1, "int4")
+	articleID.NotNull = true
+	cat.Tables = append(cat.Tables, &introspect.Table{
+		Schema: ContribSchema, Name: "articles", Kind: introspect.RelTable,
+		Columns: []*introspect.Column{
+			articleID, core("title", 2, "text"), core("meta", 3, "jsonb"), core("raw", 4, "json"),
+			core("search", 5, "tsvector"), core("author_id", 6, "int4"),
+		},
+		PrimaryKey: &introspect.Constraint{Name: "articles_pkey", Columns: []string{"id"}},
+		ForeignKeys: []*introspect.ForeignKey{{Name: "articles_author_id_fkey", Columns: []string{"author_id"},
+			RefSchema: ContribSchema, RefTable: "docs", RefColumns: []string{"id"}}},
+		Indexes: []*introspect.Index{idx("articles_search_idx", "gin", "search"), idx("articles_author_id_idx", "btree", "author_id"),
+			idx("articles_meta_idx", "gin", "meta")},
 		Privileges: priv,
 	})
 	return cat

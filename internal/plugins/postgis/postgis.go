@@ -1,7 +1,8 @@
 // Package postgis is the built-in plugin (priority 160) that turns PostGIS
 // geometry/geography columns into a query surface: spatial filter operators
 // (st_*, bbox_*), derived pseudo-columns (<col>_area, <col>_centroid, ...),
-// select= projection arguments (transform=, simplify=), distance ordering
+// select= projection arguments (transform=, simplify=, buffer=,
+// precision=), distance ordering
 // (order=<col>.dist with near=) and the <col>_distance score from near=,
 // and the spatial aggregate functions
 // (col.extent(), col.union(), col.collect(), col.centroid(); with

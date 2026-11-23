@@ -1,0 +1,1 @@
+GET /api/kb/docs?select=id,body_headline(document=title)&body=fts.cat

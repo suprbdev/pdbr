@@ -348,27 +348,47 @@ The plugin registers them as `api.Resource.Pseudo` entries
 (`api.PseudoColumn{Key, Column, Accessor, Schema}`); the core compiler renders
 `Accessor` through `pdbcore/postgis.Deriveds`.
 
-## Reprojection and simplification
+## Reprojection, simplification, buffers and precision
 
 Spatial fields and their pseudo-columns take parenthesised projection
-arguments in `select=` — `transform=<srid>` and `simplify=<tolerance>` —
-applied to the column value before it is encoded as GeoJSON (or before the
-accessor runs: `area_centroid(transform=3857)` is the centroid in web
-mercator, `area_area(transform=3857)` the planar area in that CRS). Aliases
-let you fetch several representations at once:
+arguments in `select=`: `buffer=<distance>`, `simplify=<tolerance>`,
+`transform=<srid>` and `precision=<digits>`. The first three apply to the
+column value before it is encoded as GeoJSON (or before the accessor runs:
+`area_centroid(transform=3857)` is the centroid in web mercator,
+`area_area(buffer=100)` the area of everything within 100 m of the
+polygon). `precision` rounds the GeoJSON coordinates. Aliases let you fetch
+several representations at once:
 
 ```
-GET /api/places?select=name,web_mercator:location(transform=3857),coarse:location(simplify=0.01)
+GET /api/places?select=name,web_mercator:location(transform=3857),coarse:location(simplify=0.01),short:location(precision=6),around:area(buffer=250,precision=6)
 ```
 
-`transform` compiles to `ST_Transform(…, <srid>)` (the SRID is a structural
-integer literal), `simplify` to `ST_SimplifyPreserveTopology(…, $n)` (the
-tolerance is a bind parameter), so the result is never an invalid geometry;
-`simplify` is applied first. `transform` must be a positive integer,
-`simplify` a non-negative number, and they are the only field arguments the
-`select=` grammar accepts (`400 invalid_select` on anything else, on
-empty parentheses, or on a non-spatial field). Note that a transformed value
-is no longer WGS84 even though it is still emitted as GeoJSON.
+| argument | SQL | value |
+|---|---|---|
+| `buffer` | `ST_Buffer(…, $n::float8)`, the area within the distance | any finite number, a bind parameter: metres on `geography`, SRID units on `geometry` (degrees for 4326); negative distances shrink polygons and erase points and lines |
+| `simplify` | `ST_SimplifyPreserveTopology(…, $n)`, never an invalid geometry | a non-negative tolerance, a bind parameter |
+| `transform` | `ST_Transform(…, <srid>)` | a positive integer SRID, a structural literal |
+| `precision` | `ST_AsGeoJSON(…, $n::int4)` (`maxdecimaldigits`) | an integer from 0 to 15, a bind parameter |
+
+They apply in that order: buffer, simplify, transform, then the GeoJSON
+encoding with the precision. A buffered `geography` stays `geography`
+(metres), while simplify and transform work on `geometry`. Without
+`precision` PostGIS writes up to 9 decimal digits; 6 digits are about 10 cm
+on lon/lat data and make map payloads noticeably smaller. `precision`
+applies only to GeoJSON values: a column, or a geometry-valued accessor
+(`<col>_centroid`, `<col>_envelope`, …); on a number, text or boolean
+accessor (`area_area`, `location_srid`, …) it is `400 invalid_select`. It
+also rounds the `geometry` member of `Accept: application/geo+json`
+responses when the Feature geometry item carries it
+(`select=id,location(precision=6)`).
+
+These are the only field arguments the `select=` grammar accepts on
+spatial values (`400 invalid_select` on anything else, on a duplicate, on
+empty parentheses, on a value out of range, or on a non-spatial field).
+Each `buffer` costs `pdbcore/postgis.BufferCost` (5) per row in
+`server.max_cost` on top of the column, because `ST_Buffer` builds a new
+polygon for every row. A transformed value is no longer WGS84 even though
+it is still emitted as GeoJSON.
 
 ## Spatial aggregates
 
@@ -529,18 +549,20 @@ COMMENT ON COLUMN places.secret_location IS '@omit filter,order';
   instead of the scalar ops; resources with a `.dist`-orderable spatial
   column (`Surface.SpatialOrder` and the column in `OrderColumns`) get a
   `near` query parameter and their `order` description mentions
-  `<col>.dist`; the `select` description mentions `(transform=,simplify=)`
-  under `Surface.SpatialProjection`.
+  `<col>.dist`; the `select` description mentions
+  `(transform=,simplify=,buffer=,precision=)` under
+  `Surface.SpatialProjection`.
 
 ## Notes and limits
 
-- **Injection safety.** Geometries, bounding-box corners and distances are all
-  bind parameters; the compiled SQL text is a pure function of the request
+- **Injection safety.** Geometries, bounding-box corners, distances, buffer
+  distances and GeoJSON precisions are all bind parameters; the compiled SQL text is a pure function of the request
   shape. This is enforced by `FuzzSpatial` in `internal/compile` (part of
   `make fuzz`), the spatial twin of the `FuzzFilter` invariant.
 - **Goldens.** `spatial_filter`, `spatial_dwithin`, `spatial_bbox_directional`,
   `spatial_equality`, `spatial_output`, `spatial_accessors`,
-  `spatial_accessor_typmod`, `spatial_order`, `spatial_mutation` in `internal/compile/testdata` (the
+  `spatial_accessor_typmod`, `spatial_order`, `spatial_mutation`,
+  `spatial_precision_buffer`, `spatial_precision_geojson` in `internal/compile/testdata` (the
   golden harness applies the plugin so pseudo-columns resolve); e2e in
   `test/e2e_postgis_test.go`.
 - **Malformed input fails fast.** A value that is neither valid GeoJSON nor

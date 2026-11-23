@@ -1,0 +1,2 @@
+-- request: GET /api/places?select=id,location(precision=16)
+-- error: 400 invalid_select: precision must be an integer between 0 and 15, got "16"

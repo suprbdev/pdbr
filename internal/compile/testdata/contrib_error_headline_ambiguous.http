@@ -1,0 +1,1 @@
+GET /api/kb/docs?select=id,body_headline&body=fts.cat&and=(body.plfts.dog)

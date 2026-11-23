@@ -281,6 +281,25 @@ func TestSelect(t *testing.T) {
 		_, err := doParse(t, b, req{url: "/api/places?select=location(transform=3857)"}, off)
 		wantCode(t, err, CodeInvalidSelect)
 	})
+	t.Run("precision and buffer", func(t *testing.T) {
+		p := mustParse(t, b, "/api/places?select=location(precision=6,buffer=-1.5),area(buffer=10,precision=0)")
+		f := p.Select.Fields
+		if f[0].Args["precision"] != int64(6) || f[0].Args["buffer"] != -1.5 || f[1].Args["precision"] != int64(0) || f[1].Args["buffer"] != 10.0 {
+			t.Fatalf("args = %+v", f)
+		}
+		for _, u := range []string{
+			"/api/places?select=location(precision=16)",
+			"/api/places?select=location(precision=-1)",
+			"/api/places?select=location(precision=1.5)",
+			"/api/places?select=location(buffer=NaN)",
+			"/api/places?select=location(buffer=-Inf)",
+			"/api/places?select=location(buffer=x)",
+			"/api/places?select=location(buffer=1,buffer=2)",
+		} {
+			_, err := doParse(t, b, req{url: u}, allOn)
+			wantCode(t, err, CodeInvalidSelect)
+		}
+	})
 	t.Run("setof computed nested select", func(t *testing.T) {
 		p := mustParse(t, b, "/api/users?select=id,tag_words")
 		if p.Select.Fields[1].Computed == nil || p.Select.Fields[1].Node != nil {

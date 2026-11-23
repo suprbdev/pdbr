@@ -1,0 +1,2 @@
+-- request: GET /api/places?select=id,location(buffer=NaN)
+-- error: 400 invalid_select: buffer must be a finite distance, got "NaN"

@@ -1,0 +1,2 @@
+GET /api/places?select=id,location(precision=6)&order=id&limit=2
+Accept: application/geo+json

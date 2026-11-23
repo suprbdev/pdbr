@@ -66,6 +66,7 @@ var ltreeSpellings = []spelling{
 var contribSpellings = map[string][]spelling{
 	contrib.VocabFullText:   ftsSpellings,
 	contrib.VocabTextSearch: ftsSpellings,
+	contrib.VocabJSONSearch: ftsSpellings,
 	contrib.VocabTrgm: {
 		{"trgm_sim", "similarTo"}, {"trgm_wsim", "wordSimilarTo"}, {"trgm_swsim", "strictWordSimilarTo"},
 	},
@@ -433,7 +434,7 @@ func contribFilters(cat *introspect.Catalog, opts Options, r *Resource, c *intro
 		for _, sp := range contribSpellings[voc.Name] {
 			o, ok := voc.Op(sp.op)
 			hints := o.Index
-			if voc.Name == contrib.VocabTextSearch {
+			if voc.Name == contrib.VocabTextSearch || voc.Name == contrib.VocabJSONSearch {
 				hints = nil
 			}
 			if !ok || seen[sp.url] || !indexServes(opts, r, c, hints, false) {
@@ -486,7 +487,7 @@ func (r *Resource) NameTaken(key string) bool {
 // expression: some index of the table must cover the column with one of the
 // hinted access methods (ordering hints for ORDER BY, predicate hints
 // otherwise). Expression indexes carry no columns, so full-text search on a
-// text column (served only by an index on to_tsvector) needs
+// text, json or jsonb column (served only by an index on to_tsvector) needs
 // filters.allow_columns.
 func indexServes(opts Options, r *Resource, c *introspect.Column, hints []contrib.IndexHint, ordering bool) bool {
 	if !opts.FilterIndexedOnly || r == nil || r.Table == nil {
@@ -620,4 +621,118 @@ func (b *Builder) addContribPseudos() {
 			}
 		}
 	}
+}
+
+// headlineOptions maps the select arguments of a headline pseudo-column to
+// pdbcore's headline option keys, in documentation order.
+var headlineOptions = []spelling{
+	{"max_words", "maxWords"}, {"min_words", "minWords"}, {"short_word", "shortWord"},
+	{"max_fragments", "maxFragments"}, {"highlight_all", "highlightAll"},
+	{"start_sel", "startSel"}, {"stop_sel", "stopSel"}, {"fragment_delimiter", "fragmentDelimiter"},
+}
+
+// HeadlineOption returns the pdbcore option key of a headline select
+// argument, or "" when name is none.
+func HeadlineOption(name string) string {
+	for _, o := range headlineOptions {
+		if o.url == name {
+			return o.op
+		}
+	}
+	return ""
+}
+
+// SelectArgSyntax renders the select argument syntax of a pseudo-column:
+// a derived contrib value's or a headline's; "" for the others.
+func (pc *PseudoColumn) SelectArgSyntax() string {
+	if pc.Headline != nil {
+		return pc.Headline.HeadlineArgSyntax()
+	}
+	return pc.Contrib.ContribArgSyntax()
+}
+
+// HeadlineArg returns the select argument spelling of a pdbcore headline
+// option key (maxWords -> max_words).
+func HeadlineArg(key string) string {
+	for _, o := range headlineOptions {
+		if o.op == key {
+			return o.url
+		}
+	}
+	return key
+}
+
+// HeadlineArgSyntax renders the select syntax of a headline pseudo-column:
+// "(document=<a|b>[,<option>=<value>...])" on a tsvector column,
+// "[(<option>=<value>,...)]" on a document column.
+func (h *Headline) HeadlineArgSyntax() string {
+	opts := make([]string, len(headlineOptions))
+	for i, o := range headlineOptions {
+		opts[i] = o.url
+	}
+	list := strings.Join(opts, "|")
+	if h.Documents == nil {
+		return "[(<" + list + ">=<value>,...)]"
+	}
+	return "(document=<" + strings.Join(sortedKeys(h.Documents), "|") + ">[,<" + list + ">=<value>...])"
+}
+
+// addContribHeadlines registers <key>_headline on every column that takes a
+// full-text filter under the filter policy: a text, json or jsonb column
+// highlights itself, a tsvector column the readable document column its
+// document= select argument names (none is registered without one). A
+// real, computed or other pseudo-column owning the key keeps it. It runs in
+// Build, after the API hooks removed hidden columns and withdrew filter
+// surface.
+func (b *Builder) addContribHeadlines() {
+	for _, r := range sortedResources(b.Resources) {
+		var docs map[string]*introspect.Column
+		for _, f := range r.Columns {
+			if contrib.IsDocument(f.Column.PGType) && !f.Column.IsArray {
+				if docs == nil {
+					docs = map[string]*introspect.Column{}
+				}
+				docs[f.Key] = f.Column
+			}
+		}
+		for _, f := range r.Columns {
+			if !r.FilterColumns[f.Key] || !hasFullText(contribFilters(b.Catalog, b.Options, r, f.Column)) {
+				continue
+			}
+			h := &Headline{}
+			schema := &Schema{Type: "string"}
+			desc := "ts_headline snippet of " + f.Column.Name + " where its full-text filter (fts, plfts, phfts, wfts) in the same scope matched"
+			if !contrib.IsDocument(f.Column.PGType) {
+				if len(docs) == 0 {
+					continue
+				}
+				h.Documents = docs
+				desc = "ts_headline snippet of the document= column where the full-text filter on " + f.Column.Name + " (fts, plfts, phfts, wfts) in the same scope matched"
+			} else if !contrib.IsText(f.Column.PGType) {
+				schema = nil
+			}
+			key := f.Key + "_headline"
+			if r.Field(key) != nil || r.Computed[key] != nil || r.Pseudo[key] != nil {
+				b.Warn("contrib: headline pseudo-column skipped: the key is taken", "resource", r.Path, "column", f.Column.Name, "key", key)
+				continue
+			}
+			if r.Pseudo == nil {
+				r.Pseudo = map[string]*PseudoColumn{}
+			}
+			r.Pseudo[key] = &PseudoColumn{
+				Key: key, Column: f.Column, Headline: h, Schema: schema,
+				Description: desc + "; that filter is required to select it.",
+			}
+		}
+	}
+}
+
+// hasFullText reports whether fs holds a full-text operator.
+func hasFullText(fs []ContribFilter) bool {
+	for _, f := range fs {
+		if IsFullTextOp(f.Name) {
+			return true
+		}
+	}
+	return false
 }

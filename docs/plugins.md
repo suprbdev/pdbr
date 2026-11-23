@@ -294,7 +294,7 @@ documents relation/computed parameters from the same flags
 
 Follows exactly the same shape for PostGIS columns: spatial filter operators
 (`st_*`, `bbox_*`), `<col>_<accessor>` pseudo-columns, `select=` projection
-arguments (`transform=`, `simplify=`), `.dist` ordering with `near=` and the
+arguments (`transform=`, `simplify=`, `buffer=`, `precision=`), `.dist` ordering with `near=` and the
 spatial aggregate functions (`col.extent()`, …). The
 grammar itself lives in the core parser/compiler behind `api.Surface` gates;
 the plugin flips `SpatialFilters`/`SpatialOrder`/`SpatialProjection`/`SpatialAggregates` from its

@@ -3,6 +3,7 @@ package compile
 import (
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -256,7 +257,7 @@ func (s *stmt) fieldJSON(r *api.Resource, f *plan.FieldSel, alias string, depth 
 		if key == "" {
 			key = f.Pseudo.Key
 		}
-		expr, err := s.pseudoJSON(f.Pseudo, f.Args, alias)
+		expr, err := s.pseudoJSON(f, alias)
 		return key, expr, err
 	}
 	return "", "", fmt.Errorf("compile: empty field selection")
@@ -341,63 +342,100 @@ func (s *stmt) spatialArrayJSON(ref string) string {
 }
 
 // spatialFieldSQL renders a selected spatial column, applying the optional
-// transform (reproject) and simplify (vertex reduction) arguments before the
-// value is encoded as GeoJSON.
+// buffer, simplify and transform arguments before the value is encoded as
+// GeoJSON, with precision decimal digits when given.
 func (s *stmt) spatialFieldSQL(ref string, c *introspect.Column, args map[string]any) (string, error) {
-	expr, err := s.spatialArgs(ref, postgis.FlavourOf(c.PGType), args)
+	expr, _, err := s.spatialArgs(ref, postgis.FlavourOf(c.PGType), args)
 	if err != nil {
 		return "", err
 	}
-	return postgis.OutputJSONSQL(expr), nil
+	digits, ok, err := s.precisionArg(args)
+	if err != nil || !ok {
+		return postgis.OutputJSONSQL(expr), err
+	}
+	return postgis.OutputJSONPrecisionSQL(expr, digits), nil
 }
 
-// spatialArgs applies simplify= then transform= to a spatial expression.
-func (s *stmt) spatialArgs(ref string, flavour postgis.Flavour, args map[string]any) (string, error) {
+// spatialArgs applies buffer=, then simplify=, then transform= to a spatial
+// expression, returning it with the flavour it now has: ST_Buffer keeps a
+// geography a geography, simplify and transform produce geometry.
+func (s *stmt) spatialArgs(ref string, flavour postgis.Flavour, args map[string]any) (string, postgis.Flavour, error) {
 	expr := ref
+	if v, ok := args["buffer"]; ok && v != nil {
+		d, err := toFloat(v)
+		if err == nil {
+			err = postgis.CheckBuffer(d)
+		}
+		if err != nil {
+			return "", flavour, errUser(CodeInvalidSelect, "buffer must be a finite number")
+		}
+		expr = postgis.BufferSQL(expr, s.param(d))
+	}
 	if v, ok := args["simplify"]; ok && v != nil {
 		tol, err := toFloat(v)
 		if err != nil || tol < 0 {
-			return "", errUser(CodeInvalidSelect, "simplify must be a number >= 0")
+			return "", flavour, errUser(CodeInvalidSelect, "simplify must be a number >= 0")
 		}
 		expr = postgis.SimplifySQL(expr, s.param(tol), flavour)
+		flavour = postgis.Geometry
 	}
 	if v, ok := args["transform"]; ok && v != nil {
 		srid, err := toFloat(v)
 		if err != nil || srid <= 0 || srid != float64(int(srid)) {
-			return "", errUser(CodeInvalidSelect, "transform must be a positive integer SRID")
+			return "", flavour, errUser(CodeInvalidSelect, "transform must be a positive integer SRID")
 		}
-		// Simplify already produced a geometry; keep the cast consistent.
-		f := flavour
-		if expr != ref {
-			f = postgis.Geometry
-		}
-		expr = postgis.TransformSQL(expr, int(srid), f)
+		expr = postgis.TransformSQL(expr, int(srid), flavour)
+		flavour = postgis.Geometry
 	}
-	return expr, nil
+	return expr, flavour, nil
+}
+
+// precisionArg binds the precision= argument (GeoJSON decimal digits),
+// reporting whether it was given.
+func (s *stmt) precisionArg(args map[string]any) (string, bool, error) {
+	v, ok := args["precision"]
+	if !ok || v == nil {
+		return "", false, nil
+	}
+	f, err := toFloat(v)
+	if err != nil || f != math.Trunc(f) || f < 0 || f > postgis.MaxPrecision {
+		return "", false, errUser(CodeInvalidSelect, "precision must be an integer between 0 and %d", postgis.MaxPrecision)
+	}
+	return s.param(int64(f)), true, nil
 }
 
 // pseudoJSON renders a pseudo-column: a score, a contrib accessor or
-// derived value, or a derived spatial accessor (<col>_area, …), whose
-// projection arguments apply to the owning column before the accessor
-// runs.
-func (s *stmt) pseudoJSON(p *api.PseudoColumn, args map[string]any, alias string) (string, error) {
+// derived value, a full-text headline, or a derived spatial accessor
+// (<col>_area, …), whose projection arguments apply to the owning column
+// before the accessor runs.
+func (s *stmt) pseudoJSON(f *plan.FieldSel, alias string) (string, error) {
+	p, args := f.Pseudo, f.Args
 	if p.Score != nil {
 		return s.scoreSQL(p, args, alias)
 	}
 	if p.Contrib != nil {
 		return s.contribPseudoSQL(p, args, alias)
 	}
+	if p.Headline != nil {
+		return s.headlineSQL(p, f.Headline, alias)
+	}
 	d, ok := derivedFor(p.Accessor)
 	if !ok {
 		return "", fmt.Errorf("compile: unknown spatial accessor %q", p.Accessor)
 	}
-	flavour := postgis.FlavourOf(p.Column.PGType)
-	expr, err := s.spatialArgs(colRef(alias, p.Column.Name), flavour, args)
+	expr, flavour, err := s.spatialArgs(colRef(alias, p.Column.Name), postgis.FlavourOf(p.Column.PGType), args)
 	if err != nil {
 		return "", err
 	}
-	if expr != colRef(alias, p.Column.Name) {
-		flavour = postgis.Geometry
+	if _, ok := args["precision"]; ok && !d.GeoJSON {
+		return "", errUser(CodeInvalidSelect, "precision applies to GeoJSON values; %s is not one", p.Key)
+	}
+	digits, ok, err := s.precisionArg(args)
+	if err != nil {
+		return "", err
+	}
+	if ok {
+		return d.JSONPrecisionSQL(expr, flavour, digits), nil
 	}
 	return d.JSONSQL(expr, flavour), nil
 }

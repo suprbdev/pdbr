@@ -186,6 +186,7 @@ func goldenBuilt(t testing.TB) *api.Built {
 			testcatalog.ContribSchema + ".docs":       {"body", "attrs", "path"},
 			testcatalog.ContribSchema + ".embeddings": {"emb", "code"},
 			testcatalog.ContribSchema + ".labels":     {"tags"},
+			testcatalog.ContribSchema + ".articles":   {"raw"},
 		},
 		Functions:   true,
 		BasePath:    goldenBasePath,
