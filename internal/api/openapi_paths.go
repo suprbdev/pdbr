@@ -322,7 +322,7 @@ func (b *Builder) rpcItem(item *PathItem, rt *Route) {
 // filter param per filterable column.
 func (b *Builder) listParams(r *Resource, rpc bool) []*Parameter {
 	out := []*Parameter{
-		b.selectParam(r, "Columns and embeds to return."),
+		b.listSelectParam(r, "Columns and embeds to return."),
 		b.orderParam(r),
 		{Name: "limit", In: "query", Schema: &Schema{Type: "integer", Minimum: intPtr(1), Maximum: intPtr(b.maxPageSize())},
 			Description: "Page size (default and maximum server.max_page_size)."},
@@ -360,7 +360,7 @@ func (b *Builder) rpcListParams(rpc *RPC, shadow map[string]bool) []*Parameter {
 		}
 		r := rpc.Resource
 		out := []*Parameter{
-			b.selectParam(r, "Columns and embeds of the returned rows."),
+			b.listSelectParam(r, "Columns and embeds of the returned rows."),
 			b.orderParam(r),
 			{Name: "limit", In: "query", Schema: &Schema{Type: "integer", Minimum: intPtr(1), Maximum: intPtr(b.maxPageSize())},
 				Description: "Page size (default and maximum server.max_page_size)."},
@@ -405,6 +405,24 @@ func (b *Builder) selectParam(r *Resource, lead string) *Parameter {
 	}
 	sb.WriteString(".")
 	return &Parameter{Name: "select", In: "query", Schema: &Schema{Type: "string"}, Description: sb.String()}
+}
+
+// listSelectParam is selectParam for a collection read: with
+// server.aggregates it also documents the aggregate functions.
+func (b *Builder) listSelectParam(r *Resource, lead string) *Parameter {
+	p := b.selectParam(r, lead)
+	if !b.Options.Aggregates {
+		return p
+	}
+	var sb strings.Builder
+	sb.WriteString(p.Description)
+	sb.WriteString(" Aggregate functions (server.aggregates): count(), <col>.count(), <col>.sum(), <col>.avg(), <col>.max(), <col>.min()")
+	if b.Surface.SpatialAggregates && hasSpatial(r) {
+		sb.WriteString(", and on spatial columns <col>.extent(), <col>.union(), <col>.collect(), <col>.centroid() (GeoJSON)")
+	}
+	sb.WriteString("; alias:<col>.sum(), input cast <col>::<type>.sum(), output cast <col>.sum()::<type>. The other items of the same select (columns, computed fields, embeds) group the rows; aggregates also apply inside to-many embeds. order= takes only grouping columns; no after/before or distinct.")
+	p.Description = sb.String()
+	return p
 }
 
 func (b *Builder) orderParam(r *Resource) *Parameter {

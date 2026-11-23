@@ -48,7 +48,7 @@ For each table/view in `schema.schemas` the connection role can `SELECT`:
 | Postgres | pdbr |
 |---|---|
 | table `users` | resource `/users` (`/public/users` canonical; bare alias for `schema.schemas[0]`) |
-| rows | `GET /users` (`select`, filters, `order`, `limit`/`offset`, `after`/`before`, `count`, `distinct`) |
+| rows | `GET /users` (`select`, filters, `order`, `limit`/`offset`, `after`/`before`, `count`, `distinct`; aggregates `select=mood,count()` with `server.aggregates`, [aggregates.md](aggregates.md)) |
 | primary key | `GET /users/{id}`, `PATCH`/`DELETE /users/{id}`, keyset cursors, `ETag` |
 | unique constraints | `GET /users/by/email/{email}` (+ `PATCH`/`DELETE`), `PUT /users?on_conflict=email` |
 | foreign keys | embeds `posts?select=*,users(*)` (forward) and `users?select=*,posts(*)` (backward), relation filters and order |
@@ -118,12 +118,21 @@ parameter cannot be filtered in the bare form; use it inside `and=(…)`.
 Absent `select` means all columns (`*`). Grammar:
 
 ```
-select   := item ("," item)*
-item     := field | alias ":" field | embed | "*"
-field    := name [ "(" k "=" v ("," k "=" v)* ")" ]      -- args only for spatial projection (transform=<srid>, simplify=<tol>) in v1
-embed    := relkey [ "!" hint ]* "(" select ")"           -- hint := fk_name | column | "inner"
-name     := column | computed column | postgis pseudo-column
+select    := item ("," item)*
+item      := field | alias ":" field | embed | "*" | [ alias ":" ] aggregate
+field     := name [ "(" k "=" v ("," k "=" v)* ")" ]      -- args only for spatial projection (transform=<srid>, simplify=<tol>) in v1
+embed     := relkey [ "!" hint ]* "(" select ")"           -- hint := fk_name | column | "inner"
+name      := column | computed column | postgis pseudo-column
+aggregate := "count()" | column [ "::" type ] "." fn "()" [ "::" type ]   -- server.aggregates
+fn        := count | sum | avg | max | min | extent | union | collect | centroid
 ```
+
+Aggregate functions (off by default, `server.aggregates`) group the result
+by the other items of the same `select=`: `select=author_id,count()`,
+`select=total:amount::numeric.sum()::text`, `select=id,posts(count())`. See
+[aggregates.md](aggregates.md) for grouping, embeds, ordering, paging, the
+spatial `extent`/`union`/`collect`/`centroid` extensions and the differences
+from PostgREST.
 
 ### Sparse fields and aliases
 

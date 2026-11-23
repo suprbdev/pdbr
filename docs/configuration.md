@@ -64,6 +64,7 @@ See [cli.md](cli.md) for details.
 | `server.etags` | bool | `true` | weak `ETag` on single-row GETs, `If-None-Match` → `304`, `If-Match` on `PATCH`/`DELETE` → `412` |
 | `server.csv` | bool | `true` | `Accept: text/csv` on lists and set-returning RPCs |
 | `server.allow_unfiltered_mutations` | bool | `false` | let `PATCH`/`DELETE {base}/{table}` run without a filter (every row the role can see); off → `400 unfiltered_mutation`. The guard checks that a filter (or `!inner` embed) is present, not its selectivity — a match-all filter passes; bound writes with `Prefer: handling=strict, max-affected=N`. See [mutations.md](mutations.md#bulk-patch--delete-by-filter) |
+| `server.aggregates` | bool | `false` | aggregate functions in `select=` (`count()`, `col.sum()`, `col.avg()`, `col.max()`, `col.min()`; spatial `col.extent()`/`union()`/`collect()`/`centroid()`), grouped by the other selected items — PostgREST `db-aggregates-enabled`; off → `400 aggregates_disabled`. An aggregate reads every row its filters match (`limit` bounds groups, not the scan), so index what you expose and keep `database.statement_timeout`; see [aggregates.md](aggregates.md) |
 | `schema.schemas` | []string | `[public]` | schema allowlist; resources in the first entry also get bare `/{table}` aliases |
 | `schema.cache_path` | string | — | boot from `pdbr schema dump` output; see [caching.md](caching.md) |
 | `schema.functions` | bool | `true` | expose functions as `/rpc/{fn}` routes and computed columns ([rpc.md](rpc.md)) |

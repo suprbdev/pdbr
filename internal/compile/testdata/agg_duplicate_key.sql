@@ -1,0 +1,2 @@
+-- request: GET /api/users?select=id.sum(),balance.sum()
+-- error: 400 invalid_select: two select items answer under "sum"; alias one of them (total:amount.sum())

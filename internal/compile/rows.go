@@ -430,6 +430,9 @@ func (s *stmt) manyEmbed(e *plan.Embed, parentAlias string, depth int) (string, 
 // LIMIT/OFFSET` for an embedded list. corr, when set, renders the condition
 // correlating the subquery to a parent row given the child alias.
 func (s *stmt) listInner(node *plan.Node, filter plan.Expr, order []plan.OrderTerm, page plan.Page, corr func(childAlias string) string, depth int) (string, error) {
+	if node.Aggregated() {
+		return s.aggListInner(node, filter, order, page, corr, depth)
+	}
 	t := node.Resource.Table
 	alias := s.alias("t")
 	jsonExpr, laterals, err := s.rowJSON(node, alias, depth)

@@ -46,6 +46,9 @@ type Options struct {
 	AuthMode string
 	// CSV is server.csv (text/csv on list responses).
 	CSV bool
+	// Aggregates is server.aggregates: the list select= parameters
+	// document the aggregate grammar.
+	Aggregates bool
 	// Version is the binary version (OpenAPI info.version).
 	Version string
 	Logger  *slog.Logger
@@ -110,6 +113,10 @@ type Surface struct {
 	SpatialFilters    bool
 	SpatialOrder      bool
 	SpatialProjection bool
+	// SpatialAggregates enables the spatial aggregate functions of select=
+	// (col.extent(), col.union(), col.collect(), col.centroid()); they
+	// also need server.aggregates.
+	SpatialAggregates bool
 	// NestedKeys names the nested-mutation body keys a resource accepts
 	// (relation key -> relation); nil while the nested-mutations plugin is
 	// off, so bodies carrying relation keys stay invalid_body. The parser

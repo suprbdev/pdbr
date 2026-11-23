@@ -66,6 +66,15 @@ func TestCSVColumns(t *testing.T) {
 	if got := csvColumns(&exec.Operation{Resource: users, Plan: &plan.Request{Select: node}}); !reflect.DeepEqual(got, []string{"mood", "email"}) {
 		t.Errorf("select order columns = %v", got)
 	}
+	node = &plan.Node{Resource: users, Fields: []plan.FieldSel{
+		{Column: users.Field("mood").Column},
+		{Agg: &plan.Aggregate{Func: plan.AggCount}},
+		{Alias: "total", Column: users.Field("balance").Column, Agg: &plan.Aggregate{Func: plan.AggSum}},
+		{Column: email, Agg: &plan.Aggregate{Func: plan.AggMax}},
+	}}
+	if got := csvColumns(&exec.Operation{Resource: users, Plan: &plan.Request{Select: node}}); !reflect.DeepEqual(got, []string{"mood", "count", "total", "max"}) {
+		t.Errorf("aggregate columns = %v", got)
+	}
 	if got := csvColumns(&exec.Operation{RPC: built.RPCByPath["mood_moods"], Plan: &plan.Request{}}); !reflect.DeepEqual(got, []string{"value"}) {
 		t.Errorf("scalar set columns = %v", got)
 	}

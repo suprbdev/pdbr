@@ -18,6 +18,7 @@ type selectItem struct {
 	hints    []string
 	inner    string // contents of the trailing (...)
 	hasInner bool
+	outCast  string // type after a closing parenthesis: fn()::type
 }
 
 // splitTop splits s on sep at nesting depth 0 (parentheses, braces and
@@ -57,7 +58,7 @@ func splitTop(s string, sep byte) (parts []string, ok bool) {
 	return out, true
 }
 
-// scanSelectItem parses "[alias:]name[!hint]*[(inner)]" or "*".
+// scanSelectItem parses "[alias:]name[!hint]*[(inner)[::type]]" or "*".
 func scanSelectItem(raw string) (selectItem, bool) {
 	var it selectItem
 	s := strings.TrimSpace(raw)
@@ -69,7 +70,7 @@ func scanSelectItem(raw string) (selectItem, bool) {
 		return it, false
 	}
 	// alias
-	if i := strings.IndexByte(s, ':'); i >= 0 {
+	if i := strings.IndexByte(s, ':'); i >= 0 && !strings.HasPrefix(s[i:], "::") {
 		paren := strings.IndexByte(s, '(')
 		bang := strings.IndexByte(s, '!')
 		if (paren < 0 || i < paren) && (bang < 0 || i < bang) {
@@ -78,6 +79,13 @@ func scanSelectItem(raw string) (selectItem, bool) {
 			if it.alias == "" || s == "" {
 				return it, false
 			}
+		}
+	}
+	if j := strings.LastIndexByte(s, ')'); j >= 0 && strings.HasPrefix(s[j+1:], "::") {
+		it.outCast = s[j+3:]
+		s = s[:j+1]
+		if it.outCast == "" {
+			return it, false
 		}
 	}
 	if i := strings.IndexByte(s, '('); i >= 0 {
@@ -131,6 +139,15 @@ func (p *parser) parseSelect(s string, res *api.Resource, depth int) (*plan.Node
 
 func (p *parser) resolveSelectItem(node *plan.Node, it selectItem, depth int) error {
 	res := node.Resource
+	if fn, col, ok := aggregateItem(it, res); ok {
+		return p.resolveAggregate(node, it, fn, col)
+	}
+	if takesArgs(it) {
+		return errf(CodeInvalidSelect, "aggregate functions take no arguments: %s()", it.name)
+	}
+	if it.outCast != "" || strings.Contains(it.name, "::") {
+		return errf(CodeInvalidSelect, "casts are only supported on aggregate functions (col::type.sum(), col.sum()::type), not on %q", strings.TrimSpace(it.name))
+	}
 	// Embed: a relation key followed by (...), or carrying hints.
 	if cands := res.Relations[it.name]; len(cands) > 0 && (it.hasInner || len(it.hints) > 0) {
 		return p.resolveEmbed(node, it, depth)

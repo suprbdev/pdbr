@@ -1,0 +1,2 @@
+-- request: GET /api/posts?select=id,users(count())
+-- error: 400 invalid_select: aggregate functions are only supported in to-many embeds; "users" embeds one row

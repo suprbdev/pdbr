@@ -1,8 +1,10 @@
 // Package postgis is the built-in plugin (priority 160) that turns PostGIS
 // geometry/geography columns into a query surface: spatial filter operators
 // (st_*, bbox_*), derived pseudo-columns (<col>_area, <col>_centroid, ...),
-// select= projection arguments (transform=, simplify=) and distance ordering
-// (order=<col>.dist with near=). Reading and writing GeoJSON is core; the
+// select= projection arguments (transform=, simplify=), distance ordering
+// (order=<col>.dist with near=) and the spatial aggregate functions
+// (col.extent(), col.union(), col.collect(), col.centroid(); with
+// server.aggregates). Reading and writing GeoJSON is core; the
 // plugin only switches the grammar on (api.Surface), registers the
 // pseudo-columns on each resource, applies @omit filter|order per column
 // straight from the catalog comments, and documents the surface in OpenAPI
@@ -33,17 +35,20 @@ type Plugin struct {
 	derived    bool
 	ordering   bool
 	projection bool
+	aggregates bool
 }
 
 // New builds the plugin from its plugins.settings.postgis map: filters,
-// derived, ordering, projection (all default true); unknown keys are ignored.
+// derived, ordering, projection, aggregates (all default true); unknown
+// keys are ignored.
 func New(settings map[string]any) *Plugin {
-	p := &Plugin{filters: true, derived: true, ordering: true, projection: true}
+	p := &Plugin{filters: true, derived: true, ordering: true, projection: true, aggregates: true}
 	for key, target := range map[string]*bool{
 		"filters":    &p.filters,
 		"derived":    &p.derived,
 		"ordering":   &p.ordering,
 		"projection": &p.projection,
+		"aggregates": &p.aggregates,
 	} {
 		if v, ok := settings[key].(bool); ok {
 			*target = v
@@ -90,6 +95,7 @@ func (p *Plugin) TransformAPI(_ context.Context, b *api.Builder) error {
 	b.Surface.SpatialFilters = p.filters
 	b.Surface.SpatialOrder = p.ordering
 	b.Surface.SpatialProjection = p.projection
+	b.Surface.SpatialAggregates = p.aggregates
 	if b.Extra.Schemas == nil {
 		b.Extra.Schemas = map[string]*api.Schema{}
 	}

@@ -113,6 +113,7 @@ See [docs/quickstart.md](docs/quickstart.md) for the full tour.
 | [docs/api.md](docs/api.md) | Routes, `select=` grammar, embeds, hints, headers |
 | [docs/filtering.md](docs/filtering.md) | Filter operators, logic, relation/computed filters, indexed-only policy, ordering, distinct |
 | [docs/pagination.md](docs/pagination.md) | limit/offset, keyset cursors, `count=true`, `Link` headers, cost limit |
+| [docs/aggregates.md](docs/aggregates.md) | `select=` aggregate functions (`count()`, `sum`, `avg`, `max`, `min`, spatial `extent`/`union`/`collect`/`centroid`), grouping, embeds, ordering |
 | [docs/mutations.md](docs/mutations.md) | POST/PATCH/PUT/DELETE, bulk, upsert, If-Match, Prefer, nested mutations |
 | [docs/rpc.md](docs/rpc.md) | Functions as endpoints, computed columns, JWT minting |
 | [docs/errors.md](docs/errors.md) | Problem Details format, `code` catalogue, status mapping |

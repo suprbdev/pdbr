@@ -50,6 +50,7 @@ type Server struct {
 	Etags                    bool          `koanf:"etags" doc:"Weak ETag on single-row GETs, If-None-Match answering 304, If-Match on PATCH/DELETE answering 412. Disable when column-level grants deny SELECT on some columns (the ETag hashes the whole row)."`
 	CSV                      bool          `koanf:"csv" doc:"Honour Accept: text/csv on list GETs and set-returning RPCs."`
 	AllowUnfilteredMutations bool          `koanf:"allow_unfiltered_mutations" doc:"Allow PATCH and DELETE on a collection route without a filter (every visible row). Off by default: such requests answer 400 unfiltered_mutation."`
+	Aggregates               bool          `koanf:"aggregates" doc:"Allow aggregate functions in select= (count(), col.sum(), col.avg(), col.max(), col.min(); col.extent(), col.union(), col.collect(), col.centroid() on spatial columns), grouped by the other selected items. Off by default (PostgREST db-aggregates-enabled): an aggregate reads every row its filters match, which limit does not bound; requests answer 400 aggregates_disabled."`
 }
 
 // Schema is the shared schema section plus pdbr's own keys.

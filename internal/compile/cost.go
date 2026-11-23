@@ -15,7 +15,12 @@ const defaultEmbedFanout = 10
 //	mult(list)   = explicit limit clamped to maxPageSize, else 10 (backward embed)
 //	               / the effective limit (root list)
 //	mult(other)  = 1 (columns, forward embeds, single rows)
-//	cost(column) = 1; `*` costs the number of columns it expands to
+//	cost(column) = 1; `*` costs the number of columns it expands to; an
+//	               aggregate function costs 1 like a column
+//
+// An aggregated list (a node selecting an aggregate function) is costed as
+// if it had no limit: limit bounds the groups it returns, not the rows the
+// aggregate reads (root: maxPageSize, embed: 10).
 //
 // @costMultiplier on an FK replaces a backward embed's multiplier when lower.
 // exec compares the result to server.max_cost before compiling.
@@ -41,7 +46,7 @@ func Cost(req *plan.Request, maxPageSize int) int {
 	mult := 1
 	if req.Key == nil && (req.RPC == nil || req.RPC.Returns == api.ReturnSetOfRows) {
 		mult = req.Page.Limit
-		if mult <= 0 || mult > maxPageSize {
+		if mult <= 0 || mult > maxPageSize || node.Aggregated() {
 			mult = maxPageSize
 		}
 	}
@@ -72,7 +77,7 @@ func nodeCost(node *plan.Node, maxPageSize int) int {
 		mult := 1
 		if e.Relation != nil && e.Relation.ToMany() {
 			mult = defaultEmbedFanout
-			if e.Page.LimitSet && e.Page.Limit > 0 {
+			if e.Page.LimitSet && e.Page.Limit > 0 && !child.Aggregated() {
 				mult = min(e.Page.Limit, maxPageSize)
 			}
 			if cm := e.Relation.CostMultiplier; cm > 0 && cm < mult {

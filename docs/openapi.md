@@ -151,7 +151,7 @@ stay at their defaults):
 
 | Param | Where | Schema / description |
 |---|---|---|
-| `select` | every operation with a body response | `string`; grammar summarised in the description, columns, computed and derived fields and embeddable relation keys listed (with the per-embed `rel.order=`/`rel.limit=`/`rel.offset=`/`rel.<col>=` forms and `!inner`); projection args `col(transform=,simplify=)` mentioned when the postgis plugin enables them |
+| `select` | every operation with a body response | `string`; grammar summarised in the description, columns, computed and derived fields and embeddable relation keys listed (with the per-embed `rel.order=`/`rel.limit=`/`rel.offset=`/`rel.<col>=` forms and `!inner`); projection args `col(transform=,simplify=)` mentioned when the postgis plugin enables them; on list `GET`s (and `SETOF <table>` RPCs) the aggregate grammar when `server.aggregates` is on, with the spatial aggregates where the resource has a spatial column |
 | `order` | list, `SETOF` rpc | `string`; orderable columns listed; computed / related (`rel(col)`) / distance (`<col>.dist`, needs `near=`) forms mentioned only when the corresponding plugin surface is on; full-text relevance (`<col>.rank`, `<col>.rank_cd`) and trigram distance (`<col>.trgm_dist`, … needs `trgm=`) terms listed where the column admits them ([contrib.md](contrib.md#ordering)) |
 | `limit`, `offset` | list, `SETOF` rpc | `integer`, `limit` `minimum: 1`, `maximum: server.max_page_size`, `offset` `minimum: 0` |
 | `after`, `before` | list (resources with a PK) | `string` (opaque cursor) |

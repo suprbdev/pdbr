@@ -326,6 +326,12 @@ mult(other)  = 1                                                          (colum
 cost(column) = 1
 ```
 
+An aggregated list (a root or embed selecting an [aggregate
+function](aggregates.md#cost)) is costed as if it had no `limit` — the root
+at `server.max_page_size`, an embed at 10 — because `limit` bounds the groups
+it returns, not the rows the aggregate reads; each aggregate costs 1 like a
+column.
+
 `@costMultiplier n` on an FK comment replaces the multiplier of that backward
 embed when `n` is lower — it only ever lowers an estimate (values < 1 are
 ignored). Over the limit → `400 cost_exceeded`.

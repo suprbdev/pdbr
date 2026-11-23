@@ -22,6 +22,7 @@ const (
 	CodeInvalidBody        = "invalid_body"
 	CodeMissingArgument    = "missing_argument"
 	CodeNotImplemented     = "not_implemented"
+	CodeColumnNotOrderable = "column_not_orderable"
 	// CodeTemporalConflict rejects a temporal (WITHOUT OVERLAPS) key as an
 	// upsert conflict target: ON CONFLICT cannot infer an exclusion
 	// constraint (PostgreSQL would fail with 42P10).

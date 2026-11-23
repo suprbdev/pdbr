@@ -294,9 +294,10 @@ documents relation/computed parameters from the same flags
 
 Follows exactly the same shape for PostGIS columns: spatial filter operators
 (`st_*`, `bbox_*`), `<col>_<accessor>` pseudo-columns, `select=` projection
-arguments (`transform=`, `simplify=`) and `.dist` ordering with `near=`. The
+arguments (`transform=`, `simplify=`), `.dist` ordering with `near=` and the
+spatial aggregate functions (`col.extent()`, …). The
 grammar itself lives in the core parser/compiler behind `api.Surface` gates;
-the plugin flips `SpatialFilters`/`SpatialOrder`/`SpatialProjection` from its
+the plugin flips `SpatialFilters`/`SpatialOrder`/`SpatialProjection`/`SpatialAggregates` from its
 settings, registers `Resource.Pseudo` entries (`derived`; a real or computed
 column owning the name wins, with a warning), applies `@omit filter|order`
 from the column comments itself (no smart-comments dependency), and adds
@@ -366,7 +367,7 @@ that introduced it.
 | `RemoveComputed(r, key)`, `RemoveRPC(schema, fn)`, `RemoveUnique(r, constraint)` | drop a computed column, an RPC route, a `/by/` route | smart-comments (available; bare `@omit` is resolved at the catalog level) |
 | `RenameEnum(e, name)` | set an enum's `components.schemas` name | smart-comments (`@name` on a type) |
 | `Resource/Field/Computed/RPC.Deprecated` + `DeprecationReason` | `deprecated: true` + `x-deprecation-reason` on schemas, properties and operations | smart-comments (`@deprecated`) |
-| `Builder.Surface` (`RelationFilters`, `RelationOrder`, `ComputedFilters`, `ComputedOrder`, `Spatial` + `SpatialFilters`/`SpatialOrder`/`SpatialProjection`) | grammar gates copied to `Built.Surface` and read by `server.ParseOptions` (`Spatial` implies the three spatial halves; postgis sets the halves from its `filters`/`ordering`/`projection` settings) | advanced-filters, postgis |
+| `Builder.Surface` (`RelationFilters`, `RelationOrder`, `ComputedFilters`, `ComputedOrder`, `Spatial` + `SpatialFilters`/`SpatialOrder`/`SpatialProjection`, `SpatialAggregates`) | grammar gates copied to `Built.Surface` and read by `server.ParseOptions` (`Spatial` implies the three spatial halves; postgis sets the halves from its `filters`/`ordering`/`projection` settings and `SpatialAggregates` from `aggregates`) | advanced-filters, postgis |
 | `Relation.Filterable`/`Orderable`/`Embeddable`, `Computed.Filterable`/`Orderable` | per-object gates (default true — `Computed`'s to `!ReturnsSet`); plugins only ever narrow them | smart-comments, advanced-filters |
 | `Builder.Surface.NestedKeys func(*Resource) map[string]*Relation` | the nested-input body keys a resource accepts (relation key → relation); copied to `Built.Surface`, read by `server.ParseOptions` → `parse.Options.NestedKeys` (and by the M6 `.insert` schema renderer); nil = nested keys are unknown body keys | nested-mutations |
 | `Builder.Extra.Schemas[name]` + `Builder.ColumnSchema(col)` | add a `components.schemas` entry (rendered verbatim at `Build`), with the core's per-column schema mapping for its properties | postgis (`GeoJSON`), nested-mutations (`<name>.connect`) |

@@ -36,12 +36,18 @@ func FuzzParse(f *testing.F) {
 		{"GET", "/kb/docs", "search=fts(english).fat%20%26%20cat&body=not.wfts.x&order=search.rank.desc,title.trgm_dist&trgm=pg&title=trgm_sim.pg", "", ""},
 		{"GET", "/kb/docs", `or=(attrs.hk_all.{a,b},attrs.cs.{"a":"1"},path.lquery.*.b,paths.lquery_any.{a,*.b})&pages=cs.3&valid=adj.[2020-01-01,)&net=cd_strict.10.0.0.0/8&email=ilike.*A*`, "", ""},
 		{"PATCH", "/kb/docs/1", "", "", `{"attrs":{"a":null},"pages":{"start":1,"isEmpty":false},"slots":["[1,2)",{"end":9}]}`},
+		{"GET", "/users", "select=mood,count(),total:balance::numeric.sum()::text,posts(published,id.max())&posts.order=published&order=mood.desc&limit=2&offset=1", "count=exact", ""},
+		{"GET", "/places", "select=owner_id,location.extent(),u:area.union(),location.centroid(),location.collect(),n:location.count()", "text/csv", ""},
+		{"GET", "/posts", "select=count,id.sum(x),title::text,users(count())&after=x&distinct=id&order=id", "", ""},
+		{"GET", "/rpc/search_posts", "term=a&select=author_id,count()&order=author_id", "", ""},
 	}
 	for _, s := range seeds {
 		f.Add(s.method, s.path, s.query, s.accept, s.body)
 	}
 	built := buildContrib(f, true)
-	optsList := []Options{allOn, {}, {Spatial: true, CSV: true}, {RelationFilters: true, ComputedOrder: true, MaxPageSize: 3, MaxEmbedDepth: 1}}
+	aggAll := allOn
+	aggAll.Aggregates, aggAll.SpatialAggregates = true, true
+	optsList := []Options{allOn, {}, {Spatial: true, CSV: true}, {RelationFilters: true, ComputedOrder: true, MaxPageSize: 3, MaxEmbedDepth: 1}, aggAll, {Aggregates: true}}
 	f.Fuzz(func(t *testing.T, method, path, query, accept, body string) {
 		if strings.ContainsAny(method, " \r\n\t") || strings.ContainsAny(path+query, " \r\n\t#") {
 			t.Skip()

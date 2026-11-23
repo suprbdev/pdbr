@@ -1,0 +1,1 @@
+GET /api/places?select=owner_id,location.extent(),location.union(),location.collect(),location.centroid(),bbox:area.extent(),n:location.count()

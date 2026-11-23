@@ -1,0 +1,2 @@
+-- request: GET /api/users?select=email.sum()
+-- error: 400 invalid_select: sum() needs a numeric column; "email" is text (cast it: email::numeric.sum())
