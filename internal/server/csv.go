@@ -19,9 +19,9 @@ const ContentTypeCSV = "text/csv; charset=utf-8"
 // `*` expands to the resource's columns in catalog order (explicit items
 // follow, unaliased duplicates dropped, exactly like the compiled projection;
 // spread embeds add their items after the node's own, a key once),
-// composite sets take the type's attributes, scalar sets a single "value"
-// column, aggregate functions their alias or function name. It never
-// returns nil.
+// composite sets take the type's attributes (rasters excepted), scalar
+// sets a single "value" column, aggregate functions their alias or
+// function name. It never returns nil.
 func csvColumns(op *exec.Operation) []string {
 	var res *api.Resource
 	var node *plan.Node
@@ -36,8 +36,9 @@ func csvColumns(op *exec.Operation) []string {
 		case api.ReturnSetOfRows:
 			res = op.RPC.Resource
 		case api.ReturnSetOfComposite:
-			out := make([]string, 0, len(op.RPC.Composite.Composite.Fields))
-			for _, f := range op.RPC.Composite.Composite.Fields {
+			fields := api.RenderedFields(op.RPC.Composite.Composite)
+			out := make([]string, 0, len(fields))
+			for _, f := range fields {
 				out = append(out, f.Name)
 			}
 			return out

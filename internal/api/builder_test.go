@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"os"
@@ -769,4 +770,114 @@ func TestFunctionsOverUnexposedTypesSkipped(t *testing.T) {
 	if !hasWarning(b.Warnings, "outside schema.schemas") {
 		t.Errorf("get_stash should warn: %v", b.Warnings)
 	}
+}
+
+func TestTypesHoldingUnexposedRowsHidden(t *testing.T) {
+	cat := testutil.FixtureCatalog()
+	pg := "pg_catalog"
+	stable := introspect.VolatilityStable
+	col := func(name, typ, schema string) *introspect.Column {
+		return &introspect.Column{Name: name, PGType: typ, TypeSchema: schema, BaseTypeSchema: schema, IsArray: strings.HasPrefix(typ, "_")}
+	}
+	cat.Composites = append(cat.Composites,
+		&introspect.Composite{Schema: "public", Name: "wrap", Fields: []*introspect.Column{col("label", "text", pg), col("v", "vault", "public")}},
+		&introspect.Composite{Schema: "public", Name: "wraps", Fields: []*introspect.Column{col("ws", "_wrap", "public")}},
+		&introspect.Composite{Schema: "public", Name: "fwrap", Fields: []*introspect.Column{col("s", "stash", "priv")}},
+		&introspect.Composite{Schema: "public", Name: "pwrap", Fields: []*introspect.Column{col("p", "posts", "public"), col("r", "raster", "public")}},
+	)
+	cat.Domains = append(cat.Domains,
+		&introspect.Domain{Schema: "public", Name: "vault_dom", BaseType: "vault", BaseTypeSchema: "public"},
+		&introspect.Domain{Schema: "public", Name: "post_dom", BaseType: "posts", BaseTypeSchema: "public"},
+	)
+	fn := func(name, ret, schema, domain string) *introspect.Function {
+		return &introspect.Function{Schema: "public", Name: name, ReturnType: ret, ReturnTypeSchema: schema, ReturnDomain: domain, Volatility: stable}
+	}
+	tab := fn("wrap_tab", "record", pg, "")
+	tab.ReturnColumns = []introspect.FuncArg{{Name: "n", PGType: "int4", TypeSchema: pg}, {Name: "w", PGType: "wrap", TypeSchema: "public"}}
+	ptab := fn("post_tab", "record", pg, "")
+	ptab.ReturnColumns = []introspect.FuncArg{{Name: "n", PGType: "int4", TypeSchema: pg}, {Name: "p", PGType: "_posts", TypeSchema: "public"}, {Name: "r", PGType: "raster", TypeSchema: "public"}}
+	withArg := fn("wrap_label", "text", pg, "")
+	withArg.Args = []introspect.FuncArg{{Name: "w", PGType: "wrap", TypeSchema: "public"}}
+	computed := fn("users_wrap", "wrap", "public", "")
+	computed.Args = []introspect.FuncArg{{Name: "u", PGType: "users", TypeSchema: "public"}}
+	cat.Functions = append(cat.Functions,
+		fn("get_wrap", "wrap", "public", ""), fn("get_wraps", "wraps", "public", ""), fn("get_fwrap", "fwrap", "public", ""),
+		fn("get_vault_dom", "vault_dom", "public", "public.vault_dom"), fn("get_vault_doms", "_vault_dom", "public", "public.vault_dom"),
+		fn("get_rast", "raster", "public", ""), tab, withArg, computed,
+		fn("get_pwrap", "pwrap", "public", ""), fn("get_post_dom", "post_dom", "public", "public.post_dom"), fn("get_posts", "_posts", "public", ""), ptab,
+	)
+	u := cat.Table("public", "users")
+	vd := col("vd", "vault", "public")
+	vd.TypeSchema, vd.Domain = "public", "public.vault_dom"
+	u.Columns = append(u.Columns, col("w", "wrap", "public"), col("fw", "fwrap", "public"), vd, col("ps", "_posts", "public"), col("pw", "pwrap", "public"))
+	opts := defaultOptions()
+	opts.FilterIndexedOnly = false
+	opts.HiddenTables = map[string]bool{"public.vault": true}
+	b := build(t, cat, opts)
+
+	for _, name := range []string{"get_wrap", "get_wraps", "get_fwrap", "get_vault_dom", "get_vault_doms", "get_rast", "wrap_tab", "wrap_label"} {
+		if _, ok := b.RPCByPath[name]; ok {
+			t.Errorf("function %s should be excluded", name)
+		}
+	}
+	for _, name := range []string{"get_pwrap", "get_post_dom", "get_posts", "post_tab"} {
+		if _, ok := b.RPCByPath[name]; !ok {
+			t.Errorf("function %s over visible rows should stay", name)
+		}
+	}
+	users := b.ByPath["users"]
+	if users.Computed["wrap"] != nil {
+		t.Error("computed column returning a composite holding hidden rows should be excluded")
+	}
+	for _, c := range []string{"w", "fw", "vd"} {
+		if users.Field(c) != nil || users.InputColumns[c] != nil {
+			t.Errorf("column %s holds hidden rows and must be hidden", c)
+		}
+	}
+	for _, c := range []string{"ps", "pw"} {
+		if users.Field(c) == nil || users.FilterColumns[c] || users.OrderColumns[c] {
+			t.Errorf("column %s holds visible rows: readable, never filterable or orderable", c)
+		}
+	}
+	for _, name := range []string{"public.wrap", "public.wraps", "public.fwrap"} {
+		if b.Composites[name] != nil {
+			t.Errorf("composite %s holds hidden rows and must not be documented", name)
+		}
+	}
+	rec := b.RPCByPath["post_tab"].Resource
+	if rec.Field("r") != nil || rec.Raster("r") == nil || rec.FilterColumns["p"] || !rec.FilterColumns["n"] {
+		t.Errorf("post_tab record resource: raster column must not render, row column must not filter: %+v", rec.FilterColumns)
+	}
+	if !hasWarning(b.Warnings, "hiding column") {
+		t.Errorf("fw should warn: %v", b.Warnings)
+	}
+
+	doc, err := b.OpenAPI.JSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var oa struct {
+		Components struct {
+			Schemas map[string]*Schema `json:"schemas"`
+		} `json:"components"`
+	}
+	if err := json.Unmarshal(doc, &oa); err != nil {
+		t.Fatal(err)
+	}
+	pw := oa.Components.Schemas["pwrap"]
+	if pw == nil || pw.Properties["r"] != nil || !strings.Contains(string(mustJSON(t, pw.Properties["p"])), `"#/components/schemas/posts"`) {
+		t.Errorf("pwrap schema = %+v", pw)
+	}
+	if ps := oa.Components.Schemas["users"].Properties["ps"]; ps == nil || !strings.Contains(string(mustJSON(t, ps)), `"#/components/schemas/posts"`) {
+		t.Errorf("users.ps schema = %s", mustJSON(t, ps))
+	}
+}
+
+func mustJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	out, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
 }

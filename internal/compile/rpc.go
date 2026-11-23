@@ -161,12 +161,13 @@ func jsonArrayText(v any) string {
 
 // valueJSON renders an already-materialized function result (a stable
 // reference such as __fn.v) as json with the column representation rules
-// (int8 as text, composites expanded, spatial as GeoJSON).
+// (int8 as text, composites expanded, nested rows projected to their
+// resource's readable columns, spatial as GeoJSON).
 func (s *stmt) valueJSON(ref string, fn *introspect.Function, depth int) (string, error) {
-	ret := fnReturnColumn(fn)
-	if comp := s.compositeFor(ret); comp != nil {
-		return s.compositeJSON(ref, comp, ret.IsArray, depth)
+	if rc := s.structuredReturn(fn); rc != nil {
+		return s.typedJSON(ref, rc, depth-1)
 	}
+	ret := fnReturnColumn(fn)
 	if ret.IsArray {
 		if postgis.IsSpatial(ret.PGType) {
 			return s.spatialArrayJSON(ref), nil
@@ -194,9 +195,11 @@ func (s *stmt) rpcValue(rpc *api.RPC, call string) (*Statement, error) {
 	return &Statement{SQL: fmt.Sprintf("SELECT %s AS data\nFROM (SELECT %s AS v) AS __fn", expr, call), Shape: shape}, nil
 }
 
-// rpcSetOfValues compiles SETOF <scalar> / SETOF <composite>: the function
-// output, bounded by limit/offset (max_page_size when absent), aggregated in
-// output order into a JSON array.
+// rpcSetOfValues compiles SETOF <scalar> / SETOF <composite> (or a domain
+// over a composite or row type, whose values a FROM item also expands into
+// columns, so the whole row is read): the function output, bounded by
+// limit/offset (max_page_size when absent), aggregated in output order
+// into a JSON array.
 func (s *stmt) rpcSetOfValues(rpc *api.RPC, call string) (*Statement, error) {
 	fn := rpc.Function
 	limit, err := s.embedLimit(s.plan.Page)
@@ -217,7 +220,7 @@ func (s *stmt) rpcSetOfValues(rpc *api.RPC, call string) (*Statement, error) {
 		from = fmt.Sprintf("(SELECT __v AS v FROM %s AS __v%s) AS __s", call, pageSQL)
 		expr = "to_jsonb(__s.v)"
 		shape = ShapeJWTSet
-	case rpc.Returns == api.ReturnSetOfComposite:
+	case rpc.Returns == api.ReturnSetOfComposite, s.structuredReturn(fn) != nil && !strings.HasPrefix(fn.ReturnType, "_"):
 		from = fmt.Sprintf("(SELECT __v AS v FROM %s AS __v%s) AS __s", call, pageSQL)
 		if expr, err = s.valueJSON("__s.v", fn, 0); err != nil {
 			return nil, err

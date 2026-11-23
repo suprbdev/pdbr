@@ -95,7 +95,7 @@ func Contrib(cat *introspect.Catalog) *introspect.Catalog {
 	authorEmail := ext("email", 1, "citext")
 	authorEmail.NotNull = true
 	meta := ext("meta", 3, "hstore")
-	meta.TypeSchema = "app"
+	meta.TypeSchema, meta.BaseTypeSchema = "app", ContribExtSchema
 	noteID := core("id", 1, "int4")
 	noteID.NotNull = true
 	cat.Tables = append(cat.Tables,

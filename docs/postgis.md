@@ -475,6 +475,11 @@ megabytes per row. pdbr **never returns raw raster bytes**:
   `order=` `400 column_not_orderable`; it takes no `distinct`, aggregates or
   casts. Arrays of rasters (`raster[]`) are treated the same and get no
   pseudo-columns or filter.
+- Nested values follow the same rule: a row of the table nested in another
+  value (an array of rows, a composite attribute, a `RETURNS TABLE` column)
+  renders without its raster columns, a composite's `raster` attributes and
+  a `RETURNS TABLE` column of type `raster` are left out, and a function
+  returning `raster` is not exposed ([rpc.md](rpc.md#return-shapes)).
 - It stays **writable**: `POST`/`PATCH`/`PUT` bodies take it as text that
   PostgreSQL's raster input reads — hex-encoded WKB (`encode(ST_AsBinary(rast),
   'hex')` produces it) — bound as one parameter. The `.insert` / `.update` /

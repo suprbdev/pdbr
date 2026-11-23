@@ -107,7 +107,8 @@ Per-property details:
 | `inet`, `cidr`, `macaddr`, `ltree`, `tsvector` | `string` |
 | arrays (`T[]`) | `array`, `items` = element mapping (nested arrays nest) |
 | enum | `$ref` to the enum schema |
-| composite | `$ref` to the composite schema |
+| composite | `$ref` to the composite schema (`raster` attributes left out) |
+| row type of an exposed table (a nested row: composite attribute, `RETURNS TABLE` column, array of rows) | `$ref` to the resource's read schema, the readable columns it renders |
 | domain | `$ref` to the domain schema (an array of a domain: `array` of the `$ref`); with `server.openapi_domains` off, or for a domain over a range, PostGIS or extension type, its base type's mapping |
 | `geometry`, `geography` (postgis plugin) | `$ref: #/components/schemas/GeoJSON` (input: `oneOf [GeoJSON, string]`) |
 | anything else | `string` |

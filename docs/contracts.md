@@ -131,8 +131,13 @@ route, a key, a privilege or a row:
 - A polymorphic function cannot be resolved to a hidden table's row type
   (`@anyelement app.secrets` skips the function in contracts hiding
   `secrets`), and every function whose result, arguments or output
-  columns use that row type is left out, so no function returns hidden
-  rows whole.
+  columns use that row type, directly or through a domain, a composite
+  attribute or an array, is left out (table columns of such a type are
+  hidden), so no function returns hidden rows whole.
+- A visible table's row nested in another value (an array of rows, a
+  composite attribute, a `RETURNS TABLE` column, a computed column
+  returning the row) renders only the columns the contract shows
+  ([rpc.md](rpc.md#return-shapes)).
 - Integrity errors do not name hidden objects: in `errors.detail: prod`, a
   `23*` error whose table, column or constraint is hidden from the
   contract (or a foreign key to a hidden table) carries a generic detail

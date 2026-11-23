@@ -296,11 +296,26 @@ func buildJSONObject(pairs []string) string {
 // columnJSON renders a column value for inclusion in the JSON response.
 func (s *stmt) columnJSON(alias string, c *introspect.Column, args map[string]any, depth int) (string, error) {
 	ref := colRef(alias, c.Name)
+	if postgis.IsSpatial(c.PGType) && !c.IsArray {
+		return s.spatialFieldSQL(ref, c, args)
+	}
+	return s.typedJSON(ref, c, depth)
+}
+
+// typedJSON renders the value at ref, of c's type, for the JSON response:
+// composites attribute by attribute (compositeJSON), rows of a table
+// through its resource's readable columns (rowValueJSON), arrays element
+// by element where the element needs it, raster values as null (their
+// bytes are never returned) and scalars through exprJSON.
+func (s *stmt) typedJSON(ref string, c *introspect.Column, depth int) (string, error) {
 	if comp := s.compositeFor(c); comp != nil {
 		return s.compositeJSON(ref, comp, c.IsArray, depth+1)
 	}
-	if postgis.IsSpatial(c.PGType) && !c.IsArray {
-		return s.spatialFieldSQL(ref, c, args)
+	if t := api.RowTable(s.catalog(), c); t != nil {
+		return s.rowValueJSON(ref, t, c.IsArray, depth+1)
+	}
+	if postgis.IsRaster(strings.TrimPrefix(c.PGType, "_")) {
+		return "NULL::json", nil
 	}
 	if c.IsArray {
 		if postgis.IsSpatial(c.PGType) {
@@ -311,6 +326,23 @@ func (s *stmt) columnJSON(alias string, c *introspect.Column, args map[string]an
 		return "to_json(" + ref + ")", nil
 	}
 	return s.exprJSON(ref, c), nil
+}
+
+// renderedRef returns the SQL value JSON paths, casts and aggregate inputs
+// read for a column: the column itself, or, for a type api.NestsRows
+// reports, its rendered form as jsonb so that no hidden column or raster
+// byte of a nested row is reachable.
+func (s *stmt) renderedRef(alias string, c *introspect.Column) string {
+	ref := colRef(alias, c.Name)
+	if !api.NestsRows(s.catalog(), c) {
+		return ref
+	}
+	expr, err := s.typedJSON(ref, c, 0)
+	if err != nil {
+		s.fail(err)
+		return "NULL::jsonb"
+	}
+	return "(" + expr + ")::jsonb"
 }
 
 // exprJSON renders a scalar value expression for the JSON response: 64-bit
@@ -492,11 +524,27 @@ func (s *stmt) computedJSON(c *api.Computed, node *plan.Node, args map[string]an
 				sub), nil
 		}
 		elem := s.alias("v")
-		return fmt.Sprintf("(SELECT coalesce(json_agg(%s), '[]'::json) FROM %s %s(v))",
-			s.exprJSON(elem+".v", ret), call, elem), nil
+		rc := s.structuredReturn(fn)
+		if rc == nil {
+			return fmt.Sprintf("(SELECT coalesce(json_agg(%s), '[]'::json) FROM %s %s(v))", s.exprJSON(elem+".v", ret), call, elem), nil
+		}
+		ref, from := elem+".v", elem+"(v)"
+		if !rc.IsArray {
+			ref, from = elem, elem
+		}
+		v, err := s.typedJSON(ref, rc, depth-1)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("(SELECT coalesce(json_agg(%s), '[]'::json) FROM %s %s)", v, call, from), nil
 	}
-	if comp := s.compositeFor(ret); comp != nil {
-		return s.compositeJSON(call, comp, ret.IsArray, depth)
+	if rc := s.structuredReturn(fn); rc != nil {
+		sub := s.alias("a")
+		v, err := s.typedJSON(sub+".v", rc, depth-1)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("(SELECT %s FROM (SELECT %s AS v) %s)", v, call, sub), nil
 	}
 	if ret.IsArray {
 		if postgis.IsSpatial(ret.PGType) {
@@ -506,6 +554,18 @@ func (s *stmt) computedJSON(c *api.Computed, node *plan.Node, args map[string]an
 		return "to_json(" + call + ")", nil
 	}
 	return s.exprJSON(call, ret), nil
+}
+
+// structuredReturn describes fn's return type as a column (domains
+// resolved, api.ReturnColumn) when it is a composite or a table's row
+// type, or an array of either; nil otherwise. Such values render through
+// typedJSON.
+func (s *stmt) structuredReturn(fn *introspect.Function) *introspect.Column {
+	rc := api.ReturnColumn(s.catalog(), fn)
+	if s.compositeFor(rc) == nil && api.RowTable(s.catalog(), rc) == nil {
+		return nil
+	}
+	return rc
 }
 
 // rowParamSQL renders alias's row as an explicit ROW(...)::table value.
@@ -564,47 +624,69 @@ func (s *stmt) compositeFor(c *introspect.Column) *introspect.Composite {
 	if c == nil || s.c.Built == nil || s.c.Built.Catalog == nil {
 		return nil
 	}
-	return s.c.Built.Catalog.Composite(c.TypeSchema, strings.TrimPrefix(c.PGType, "_"))
+	return s.c.Built.Catalog.Composite(api.ColumnTypeSchema(c), strings.TrimPrefix(c.PGType, "_"))
+}
+
+// arrayJSON renders the array at ref as a JSON array of elem applied to
+// each element, in order; NULL stays NULL. unnest(composite[]) in FROM
+// expands a composite into columns, so the array is indexed by subscript
+// to keep each element whole.
+func (s *stmt) arrayJSON(ref string, elem func(ref string) (string, error)) (string, error) {
+	e := s.alias("e")
+	inner, err := elem("(" + ref + ")[" + e + ".o]")
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("CASE WHEN %s IS NULL THEN NULL ELSE (SELECT coalesce(json_agg(%s ORDER BY %s.o), '[]'::json) FROM (SELECT generate_subscripts(%s, 1) AS o) %s) END",
+		ref, inner, e, ref, e), nil
 }
 
 // compositeJSON renders a composite (or composite-array) value as a nested
-// object with every attribute. NULL detection uses the text representation
-// because `row IS NULL` is also true for a row whose attributes are all NULL.
+// object with every attribute but rasters (api.RenderedFields). NULL
+// detection uses the text representation because `row IS NULL` is also
+// true for a row whose attributes are all NULL.
 func (s *stmt) compositeJSON(ref string, comp *introspect.Composite, isArray bool, depth int) (string, error) {
 	if depth > s.maxDepth {
 		return "", errUser(CodeEmbedDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)
 	}
 	if isArray {
-		// unnest(composite[]) in FROM expands the composite into columns, so
-		// index the array by subscript instead to keep each element whole.
-		elem := s.alias("e")
-		inner, err := s.compositeJSON("("+ref+")["+elem+".o]", comp, false, depth)
+		return s.arrayJSON(ref, func(elem string) (string, error) { return s.compositeJSON(elem, comp, false, depth) })
+	}
+	var pairs []string
+	for _, f := range api.RenderedFields(comp) {
+		expr, err := s.typedJSON("("+ref+")."+quoteIdent(f.Name), f, depth)
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("CASE WHEN %s IS NULL THEN NULL ELSE (SELECT coalesce(json_agg(%s ORDER BY %s.o), '[]'::json) FROM (SELECT generate_subscripts(%s, 1) AS o) %s) END",
-			ref, inner, elem, ref, elem), nil
-	}
-	var pairs []string
-	for _, f := range comp.Fields {
-		attr := "(" + ref + ")." + quoteIdent(f.Name)
-		var expr string
-		if nested := s.compositeFor(f); nested != nil {
-			var err error
-			expr, err = s.compositeJSON(attr, nested, f.IsArray, depth+1)
-			if err != nil {
-				return "", err
-			}
-		} else if f.IsArray {
-			if postgis.IsSpatial(f.PGType) {
-				expr = s.spatialArrayJSON(attr)
-			} else {
-				expr = "to_json(" + attr + ")"
-			}
-		} else {
-			expr = s.exprJSON(attr, f)
-		}
 		pairs = append(pairs, quoteLiteral(f.Name), expr)
+	}
+	return fmt.Sprintf("CASE WHEN (%s)::text IS NULL THEN NULL ELSE %s END", ref, buildJSONObject(pairs)), nil
+}
+
+// rowValueJSON renders a row (or row-array) value of table t nested in
+// another value as the object select=* gives for t's resource: its
+// readable columns under their keys, rendered recursively, so columns
+// hidden from the resource (@omit read, contracts) and raster columns
+// never appear. A table without a resource renders as null; the builder
+// does not expose values that reach one.
+func (s *stmt) rowValueJSON(ref string, t *introspect.Table, isArray bool, depth int) (string, error) {
+	if depth > s.maxDepth {
+		return "", errUser(CodeEmbedDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)
+	}
+	r := s.c.Built.Resources[t.Schema+"."+t.Name]
+	if r == nil {
+		return "NULL::json", nil
+	}
+	if isArray {
+		return s.arrayJSON(ref, func(elem string) (string, error) { return s.rowValueJSON(elem, t, false, depth) })
+	}
+	pairs := make([]string, 0, 2*len(r.Columns))
+	for _, f := range r.Columns {
+		expr, err := s.typedJSON("("+ref+")."+quoteIdent(f.Column.Name), f.Column, depth)
+		if err != nil {
+			return "", err
+		}
+		pairs = append(pairs, quoteLiteral(f.Key), expr)
 	}
 	return fmt.Sprintf("CASE WHEN (%s)::text IS NULL THEN NULL ELSE %s END", ref, buildJSONObject(pairs)), nil
 }

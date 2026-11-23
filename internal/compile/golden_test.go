@@ -53,8 +53,9 @@ func goldenCompile(c *compile.Compiler) compile.Func {
 }
 
 // goldenCatalog is the shared fixture plus golden-only objects the fixture
-// lacks: a composite-primary-key table (memberships), a table in a second
-// schema (audit.log), the PostgreSQL 18 temporal tables (temporalTables),
+// lacks: a composite-primary-key table (memberships), tables in a second
+// schema (audit.log, audit.snaps with columns holding posts rows), the
+// PostgreSQL 18 temporal tables (temporalTables),
 // the contrib-typed kb tables with their extensions (testcatalog.Contrib
 // and testcatalog.Geo),
 // and the golden-only functions in goldenOnlyRPCs. They exist only in
@@ -118,6 +119,24 @@ func goldenCatalog() *introspect.Catalog {
 			{Name: "base", PGType: "int4", TypeSchema: pg, Mode: introspect.ArgModeIn},
 			{Name: "nums", PGType: "_int4", TypeSchema: pg, Mode: introspect.ArgModeVariadic},
 		},
+	}, &introspect.Function{
+		Schema: "public", Name: "post_array", ReturnType: "_posts", ReturnTypeSchema: "public", Volatility: introspect.VolatilityStable,
+	}, &introspect.Function{
+		Schema: "public", Name: "post_tab", ReturnType: "record", ReturnTypeSchema: pg, ReturnsSet: true, Volatility: introspect.VolatilityStable,
+		ReturnColumns: []introspect.FuncArg{
+			{Name: "n", PGType: "int4", TypeSchema: pg, Mode: introspect.ArgModeTable},
+			{Name: "p", PGType: "posts", TypeSchema: "public", Mode: introspect.ArgModeTable},
+		},
+	})
+	cat.Tables = append(cat.Tables, &introspect.Table{
+		Schema: "audit", Name: "snaps", Kind: introspect.RelTable,
+		Columns: []*introspect.Column{
+			{Name: "id", Position: 1, PGType: "int4", NotNull: true},
+			{Name: "post", Position: 2, PGType: "posts", TypeSchema: "public"},
+			{Name: "history", Position: 3, PGType: "_posts", TypeSchema: "public", IsArray: true},
+		},
+		PrimaryKey: &introspect.Constraint{Name: "snaps_pkey", Columns: []string{"id"}},
+		Privileges: priv,
 	})
 	if err := plugin.NewRegistry(smartcatalog.New()).TransformCatalog(context.Background(), nil, cat); err != nil {
 		panic(err)
@@ -338,7 +357,7 @@ func TestGolden(t *testing.T) {
 }
 
 // goldenOnlyRPCs are the functions goldenCatalog adds to the fixture.
-var goldenOnlyRPCs = map[string]bool{"noop": true, "greet": true, "sum_all": true, "mood_counts": true, "user_stats": true}
+var goldenOnlyRPCs = map[string]bool{"noop": true, "greet": true, "sum_all": true, "mood_counts": true, "user_stats": true, "post_array": true, "post_tab": true}
 
 // TestGoldenAgainstDatabase executes every golden statement against the
 // live fixture database (PDBR_TEST_DATABASE_URL; skipped otherwise), each in

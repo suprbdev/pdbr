@@ -13,7 +13,9 @@ import (
 
 // jsonPathSQL renders col's value at path over alias: json and jsonb
 // columns directly, arrays and composites through to_jsonb (PostgREST's
-// form, so an expression index on to_jsonb(col)->'k' applies). native keeps
+// form, so an expression index on to_jsonb(col)->'k' applies), values
+// holding table rows or rasters through their rendered form
+// (renderedRef). native keeps
 // a json column json (selected values); everywhere else a json column is
 // cast to jsonb, which has the comparison operators. Every key and index is
 // a bind parameter: the SQL text depends only on the number of steps, their
@@ -25,6 +27,8 @@ func (s *stmt) jsonPathSQL(alias string, col *introspect.Column, path plan.JSONP
 	}
 	base := strings.TrimPrefix(col.PGType, "_")
 	switch {
+	case api.NestsRows(s.catalog(), col):
+		ref = s.renderedRef(alias, col)
 	case col.IsArray || strings.HasPrefix(col.PGType, "_"):
 		ref = "to_jsonb(" + ref + ")"
 	case base == "jsonb":
@@ -77,7 +81,7 @@ func (s *stmt) pathColumn(col *introspect.Column, path plan.JSONPath) *introspec
 // path or a cast (not its JSON rendering): the path value, cast when a cast
 // is given. native is jsonPathSQL's.
 func (s *stmt) valueSQL(alias string, f *plan.FieldSel, native bool) string {
-	expr := colRef(alias, f.Column.Name)
+	expr := s.renderedRef(alias, f.Column)
 	if len(f.Path) > 0 {
 		expr = s.jsonPathSQL(alias, f.Column, f.Path, native && f.Cast == nil)
 	}

@@ -1,0 +1,2 @@
+-- request: GET /api/audit/snaps?select=id&history=is.null
+-- error: 400 column_not_filterable: column "history" on "audit.snaps" is not filterable

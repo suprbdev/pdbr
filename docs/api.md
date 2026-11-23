@@ -179,7 +179,12 @@ them (`readOnly`, "Select explicitly: select=<key>").
 `->` and `->>` reach into `json`/`jsonb` columns, and into array and
 composite columns through `to_jsonb(col)` (PostgREST's form, so an
 expression index on `to_jsonb(col)->'k'` serves it): `->` yields JSON,
-`->>` text, an integer step indexes an array (negative from the end).
+`->>` text, an integer step indexes an array (negative from the end). A
+column that holds table rows or rasters (a row type, an array of rows, a
+composite with such an attribute) is read through its rendered JSON
+instead, so paths and casts only reach the nested rows' readable columns;
+such a column cannot be filtered, ordered, grouped or given to `max()` /
+`min()`.
 
 ```http
 GET /api/users?select=id,settings->theme,mode:settings->>theme,tags->0,address->>city
