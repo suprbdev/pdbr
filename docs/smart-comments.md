@@ -153,6 +153,12 @@ nested create becomes `POST /posts {"title": "…", "author": {"connect": {"id":
 |---|---|
 | `@name <new_name>` | Rename the OpenAPI enum schema (`components.schemas.<new_name>`). Values are always the verbatim pg labels. |
 
+### Contracts
+
+`@contract a, b` and `@behavior ±contract:<name>` on tables, columns,
+functions and foreign keys select which [schema contracts](contracts.md)
+an object belongs to. They have no effect unless `contracts` is configured.
+
 ## Enum tables
 
 `@enum` on a table turns its rows into an enum — the PostGraphile pattern for

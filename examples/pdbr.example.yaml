@@ -142,3 +142,5 @@ metrics:
   # Separate listen address for the metrics endpoint, e.g. :9090, keeping it off the public listener; empty serves it on the main server address.
   addr: ""
 
+# Schema contracts: named APIs for different audiences, each a subset of the full API selected by @contract / @behavior ±contract:<name> smart comments and served with its own OpenAPI document under its own base path. Entries are {name, default: include|exclude, path (default <server.base_path>/<name>)}, or bare names. When set, only the contracts are served (give one contract path: / to serve it at the root). Requires the smart-comments plugin.
+contracts: []

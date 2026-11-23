@@ -33,6 +33,8 @@ type Config struct {
 	Plugins  confx.Plugins  `koanf:"plugins"`
 	Log      confx.Log      `koanf:"log"`
 	Metrics  confx.Metrics  `koanf:"metrics"`
+
+	Contracts []confx.Contract `koanf:"contracts" doc:"Schema contracts: named APIs for different audiences, each a subset of the full API selected by @contract / @behavior ±contract:<name> smart comments and served with its own OpenAPI document under its own base path. Entries are {name, default: include|exclude, path (default <server.base_path>/<name>)}, or bare names. When set, only the contracts are served (give one contract path: / to serve it at the root). Requires the smart-comments plugin."`
 }
 
 // Server is the pdbr-owned HTTP section.
@@ -133,8 +135,47 @@ func (c *Config) Validate() error {
 	errs = append(errs, validateServer(c.Server)...)
 	errs = append(errs, confx.ValidateLog(c.Log)...)
 	errs = append(errs, confx.ValidateMetrics(c.Metrics, c.Server.Addr)...)
-	errs = append(errs, validateMetricsPath(c.Metrics, c.Server)...)
+	if len(c.Contracts) == 0 {
+		errs = append(errs, validateMetricsPath(c.Metrics, c.Server)...)
+	} else {
+		errs = append(errs, confx.ValidateContracts(c.Contracts, c.Server.BasePath, false)...)
+		if c.DisabledPlugins()["smart-comments"] {
+			errs = append(errs, "contracts require the smart-comments plugin: it removes the columns a contract hides (remove smart-comments from plugins.disabled)")
+		}
+		for _, ct := range c.Contracts {
+			s := c.Server
+			s.BasePath = c.ContractBase(ct)
+			errs = append(errs, validateMetricsPath(c.Metrics, s)...)
+		}
+	}
 	return confx.InvalidConfig(errs)
+}
+
+// Contract returns the configured contract named name; "" is the full API
+// and is always found.
+func (c *Config) Contract(name string) (confx.Contract, error) {
+	if name == "" {
+		return confx.Contract{}, nil
+	}
+	ct, ok := confx.FindContract(c.Contracts, name)
+	if !ok {
+		return confx.Contract{}, fmt.Errorf("config: unknown contract %q", name)
+	}
+	return ct, nil
+}
+
+// ContractBase returns the base path contract ct is served under: its
+// path, or server.base_path joined with its name, with "/" as "" (the
+// root, like an empty server.base_path). The full API (Name "") is served
+// under server.base_path.
+func (c *Config) ContractBase(ct confx.Contract) string {
+	if ct.Name == "" {
+		return c.Server.BasePath
+	}
+	if p := ct.URLPath(c.Server.BasePath); p != "/" {
+		return p
+	}
+	return ""
 }
 
 // validateMetricsPath rejects a metrics.path that would shadow one of pdbr's

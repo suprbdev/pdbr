@@ -81,7 +81,10 @@ registration error.
 
 ## Metrics
 
-Every name carries the `pdbr_` prefix.
+Every name carries the `pdbr_` prefix. With [schema contracts](contracts.md)
+configured, every series except `pdbr_db_pool_*` and the runtime series also
+carries a `contract` label, and requests to `/healthz`, `/readyz`, the
+metrics endpoint and paths outside every contract are not counted.
 
 | Metric | Type | Labels |
 |---|---|---|

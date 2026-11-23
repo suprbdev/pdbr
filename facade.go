@@ -37,6 +37,7 @@ type (
 	ErrorsConfig   = confx.Errors
 	PluginsConfig  = confx.Plugins
 	LogConfig      = confx.Log
+	ContractConfig = confx.Contract
 )
 
 // DefaultConfig returns the documented defaults.

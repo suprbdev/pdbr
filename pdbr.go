@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/suprbdev/pdbcore/auth"
 	"github.com/suprbdev/pdbcore/cache"
@@ -51,10 +52,15 @@ type App struct {
 
 	pool *pgxpool.Pool
 
-	metrics           *metrics.Metrics
-	metricsErr        error
-	costRejections    *metrics.Counter
-	aggregateRequests *metrics.Counter
+	metrics    *metrics.Metrics
+	metricsErr error
+	instr      instruments
+
+	// contractInstr holds per-contract instruments, labelled contract, on
+	// metricsReg, when the App created its own metrics with contracts
+	// configured.
+	contractInstr map[string]instruments
+	metricsReg    prometheus.Registerer
 
 	watchMu sync.Mutex
 	stops   []func()
@@ -114,7 +120,32 @@ func New(cfg config.Config, opts ...Option) *App {
 	return a
 }
 
+// instruments are the Metrics one API records into and its product
+// counters.
+type instruments struct {
+	metrics           *metrics.Metrics
+	costRejections    *metrics.Counter
+	aggregateRequests *metrics.Counter
+}
+
+func newInstruments(m *metrics.Metrics) (instruments, error) {
+	in := instruments{metrics: m}
+	var err error
+	if in.costRejections, err = m.NewCounter("cost_limit_rejections_total",
+		"Requests rejected because their estimated cost exceeds server.max_cost."); err != nil {
+		return in, err
+	}
+	if in.aggregateRequests, err = m.NewCounter("aggregate_requests_total",
+		"Requests whose select= uses an aggregate function."); err != nil {
+		return in, err
+	}
+	return in, nil
+}
+
 func (a *App) setupMetrics() error {
+	if a.metrics == nil && a.Config.Metrics.Enabled && len(a.Config.Contracts) > 0 {
+		return a.setupContractMetrics()
+	}
 	if a.metrics == nil && a.Config.Metrics.Enabled {
 		m, err := metrics.New(metrics.Options{Namespace: "pdbr"})
 		if err != nil {
@@ -123,15 +154,48 @@ func (a *App) setupMetrics() error {
 		a.metrics = m
 	}
 	var err error
-	if a.costRejections, err = a.metrics.NewCounter("cost_limit_rejections_total",
-		"Requests rejected because their estimated cost exceeds server.max_cost."); err != nil {
+	a.instr, err = newInstruments(a.metrics)
+	return err
+}
+
+// setupContractMetrics creates one Metrics per contract on a shared
+// registry, told apart by a contract label; the App's own Metrics is the
+// first contract's, whose Handler serves them all.
+func (a *App) setupContractMetrics() error {
+	reg, err := metrics.NewRegistry()
+	if err != nil {
 		return err
 	}
-	if a.aggregateRequests, err = a.metrics.NewCounter("aggregate_requests_total",
-		"Requests whose select= uses an aggregate function."); err != nil {
-		return err
+	a.metricsReg = reg
+	a.contractInstr = map[string]instruments{}
+	for _, ct := range a.Config.Contracts {
+		m, err := metrics.New(metrics.Options{
+			Namespace:   "pdbr",
+			Registerer:  reg,
+			ConstLabels: prometheus.Labels{"contract": ct.Name},
+		})
+		if err != nil {
+			return err
+		}
+		in, err := newInstruments(m)
+		if err != nil {
+			return err
+		}
+		a.contractInstr[ct.Name] = in
+		if a.metrics == nil {
+			a.metrics, a.instr = m, in
+		}
 	}
 	return nil
+}
+
+// instrumentsFor returns the instruments of contract name: its own with
+// per-contract metrics, else the App's.
+func (a *App) instrumentsFor(name string) instruments {
+	if in, ok := a.contractInstr[name]; ok {
+		return in
+	}
+	return a.instr
 }
 
 // Metrics returns the Prometheus instruments the App records into: the
@@ -199,7 +263,11 @@ func (a *App) Connect(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := a.metrics.RegisterPool(pool); err != nil {
+	register := a.metrics.RegisterPool
+	if a.metricsReg != nil {
+		register = func(p metrics.PoolStater) error { return metrics.RegisterPoolOn(a.metricsReg, "pdbr", p) }
+	}
+	if err := register(pool); err != nil {
 		pool.Close()
 		return err
 	}
@@ -265,6 +333,32 @@ func (a *App) LoadCatalog(ctx context.Context) (*introspect.Catalog, error) {
 // BuildAPI runs the model pipeline: catalog hooks -> inflection -> default
 // generation -> API hooks -> Build. Warnings are logged as they arise.
 func (a *App) BuildAPI(ctx context.Context, cat *introspect.Catalog) (*api.Built, error) {
+	return a.buildAPI(ctx, cat, a.Config.Server.BasePath)
+}
+
+// BuildContractAPI builds the API of the configured contract name, under
+// its base path, from a filtered copy of cat, leaving cat unmodified so
+// every contract can be built from one catalog; "" builds the full API
+// exactly as BuildAPI does (modifying cat).
+func (a *App) BuildContractAPI(ctx context.Context, cat *introspect.Catalog, name string) (*api.Built, error) {
+	if name == "" {
+		return a.BuildAPI(ctx, cat)
+	}
+	ct, err := a.Config.Contract(name)
+	if err != nil {
+		return nil, err
+	}
+	view, sum := ct.Spec().View(cat)
+	a.Log.Debug("contract view", "contract", name, "hidden_tables", sum.Tables, "hidden_columns", sum.Columns,
+		"hidden_functions", sum.Functions, "hidden_foreign_keys", sum.ForeignKeys)
+	built, err := a.buildAPI(ctx, view, a.Config.ContractBase(ct))
+	if err != nil {
+		return nil, fmt.Errorf("contract %s: %w", name, err)
+	}
+	return built, nil
+}
+
+func (a *App) buildAPI(ctx context.Context, cat *introspect.Catalog, basePath string) (*api.Built, error) {
 	disabled := a.Config.DisabledPlugins()
 	if err := a.Registry.TransformCatalog(ctx, disabled, cat); err != nil {
 		return nil, fmt.Errorf("catalog hooks: %w", err)
@@ -274,7 +368,7 @@ func (a *App) BuildAPI(ctx context.Context, cat *introspect.Catalog) (*api.Built
 		AllowColumns:      a.Config.Filters.AllowColumns,
 		Functions:         a.Config.Schema.Functions,
 		ExposePartitions:  a.Config.Schema.ExposePartitions,
-		BasePath:          a.Config.Server.BasePath,
+		BasePath:          basePath,
 		Schemas:           a.Config.Schema.Schemas,
 		MaxPageSize:       a.Config.Server.MaxPageSize,
 		Etags:             a.Config.Server.Etags,
@@ -297,10 +391,10 @@ func (a *App) BuildAPI(ctx context.Context, cat *introspect.Catalog) (*api.Built
 // the route handler. The pool may be nil (schema-cache boot without a
 // database): requests then fail with 503, --print-sql still works.
 func (a *App) Runtime(built *api.Built) (*server.Runtime, error) {
-	return server.NewRuntime(built, a.routeHandler(built))
+	return server.NewRuntime(built, a.routeHandler(built, a.instr))
 }
 
-func (a *App) routeHandler(built *api.Built) *server.Handler {
+func (a *App) routeHandler(built *api.Built, in instruments) *server.Handler {
 	disabled := a.Config.DisabledPlugins()
 	chain := a.Registry.CompileChain(disabled, compile.New(built).Compile)
 	hooks := a.Registry.RequestHooks(disabled)
@@ -322,18 +416,18 @@ func (a *App) routeHandler(built *api.Built) *server.Handler {
 		MaxCost:           a.Config.Server.MaxCost,
 		MaxEmbedDepth:     a.Config.Server.MaxEmbedDepth,
 		MaxPageSize:       a.Config.Server.MaxPageSize,
-		BasePath:          a.Config.Server.BasePath,
+		BasePath:          built.Options.BasePath,
 		ReadOnly:          &a.readOnly,
 		Mint:              a.mintOptions(),
 		Logger:            a.Log,
-		Metrics:           a.metrics,
-		CostRejections:    a.costRejections,
-		AggregateRequests: a.aggregateRequests,
+		Metrics:           in.metrics,
+		CostRejections:    in.costRejections,
+		AggregateRequests: in.aggregateRequests,
 	})
 	opts := server.ParseOptions(built, a.Config.Server.MaxEmbedDepth, a.Config.Server.MaxPageSize, a.Config.Server.Etags, a.Config.Server.CSV)
 	opts.AllowUnfilteredMutations = a.Config.Server.AllowUnfilteredMutations
 	opts.Aggregates = a.Config.Server.Aggregates
-	h := server.NewHandler(built, ex, opts, a.Config.Server.BasePath, a.Log)
+	h := server.NewHandler(built, ex, opts, built.Options.BasePath, a.Log)
 	h.CSVRawFormulas = !a.Config.Server.CSVEscapeFormulas
 	return h
 }
@@ -372,7 +466,7 @@ func (a *App) CompileSQL(ctx context.Context, r *http.Request) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return a.routeHandler(built).CompileSQL(r)
+	return a.routeHandler(built, a.instr).CompileSQL(r)
 }
 
 // Serve runs the HTTP server (and watch mode when enabled) until ctx ends.
@@ -387,7 +481,9 @@ func (a *App) Serve(ctx context.Context) error {
 // Handler runs the boot pipeline (catalog -> plugins -> api.Built ->
 // runtime) and returns the http.Handler for embedding in a larger mux.
 // Watch mode, when enabled, hot-swaps the runtime behind the returned
-// handler exactly as Serve does.
+// handler exactly as Serve does. With contracts configured, the handler
+// serves each contract's API under its base path instead (see
+// docs/contracts.md).
 func (a *App) Handler(ctx context.Context) (http.Handler, error) {
 	srv, err := a.buildServer(ctx)
 	if err != nil {
@@ -409,8 +505,15 @@ func (a *App) startupWarnings() {
 	}
 }
 
+// httpServer is what Serve and Handler run: a Server, or a server.Group
+// with one Server per contract.
+type httpServer interface {
+	Handler() http.Handler
+	ListenAndServe(ctx context.Context) error
+}
+
 // buildServer is the shared boot pipeline behind Serve and Handler.
-func (a *App) buildServer(ctx context.Context) (*server.Server, error) {
+func (a *App) buildServer(ctx context.Context) (httpServer, error) {
 	if a.metricsErr != nil {
 		return nil, a.metricsErr
 	}
@@ -428,6 +531,9 @@ func (a *App) buildServer(ctx context.Context) (*server.Server, error) {
 	if err := a.Connect(ctx); err != nil {
 		return nil, err
 	}
+	if len(a.Config.Contracts) > 0 {
+		return a.buildContractServer(ctx, cat, bootHash)
+	}
 	built, err := a.BuildAPI(ctx, cat)
 	if err != nil {
 		return nil, err
@@ -442,54 +548,115 @@ func (a *App) buildServer(ctx context.Context) (*server.Server, error) {
 	srv.SetMetrics(a.metrics, a.Config.Metrics)
 	srv.SetReadiness(a.pool.Ping)
 	if a.Config.Watch.Enabled {
-		wctx, cancel := context.WithCancel(ctx)
-		w := &watch.Watcher{
-			Pool:         a.pool,
-			Schemas:      a.Config.Schema.Schemas,
-			Channel:      a.Config.Watch.Channel,
-			PollInterval: a.Config.Watch.PollInterval,
-			Log:          a.Log,
-			TriggerName:  "pdbr_watch",
-			InitialHash:  bootHash,
-			OnChange: func(cat *introspect.Catalog) {
-				nb, err := a.BuildAPI(wctx, cat)
-				if err != nil {
-					a.metrics.SchemaRebuilt(err)
-					a.Log.Error("watch: api rebuild failed", "err", err)
-					return
-				}
-				nrt, err := a.Runtime(nb)
-				if err != nil {
-					a.metrics.SchemaRebuilt(err)
-					a.Log.Error("watch: runtime rebuild failed", "err", err)
-					return
-				}
-				srv.Swap(nrt)
-				a.metrics.SchemaRebuilt(nil)
-				a.Log.Info("watch: api reloaded", "resources", len(nb.Resources), "rpcs", len(nb.RPCs))
-			},
-		}
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			go func() {
-				select {
-				case <-w.Ready():
-					a.Log.Info("watch: ready")
-				case <-wctx.Done():
-				}
-			}()
-			if err := w.Run(wctx); err != nil {
-				a.Log.Error("watch: stopped", "err", err)
+		a.startWatch(ctx, bootHash, func(wctx context.Context, cat *introspect.Catalog) {
+			nb, err := a.BuildAPI(wctx, cat)
+			if err != nil {
+				a.metrics.SchemaRebuilt(err)
+				a.Log.Error("watch: api rebuild failed", "err", err)
+				return
 			}
-		}()
-		a.watchMu.Lock()
-		a.watchReady = w.Ready()
-		a.stops = append(a.stops, func() {
-			cancel()
-			<-done
+			nrt, err := a.Runtime(nb)
+			if err != nil {
+				a.metrics.SchemaRebuilt(err)
+				a.Log.Error("watch: runtime rebuild failed", "err", err)
+				return
+			}
+			srv.Swap(nrt)
+			a.metrics.SchemaRebuilt(nil)
+			a.Log.Info("watch: api reloaded", "resources", len(nb.Resources), "rpcs", len(nb.RPCs))
 		})
-		a.watchMu.Unlock()
 	}
 	return srv, nil
+}
+
+// contractRuntime builds the API and runtime of contract name from cat.
+func (a *App) contractRuntime(ctx context.Context, cat *introspect.Catalog, name string) (*api.Built, *server.Runtime, error) {
+	built, err := a.BuildContractAPI(ctx, cat, name)
+	if err != nil {
+		return nil, nil, err
+	}
+	rt, err := server.NewRuntime(built, a.routeHandler(built, a.instrumentsFor(name)))
+	if err != nil {
+		return nil, nil, err
+	}
+	return built, rt, nil
+}
+
+// buildContractServer builds one API, runtime and Server per contract from
+// cat, each under its contract's base path, and mounts them on a
+// server.Group; watch mode rebuilds every contract.
+func (a *App) buildContractServer(ctx context.Context, cat *introspect.Catalog, bootHash string) (*server.Group, error) {
+	authCfg := confx.AuthConfig(a.Config.RLS)
+	authCfg.Logger = a.Log
+	authn := auth.New(authCfg)
+	group := server.NewGroup(a.Config.Server, a.Log)
+	group.SetMetrics(a.metrics, a.Config.Metrics)
+	group.SetReadiness(a.pool.Ping)
+	servers := make([]*server.Server, len(a.Config.Contracts))
+	for i, ct := range a.Config.Contracts {
+		_, rt, err := a.contractRuntime(ctx, cat, ct.Name)
+		if err != nil {
+			return nil, err
+		}
+		cfg := a.Config.Server
+		cfg.BasePath = a.Config.ContractBase(ct)
+		srv := server.New(cfg, authn, rt, a.Log)
+		srv.SetMetrics(a.instrumentsFor(ct.Name).metrics, confx.Metrics{})
+		group.Add(srv)
+		servers[i] = srv
+		a.Log.Info("contract ready", "contract", ct.Name, "base_path", cfg.BasePath)
+	}
+	if a.Config.Watch.Enabled {
+		a.startWatch(ctx, bootHash, func(wctx context.Context, cat *introspect.Catalog) {
+			for i, ct := range a.Config.Contracts {
+				m := a.instrumentsFor(ct.Name).metrics
+				nb, nrt, err := a.contractRuntime(wctx, cat, ct.Name)
+				m.SchemaRebuilt(err)
+				if err != nil {
+					a.Log.Error("watch: api rebuild failed", "contract", ct.Name, "err", err)
+					continue
+				}
+				servers[i].Swap(nrt)
+				a.Log.Info("watch: api reloaded", "contract", ct.Name, "resources", len(nb.Resources), "rpcs", len(nb.RPCs))
+			}
+		})
+	}
+	return group, nil
+}
+
+// startWatch runs the schema watcher until ctx ends or the App closes,
+// calling rebuild with every changed catalog.
+func (a *App) startWatch(ctx context.Context, bootHash string, rebuild func(context.Context, *introspect.Catalog)) {
+	wctx, cancel := context.WithCancel(ctx)
+	w := &watch.Watcher{
+		Pool:         a.pool,
+		Schemas:      a.Config.Schema.Schemas,
+		Channel:      a.Config.Watch.Channel,
+		PollInterval: a.Config.Watch.PollInterval,
+		Log:          a.Log,
+		TriggerName:  "pdbr_watch",
+		InitialHash:  bootHash,
+		OnChange:     func(cat *introspect.Catalog) { rebuild(wctx, cat) },
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		go func() {
+			select {
+			case <-w.Ready():
+				a.Log.Info("watch: ready")
+			case <-wctx.Done():
+			}
+		}()
+		if err := w.Run(wctx); err != nil {
+			a.Log.Error("watch: stopped", "err", err)
+		}
+	}()
+	a.watchMu.Lock()
+	a.watchReady = w.Ready()
+	a.stops = append(a.stops, func() {
+		cancel()
+		<-done
+	})
+	a.watchMu.Unlock()
 }

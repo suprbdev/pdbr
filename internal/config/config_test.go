@@ -139,6 +139,18 @@ func TestValidateRules(t *testing.T) {
 			c.Server.BasePath = ""
 			c.Metrics.Path = "/openapi.json"
 		}, "collides"},
+		"22a contract name":    {func(c *Config) { c.Contracts = []confx.Contract{{Name: "Public"}} }, "contracts[0].name"},
+		"22b contract overlap": {func(c *Config) { c.Contracts = []confx.Contract{{Name: "a"}, {Name: "b", Path: "/api/a/b"}} }, "overlaps"},
+		"22c contract root":    {func(c *Config) { c.Contracts = []confx.Contract{{Name: "a", Path: "/"}, {Name: "b"}} }, "overlaps"},
+		"22d contract smart-comments": {func(c *Config) {
+			c.Contracts = []confx.Contract{{Name: "a"}}
+			c.Plugins.Disabled = []string{"smart-comments"}
+		}, "smart-comments"},
+		"22e contract metrics": {func(c *Config) {
+			c.Contracts = []confx.Contract{{Name: "a"}}
+			c.Metrics.Enabled = true
+			c.Metrics.Path = "/api/a/metrics"
+		}, "collides"},
 	}
 	for name, tc := range cases {
 		cfg := valid()
@@ -167,6 +179,12 @@ func TestValidateRules(t *testing.T) {
 		},
 		"metrics root api": func(c *Config) { c.Metrics.Enabled = true; c.Server.BasePath = "" },
 		"metrics off path": func(c *Config) { c.Metrics.Path = "/healthz" },
+		"contracts": func(c *Config) {
+			c.Contracts = []confx.Contract{{Name: "public"}, {Name: "partner", Default: "exclude", Path: "/partners"}}
+			c.Metrics.Enabled = true
+			c.Metrics.Path = "/api/metrics"
+		},
+		"contract at root": func(c *Config) { c.Contracts = []confx.Contract{{Name: "internal", Path: "/"}} },
 	}
 	for name, mutate := range ok {
 		cfg := valid()
@@ -332,5 +350,29 @@ func TestExampleYAMLMatchesCommittedFile(t *testing.T) {
 	}
 	if got := ExampleYAML(); string(want) != got {
 		t.Error("examples/pdbr.example.yaml is stale: run `make example-config`")
+	}
+}
+
+func TestContractBase(t *testing.T) {
+	cfg := DefaultConfig()
+	for _, tc := range []struct {
+		ct   confx.Contract
+		want string
+	}{
+		{confx.Contract{}, "/api"},
+		{confx.Contract{Name: "public"}, "/api/public"},
+		{confx.Contract{Name: "p", Path: "/partners"}, "/partners"},
+		{confx.Contract{Name: "i", Path: "/"}, ""},
+	} {
+		if got := cfg.ContractBase(tc.ct); got != tc.want {
+			t.Errorf("ContractBase(%+v) = %q, want %q", tc.ct, got, tc.want)
+		}
+	}
+	cfg.Contracts = []confx.Contract{{Name: "public"}}
+	if ct, err := cfg.Contract("public"); err != nil || ct.Name != "public" {
+		t.Errorf("Contract(public) = %+v, %v", ct, err)
+	}
+	if _, err := cfg.Contract("nope"); err == nil {
+		t.Error("unknown contract accepted")
 	}
 }

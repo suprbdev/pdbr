@@ -104,6 +104,7 @@ See [cli.md](cli.md) for details.
 | `metrics.enabled` | bool | `false` | serve Prometheus metrics and record them; see [metrics.md](metrics.md) |
 | `metrics.path` | string | `/metrics` | URL path of the metrics endpoint (outside `base_path`) |
 | `metrics.addr` | string | — | separate listen address for the metrics endpoint (e.g. `:9090`); empty serves it on `server.addr` |
+| `contracts` | list | `[]` | schema contracts: `{name, default: include\|exclude, path}` entries (or bare names), each a subset of the API under its own base path (default `<base_path>/<name>`) with its own OpenAPI document; when set only the contracts are served; see [contracts.md](contracts.md) |
 
 ## Validation rules
 
@@ -146,6 +147,12 @@ together.
     `/healthz`, `/readyz`, `server.base_path` or a path below it (with an
     empty `base_path`: not `/openapi.json`); see
     [metrics.md](metrics.md#on-the-main-listener-metricsaddr-empty).
+    With `contracts`, the same holds for every contract's base path instead
+    of `server.base_path`.
+22. `contracts` entries have unique names of lower-case letters, digits,
+    `_` and `-` starting with a letter, a `default` of `include` or
+    `exclude`, and unique, non-overlapping clean paths; they require the
+    `smart-comments` plugin (see [contracts.md](contracts.md#configuration)).
 
 ## Removed vs pdbq
 
