@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -87,6 +88,16 @@ func TestCustomRangeTypes(t *testing.T) {
 
 	body, doc := fetchOpenAPI(t, srv)
 	validateOpenAPI(t, oasSchema(t), body)
+	for path := range doc["paths"].(map[string]any) {
+		if strings.HasPrefix(path, "/rpc/floatrange") || strings.HasPrefix(path, "/rpc/floatmultirange") {
+			t.Errorf("range constructor exposed as %s", path)
+		}
+	}
+	for _, fn := range []string{"floatrange", "floatmultirange"} {
+		if res, body := get(t, srv+"/api/rpc/"+fn+"?"); res.StatusCode != 404 {
+			t.Errorf("GET /rpc/%s = %d %s, want 404", fn, res.StatusCode, body)
+		}
+	}
 	params := opParams(pathOp(doc, "/spans", "get"))
 	for _, col := range []string{"span", "spans"} {
 		ops, _ := params["query:"+col]["x-pdbr-filter-ops"].([]any)
