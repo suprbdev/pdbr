@@ -694,8 +694,20 @@ func (b *Builder) resolveReturn(rpc *RPC) bool {
 	}
 }
 
+// extraArgsDefaulted reports whether every argument after the first (the
+// row) has a DEFAULT, so the function can be called with the row alone.
+func extraArgsDefaulted(f *introspect.Function) bool {
+	for _, a := range f.Args[1:] {
+		if !a.HasDefault {
+			return false
+		}
+	}
+	return true
+}
+
 // addComputed exposes a stable/immutable function whose first argument is
-// t's row type as a computed column on t's resource.
+// t's row type, and whose other arguments all have defaults, as a computed
+// column on t's resource.
 func (b *Builder) addComputed(t *introspect.Table, f *introspect.Function) {
 	fkey := f.Schema + "." + f.Name
 	r := b.Resource(t.Schema, t.Name)
@@ -709,8 +721,8 @@ func (b *Builder) addComputed(t *introspect.Table, f *introspect.Function) {
 	case f.ReturnType == "void":
 		b.log.Debug("skipping computed column: void return", "function", fkey)
 		return
-	case len(f.Args) > 1:
-		b.log.Debug("skipping computed column: extra arguments are not supported in v1", "function", fkey)
+	case !extraArgsDefaulted(f):
+		b.log.Debug("skipping computed column: extra arguments without defaults are not supported", "function", fkey)
 		return
 	}
 	key := b.Inflect(inflect.KindComputedField, coreinflect.Input{Schema: f.Schema, Table: t.Name, Function: f.Name})

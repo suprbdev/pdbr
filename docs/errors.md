@@ -67,13 +67,14 @@ has a `code`, see the note below the table):
 | (`invalid_cursor`) | 400 | `after`/`before` cursor undecodable or minted for a different resource |
 | (`method_not_allowed`) | 405 | method not registered on the path (view, missing privilege, `@omit`, keyless PATCH/DELETE, volatile GET) |
 | (`unknown_argument`) | 400 | RPC argument name not declared by the function |
+| (`missing_argument`) | 400 | RPC call omits an argument that has no `DEFAULT` (or, on a variadic function, one before a passed argument); detail lists them |
 | (`body_too_large`) | 413 | body > `server.max_body_bytes` |
 | (`timeout`) | 504 | `server.request_timeout` elapsed (context deadline) |
 | (`unavailable`) | 503 | no database connection (pool acquire failed, connection refused/reset/dropped, `net.Error`, unexpected EOF) with no SQLSTATE; `detail` "database unavailable" (full error in `dev`) |
 | (`internal`) | 500 | anything else pdbr-side (hook error, unexpected compile failure, panic) |
 | `pg:<SQLSTATE>` | per table below | database error; the five-character SQLSTATE verbatim (`pg:23505`, `pg:42501`, `pg:40001`) |
 
-Decided (M6): the eight parenthesised codes stay as distinct codes — the
+Decided (M6): the parenthesised codes stay as distinct codes — the
 minimum needed so every response has a `code` (`unknown_relation` and
 `invalid_cursor` are also used by [mutations.md](mutations.md) /
 [pagination.md](pagination.md)); folding them into neighbours

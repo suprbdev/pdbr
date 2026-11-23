@@ -114,7 +114,7 @@ func (s *stmt) orderExprSQL(term orderTerm, alias string) string {
 	case term.rel != nil:
 		return s.relationOrderSQL(term, alias)
 	case term.fn != nil:
-		return computedCallSQL(term.fn, term.fnTable, alias)
+		return s.computedCallSQL(term.fn, term.fnTable, alias)
 	}
 	return colRef(alias, term.col)
 }

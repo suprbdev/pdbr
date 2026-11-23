@@ -159,6 +159,7 @@ func TestErrorCodeVocabulary(t *testing.T) {
 		{name: "invalid_cursor", path: "/api/users?after=zzz", status: 400, code: "invalid_cursor"},
 		{name: "method_not_allowed", method: "POST", path: "/api/metrics", status: 405, code: "method_not_allowed", check: allowIs("GET, HEAD")},
 		{name: "unknown_argument", path: "/api/rpc/best_mood?nope=1", status: 400, code: "unknown_argument"},
+		{name: "missing_argument", path: "/api/rpc/describe_mood", status: 400, code: "missing_argument", check: detailIs(`function "describe_mood": missing required argument(s): m`)},
 		{name: "pg sqlstate", path: "/api/users?settings=jpe.$[", status: 400, code: "pg:42601", check: func(t *testing.T, _ *http.Response, p problem) {
 			if p.PG["sqlstate"] != "42601" {
 				t.Errorf("pg object = %v", p.PG)

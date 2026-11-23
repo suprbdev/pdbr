@@ -105,7 +105,6 @@ func TestRPCScalarAndEnums(t *testing.T) {
 		"/api/rpc/mood_moods?limit=1":     `["ok"]`,
 		"/api/rpc/mood_moods?offset=1":    `["happy"]`,
 		"/api/rpc/describe_mood?m=happy":  `"mood is happy"`,
-		"/api/rpc/describe_mood":          `null`,
 		"/api/rpc/search_posts?term=zzzz": `[]`,
 	}
 	for path, want := range cases {
@@ -135,11 +134,144 @@ func TestRPCScalarAndEnums(t *testing.T) {
 	res, body, _ = rpcCall(t, "POST", srv.URL+"/api/rpc/describe_mood", `[1]`, nil)
 	wantProblem(t, res, body, 400, "invalid_body")
 	res, body, _ = rpcCall(t, "POST", srv.URL+"/api/rpc/describe_mood", "", map[string]string{"Content-Type": "text/plain"})
-	if res.StatusCode != 200 {
-		t.Errorf("empty body ignores content type: %d %s", res.StatusCode, body)
+	wantProblem(t, res, body, 400, "missing_argument")
+	res, body, _ = rpcCall(t, "GET", srv.URL+"/api/rpc/describe_mood", "", nil)
+	wantProblem(t, res, body, 400, "missing_argument")
+	if v := rpcOK(t, "POST", srv.URL+"/api/rpc/describe_mood", `{"m": null}`); v != nil {
+		t.Errorf("describe_mood(null) = %v", v)
 	}
 	res, body, _ = rpcCall(t, "GET", srv.URL+"/api/rpc/nope", "", nil)
 	wantProblem(t, res, body, 404, "not_found")
+}
+
+// rpcArgFixtures creates functions with defaulted, variadic and defaulted
+// computed-column arguments; dropped again after the test.
+func rpcArgFixtures(t *testing.T) {
+	t.Helper()
+	url := os.Getenv("PDBR_TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("PDBR_TEST_DATABASE_URL not set; run `make test-e2e`")
+	}
+	ctx := context.Background()
+	exec := func(ddl ...string) error {
+		conn, err := pgx.Connect(ctx, url)
+		if err != nil {
+			return err
+		}
+		defer conn.Close(ctx)
+		for _, d := range ddl {
+			if _, err := conn.Exec(ctx, d); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	drop := []string{
+		`DROP FUNCTION IF EXISTS public.e2e_greet(text, text)`,
+		`DROP FUNCTION IF EXISTS public.e2e_sum(int4, int4[])`,
+		`DROP FUNCTION IF EXISTS public.e2e_tail(int4, int4[])`,
+		`DROP FUNCTION IF EXISTS public.users_label(users, text)`,
+	}
+	if err := exec(drop...); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := exec(drop...); err != nil {
+			t.Errorf("rpc arg fixture cleanup: %v", err)
+		}
+	})
+	err := exec(
+		`CREATE FUNCTION public.e2e_greet(name text DEFAULT 'world', greeting text DEFAULT 'hello') RETURNS text
+		    IMMUTABLE LANGUAGE sql AS $$ SELECT greeting || ', ' || coalesce(name, '<null>') $$`,
+		`CREATE FUNCTION public.e2e_sum(base int4, VARIADIC nums int4[]) RETURNS int4
+		    IMMUTABLE LANGUAGE sql AS $$ SELECT base + coalesce((SELECT sum(n)::int4 FROM unnest(nums) n), 0) $$`,
+		`CREATE FUNCTION public.e2e_tail(base int4 DEFAULT 100, VARIADIC nums int4[] DEFAULT '{}') RETURNS int4
+		    IMMUTABLE LANGUAGE sql AS $$ SELECT base + coalesce(array_length(nums, 1), 0) $$`,
+		`CREATE FUNCTION public.users_label(u users, sep text DEFAULT ': ') RETURNS text
+		    STABLE LANGUAGE sql AS $$ SELECT u.id || sep || u.email $$`,
+		`GRANT EXECUTE ON FUNCTION public.e2e_greet(text, text), public.e2e_sum(int4, int4[]),
+		    public.e2e_tail(int4, int4[]), public.users_label(users, text) TO anonymous, app_user`,
+	)
+	if err != nil {
+		t.Fatalf("rpc arg fixture: %v", err)
+	}
+}
+
+func TestRPCDefaultsAndVariadic(t *testing.T) {
+	rpcArgFixtures(t)
+	srv := testServer(t, nil)
+	for path, want := range map[string]string{
+		"/api/rpc/e2e_greet":                       `"hello, world"`,
+		"/api/rpc/e2e_greet?greeting=hi":           `"hi, world"`,
+		"/api/rpc/e2e_greet?name=ada&greeting=hey": `"hey, ada"`,
+		"/api/rpc/e2e_sum?base=1&nums=2&nums=3":    `6`,
+		"/api/rpc/e2e_sum?nums=2&base=10":          `12`,
+		"/api/rpc/e2e_tail":                        `100`,
+		"/api/rpc/e2e_tail?base=1":                 `1`,
+		"/api/rpc/e2e_tail?base=1&nums=5&nums=6":   `3`,
+	} {
+		res, body, _ := rpcCall(t, "GET", srv.URL+path, "", nil)
+		if res.StatusCode != 200 || string(body) != want {
+			t.Errorf("GET %s = %d %s, want %s", path, res.StatusCode, body, want)
+		}
+	}
+	for body, want := range map[string]string{
+		`{}`:                 `"hello, world"`,
+		`{"name": null}`:     `"hello, <null>"`,
+		`{"greeting": "yo"}`: `"yo, world"`,
+	} {
+		res, out, _ := rpcCall(t, "POST", srv.URL+"/api/rpc/e2e_greet", body, nil)
+		if res.StatusCode != 200 || string(out) != want {
+			t.Errorf("POST e2e_greet %s = %d %s, want %s", body, res.StatusCode, out, want)
+		}
+	}
+	for body, want := range map[string]string{
+		`{"base": 1, "nums": [2, 3, 4]}`: `10`,
+		`{"base": 1, "nums": []}`:        `1`,
+	} {
+		res, out, _ := rpcCall(t, "POST", srv.URL+"/api/rpc/e2e_sum", body, nil)
+		if res.StatusCode != 200 || string(out) != want {
+			t.Errorf("POST e2e_sum %s = %d %s, want %s", body, res.StatusCode, out, want)
+		}
+	}
+	res, body, _ := rpcCall(t, "GET", srv.URL+"/api/rpc/e2e_sum?base=1", "", nil)
+	wantProblem(t, res, body, 400, "missing_argument")
+	res, body, _ = rpcCall(t, "GET", srv.URL+"/api/rpc/e2e_tail?nums=1", "", nil)
+	if p := wantProblem(t, res, body, 400, "missing_argument"); !strings.Contains(p.Detail, "base") {
+		t.Errorf("variadic leading omission detail = %q", p.Detail)
+	}
+	res, body, _ = rpcCall(t, "GET", srv.URL+"/api/rpc/e2e_sum?base=1&nums=x", "", nil)
+	wantProblem(t, res, body, 400, "invalid_filter")
+
+	var rows []row
+	getJSON(t, srv.URL+"/api/users?select=id,label&id=eq.1", &rows)
+	if len(rows) != 1 || rows[0]["label"] != "1: ada@example.com" {
+		t.Errorf("computed column with a defaulted argument = %v", rows)
+	}
+
+	doc := openAPI(t, srv.URL)
+	get := doc["paths"].(map[string]any)["/rpc/e2e_sum"].(map[string]any)["get"].(map[string]any)
+	for _, p := range get["parameters"].([]any) {
+		pm := p.(map[string]any)
+		switch pm["name"] {
+		case "base":
+			if pm["required"] != true {
+				t.Errorf("e2e_sum base param = %v", pm)
+			}
+		case "nums":
+			if pm["required"] != true || pm["schema"].(map[string]any)["type"] != "array" || pm["explode"] != true {
+				t.Errorf("e2e_sum nums param = %v", pm)
+			}
+		}
+	}
+	greet := doc["paths"].(map[string]any)["/rpc/e2e_greet"].(map[string]any)["post"].(map[string]any)
+	if rb := greet["requestBody"].(map[string]any); rb["required"] == true {
+		t.Errorf("e2e_greet body required = %v", rb)
+	}
+	props := greet["requestBody"].(map[string]any)["content"].(map[string]any)["application/json"].(map[string]any)["schema"].(map[string]any)["properties"].(map[string]any)
+	if d, _ := props["greeting"].(map[string]any)["description"].(string); !strings.Contains(d, "'hello'::text") {
+		t.Errorf("e2e_greet greeting description = %q", d)
+	}
 }
 
 func TestRPCVolatile(t *testing.T) {
@@ -160,12 +292,17 @@ func TestRPCVolatile(t *testing.T) {
 	if v := rpcOK(t, "POST", srv.URL+"/api/rpc/add_numbers", `{"a": "2", "b": 40}`); v != json.Number("42") {
 		t.Errorf("add_numbers with string number = %v", v)
 	}
-	// A missing argument is NULL: a + NULL is NULL.
-	if v := rpcOK(t, "POST", srv.URL+"/api/rpc/add_numbers", `{"a": 2}`); v != nil {
-		t.Errorf("add_numbers missing b = %v", v)
+	// An explicit null is NULL: a + NULL is NULL.
+	if v := rpcOK(t, "POST", srv.URL+"/api/rpc/add_numbers", `{"a": 2, "b": null}`); v != nil {
+		t.Errorf("add_numbers null b = %v", v)
 	}
-	if v := rpcOK(t, "POST", srv.URL+"/api/rpc/add_numbers", ""); v != nil {
-		t.Errorf("add_numbers without body = %v", v)
+	res, body, _ = rpcCall(t, "POST", srv.URL+"/api/rpc/add_numbers", `{"a": 2}`, nil)
+	if p := wantProblem(t, res, body, 400, "missing_argument"); !strings.Contains(p.Detail, "b") {
+		t.Errorf("missing b detail = %q", p.Detail)
+	}
+	res, body, _ = rpcCall(t, "POST", srv.URL+"/api/rpc/add_numbers", "", nil)
+	if p := wantProblem(t, res, body, 400, "missing_argument"); !strings.Contains(p.Detail, "a, b") {
+		t.Errorf("missing a, b detail = %q", p.Detail)
 	}
 	if v := rpcOK(t, "POST", srv.URL+"/api/rpc/word_lengths", `{"words": ["a", "bb", "ccc"]}`); v != json.Number("3") {
 		t.Errorf("word_lengths = %v", v)

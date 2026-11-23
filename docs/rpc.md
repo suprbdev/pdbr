@@ -23,10 +23,19 @@ fixture, so `POST` only —, `search_posts(term text) SETOF posts`,
 ## Arguments
 
 - Mapped **by name** to the function's declared argument names (verbatim, no
-  inflection). Every argument is optional at the HTTP level; a missing
-  argument is passed as `NULL::<type>` (pdbq parity — PG defaults are *not*
-  applied because a positional call with explicit NULLs is what the statement
-  emits). A function that needs its default must be called with the value.
+  inflection) and passed in named notation (`"f"("a" => $1::"int4")`,
+  `pdbcore/introspect.Function.CallSQL`), PostgREST semantics:
+  - an **omitted** argument is left out of the call, so PostgreSQL applies
+    its `DEFAULT`; omitting an argument that has no default →
+    `400 missing_argument` (detail names every missing argument);
+  - an explicit JSON `null` (POST) is passed as `NULL::<type>`;
+  - a `VARIADIC` argument takes one element per repetition of its query
+    parameter on GET (`?nums=1&nums=2`) or a JSON array in the body
+    (`{"nums": [1, 2]}`, `[]` for zero elements), and is passed as
+    `VARIADIC $n::<type>[]`. PostgreSQL matches named notation to a variadic
+    function only when every argument is passed, so a variadic function is
+    called positionally: only trailing defaulted arguments can be omitted
+    (an omitted argument before a passed one is `missing_argument` too).
 - Unknown argument name → `400 unknown_argument` (see [errors.md](errors.md#code-vocabulary)).
 - On GET, query params that are RPC arguments are consumed as arguments; the
   reserved names (`select`, `order`, `limit`, `offset`, `count`, …) keep their
@@ -47,7 +56,8 @@ fixture, so `POST` only —, `search_posts(term text) SETOF posts`,
 - Coercion by PG type of the argument (values are `$n::<type>` parameters,
   schema-qualified for non-`pg_catalog` types: `$1::"public"."mood"`,
   arrays `$1::"text"[]`, enum arrays `$1::text[]::"public"."mood"[]`; a
-  missing or JSON-`null` argument is the literal `NULL::<type>`):
+  JSON-`null` argument is the literal `NULL::<type>`). The SQL text depends
+  on which arguments are present (and null), never on their values:
 
 | PG type | GET (`?arg=`) | POST body |
 |---|---|---|
@@ -61,8 +71,8 @@ fixture, so `POST` only —, `search_posts(term text) SETOF posts`,
 
 - Uncoercible value → `400 invalid_body` (POST) / `400 invalid_filter` (GET)
   when detectable at compile time; otherwise PG's `22*` → `400 pg:22P02`.
-- Body must be a JSON object (`{}` allowed → all `NULL`); non-object → `400
-  invalid_body`; missing body on POST is treated as `{}`.
+- Body must be a JSON object (`{}` allowed → every argument omitted);
+  non-object → `400 invalid_body`; missing body on POST is treated as `{}`.
 
 ## Return shapes
 
@@ -95,7 +105,7 @@ POST /api/rpc/add_numbers
 
 ```sql
 SELECT to_jsonb(__fn.v) AS data
-FROM (SELECT "public"."add_numbers"($1::"int4", $2::"int4") AS v) AS __fn
+FROM (SELECT "public"."add_numbers"("a" => $1::"int4", "b" => $2::"int4") AS v) AS __fn
 -- args: [2,40]
 ```
 
@@ -142,10 +152,10 @@ GET /api/rpc/search_posts?term=rest&author_id=eq.1&order=id.desc&limit=20&count=
 ```
 
 ```sql
-SELECT jsonb_build_object('rows', coalesce(jsonb_agg(s3.data ORDER BY s3.__rn ASC) FILTER (WHERE s3.__rn <= $4), '[]'::jsonb), 'has_next', coalesce(bool_or(s3.__rn > $4), false), 'has_prev', false, 'total', (SELECT count(*) FROM "public"."search_posts"($1::"text") c4 WHERE c4."author_id" = $5)) AS data
+SELECT jsonb_build_object('rows', coalesce(jsonb_agg(s3.data ORDER BY s3.__rn ASC) FILTER (WHERE s3.__rn <= $4), '[]'::jsonb), 'has_next', coalesce(bool_or(s3.__rn > $4), false), 'has_prev', false, 'total', (SELECT count(*) FROM "public"."search_posts"("term" => $1::"text") c4 WHERE c4."author_id" = $5)) AS data
 FROM (
   SELECT jsonb_build_object('id', t0."id", 'title', t0."title", 'users', l2.data) AS data, row_number() OVER (ORDER BY t0."id" DESC) AS __rn
-  FROM "public"."search_posts"($1::"text") t0
+  FROM "public"."search_posts"("term" => $1::"text") t0
   LEFT JOIN LATERAL (
     SELECT jsonb_build_object('email', t1."email") AS data
     FROM "public"."users" t1
@@ -223,7 +233,6 @@ where noted):
 | no `EXECUTE` privilege for the connecting role | can't be called |
 | owned by an extension (`pg_depend` on `pg_extension`) | PostGIS alone has thousands |
 | any unnamed argument | args are mapped by name |
-| any `OUT` / `INOUT` argument (`RETURNS record` / `RETURNS TABLE`) | v1.x — excluded via the `record` return type; a `VARIADIC` array argument is not distinguishable in the catalog and is called as a plain array |
 | returns or takes `trigger`, `event_trigger`, `internal`, `language_handler`, `record` (anonymous), `cstring`, polymorphic (`anyelement`, `anyarray`, `anycompatible…`, …) | not callable / not typeable |
 | aggregate / window / procedure (`prokind` ≠ `f`) | not a plain function (pdbcore) |
 | `@omit` smart comment on the function | user opt-out (`smart-comments` plugin, M5) |
@@ -245,10 +254,11 @@ CREATE FUNCTION users_post_count(u users) RETURNS bigint LANGUAGE sql STABLE AS 
 |---|---|
 | key | function name minus the `<table>_` prefix: `users_post_count` → `post_count`; `@name` overrides; a name matching a real column → real column wins, computed skipped with a warning |
 | selection | only via `select=` (never in `*`): `GET /api/users?select=id,post_count` |
-| SQL | `"public"."users_post_count"(ROW(__t_1."id", __t_1."email", …)::"public"."users")` — an explicit `ROW(...)::table` cast rather than the bare alias, so the same expression works over any row source (`__mut` CTE in mutation responses, `__vis_n` nested visibility CTEs, function row sources) |
+| SQL | `"public"."users_post_count"("u" => ROW(__t_1."id", __t_1."email", …)::"public"."users")` — an explicit `ROW(...)::table` cast rather than the bare alias, so the same expression works over any row source (`__mut` CTE in mutation responses, `__vis_n` nested visibility CTEs, function row sources) |
 | set-returning (`SETOF <scalar>` / `SETOF <table>`) | array field; `SETOF <table>` accepts a nested `select=` like an embed: `select=id,recent_posts(id,title)` |
 | `int8` result (`count(*)`) | serialized as string like `int8` columns |
-| volatile / `void` / extra unnamed args | skipped |
+| volatile / `void` | skipped |
+| extra arguments after the row | allowed when every one has a `DEFAULT` (the call passes only the row, so PostgreSQL applies the defaults); any extra argument without one → skipped |
 | filter / order (`post_count=gt.3`, `order=post_count.desc`) | `advanced-filters` plugin (bypasses the index policy by nature; `@omit filter|order` respected) |
 | RPC route | none — a function whose first arg is a row type is a computed column, not an RPC (pdbq parity); a row-type arg in any other position excludes the function entirely |
 | RETURNING (mutations) | selecting a computed column forces every column of the table into `RETURNING` ([mutations.md](mutations.md#rls-caveats-for-returning)) |
@@ -259,7 +269,7 @@ GET /api/users/1?select=id,post_count
 ```
 
 ```sql
-SELECT jsonb_build_object('etag', md5(to_jsonb(t0)::text), 'row', jsonb_build_object('id', t0."id", 'post_count', ("public"."users_post_count"(ROW(t0."id", t0."email", t0."full_name", t0."mood", t0."settings", t0."tags", t0."balance", t0."created_at", t0."address", t0."prev_addresses", t0."moods")::"public"."users"))::text)) AS data
+SELECT jsonb_build_object('etag', md5(to_jsonb(t0)::text), 'row', jsonb_build_object('id', t0."id", 'post_count', ("public"."users_post_count"("u" => ROW(t0."id", t0."email", t0."full_name", t0."mood", t0."settings", t0."tags", t0."balance", t0."created_at", t0."address", t0."prev_addresses", t0."moods")::"public"."users"))::text)) AS data
 FROM "public"."users" t0
 WHERE t0."id" = $1
 LIMIT 1
@@ -270,10 +280,10 @@ LIMIT 1
 `computed_field`, `computed_set`, `computed_on_mutation` pin the field, the
 `SETOF` array and the `__mut` mutation-response cases.)
 
-**Extra arguments are deferred to v1.x.** Functions with additional named
-scalar args after the row arg (`posts_excerpt(p posts, len int4)`) are
-skipped as computed columns in v1 (and are not RPCs either, because of the
-row arg). The `select=` grammar reserves `field(k=v,…)` for them:
+**Passing extra arguments is deferred to v1.x.** Functions with additional
+named args without a default after the row arg (`posts_excerpt(p posts, len
+int4)`) are skipped as computed columns (and are not RPCs either, because of
+the row arg); defaulted extra args always take their default. The `select=` grammar reserves `field(k=v,…)` for them:
 `select=id,excerpt(len=80)`; in v1 the parenthesised form is only valid for
 PostGIS projection args (`geom(transform=4326)`), and using it on a computed
 column → `400`.
@@ -289,7 +299,12 @@ filters/order disappear with them. `pdbr plugins list` is unaffected.
 Each RPC route is a path item under `/rpc/{fn}` (or `/{schema}/rpc/{fn}`):
 `get` for stable/immutable (args as query params, plus the `SETOF <table>`
 list params), `post` for all (request body `object` with one property per
-argument, all optional, typed by the column type map). Responses reference
+argument, typed by the column type map). Arguments without a `DEFAULT` are
+`required` (query parameter `required: true`, body `required` list, body
+`required: true` when there is at least one); defaulted ones are optional and
+their description shows the default expression (`optional, default
+'hello'::text.`). A `VARIADIC` argument is an `array` query parameter
+(`style: form`, `explode: true`) / a JSON array property. Responses reference
 the returned resource schema (`users`, array of `users`), an inline scalar
 schema, `204`, or — for `rls.auth.jwt_type` functions — `string` with
 `format: jwt` (array thereof for `SETOF`). Tags per schema. Argument

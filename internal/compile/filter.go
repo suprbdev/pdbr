@@ -189,7 +189,7 @@ func (s *stmt) condSQL(c *plan.Cond, alias string) (string, error) {
 		if fn.ReturnsSet {
 			return "", errUser(CodeInvalidFilter, "computed column %q is set-returning and cannot be filtered", c.Computed.Key)
 		}
-		return s.opSQL(fnReturnColumn(fn), computedCallSQL(fn, t, alias), c)
+		return s.opSQL(fnReturnColumn(fn), s.computedCallSQL(fn, t, alias), c)
 	case c.Column != nil:
 		return s.opSQL(c.Column, colRef(alias, c.Column.Name), c)
 	}

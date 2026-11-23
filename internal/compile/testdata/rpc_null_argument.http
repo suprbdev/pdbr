@@ -1,0 +1,4 @@
+POST /api/rpc/add_numbers
+Content-Type: application/json
+
+{"a": 1, "b": null}

@@ -207,7 +207,7 @@ func TestListStarPlusComputed(t *testing.T) {
 		{Computed: f.computed("users", "post_count")},
 	}}
 	stmt := f.compile(p)
-	if !strings.Contains(stmt.SQL, `'post_count', ("public"."users_post_count"(ROW(t0."id", t0."email", t0."full_name", t0."mood", t0."settings", t0."tags", t0."balance", t0."created_at", t0."address", t0."prev_addresses", t0."moods")::"public"."users"))::text`) {
+	if !strings.Contains(stmt.SQL, `'post_count', ("public"."users_post_count"("u" => ROW(t0."id", t0."email", t0."full_name", t0."mood", t0."settings", t0."tags", t0."balance", t0."created_at", t0."address", t0."prev_addresses", t0."moods")::"public"."users"))::text`) {
 		t.Errorf("computed column missing:\n%s", stmt.SQL)
 	}
 	if strings.Count(stmt.SQL, `'id', t0."id"`) != 1 {
@@ -601,7 +601,7 @@ func TestFilterComputed(t *testing.T) {
 	p.Select = fields(users, "id")
 	p.Filter = plan.Cond{Computed: f.computed("users", "post_count"), Op: plan.OpGt, Value: 3}
 	stmt := f.compile(p)
-	if !strings.Contains(stmt.SQL, `WHERE "public"."users_post_count"(ROW(t0."id", t0."email", t0."full_name", t0."mood", t0."settings", t0."tags", t0."balance", t0."created_at", t0."address", t0."prev_addresses", t0."moods")::"public"."users") > $1`) {
+	if !strings.Contains(stmt.SQL, `WHERE "public"."users_post_count"("u" => ROW(t0."id", t0."email", t0."full_name", t0."mood", t0."settings", t0."tags", t0."balance", t0."created_at", t0."address", t0."prev_addresses", t0."moods")::"public"."users") > $1`) {
 		t.Errorf("computed filter:\n%s", stmt.SQL)
 	}
 }
@@ -732,7 +732,7 @@ func TestOrderRelatedComputedDistance(t *testing.T) {
 		{Computed: f.computed("users", "post_count"), Desc: true},
 	}
 	stmt = f.compile(p)
-	if !strings.Contains(stmt.SQL, `ORDER BY (SELECT MAX(__ro."title") FROM "public"."posts" __ro WHERE __ro."author_id" = t0."id") DESC NULLS LAST, "public"."users_post_count"(ROW(`) {
+	if !strings.Contains(stmt.SQL, `ORDER BY (SELECT MAX(__ro."title") FROM "public"."posts" __ro WHERE __ro."author_id" = t0."id") DESC NULLS LAST, "public"."users_post_count"("u" => ROW(`) {
 		t.Errorf("backward related + computed order:\n%s", stmt.SQL)
 	}
 	places := f.res("places")
@@ -1173,7 +1173,7 @@ func TestComputedSetOf(t *testing.T) {
 	p := &plan.Request{Method: plan.GET, Resource: users, Key: &plan.Key{Constraint: users.Table.PrimaryKey, Values: []any{1}}}
 	p.Select = &plan.Node{Resource: users, Fields: []plan.FieldSel{{Column: f.col("users", "id")}, {Computed: f.computed("users", "tag_words")}}}
 	stmt := f.compile(p)
-	if !strings.Contains(stmt.SQL, `'tag_words', (SELECT coalesce(jsonb_agg(v1.v), '[]'::jsonb) FROM "public"."users_tag_words"(ROW(`) || !strings.Contains(stmt.SQL, `::"public"."users") v1(v))`) {
+	if !strings.Contains(stmt.SQL, `'tag_words', (SELECT coalesce(jsonb_agg(v1.v), '[]'::jsonb) FROM "public"."users_tag_words"("u" => ROW(`) || !strings.Contains(stmt.SQL, `::"public"."users") v1(v))`) {
 		t.Errorf("setof scalar computed:\n%s", stmt.SQL)
 	}
 }
