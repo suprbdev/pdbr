@@ -88,6 +88,9 @@ type Options struct {
 	// false a PATCH or DELETE on a list route without a root filter is 400
 	// unfiltered_mutation.
 	AllowUnfilteredMutations bool
+	// PartialBulk is server.partial_bulk_writes: whether Prefer: partial=items
+	// is honoured on bulk POST and PUT.
+	PartialBulk bool
 	// TxEnd is server.tx_end: commit (default, "" too), commit-allow-override,
 	// rollback or rollback-allow-override. It decides whether a write's
 	// transaction is rolled back and whether Prefer: tx= is honoured.
@@ -212,6 +215,7 @@ func Parse(built *api.Built, m *api.Match, r *http.Request, opts Options) (*plan
 			return nil, errf(CodeIfMatchUnsupported, "If-Match is not supported on PUT; use PATCH on this path for a conditional update")
 		}
 	}
+	p.resolvePartial()
 	p.resolveCount()
 	if err := p.negotiateAccept(r); err != nil {
 		return nil, err
@@ -234,6 +238,9 @@ type parser struct {
 	// columnsOrder keeps the names as written for validation messages.
 	columns      map[string]bool
 	columnsOrder []string
+	// wantPartial is a honourable Prefer: partial=items; resolvePartial
+	// confirms it once the body is known to be an array.
+	wantPartial bool
 }
 
 func parseMethod(m string) (plan.Method, error) {

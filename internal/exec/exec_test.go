@@ -79,6 +79,10 @@ func (f *fakeDB) Acquire(context.Context) (*pgxpool.Conn, error) {
 	return nil, errors.New("fakeDB: transactions go through queryTx")
 }
 
+func (f *fakeDB) BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error) {
+	return nil, errors.New("fakeDB: partial writes go through runTx")
+}
+
 // fakeTx is one pgexec.QueryTx batch as the fake saw it.
 type fakeTx struct {
 	opts      pgexec.TxOptions

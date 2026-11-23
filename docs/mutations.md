@@ -224,6 +224,7 @@ return=minimal, handling=strict, max-affected=10`).
 | `missing=default` | `POST`, `PUT` | accepted and echoed; pdbr always defaults omitted keys |
 | `count=exact\|planned\|estimated` | bulk `PATCH`, `DELETE` | `Content-Range: 0-<n-1>/<n>` (the written-row count is always exact, so `Preference-Applied` says `count=exact`); lists: [pagination.md](pagination.md#prefer-count-and-content-range) |
 | `tx=commit\|rollback` | writes (incl. volatile RPCs) | only with `server.tx_end: commit-allow-override` or `rollback-allow-override`: the request runs in a transaction that is committed or rolled back; a rollback still answers with the normal result (status, body, `Location`) and writes nothing. Otherwise ignored, or `400 invalid_preference` under `handling=strict`. Echoed as `tx=<value>` |
+| `partial=items` | bulk `POST`, `PUT` | only with `server.partial_bulk_writes: true`: every element runs in its own savepoint and the response is a per-element report ([below](#partial-success-for-bulk-writes)). Ignored (not echoed) for a single object, `PATCH` and `DELETE`; ignored while the config is off, or `400 invalid_preference` under `handling=strict`. Echoed as `partial=items` |
 | `timezone=<name>` | any request | sets the transaction's `timezone` (`set_config('timezone', $1, true)`, bound) so `timestamptz` output and `now()` use it. Names are matched case-insensitively against `pg_timezone_names` (loaded once, cached); unknown → ignored, or `400 invalid_preference` under `handling=strict`. Echoed as `timezone=<canonical name>` |
 | `max-affected=N` | `PATCH`, `DELETE` (bulk and keyed) | with `handling=strict` only (ignored and not echoed under lenient handling, as in PostgREST): writing more than `N` rows → `400 max_affected_exceeded`, nothing written (PostgREST `PGRST124`). A keyed write counts as one row |
 
@@ -245,6 +246,77 @@ rolled back once its result has been read (a second round trip, like
 A `timezone=` preference adds one constant statement,
 `SELECT set_config('timezone', $1, true)`, before the request's own in the
 same transaction batch.
+
+### Partial success for bulk writes
+
+A bulk `POST` or `PUT` (a body array) is one `INSERT` and all-or-nothing:
+one bad element rolls the whole body back. With `server.partial_bulk_writes:
+true` (default `false`) a request can opt in per request:
+
+```
+POST /api/users
+Prefer: partial=items
+
+[{"email":"a@x.io"},{"email":"a@x.io"},{"email":"c@x.io"}]
+```
+
+```
+HTTP/1.1 207 Multi-Status
+Preference-Applied: partial=items
+
+{"n":2,"failed":1,"items":[
+  {"index":0,"status":201,"row":{"id":7,"email":"a@x.io"}},
+  {"index":1,"status":409,"code":"pg:23505","detail":"duplicate key value violates unique constraint \"users_email_key\""},
+  {"index":2,"status":201,"row":{"id":8,"email":"c@x.io"}}]}
+```
+
+PostgREST has no equivalent preference (its bulk writes are atomic), so
+`partial=items` is pdbr-specific. It follows the `Prefer` grammar: a token
+with a value, matched case-insensitively and echoed in `Preference-Applied`
+in header order.
+
+- **Granularity.** Each element is compiled and run as a statement of its
+  own, in body order, inside a `SAVEPOINT`: a failing element is rolled back
+  to its savepoint and reported, the others commit with the transaction.
+  `PATCH` and `DELETE` write one statement chosen by a filter, so there is
+  nothing to split and the token does not apply to them. Body validation
+  (unknown keys, missing required columns, conflict targets) still rejects
+  the whole request with `400` before anything runs.
+- **Response.** `n` counts the elements that succeeded and `failed` the
+  others. Each item has its `index` in the body and the `status` the element
+  would have had as a request of its own: `201` (`200` for `PUT`) with the
+  written `row` (no `row` under `return=minimal`), `204` for an element
+  `resolution=ignore-duplicates` skipped, or the error's status with its
+  `code` and `detail` (and `pg` under `errors.detail: dev`) as in a
+  [problem document](errors.md). The HTTP status is `201` (`200` for `PUT`)
+  when every element succeeded and `207` when at least one failed. A client
+  must read `items`, not the status alone: `207` still committed the
+  elements that succeeded.
+- **Single-statement invariant.** Partial mode is the one exception to
+  "everything is one statement per request": it uses `pgexec.RunTx` and costs
+  a round trip for the `SAVEPOINT`, one for the element's statement and one
+  for `RELEASE` per element (plus `ROLLBACK TO` for a failed one), instead of
+  one pipelined batch. The body is bounded by `server.max_body_bytes` and the
+  request by `server.request_timeout`.
+- **Retries.** A serialization failure or deadlock is never an element
+  failure: the transaction aborts and the whole request re-runs, up to
+  `transactions.max_retries` times. When the retries run out, or `COMMIT`
+  fails, nothing was written and the answer is the plain `409`
+  (`pg:40001` / `pg:40P01`), not a report.
+- **RLS identity.** `SET LOCAL ROLE` and the claims are applied once per
+  transaction and hold for every element; a savepoint rollback does not
+  undo them. An RLS violation in one element is that element's `403`
+  (`pg:42501`) and the others commit.
+- **`tx=rollback`.** Under `server.tx_end: rollback*` or an honoured
+  `Prefer: tx=rollback`, every element runs and is reported as usual, then
+  the transaction is rolled back: the report is a dry run and nothing is
+  written.
+- **`max-affected`.** Applies to `PATCH` and `DELETE` only, so it never
+  combines with `partial=items`.
+- **`transactions.mutations: false`** does not matter: a partial request
+  always runs in a transaction.
+- `--print-sql` and `Prepare` show the compiled statement of the whole body,
+  not the per-element statements.
 
 ### `columns=`
 

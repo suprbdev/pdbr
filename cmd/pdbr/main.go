@@ -55,6 +55,7 @@ func configFlags(cmd *cobra.Command) {
 	fs.Bool("server.read_only", false, "answer every write with 405 (read-only mode)")
 	fs.Bool("server.allow_unfiltered_mutations", false, "allow PATCH/DELETE on a collection without a filter")
 	fs.Bool("server.aggregates", false, "allow aggregate functions in select= (count(), col.sum(), ...)")
+	fs.Bool("server.partial_bulk_writes", false, "let a bulk POST/PUT opt in (Prefer: partial=items) to per-element savepoints")
 	fs.String("server.tx_end", "", "how a write's transaction ends: commit|commit-allow-override|rollback|rollback-allow-override")
 	fs.StringSlice("schema.schemas", nil, "PostgreSQL schemas to expose")
 	fs.String("schema.cache_path", "", "boot from schema cache file")

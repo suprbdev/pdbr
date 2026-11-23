@@ -73,6 +73,10 @@ func (s *scriptedDB) Exec(context.Context, string, ...any) (pgconn.CommandTag, e
 	return pgconn.CommandTag{}, nil
 }
 
+func (s *scriptedDB) BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error) {
+	return nil, errors.New("scriptedDB never begins transactions")
+}
+
 func (s *scriptedDB) Acquire(context.Context) (*pgxpool.Conn, error) {
 	return nil, errors.New("scriptedDB never begins transactions")
 }

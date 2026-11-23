@@ -364,7 +364,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.a88f77f8"
+            "$ref": "#/components/parameters/header.Prefer.e0c4bdaf"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -441,6 +441,74 @@
               }
             }
           },
+          "207": {
+            "description": "Prefer: partial=items: the per-element report, 207 when at least one element failed (201, or 200 for PUT, when none did). Elements that did not fail are committed.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured, comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "failed": {
+                      "type": "integer",
+                      "description": "Elements that failed."
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "description": "Error code of a failed element, as in the problem document (for example pg:23505)."
+                          },
+                          "detail": {
+                            "type": "string",
+                            "description": "Error detail of a failed element."
+                          },
+                          "index": {
+                            "type": "integer",
+                            "description": "Position of the element in the request body."
+                          },
+                          "pg": {
+                            "type": "object",
+                            "description": "Database error details (errors.detail: dev only)."
+                          },
+                          "row": {
+                            "description": "The written row (absent under return=minimal and for a skipped or failed element)."
+                          },
+                          "status": {
+                            "type": "integer",
+                            "description": "The HTTP status the element would have had as a request of its own: 201 (200 for PUT), 204 for an element resolution=ignore-duplicates skipped, or the error status."
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "status"
+                        ]
+                      }
+                    },
+                    "n": {
+                      "type": "integer",
+                      "description": "Elements that succeeded."
+                    }
+                  },
+                  "required": [
+                    "n",
+                    "failed",
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
           "400": {
             "$ref": "#/components/responses/Problem"
           },
@@ -495,7 +563,7 @@
             "$ref": "#/components/parameters/query.on_conflict.9f24a859"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.eedd9759"
+            "$ref": "#/components/parameters/header.Prefer.3d660a5b"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -583,6 +651,74 @@
                 "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
+                }
+              }
+            }
+          },
+          "207": {
+            "description": "Prefer: partial=items: the per-element report, 207 when at least one element failed (201, or 200 for PUT, when none did). Elements that did not fail are committed.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured, comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "failed": {
+                      "type": "integer",
+                      "description": "Elements that failed."
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "description": "Error code of a failed element, as in the problem document (for example pg:23505)."
+                          },
+                          "detail": {
+                            "type": "string",
+                            "description": "Error detail of a failed element."
+                          },
+                          "index": {
+                            "type": "integer",
+                            "description": "Position of the element in the request body."
+                          },
+                          "pg": {
+                            "type": "object",
+                            "description": "Database error details (errors.detail: dev only)."
+                          },
+                          "row": {
+                            "description": "The written row (absent under return=minimal and for a skipped or failed element)."
+                          },
+                          "status": {
+                            "type": "integer",
+                            "description": "The HTTP status the element would have had as a request of its own: 201 (200 for PUT), 204 for an element resolution=ignore-duplicates skipped, or the error status."
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "status"
+                        ]
+                      }
+                    },
+                    "n": {
+                      "type": "integer",
+                      "description": "Elements that succeeded."
+                    }
+                  },
+                  "required": [
+                    "n",
+                    "failed",
+                    "items"
+                  ]
                 }
               }
             }
@@ -1523,7 +1659,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.a88f77f8"
+            "$ref": "#/components/parameters/header.Prefer.e0c4bdaf"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -1600,6 +1736,74 @@
               }
             }
           },
+          "207": {
+            "description": "Prefer: partial=items: the per-element report, 207 when at least one element failed (201, or 200 for PUT, when none did). Elements that did not fail are committed.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured, comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "failed": {
+                      "type": "integer",
+                      "description": "Elements that failed."
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "description": "Error code of a failed element, as in the problem document (for example pg:23505)."
+                          },
+                          "detail": {
+                            "type": "string",
+                            "description": "Error detail of a failed element."
+                          },
+                          "index": {
+                            "type": "integer",
+                            "description": "Position of the element in the request body."
+                          },
+                          "pg": {
+                            "type": "object",
+                            "description": "Database error details (errors.detail: dev only)."
+                          },
+                          "row": {
+                            "description": "The written row (absent under return=minimal and for a skipped or failed element)."
+                          },
+                          "status": {
+                            "type": "integer",
+                            "description": "The HTTP status the element would have had as a request of its own: 201 (200 for PUT), 204 for an element resolution=ignore-duplicates skipped, or the error status."
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "status"
+                        ]
+                      }
+                    },
+                    "n": {
+                      "type": "integer",
+                      "description": "Elements that succeeded."
+                    }
+                  },
+                  "required": [
+                    "n",
+                    "failed",
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
           "400": {
             "$ref": "#/components/responses/Problem"
           },
@@ -1654,7 +1858,7 @@
             "$ref": "#/components/parameters/query.on_conflict.9f24a859"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.eedd9759"
+            "$ref": "#/components/parameters/header.Prefer.3d660a5b"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -1742,6 +1946,74 @@
                 "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
+                }
+              }
+            }
+          },
+          "207": {
+            "description": "Prefer: partial=items: the per-element report, 207 when at least one element failed (201, or 200 for PUT, when none did). Elements that did not fail are committed.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured, comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "failed": {
+                      "type": "integer",
+                      "description": "Elements that failed."
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "description": "Error code of a failed element, as in the problem document (for example pg:23505)."
+                          },
+                          "detail": {
+                            "type": "string",
+                            "description": "Error detail of a failed element."
+                          },
+                          "index": {
+                            "type": "integer",
+                            "description": "Position of the element in the request body."
+                          },
+                          "pg": {
+                            "type": "object",
+                            "description": "Database error details (errors.detail: dev only)."
+                          },
+                          "row": {
+                            "description": "The written row (absent under return=minimal and for a skipped or failed element)."
+                          },
+                          "status": {
+                            "type": "integer",
+                            "description": "The HTTP status the element would have had as a request of its own: 201 (200 for PUT), 204 for an element resolution=ignore-duplicates skipped, or the error status."
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "status"
+                        ]
+                      }
+                    },
+                    "n": {
+                      "type": "integer",
+                      "description": "Elements that succeeded."
+                    }
+                  },
+                  "required": [
+                    "n",
+                    "failed",
+                    "items"
+                  ]
                 }
               }
             }
@@ -2950,7 +3222,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.a88f77f8"
+            "$ref": "#/components/parameters/header.Prefer.e0c4bdaf"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -3027,6 +3299,74 @@
               }
             }
           },
+          "207": {
+            "description": "Prefer: partial=items: the per-element report, 207 when at least one element failed (201, or 200 for PUT, when none did). Elements that did not fail are committed.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured, comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "failed": {
+                      "type": "integer",
+                      "description": "Elements that failed."
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "description": "Error code of a failed element, as in the problem document (for example pg:23505)."
+                          },
+                          "detail": {
+                            "type": "string",
+                            "description": "Error detail of a failed element."
+                          },
+                          "index": {
+                            "type": "integer",
+                            "description": "Position of the element in the request body."
+                          },
+                          "pg": {
+                            "type": "object",
+                            "description": "Database error details (errors.detail: dev only)."
+                          },
+                          "row": {
+                            "description": "The written row (absent under return=minimal and for a skipped or failed element)."
+                          },
+                          "status": {
+                            "type": "integer",
+                            "description": "The HTTP status the element would have had as a request of its own: 201 (200 for PUT), 204 for an element resolution=ignore-duplicates skipped, or the error status."
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "status"
+                        ]
+                      }
+                    },
+                    "n": {
+                      "type": "integer",
+                      "description": "Elements that succeeded."
+                    }
+                  },
+                  "required": [
+                    "n",
+                    "failed",
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
           "400": {
             "$ref": "#/components/responses/Problem"
           },
@@ -3081,7 +3421,7 @@
             "$ref": "#/components/parameters/query.on_conflict.9f24a859"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.eedd9759"
+            "$ref": "#/components/parameters/header.Prefer.3d660a5b"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -3169,6 +3509,74 @@
                 "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
+                }
+              }
+            }
+          },
+          "207": {
+            "description": "Prefer: partial=items: the per-element report, 207 when at least one element failed (201, or 200 for PUT, when none did). Elements that did not fail are committed.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured, comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "failed": {
+                      "type": "integer",
+                      "description": "Elements that failed."
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "description": "Error code of a failed element, as in the problem document (for example pg:23505)."
+                          },
+                          "detail": {
+                            "type": "string",
+                            "description": "Error detail of a failed element."
+                          },
+                          "index": {
+                            "type": "integer",
+                            "description": "Position of the element in the request body."
+                          },
+                          "pg": {
+                            "type": "object",
+                            "description": "Database error details (errors.detail: dev only)."
+                          },
+                          "row": {
+                            "description": "The written row (absent under return=minimal and for a skipped or failed element)."
+                          },
+                          "status": {
+                            "type": "integer",
+                            "description": "The HTTP status the element would have had as a request of its own: 201 (200 for PUT), 204 for an element resolution=ignore-duplicates skipped, or the error status."
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "status"
+                        ]
+                      }
+                    },
+                    "n": {
+                      "type": "integer",
+                      "description": "Elements that succeeded."
+                    }
+                  },
+                  "required": [
+                    "n",
+                    "failed",
+                    "items"
+                  ]
                 }
               }
             }
@@ -4121,7 +4529,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.a88f77f8"
+            "$ref": "#/components/parameters/header.Prefer.e0c4bdaf"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -4198,6 +4606,74 @@
               }
             }
           },
+          "207": {
+            "description": "Prefer: partial=items: the per-element report, 207 when at least one element failed (201, or 200 for PUT, when none did). Elements that did not fail are committed.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured, comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "failed": {
+                      "type": "integer",
+                      "description": "Elements that failed."
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "description": "Error code of a failed element, as in the problem document (for example pg:23505)."
+                          },
+                          "detail": {
+                            "type": "string",
+                            "description": "Error detail of a failed element."
+                          },
+                          "index": {
+                            "type": "integer",
+                            "description": "Position of the element in the request body."
+                          },
+                          "pg": {
+                            "type": "object",
+                            "description": "Database error details (errors.detail: dev only)."
+                          },
+                          "row": {
+                            "description": "The written row (absent under return=minimal and for a skipped or failed element)."
+                          },
+                          "status": {
+                            "type": "integer",
+                            "description": "The HTTP status the element would have had as a request of its own: 201 (200 for PUT), 204 for an element resolution=ignore-duplicates skipped, or the error status."
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "status"
+                        ]
+                      }
+                    },
+                    "n": {
+                      "type": "integer",
+                      "description": "Elements that succeeded."
+                    }
+                  },
+                  "required": [
+                    "n",
+                    "failed",
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
           "400": {
             "$ref": "#/components/responses/Problem"
           },
@@ -4252,7 +4728,7 @@
             "$ref": "#/components/parameters/query.on_conflict.9f24a859"
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.eedd9759"
+            "$ref": "#/components/parameters/header.Prefer.3d660a5b"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -4340,6 +4816,74 @@
                 "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
+                }
+              }
+            }
+          },
+          "207": {
+            "description": "Prefer: partial=items: the per-element report, 207 when at least one element failed (201, or 200 for PUT, when none did). Elements that did not fail are committed.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured, comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "failed": {
+                      "type": "integer",
+                      "description": "Elements that failed."
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "description": "Error code of a failed element, as in the problem document (for example pg:23505)."
+                          },
+                          "detail": {
+                            "type": "string",
+                            "description": "Error detail of a failed element."
+                          },
+                          "index": {
+                            "type": "integer",
+                            "description": "Position of the element in the request body."
+                          },
+                          "pg": {
+                            "type": "object",
+                            "description": "Database error details (errors.detail: dev only)."
+                          },
+                          "row": {
+                            "description": "The written row (absent under return=minimal and for a skipped or failed element)."
+                          },
+                          "status": {
+                            "type": "integer",
+                            "description": "The HTTP status the element would have had as a request of its own: 201 (200 for PUT), 204 for an element resolution=ignore-duplicates skipped, or the error status."
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "status"
+                        ]
+                      }
+                    },
+                    "n": {
+                      "type": "integer",
+                      "description": "Elements that succeeded."
+                    }
+                  },
+                  "required": [
+                    "n",
+                    "failed",
+                    "items"
+                  ]
                 }
               }
             }
@@ -6864,7 +7408,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.a88f77f8"
+            "$ref": "#/components/parameters/header.Prefer.e0c4bdaf"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -6946,6 +7490,74 @@
               }
             }
           },
+          "207": {
+            "description": "Prefer: partial=items: the per-element report, 207 when at least one element failed (201, or 200 for PUT, when none did). Elements that did not fail are committed.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured, comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "failed": {
+                      "type": "integer",
+                      "description": "Elements that failed."
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "description": "Error code of a failed element, as in the problem document (for example pg:23505)."
+                          },
+                          "detail": {
+                            "type": "string",
+                            "description": "Error detail of a failed element."
+                          },
+                          "index": {
+                            "type": "integer",
+                            "description": "Position of the element in the request body."
+                          },
+                          "pg": {
+                            "type": "object",
+                            "description": "Database error details (errors.detail: dev only)."
+                          },
+                          "row": {
+                            "description": "The written row (absent under return=minimal and for a skipped or failed element)."
+                          },
+                          "status": {
+                            "type": "integer",
+                            "description": "The HTTP status the element would have had as a request of its own: 201 (200 for PUT), 204 for an element resolution=ignore-duplicates skipped, or the error status."
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "status"
+                        ]
+                      }
+                    },
+                    "n": {
+                      "type": "integer",
+                      "description": "Elements that succeeded."
+                    }
+                  },
+                  "required": [
+                    "n",
+                    "failed",
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
           "400": {
             "$ref": "#/components/responses/Problem"
           },
@@ -7005,7 +7617,7 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.eedd9759"
+            "$ref": "#/components/parameters/header.Prefer.3d660a5b"
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -7093,6 +7705,74 @@
                 "description": "The Prefer tokens that were honoured, comma-separated.",
                 "schema": {
                   "type": "string"
+                }
+              }
+            }
+          },
+          "207": {
+            "description": "Prefer: partial=items: the per-element report, 207 when at least one element failed (201, or 200 for PUT, when none did). Elements that did not fail are committed.",
+            "headers": {
+              "Preference-Applied": {
+                "description": "The Prefer tokens that were honoured, comma-separated.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "failed": {
+                      "type": "integer",
+                      "description": "Elements that failed."
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "description": "Error code of a failed element, as in the problem document (for example pg:23505)."
+                          },
+                          "detail": {
+                            "type": "string",
+                            "description": "Error detail of a failed element."
+                          },
+                          "index": {
+                            "type": "integer",
+                            "description": "Position of the element in the request body."
+                          },
+                          "pg": {
+                            "type": "object",
+                            "description": "Database error details (errors.detail: dev only)."
+                          },
+                          "row": {
+                            "description": "The written row (absent under return=minimal and for a skipped or failed element)."
+                          },
+                          "status": {
+                            "type": "integer",
+                            "description": "The HTTP status the element would have had as a request of its own: 201 (200 for PUT), 204 for an element resolution=ignore-duplicates skipped, or the error status."
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "status"
+                        ]
+                      }
+                    },
+                    "n": {
+                      "type": "integer",
+                      "description": "Elements that succeeded."
+                    }
+                  },
+                  "required": [
+                    "n",
+                    "failed",
+                    "items"
+                  ]
                 }
               }
             }
@@ -7535,7 +8215,12 @@
             }
           },
           {
-            "$ref": "#/components/parameters/header.Prefer.eedd9759"
+            "name": "Prefer",
+            "in": "header",
+            "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. tx=commit | rollback ends the transaction accordingly (rollback still answers with the result; honoured only when server.tx_end is commit-allow-override or rollback-allow-override). timezone=<IANA name> sets the transaction's timezone (names from pg_timezone_names; unknown names are ignored).",
+            "schema": {
+              "type": "string"
+            }
           },
           {
             "$ref": "#/components/parameters/query.columns"
@@ -9236,6 +9921,14 @@
           "type": "string"
         }
       },
+      "header.Prefer.3d660a5b": {
+        "name": "Prefer",
+        "in": "header",
+        "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. tx=commit | rollback ends the transaction accordingly (rollback still answers with the result; honoured only when server.tx_end is commit-allow-override or rollback-allow-override). timezone=<IANA name> sets the transaction's timezone (names from pg_timezone_names; unknown names are ignored). partial=items (bulk body; honoured only when server.partial_bulk_writes is on) runs each element in its own savepoint and answers the per-element report.",
+        "schema": {
+          "type": "string"
+        }
+      },
       "header.Prefer.608c0edc": {
         "name": "Prefer",
         "in": "header",
@@ -9252,14 +9945,6 @@
           "type": "string"
         }
       },
-      "header.Prefer.a88f77f8": {
-        "name": "Prefer",
-        "in": "header",
-        "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. tx=commit | rollback ends the transaction accordingly (rollback still answers with the result; honoured only when server.tx_end is commit-allow-override or rollback-allow-override). timezone=<IANA name> sets the transaction's timezone (names from pg_timezone_names; unknown names are ignored). resolution=merge-duplicates upserts on the conflict target (the primary key or ?on_conflict=; needs the PUT method), resolution=ignore-duplicates skips conflicting rows (only inserted rows are returned; a skipped single object answers 204). missing=default is accepted and changes nothing: keys absent from a bulk element always take the column DEFAULT.",
-        "schema": {
-          "type": "string"
-        }
-      },
       "header.Prefer.b9bddbbb": {
         "name": "Prefer",
         "in": "header",
@@ -9268,10 +9953,10 @@
           "type": "string"
         }
       },
-      "header.Prefer.eedd9759": {
+      "header.Prefer.e0c4bdaf": {
         "name": "Prefer",
         "in": "header",
-        "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. tx=commit | rollback ends the transaction accordingly (rollback still answers with the result; honoured only when server.tx_end is commit-allow-override or rollback-allow-override). timezone=<IANA name> sets the transaction's timezone (names from pg_timezone_names; unknown names are ignored).",
+        "description": "Comma list of preferences. return=representation (default) | minimal | headers-only: minimal and headers-only answer 204 without a body (201 + Location for a single-object create). handling=lenient (default) ignores unknown or malformed preferences; handling=strict answers 400 invalid_preference. tx=commit | rollback ends the transaction accordingly (rollback still answers with the result; honoured only when server.tx_end is commit-allow-override or rollback-allow-override). timezone=<IANA name> sets the transaction's timezone (names from pg_timezone_names; unknown names are ignored). partial=items (bulk body; honoured only when server.partial_bulk_writes is on) runs each element in its own savepoint: a failing element is reported without rolling back the others, and the response is the per-element report (207 when one failed). resolution=merge-duplicates upserts on the conflict target (the primary key or ?on_conflict=; needs the PUT method), resolution=ignore-duplicates skips conflicting rows (only inserted rows are returned; a skipped single object answers 204). missing=default is accepted and changes nothing: keys absent from a bulk element always take the column DEFAULT.",
         "schema": {
           "type": "string"
         }

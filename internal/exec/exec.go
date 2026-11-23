@@ -99,10 +99,12 @@ type RequestHook interface {
 
 // DB is the pool surface the executor needs (satisfied by *pgxpool.Pool):
 // QueryRow for statements outside a transaction, Acquire for the pipelined
-// transactions of pgexec.QueryTx.
+// transactions of pgexec.QueryTx, BeginTx for the statement-by-statement
+// transactions of partial bulk writes.
 type DB interface {
 	pgexec.Querier
 	pgexec.ConnAcquirer
+	pgexec.TxBeginner
 }
 
 // Options are the config bits the executor consults per request.
@@ -153,6 +155,8 @@ type Executor struct {
 	tzNames map[string]string
 
 	queryTx func(ctx context.Context, db pgexec.ConnAcquirer, opts pgexec.TxOptions, id pgexec.Identity, stmts ...pgexec.Stmt) error
+	// runTx replaces pgexec.RunTx for partial bulk writes in tests.
+	runTx func(ctx context.Context, db pgexec.TxBeginner, opts pgexec.TxOptions, id pgexec.Identity, fn func(q pgexec.Querier) error) error
 }
 
 // New creates an executor. compileFn is normally the CompileHook chain
@@ -342,6 +346,9 @@ func (e *Executor) run(ctx context.Context, op *Operation, stmt *compile.Stateme
 	applied, tzStmt, err := e.timezone(ctx, op)
 	if err != nil {
 		return e.errResult(err)
+	}
+	if partialBulk(op) {
+		return e.runPartial(ctx, op, applied, tzStmt)
 	}
 	if e.needsTx(op, stmt, len(tzStmt) > 0) {
 		queryTx := e.queryTx

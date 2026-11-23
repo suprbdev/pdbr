@@ -147,6 +147,7 @@ func (b *Builder) listItem(item *PathItem, rt *Route) {
 			Content: map[string]*MediaType{mediaJSON: {Schema: &Schema{OneOf: []*Schema{SchemaRef(r.Path), {Type: "array", Items: SchemaRef(r.Path)}}}}},
 		}
 		post.Responses["204"] = &Response{Description: "Single object skipped by Prefer: resolution=ignore-duplicates (nothing inserted).", Headers: writeHeaders(nil)}
+		post.Responses["207"] = partialReportResponse()
 		item.Post = post
 	}
 	if rt.Allows(MethodPut) {
@@ -155,7 +156,7 @@ func (b *Builder) listItem(item *PathItem, rt *Route) {
 			b.selectParam(r, "Columns and embeds of the affected row(s) to return."),
 			{Name: "on_conflict", In: "query", Schema: &Schema{Type: "string"},
 				Description: "Conflict target: comma list equal to a unique constraint's columns (default: the primary key). " + b.uniqueProse(r)},
-			preferParam(false, false),
+			putPreferParam(),
 			columnsParam(),
 		}
 		put.RequestBody = jsonBody(objectOrArray(r.Path+".upsert"), true, "One row, or an array of rows; the conflict-target columns must be present in every element.")
@@ -165,6 +166,7 @@ func (b *Builder) listItem(item *PathItem, rt *Route) {
 			Headers: writeHeaders(map[string]*Header{"Location": {Schema: &Schema{Type: "string"}, Description: "URL of the new row when the resource has a single-column primary key."}}),
 			Content: map[string]*MediaType{mediaJSON: {Schema: SchemaRef(r.Path)}}}
 		put.Responses["204"] = &Response{Description: "Updated with Prefer: return=minimal.", Headers: writeHeaders(nil)}
+		put.Responses["207"] = partialReportResponse()
 		item.Put = put
 	}
 	if rt.Allows(MethodPatch) {
@@ -622,8 +624,37 @@ func columnsParam() *Parameter {
 // createPreferParam documents the Prefer header of a POST.
 func createPreferParam() *Parameter {
 	p := preferParam(false, false)
-	p.Description += " resolution=merge-duplicates upserts on the conflict target (the primary key or ?on_conflict=; needs the PUT method), resolution=ignore-duplicates skips conflicting rows (only inserted rows are returned; a skipped single object answers 204). missing=default is accepted and changes nothing: keys absent from a bulk element always take the column DEFAULT."
+	p.Description += " partial=items (bulk body; honoured only when server.partial_bulk_writes is on) runs each element in its own savepoint: a failing element is reported without rolling back the others, and the response is the per-element report (207 when one failed). resolution=merge-duplicates upserts on the conflict target (the primary key or ?on_conflict=; needs the PUT method), resolution=ignore-duplicates skips conflicting rows (only inserted rows are returned; a skipped single object answers 204). missing=default is accepted and changes nothing: keys absent from a bulk element always take the column DEFAULT."
 	return p
+}
+
+// putPreferParam documents the Prefer header of a PUT on the collection path.
+func putPreferParam() *Parameter {
+	p := preferParam(false, false)
+	p.Description += " partial=items (bulk body; honoured only when server.partial_bulk_writes is on) runs each element in its own savepoint and answers the per-element report."
+	return p
+}
+
+// partialReportResponse documents the 207 answer of a bulk write under
+// Prefer: partial=items.
+func partialReportResponse() *Response {
+	item := &Schema{Type: "object", Required: []string{"index", "status"}, Properties: map[string]*Schema{
+		"index":  {Type: "integer", Description: "Position of the element in the request body."},
+		"status": {Type: "integer", Description: "The HTTP status the element would have had as a request of its own: 201 (200 for PUT), 204 for an element resolution=ignore-duplicates skipped, or the error status."},
+		"row":    {Description: "The written row (absent under return=minimal and for a skipped or failed element)."},
+		"code":   {Type: "string", Description: "Error code of a failed element, as in the problem document (for example pg:23505)."},
+		"detail": {Type: "string", Description: "Error detail of a failed element."},
+		"pg":     {Type: "object", Description: "Database error details (errors.detail: dev only)."},
+	}}
+	return &Response{
+		Description: "Prefer: partial=items: the per-element report, 207 when at least one element failed (201, or 200 for PUT, when none did). Elements that did not fail are committed.",
+		Headers:     writeHeaders(nil),
+		Content: map[string]*MediaType{mediaJSON: {Schema: &Schema{Type: "object", Required: []string{"n", "failed", "items"}, Properties: map[string]*Schema{
+			"n":      {Type: "integer", Description: "Elements that succeeded."},
+			"failed": {Type: "integer", Description: "Elements that failed."},
+			"items":  {Type: "array", Items: item},
+		}}}},
+	}
 }
 
 // keyedPutSchema is the body of PUT on a single-row path: the .upsert

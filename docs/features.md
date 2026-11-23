@@ -80,6 +80,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Aggregate functions in `select=` (PostgREST v12): `count()`, `col.count()`, `sum`, `avg`, `max`, `min`, aliases, input/output casts, implicit `GROUP BY` (columns, casts, JSON paths, computed fields, to-one spread items — spread grouping), aggregates inside to-many embeds and to-one spreads, `order=` on grouping columns, offset paging and group totals, CSV; `server.aggregates` (off → 400 `aggregates_disabled`) — see [aggregates.md](aggregates.md) (parity)
 - [x] Spatial aggregates `col.extent()`, `col.union()`, `col.collect()`, `col.centroid()` → GeoJSON (postgis plugin) (new)
 - [x] `Prefer` tokens `resolution=`, `missing=` on writes (new)
+- [x] Opt-in partial success for bulk `POST`/`PUT`: `Prefer: partial=items` (needs `server.partial_bulk_writes`) runs each element in its own savepoint and answers a per-element report, `207` when one failed — see [Mutations](mutations.md#partial-success-for-bulk-writes)
 - [x] `Prefer: tx=commit|rollback` on writes, gated by `server.tx_end` (PostgREST `db-tx-end`: `commit`, `commit-allow-override`, `rollback`, `rollback-allow-override`); the rolled-back request still answers with its result (parity)
 - [x] `Prefer: timezone=<IANA name>` sets `timezone` for the request's transaction, validated against `pg_timezone_names` (cached); echoed in `Preference-Applied` (parity)
 - [x] `columns=` query parameter on `POST`/`PATCH`/`PUT`: only the listed body keys are used, others ignored; a listed key an element omits takes `DEFAULT`; bulk bodies may be heterogeneous (parity)
@@ -220,7 +221,6 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Automatic retry on `40001`/`40P01` (`transactions.max_retries`; whole request re-run, no backoff); exhausted → `409` (parity)
 - [x] One statement per request; zero rows on single-row path → `404` (parity)
 - [x] Wrapper-object unwrapping (`rows/total`, `etag/row`, `found/row`, `row/inserted`) in exec (new)
-- [ ] Savepoints for partial mutation recovery (parity)
 
 ## Server & protocol
 

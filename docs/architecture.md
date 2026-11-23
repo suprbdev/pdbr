@@ -432,6 +432,9 @@ hold-back: the scan returns a sentinel error, `QueryTx` rolls back, and exec
 treats the sentinel as success. `Prefer: timezone=` queues
 `SELECT set_config('timezone', $1, true)` between the identity and the
 request statement.
+A bulk `POST` / `PUT` under `Prefer: partial=items` is the exception to
+"one statement per request": it runs element by element through
+`pgexec.RunTx`, each in a `pgexec.Savepoint` ([mutations.md](mutations.md#partial-success-for-bulk-writes)).
 Any error → rollback. Serialization failure / deadlock (`40001` / `40P01`)
 → whole batch re-sent up to `transactions.max_retries` times, no backoff;
 still failing → 409.

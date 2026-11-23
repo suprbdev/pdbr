@@ -99,6 +99,12 @@ func (p *parser) parsePrefer(headers []string) error {
 	for _, pr := range prefs {
 		ok := true
 		switch pr.key {
+		case "partial":
+			if pr.val != "items" || !p.opts.PartialBulk {
+				ok = false
+				break
+			}
+			p.wantPartial = write && (p.method == plan.POST || p.method == plan.PUT)
 		case "return":
 			switch pr.val {
 			case "representation", "minimal", "headers-only":
@@ -180,6 +186,16 @@ func (p *parser) parsePrefer(headers []string) error {
 	}
 	pf.Applied = applied
 	return nil
+}
+
+// resolvePartial applies Prefer: partial=items once the body is parsed: it
+// holds for a bulk POST or PUT (a body array) and is otherwise ignored.
+func (p *parser) resolvePartial() {
+	if !p.wantPartial || p.req.Body == nil || p.req.Body.Objects == nil {
+		return
+	}
+	p.req.Prefer.Partial = true
+	p.req.Prefer.Applied = append(p.req.Prefer.Applied, "partial=items")
 }
 
 // resolveCount applies Prefer: count= once the query is parsed: lists
