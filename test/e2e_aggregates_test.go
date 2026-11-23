@@ -192,7 +192,7 @@ func TestAggregatesErrors(t *testing.T) {
 		{"/posts/1?select=count()", "invalid_select"},
 		{"/posts?select=title.sum()", "invalid_select"},
 		{"/posts?select=id.sum(),author_id.sum()", "invalid_select"},
-		{"/posts?select=id::text", "invalid_select"},
+		{"/posts?select=id::regclass", "invalid_select"},
 		{"/places?select=location.max()", "invalid_select"},
 		{"/posts?select=id::nosuchtype.sum()", "invalid_select"},
 		{"/posts?select=id.count(),users(mood)", "invalid_select"},

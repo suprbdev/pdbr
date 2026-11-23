@@ -137,23 +137,35 @@ func (p *parser) resolveAggregate(node *plan.Node, it selectItem, fn plan.AggFun
 		node.Fields = append(node.Fields, fs)
 		return nil
 	}
-	name, cast, hasCast := strings.Cut(colPart, "::")
-	if hasCast {
-		t, err := p.castType(cast)
+	name := colPart
+	if i := lastIndexOutsideQuotes(colPart, "::"); i >= 0 {
+		t, err := p.castType(colPart[i+2:])
 		if err != nil {
 			return err
 		}
-		agg.InputCast = t
+		name, agg.InputCast = colPart[:i], t
 	}
-	f := res.Field(name)
-	if f == nil {
-		if res.Computed[name] != nil || res.Pseudo[name] != nil {
-			return errf(CodeInvalidSelect, "%s() needs a column; %q is a computed or derived field", fn, name)
+	col, path, has, uerr := splitJSONPath(name)
+	if uerr != nil {
+		return withCode(uerr, CodeInvalidSelect)
+	}
+	if has {
+		f, err := p.resolvePathField(res, col, path, CodeInvalidSelect)
+		if err != nil {
+			return err
 		}
-		return errf(CodeUnknownColumn, "unknown column %q on %q", name, res.Path)
+		fs.Column, fs.Path = f.Column, path
+	} else {
+		f := res.Field(name)
+		if f == nil {
+			if res.Computed[name] != nil || res.Pseudo[name] != nil {
+				return errf(CodeInvalidSelect, "%s() needs a column; %q is a computed or derived field", fn, name)
+			}
+			return errf(CodeUnknownColumn, "unknown column %q on %q", name, res.Path)
+		}
+		fs.Column = f.Column
 	}
-	fs.Column = f.Column
-	if err := p.checkAggregateType(fs.Column, agg); err != nil {
+	if err := p.checkAggregateType(&fs); err != nil {
 		return err
 	}
 	node.Fields = append(node.Fields, fs)
@@ -162,7 +174,13 @@ func (p *parser) resolveAggregate(node *plan.Node, it selectItem, fn plan.AggFun
 
 // checkAggregateType rejects aggregate/input-type combinations PostgreSQL
 // has no aggregate for, by the catalog type or the input cast.
-func (p *parser) checkAggregateType(c *introspect.Column, agg *plan.Aggregate) error {
+func (p *parser) checkAggregateType(fs *plan.FieldSel) error {
+	c, agg := fs.Column, fs.Agg
+	name := c.Name + fs.Path.String()
+	if len(fs.Path) > 0 {
+		pt := pathType(fs.Path)
+		c = &introspect.Column{Name: name, PGType: pt.base, TypeSchema: "pg_catalog"}
+	}
 	spatial := postgis.IsSpatial(c.PGType) && agg.InputCast == nil
 	if agg.Func.Spatial() {
 		switch {
@@ -194,7 +212,7 @@ func (p *parser) checkAggregateType(c *introspect.Column, agg *plan.Aggregate) e
 			return errf(CodeInvalidSelect, "%s() needs a numeric column; %q is %s (cast it: %s::numeric.%s())", agg.Func, c.Name, typ, c.Name, agg.Func)
 		}
 	case plan.AggMax, plan.AggMin:
-		composite := agg.InputCast == nil && p.built.Catalog != nil && p.built.Catalog.Composite(c.TypeSchema, typ) != nil
+		composite := agg.InputCast == nil && len(fs.Path) == 0 && p.built.Catalog != nil && p.built.Catalog.Composite(c.TypeSchema, typ) != nil
 		if !array && (unorderedTypes[typ] || composite) {
 			return errf(CodeInvalidSelect, "%s() is not defined on %s column %q", agg.Func, typ, c.Name)
 		}
@@ -257,6 +275,12 @@ func (p *parser) checkAggNode(n *plan.Node, order []plan.OrderTerm) error {
 		if t.Column == nil || t.Distance != nil || t.Contrib != nil {
 			return errf(CodeColumnNotOrderable, "an aggregate select orders only by its grouping columns (selected, non-aggregated columns)")
 		}
+		if len(t.Path) > 0 {
+			if !groupsByPath(n, t.Column, t.Path) {
+				return errf(CodeColumnNotOrderable, "order by %s%s needs the same JSON path selected as a grouping key (without a cast)", t.Column.Name, t.Path.String())
+			}
+			continue
+		}
 		if !groupsBy(n, t.Column) {
 			return errf(CodeColumnNotOrderable, "order by %q needs %q selected as a grouping column (a non-aggregated select item)", t.Column.Name, t.Column.Name)
 		}
@@ -289,6 +313,9 @@ func (p *parser) checkGroupKeys(n *plan.Node) error {
 		f := &n.Fields[i]
 		switch {
 		case f.Agg != nil:
+		case f.Cast != nil && f.Cast.Schema == "pg_catalog" && f.Cast.Name == "json":
+			return errf(CodeInvalidSelect, "a value cast to json cannot be a grouping key (json has no equality); cast to jsonb")
+		case f.Cast != nil, len(f.Path) > 0:
 		case f.Column != nil:
 			if err := check(f.Column); err != nil {
 				return err
@@ -329,7 +356,18 @@ func groupsBy(n *plan.Node, col *introspect.Column) bool {
 		return true
 	}
 	for i := range n.Fields {
-		if f := &n.Fields[i]; f.Agg == nil && f.Column == col {
+		if f := &n.Fields[i]; f.Agg == nil && f.Column == col && len(f.Path) == 0 && f.Cast == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// groupsByPath reports whether col's JSON path is an uncast grouping key of
+// the aggregated node.
+func groupsByPath(n *plan.Node, col *introspect.Column, path plan.JSONPath) bool {
+	for i := range n.Fields {
+		if f := &n.Fields[i]; f.Agg == nil && f.Cast == nil && f.Column == col && f.Path.Equal(path) {
 			return true
 		}
 	}
@@ -356,7 +394,7 @@ func checkAggKeys(n *plan.Node) error {
 	for i := range n.Fields {
 		f := &n.Fields[i]
 		key := f.Key(res)
-		if n.Star && f.Alias == "" && f.Column != nil && f.Agg == nil && seen[key] {
+		if n.Star && f.Alias == "" && f.Column != nil && f.Agg == nil && len(f.Path) == 0 && f.Cast == nil && seen[key] {
 			continue
 		}
 		if err := add(key); err != nil {

@@ -71,9 +71,9 @@ func scanSelectItem(raw string) (selectItem, bool) {
 		return it, false
 	}
 	// alias
-	if i := strings.IndexByte(s, ':'); i >= 0 && !strings.HasPrefix(s[i:], "::") {
-		paren := strings.IndexByte(s, '(')
-		bang := strings.IndexByte(s, '!')
+	if i := indexOutsideQuotes(s, ":"); i >= 0 && !strings.HasPrefix(s[i:], "::") {
+		paren := indexOutsideQuotes(s, "(")
+		bang := indexOutsideQuotes(s, "!")
 		if (paren < 0 || i < paren) && (bang < 0 || i < bang) {
 			it.alias = s[:i]
 			s = s[i+1:]
@@ -89,13 +89,17 @@ func scanSelectItem(raw string) (selectItem, bool) {
 			return it, false
 		}
 	}
-	if i := strings.IndexByte(s, '('); i >= 0 {
+	if i := indexOutsideQuotes(s, "("); i >= 0 {
 		if !strings.HasSuffix(s, ")") {
 			return it, false
 		}
 		it.inner = s[i+1 : len(s)-1]
 		it.hasInner = true
 		s = s[:i]
+	}
+	if hasJSONPath(s) {
+		it.name = s
+		return it, true
 	}
 	parts := strings.Split(s, "!")
 	it.name = parts[0]
@@ -146,8 +150,11 @@ func (p *parser) resolveSelectItem(node *plan.Node, it selectItem, depth int) er
 	if takesArgs(it) {
 		return errf(CodeInvalidSelect, "aggregate functions take no arguments: %s()", it.name)
 	}
-	if it.outCast != "" || strings.Contains(it.name, "::") {
-		return errf(CodeInvalidSelect, "casts are only supported on aggregate functions (col::type.sum(), col.sum()::type), not on %q", strings.TrimSpace(it.name))
+	if it.outCast == "" && !it.hasInner && len(it.hints) == 0 && (hasJSONPath(it.name) || strings.Contains(it.name, "::")) {
+		return p.resolveValueItem(node, it)
+	}
+	if it.outCast != "" || strings.Contains(it.name, "::") || hasJSONPath(it.name) {
+		return errf(CodeInvalidSelect, "casts and JSON paths apply to columns (col::type, col->key, col->>key::type) and aggregate functions, not to %q", strings.TrimSpace(it.name))
 	}
 	// Embed: a relation key followed by (...), or carrying hints.
 	if cands := res.Relations[it.name]; len(cands) > 0 && (it.hasInner || len(it.hints) > 0) {
@@ -275,6 +282,49 @@ func cutArg(raw string) (name, val string, ok bool) {
 		v = b.String()
 	}
 	return k, v, true
+}
+
+// resolveValueItem resolves "column[->path][::type]": a column, optionally
+// followed by a JSON path, optionally cast to an allowlisted type.
+func (p *parser) resolveValueItem(node *plan.Node, it selectItem) error {
+	res := node.Resource
+	name, cast := it.name, ""
+	if i := lastIndexOutsideQuotes(name, "::"); i >= 0 {
+		name, cast = name[:i], name[i+2:]
+		if cast == "" {
+			return errf(CodeInvalidSelect, "missing cast type in %q", it.name)
+		}
+	}
+	col, path, has, uerr := splitJSONPath(name)
+	if uerr != nil {
+		return withCode(uerr, CodeInvalidSelect)
+	}
+	fs := plan.FieldSel{Alias: it.alias}
+	if has {
+		f, err := p.resolvePathField(res, col, path, CodeInvalidSelect)
+		if err != nil {
+			return err
+		}
+		fs.Column, fs.Path = f.Column, path
+	} else {
+		f := res.Field(col)
+		if f == nil {
+			if res.Computed[col] != nil || res.Pseudo[col] != nil || len(res.Relations[col]) > 0 {
+				return errf(CodeInvalidSelect, "casts apply to columns and JSON paths; %q is not a column", col)
+			}
+			return errf(CodeUnknownColumn, "unknown column %q on %q", col, res.Path)
+		}
+		fs.Column = f.Column
+	}
+	if cast != "" {
+		t, err := p.castType(cast)
+		if err != nil {
+			return err
+		}
+		fs.Cast = t
+	}
+	node.Fields = append(node.Fields, fs)
+	return nil
 }
 
 func (p *parser) resolveEmbed(node *plan.Node, it selectItem, depth int) error {

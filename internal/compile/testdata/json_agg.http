@@ -1,0 +1,1 @@
+GET /api/users?select=settings->>theme,count(),total:settings->n::numeric.sum(),settings->>n.max(),c:settings->n.count()&order=settings->>theme.desc&count=true

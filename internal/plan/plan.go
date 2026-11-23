@@ -6,6 +6,9 @@
 package plan
 
 import (
+	"strconv"
+	"strings"
+
 	"github.com/suprbdev/pdbcore/introspect"
 
 	"github.com/suprbdev/pdbr/internal/api"
@@ -119,12 +122,18 @@ type FieldSel struct {
 	// Agg is set for an aggregate function item (server.aggregates):
 	// Column is its input column, nil for count() over whole rows.
 	Agg *Aggregate
+	// Path is the JSON path applied to Column (data->a->>b); for an
+	// aggregate it is the path of the input value.
+	Path JSONPath
+	// Cast is the type the selected value is cast to (col::text); nil for
+	// none. Aggregates carry their casts on Agg instead.
+	Cast *TypeRef
 }
 
 // Key is the response key of the selected field on res: its alias, else
-// the field key of its column, computed column or pseudo-column, else the
-// aggregate function name (amount.sum() answers as "sum", count() as
-// "count").
+// the aggregate function name (amount.sum() answers as "sum", count() as
+// "count"), else the last key of its JSON path, else the field key of its
+// column, computed column or pseudo-column.
 func (f *FieldSel) Key(res *api.Resource) string {
 	if f.Alias != "" {
 		return f.Alias
@@ -132,6 +141,8 @@ func (f *FieldSel) Key(res *api.Resource) string {
 	switch {
 	case f.Agg != nil:
 		return string(f.Agg.Func)
+	case f.PathKeyed():
+		return f.Path.LastKey()
 	case f.Column != nil:
 		if res != nil {
 			if fld := res.FieldByColumn(f.Column.Name); fld != nil {
@@ -145,6 +156,105 @@ func (f *FieldSel) Key(res *api.Resource) string {
 		return f.Pseudo.Key
 	}
 	return ""
+}
+
+// PathKeyed reports whether the response key of the field is the last key
+// of its JSON path: no alias, no aggregate, and a path with a key step.
+func (f *FieldSel) PathKeyed() bool {
+	_, ok := f.Path.lastKey()
+	return f.Alias == "" && f.Agg == nil && ok
+}
+
+// JSONStep is one arrow of a JSON path: -> (a json value) or ->> (text),
+// followed by an object key or an array index.
+type JSONStep struct {
+	// Text reports the ->> operator.
+	Text bool
+	// Array reports an array index step (Index); otherwise Key is an object
+	// key.
+	Array bool
+	Key   string
+	// Index is the array index; negative counts from the end.
+	Index int
+}
+
+// JSONPath is the arrow chain after a column (data->a->0->>b). Only the
+// last step may be ->>. The number of steps, their operators and their
+// key/index kinds are request shape; keys and indexes are values (the
+// compiler binds them).
+type JSONPath []JSONStep
+
+// Text reports whether the path yields text (its last step is ->>).
+func (p JSONPath) Text() bool { return len(p) > 0 && p[len(p)-1].Text }
+
+// LastKey is the last object key of the path ("" when every step is an
+// array index): the default response key of a selected path, as in
+// PostgREST (data->a->>b answers as "b", tags->0 as the column).
+func (p JSONPath) LastKey() string {
+	k, _ := p.lastKey()
+	return k
+}
+
+func (p JSONPath) lastKey() (string, bool) {
+	for i := len(p) - 1; i >= 0; i-- {
+		if !p[i].Array {
+			return p[i].Key, true
+		}
+	}
+	return "", false
+}
+
+// Shape renders the value-free shape of the path (->k->>i): one operator
+// and one k (key) or i (index) per step.
+func (p JSONPath) Shape() string {
+	var b []byte
+	for _, st := range p {
+		if st.Text {
+			b = append(b, "->>"...)
+		} else {
+			b = append(b, "->"...)
+		}
+		if st.Array {
+			b = append(b, 'i')
+		} else {
+			b = append(b, 'k')
+		}
+	}
+	return string(b)
+}
+
+// String renders the path in URL form (->a->0->>"b c").
+func (p JSONPath) String() string {
+	var b strings.Builder
+	for _, st := range p {
+		if st.Text {
+			b.WriteString("->>")
+		} else {
+			b.WriteString("->")
+		}
+		switch {
+		case st.Array:
+			b.WriteString(strconv.Itoa(st.Index))
+		case st.Key == "" || strings.ContainsAny(st.Key, ".,:()!\" \t") || strings.Contains(st.Key, "->"):
+			b.WriteString(`"` + st.Key + `"`)
+		default:
+			b.WriteString(st.Key)
+		}
+	}
+	return b.String()
+}
+
+// Equal reports whether p and q are the same path, values included.
+func (p JSONPath) Equal(q JSONPath) bool {
+	if len(p) != len(q) {
+		return false
+	}
+	for i := range p {
+		if p[i] != q[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // AggFunc names an aggregate function of select= (col.sum(), count(), ...).
@@ -272,12 +382,15 @@ type Not struct{ Term Expr }
 //     literal string for range operands; map[string]any or an hstore
 //     literal string for hstore cs/cd.
 type Cond struct {
-	Column   *introspect.Column // real column of the current resource
-	Computed *api.Computed      // computed-column filter (advanced-filters)
-	Relation *RelationPath      // relation filter (advanced-filters)
-	Op       Op                 // eq, neq, ..., st_intersects, exists
-	Value    any                // coerced; nil for structural ops (is.null ...)
-	Negate   bool               // leading not.
+	Column *introspect.Column // real column of the current resource
+	// Path is the JSON path applied to Column (data->>a=eq.x): a ->> path
+	// compares text, a -> path jsonb.
+	Path     JSONPath
+	Computed *api.Computed // computed-column filter (advanced-filters)
+	Relation *RelationPath // relation filter (advanced-filters)
+	Op       Op            // eq, neq, ..., st_intersects, exists
+	Value    any           // coerced; nil for structural ops (is.null ...)
+	Negate   bool          // leading not.
 }
 
 // DWithin is the operand of st_dwithin / st_beyond.
@@ -434,7 +547,9 @@ type RelationPath struct {
 
 // OrderTerm is one order= term.
 type OrderTerm struct {
-	Column     *introspect.Column
+	Column *introspect.Column
+	// Path is the JSON path applied to Column (order=data->a.desc).
+	Path       JSONPath
 	Computed   *api.Computed
 	Relation   *RelationOrder     // users(name) — forward: scalar subquery, backward: MIN/MAX
 	Distance   *introspect.Column // spatial column for `.dist` (uses Request.Near)

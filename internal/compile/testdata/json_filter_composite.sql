@@ -1,0 +1,2 @@
+-- request: GET /api/users?select=id&address->>city=eq.London
+-- error: 400 column_not_filterable: column "address" on "users" is not filterable

@@ -70,6 +70,8 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] Per-embed params on backward embeds: `posts.order=`, `posts.limit=`, `posts.offset=`, `posts.<col>=op.v` (parity)
 - [x] Forward-embed filters null out the embed unless `!inner` (new)
 - [x] Field aliases `alias:field` and embed aliases `author:users(name)` (parity)
+- [x] JSON paths `col->key`, `col->0`, `col->>key` in `select=` (response key = last key), filters (`->>` text, `->` jsonb operands) and `order=`, on json/jsonb, array and (select only) composite columns; keys bound as parameters — see [api.md](api.md#json-paths) (parity)
+- [x] Column casts `col::type`, `col->key::type` in `select=` (allowlisted built-in types and enums) — see [api.md](api.md#casts) (parity)
 - [x] `select=` applies to mutation responses (compiled against `__mut`) (parity)
 - [x] Single-row weak `ETag: W/"<md5>"` computed in SQL over all columns; `If-None-Match` → `304`; `server.etags` toggle (new)
 - [x] `Accept: text/csv` on lists and set-returning RPCs → RFC 4180 CSV, header row, arrays/json/composites as JSON text, NULL → empty; embeds → `406`; `server.csv` toggle (new)
@@ -96,6 +98,7 @@ Checklist of PostgreSQL and REST features pdbr supports. **Unticked rows are the
 - [x] `@filterable` / `@sortable` smart-comment opt-in (parity)
 - [x] Filters on embedded resources respect the embedded table's own policy (parity)
 - [x] `order=col.asc|desc[.nullsfirst|nullslast],…`; NULLS LAST default both directions; PK tiebreaker always appended (parity)
+- [x] `order=` by JSON paths (`order=settings->>theme.desc`), keyset-capable (parity)
 - [x] Filtering across relations (`posts.title=eq.x`, `posts!none.`, `posts!every.`, `users.name=eq.x`) — `advanced-filters` plugin, EXISTS subqueries; one level deep (parity)
 - [x] Relation existence (`posts=exists.true|false`, `users=exists.false`) (parity)
 - [x] Filtering/ordering on computed columns (`post_count=gt.3`, `order=post_count.desc`) — `advanced-filters` plugin (parity)
@@ -354,6 +357,13 @@ these are the deliberate departures (each documented in its topic page):
   bulk element omits; PostgREST inserts `NULL` unless asked.
 - **`Prefer: tx=` and `timezone=` are not supported**: ignored under
   lenient handling, `400 invalid_preference` under `handling=strict`.
+- **Casts** (`select=col::type`, aggregate casts) take allowlisted
+  built-in scalar types and the API's enums only, never the `reg*` types,
+  pseudo-types or composites; PostgREST casts to any type.
+- **JSON paths on composite columns** work in `select=` only: composites are
+  never filterable or orderable in pdbr, so `address->>city=eq.x` is
+  `400 column_not_filterable`. A JSON path item is never merged with another
+  item of the same response key; both appear (as in PostgREST).
 - Error codes are pdbr's stable `code` vocabulary, not `PGRST…` numbers
   ([errors.md](errors.md)).
 

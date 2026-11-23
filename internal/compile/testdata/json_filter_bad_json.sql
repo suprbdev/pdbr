@@ -1,0 +1,2 @@
+-- request: GET /api/users?select=id&settings->n=eq.dark
+-- error: 400 invalid_filter: "dark" is not valid JSON

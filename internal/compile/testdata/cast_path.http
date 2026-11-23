@@ -1,0 +1,1 @@
+GET /api/users?select=id,n:settings->n::int,settings->>theme::text,mood::text,balance::int8,*

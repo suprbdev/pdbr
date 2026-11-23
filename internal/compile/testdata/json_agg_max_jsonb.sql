@@ -1,0 +1,2 @@
+-- request: GET /api/users?select=settings->n.max()
+-- error: 400 invalid_select: max() is not defined on jsonb column "settings->n"

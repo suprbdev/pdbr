@@ -1,2 +1,0 @@
--- request: GET /api/users?select=id::text
--- error: 400 invalid_select: casts are only supported on aggregate functions (col::type.sum(), col.sum()::type), not on "id::text"

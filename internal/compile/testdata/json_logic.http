@@ -1,0 +1,1 @@
+GET /api/users?select=id&or=(settings->>theme.eq.dark,settings->"a.b".is.null,not.settings->>x.eq.1)

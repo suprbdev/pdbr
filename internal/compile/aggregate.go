@@ -24,8 +24,10 @@ type groupedQuery struct {
 	sql   string
 	alias string
 	obj   string
-	// cols maps a plain grouping column name to its key term.
-	cols map[string]orderTerm
+	// cols maps a plain grouping column name to its key term, paths a
+	// grouping JSON path (pathSignature) to its key term.
+	cols  map[string]orderTerm
+	paths map[string]orderTerm
 	// keys are every grouping key in select order (the ORDER BY tiebreak).
 	keys []orderTerm
 }
@@ -43,7 +45,7 @@ func (s *stmt) grouped(node *plan.Node, filter plan.Expr, corr func(childAlias s
 	r := node.Resource
 	t := r.Table
 	alias := s.alias("t")
-	g := &groupedQuery{alias: s.alias("g"), cols: map[string]orderTerm{}}
+	g := &groupedQuery{alias: s.alias("g"), cols: map[string]orderTerm{}, paths: map[string]orderTerm{}}
 	var cols, groupBy, pairs []string
 	key := func(expr string, term orderTerm) string {
 		name := "__k" + strconv.Itoa(len(g.keys))
@@ -98,6 +100,19 @@ func (s *stmt) grouped(node *plan.Node, filter plan.Expr, corr func(childAlias s
 			nAgg++
 			cols = append(cols, s.aggregateSQL(f, alias)+" AS "+name)
 			expr = aggregateJSON(colRef(g.alias, name), f.Agg)
+		case f.Column != nil && (len(f.Path) > 0 || f.Cast != nil):
+			name := key(s.valueSQL(alias, f, false), orderTerm{nullable: true})
+			if len(f.Path) > 0 && f.Cast == nil {
+				g.paths[pathSignature(f.Column, f.Path)] = g.keys[len(g.keys)-1]
+			}
+			expr = colRef(g.alias, name)
+			if f.Cast != nil {
+				expr = "to_json(" + expr + ")"
+			}
+			if len(f.Path) > 0 {
+				pairs = append(pairs, s.pairKey(f, k), expr)
+				continue
+			}
 		case f.Column != nil:
 			if node.Star && f.Alias == "" && seen[k] {
 				continue
@@ -172,6 +187,8 @@ func (s *stmt) groupCountSQL(node *plan.Node) (string, error) {
 		f := &node.Fields[i]
 		switch {
 		case f.Agg != nil:
+		case f.Column != nil && (len(f.Path) > 0 || f.Cast != nil):
+			keys = append(keys, s.valueSQL(alias, f, false))
 		case f.Column != nil:
 			column(f.Column)
 		default:
@@ -205,6 +222,9 @@ func (g *groupedQuery) orderTerms(order []plan.OrderTerm) ([]orderTerm, error) {
 			return nil, errUser(CodeColumnNotOrderable, "an aggregate select orders only by its grouping columns")
 		}
 		term, ok := g.cols[o.Column.Name]
+		if len(o.Path) > 0 {
+			term, ok = g.paths[pathSignature(o.Column, o.Path)]
+		}
 		if !ok {
 			return nil, errUser(CodeColumnNotOrderable, "order by %q needs %q selected as a grouping column", o.Column.Name, o.Column.Name)
 		}
@@ -233,6 +253,9 @@ func (s *stmt) aggregateSQL(f *plan.FieldSel, alias string) string {
 		return "count(*)"
 	}
 	in := colRef(alias, f.Column.Name)
+	if len(f.Path) > 0 {
+		in = s.jsonPathSQL(alias, f.Column, f.Path, false)
+	}
 	if a.InputCast != nil {
 		in = "(" + in + ")::" + typeRefSQL(a.InputCast)
 	}

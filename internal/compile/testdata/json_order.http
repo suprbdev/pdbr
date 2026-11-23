@@ -1,0 +1,1 @@
+GET /api/users?select=id,settings->>theme&order=settings->>theme.desc.nullsfirst,settings->n

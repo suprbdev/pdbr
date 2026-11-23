@@ -148,6 +148,9 @@ func (p *parser) columnCond(res *api.Resource, key string, o operand) (plan.Expr
 	if o.op == "exists" {
 		return nil, errf(CodeInvalidFilter, "exists is only valid on a relation key (%s=exists.true)", key)
 	}
+	if hasJSONPath(key) {
+		return p.pathCond(res, key, o)
+	}
 	if f := res.Field(key); f != nil {
 		if !res.FilterColumns[key] {
 			return nil, errf(CodeColumnNotFilterable, "column %q on %q is not filterable", key, res.Path)
@@ -173,6 +176,54 @@ func (p *parser) columnCond(res *api.Resource, key string, o operand) (plan.Expr
 		return plan.Cond{Computed: c, Op: o.spec.op, Value: v, Negate: o.negate}, nil
 	}
 	return nil, errf(CodeUnknownColumn, "unknown column %q on %q", key, res.Path)
+}
+
+// pathCond builds the condition on a JSON path of a filterable column:
+// ->> compares text, -> compares jsonb (operands are JSON).
+func (p *parser) pathCond(res *api.Resource, key string, o operand) (plan.Expr, error) {
+	name, path, _, uerr := splitJSONPath(key)
+	if uerr != nil {
+		return nil, uerr
+	}
+	f, err := p.resolvePathField(res, name, path, CodeInvalidFilter)
+	if err != nil {
+		return nil, err
+	}
+	if !res.FilterColumns[f.Key] {
+		return nil, errf(CodeColumnNotFilterable, "column %q on %q is not filterable", f.Key, res.Path)
+	}
+	if o.spec.contrib || o.spec.spatial {
+		return nil, errf(CodeInvalidFilter, "operator %q is not supported on JSON path %q", o.op, key)
+	}
+	t := pathType(path)
+	var v any
+	if t.kind == kindJSON && o.spec.op == plan.OpIn {
+		items, err := parseRawList(o.value)
+		if err != nil {
+			return nil, err
+		}
+		list := make([]any, len(items))
+		for i, it := range items {
+			e, err := p.coerceElem(t, it)
+			if err != nil {
+				return nil, err
+			}
+			list[i] = e
+		}
+		v = list
+	} else {
+		v, err = p.coerceOperand(t, key, o)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return plan.Cond{Column: f.Column, Path: path, Op: o.spec.op, Value: v, Negate: o.negate}, nil
+}
+
+// isPathKey reports whether key is a JSON path on a column of res.
+func isPathKey(res *api.Resource, key string) bool {
+	i := indexOutsideQuotes(key, "->")
+	return i > 0 && res.Field(key[:i]) != nil
 }
 
 // contribCond builds the condition for an operator a pdbcore/contrib
@@ -395,6 +446,23 @@ func (p *parser) spatialOperand(t colType, o operand) (any, error) {
 // parseList parses "(a,b,"c,d")": items comma-separated, double-quoted
 // items may contain , ( ) " with \" and \\ escapes.
 func parseList(s string) ([]string, *compile.UserError) {
+	parts, err := parseRawList(s)
+	if err != nil {
+		return nil, err
+	}
+	for i, part := range parts {
+		v, err := unquote(part)
+		if err != nil {
+			return nil, err
+		}
+		parts[i] = v
+	}
+	return parts, nil
+}
+
+// parseRawList is parseList without unquoting: a jsonb in.() list takes
+// JSON values, where a double-quoted item is a JSON string.
+func parseRawList(s string) ([]string, *compile.UserError) {
 	s = strings.TrimSpace(s)
 	if len(s) < 2 || s[0] != '(' || s[len(s)-1] != ')' {
 		return nil, errf(CodeInvalidFilter, "expected a parenthesised list, got %q", s)
@@ -407,15 +475,10 @@ func parseList(s string) ([]string, *compile.UserError) {
 	if !ok {
 		return nil, errf(CodeInvalidFilter, "unbalanced list %q", s)
 	}
-	out := make([]string, len(parts))
-	for i, part := range parts {
-		v, err := unquote(strings.TrimSpace(part))
-		if err != nil {
-			return nil, err
-		}
-		out[i] = v
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
 	}
-	return out, nil
+	return parts, nil
 }
 
 // unquote strips one level of double quotes with \" and \\ escapes; unquoted
@@ -528,16 +591,16 @@ func (p *parser) parseLogicItem(res *api.Resource, item string, depth int) (plan
 		negate = true
 		item = item[len("not."):]
 	}
-	col, rest, ok := strings.Cut(item, ".")
+	col, rest, ok := cutOutsideQuotes(item, ".")
 	if !ok || col == "" {
 		return nil, errf(CodeInvalidFilter, "malformed condition %q (want column.op.value)", item)
 	}
-	if res.Field(col) == nil && res.Computed[col] == nil {
+	if res.Field(col) == nil && res.Computed[col] == nil && !isPathKey(res, col) {
 		// Relation filter inside a logic list: rel[!hint].col.op.value or
 		// rel=exists.true spelled rel.exists.true.
 		relKey, _, _ := strings.Cut(col, "!")
 		if len(res.Relations[relKey]) > 0 {
-			next, rest2, ok := strings.Cut(rest, ".")
+			next, rest2, ok := cutOutsideQuotes(rest, ".")
 			if ok && next != "exists" && next != "not" {
 				col, rest = col+"."+next, rest2
 			}
@@ -559,7 +622,7 @@ func (p *parser) parseLogicItem(res *api.Resource, item string, depth int) (plan
 		}
 		o.value = v
 	}
-	if res.Field(col) != nil || res.Computed[col] != nil {
+	if res.Field(col) != nil || res.Computed[col] != nil || isPathKey(res, col) {
 		return p.columnCond(res, col, o)
 	}
 	return p.relationCond(res, col, o)
@@ -637,7 +700,7 @@ func (p *parser) relationCond(res *api.Resource, key string, o operand) (plan.Ex
 	if o.op == "exists" {
 		return nil, errf(CodeInvalidFilter, "exists applies to the relation key itself (%s=exists.true)", relKey)
 	}
-	if rel.To.Field(rest) == nil && rel.To.Computed[rest] == nil {
+	if rel.To.Field(rest) == nil && rel.To.Computed[rest] == nil && !isPathKey(rel.To, rest) {
 		if strings.Contains(rest, ".") {
 			return nil, errf(CodeInvalidFilter, "relation filter paths are one level deep (%s.<column>)", relKey)
 		}

@@ -1,0 +1,2 @@
+-- request: GET /api/users?select=settings->>theme,count()&order=settings->>mode
+-- error: 400 column_not_orderable: order by settings->>mode needs the same JSON path selected as a grouping key (without a cast)

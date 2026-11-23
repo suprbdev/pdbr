@@ -25,6 +25,9 @@ type orderTerm struct {
 	dist *introspect.Column
 	// contrib set: order by full-text relevance or trigram distance.
 	contrib *plan.ContribOrder
+	// pathCol and path set: order by a JSON path of pathCol.
+	pathCol *introspect.Column
+	path    plan.JSONPath
 	// owner is set for a plain column of an extension-owned type (citext,
 	// ltree): keyset comparisons must use its schema-qualified operators.
 	owner      *contrib.Vocabulary
@@ -62,6 +65,9 @@ func (s *stmt) orderTerms(t *introspect.Table, terms []plan.OrderTerm) []orderTe
 			o.fnTable = term.Computed.Resource.Table
 			o.nullable = true
 			o.owner = s.owner(fnReturnColumn(o.fn))
+		case term.Column != nil && len(term.Path) > 0:
+			o.pathCol, o.path = term.Column, term.Path
+			o.nullable = true
 		case term.Column != nil:
 			o.col = term.Column.Name
 			o.nullable = !term.Column.NotNull
@@ -86,7 +92,7 @@ func (s *stmt) orderTerms(t *introspect.Table, terms []plan.OrderTerm) []orderTe
 
 // plain reports whether the term orders by a column of the row itself.
 func (t orderTerm) plain() bool {
-	return t.fn == nil && t.rel == nil && t.dist == nil && t.contrib == nil
+	return t.fn == nil && t.rel == nil && t.dist == nil && t.contrib == nil && t.path == nil
 }
 
 // cmp renders a comparison operator for the term's sort value,
@@ -159,6 +165,8 @@ func (s *stmt) orderExprSQL(term orderTerm, alias string) string {
 		return s.relationOrderSQL(term, alias)
 	case term.fn != nil:
 		return s.computedCallSQL(term.fn, term.fnTable, alias, nil)
+	case term.path != nil:
+		return s.jsonPathSQL(alias, term.pathCol, term.path, false)
 	}
 	return colRef(alias, term.col)
 }

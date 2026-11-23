@@ -165,7 +165,7 @@ func condKey(c *plan.Cond) string {
 	case c.Computed != nil:
 		b.WriteString("fn:" + c.Computed.Key)
 	case c.Column != nil:
-		b.WriteString("col:" + c.Column.Name)
+		b.WriteString("col:" + c.Column.Name + c.Path.Shape())
 	}
 	b.WriteString("." + string(c.Op))
 	if c.Negate {
@@ -203,6 +203,8 @@ func (s *stmt) condSQL(c *plan.Cond, alias string) (string, error) {
 			return "", errUser(CodeInvalidFilter, "computed column %q is set-returning and cannot be filtered", c.Computed.Key)
 		}
 		return s.opSQL(fnReturnColumn(fn), s.computedCallSQL(fn, t, alias, nil), c)
+	case c.Column != nil && len(c.Path) > 0:
+		return s.opSQL(pathColumn(c.Column, c.Path), s.jsonPathSQL(alias, c.Column, c.Path, false), c)
 	case c.Column != nil:
 		return s.opSQL(c.Column, colRef(alias, c.Column.Name), c)
 	}

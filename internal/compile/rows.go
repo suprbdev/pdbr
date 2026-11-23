@@ -19,7 +19,9 @@ const jsonBuildObjectChunk = 40 // pairs (80 args)
 // rowJSON compiles a projection node over its resource into a json
 // expression plus the LEFT JOIN LATERAL clauses it needs against alias.
 // A key selected twice keeps its first position and its last value, as a
-// jsonb object would.
+// jsonb object would, except for JSON path items: their keys and indexes
+// are bind parameters that must stay referenced, so they are always added
+// (a repeated key then appears twice, as in PostgREST).
 func (s *stmt) rowJSON(node *plan.Node, alias string, depth int) (string, []string, error) {
 	if depth > s.maxDepth {
 		return "", nil, errUser(CodeEmbedDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)
@@ -59,7 +61,11 @@ func (s *stmt) rowJSON(node *plan.Node, alias string, depth int) (string, []stri
 		if err != nil {
 			return "", nil, err
 		}
-		if node.Star && f.Alias == "" && f.Column != nil && seen[key] {
+		if node.Star && plainField(f) && seen[key] {
+			continue
+		}
+		if len(f.Path) > 0 {
+			pairs = append(pairs, s.pairKey(f, key), expr)
 			continue
 		}
 		add(key, expr)
@@ -92,6 +98,8 @@ func (s *stmt) rowJSON(node *plan.Node, alias string, depth int) (string, []stri
 // fieldJSON renders one selected field: its response key and value expression.
 func (s *stmt) fieldJSON(r *api.Resource, f *plan.FieldSel, alias string, depth int) (string, string, error) {
 	switch {
+	case f.Column != nil && (len(f.Path) > 0 || f.Cast != nil):
+		return f.Key(r), s.fieldValueJSON(alias, f), nil
 	case f.Column != nil:
 		key := f.Alias
 		if key == "" {
@@ -118,6 +126,12 @@ func (s *stmt) fieldJSON(r *api.Resource, f *plan.FieldSel, alias string, depth 
 		return key, expr, err
 	}
 	return "", "", fmt.Errorf("compile: empty field selection")
+}
+
+// plainField reports an unaliased column item without a JSON path or cast:
+// under * it repeats a column already selected.
+func plainField(f *plan.FieldSel) bool {
+	return f.Alias == "" && f.Column != nil && f.Agg == nil && len(f.Path) == 0 && f.Cast == nil
 }
 
 // buildJSONObject renders pairs (key literal, value expression, …) as a

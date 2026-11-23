@@ -20,7 +20,7 @@ groups it returns. Turn them on with
 ```
 item      := … | [alias ":"] aggregate
 aggregate := "count()"
-           | column [ "::" type ] "." fn "()" [ "::" type ]
+           | column [ jsonpath ] [ "::" type ] "." fn "()" [ "::" type ]
 fn        := count | sum | avg | max | min              -- PostgREST
            | extent | union | collect | centroid        -- pdbr, spatial columns
 type      := builtin | enum                              -- see Casts
@@ -34,6 +34,7 @@ type      := builtin | enum                              -- see Casts
 | `col.max()` / `col.min()` | `max(col)` / `min(col)` over any ordered type (numbers, text, dates and timestamps, enums, arrays, …) | `max` / `min` |
 | `total:col.sum()` | alias | `total` |
 | `col::int.sum()` | input cast: `sum((col)::int)` | `sum` |
+| `data->tax::numeric.sum()` | over a [JSON path](api.md#json-paths): `sum(((data -> $1::text))::numeric)` | `sum` |
 | `col.avg()::int` | output cast: `(avg(col))::int` | `avg` |
 | `count` (no parentheses) | legacy PostgREST spelling of `count()`, accepted when the resource has no column, computed field or relation named `count` | `count` |
 
@@ -55,9 +56,8 @@ Everything else is `400 invalid_select`: the `reg*` name-lookup types
 (`regclass`, `regrole`, `regproc`, …, which would reveal objects outside the
 API), `oid`, pseudo-types (`record`, `any*`), composite and table row types,
 domains, table-backed `@enum` tables, schema-qualified names and unknown
-names. Casts are only accepted on aggregates: `select=id::text` is `400
-invalid_select` (PostgREST casts any column; see
-[Differences from PostgREST](#differences-from-postgrest)).
+names. The same allowlist serves plain column casts (`select=id::text`,
+[api.md](api.md#casts)).
 
 ## Grouping
 
@@ -75,8 +75,11 @@ GET /api/users?select=mood,total:balance.sum(),mean:id::float8.avg()
 [{"mood": "ok", "total": 0, "mean": 2}, {"mood": "happy", "total": 0, "mean": 2}]
 ```
 
-- Grouping keys may be columns (with spatial projection arguments),
-  computed columns and PostGIS pseudo-columns; `*` groups by every column.
+- Grouping keys may be columns (with spatial projection arguments), cast
+  columns (`mood::text` groups by the cast value), [JSON paths](api.md#json-paths)
+  (`settings->>theme`, cast or not), computed columns and PostGIS
+  pseudo-columns; `*` groups by every column. A value cast to `json` cannot
+  be a key (json has no equality; cast to `jsonb`).
 - Embeds cannot be grouping keys (`400 invalid_select`): a node with an
   aggregate has no embeds, `!inner` ones included. Aggregate inside the
   embed instead (`users?select=id,posts(count())`), or restrict the rows
@@ -225,9 +228,9 @@ grouping columns of the aggregates you expose, and keep
 | Request | Response |
 |---|---|
 | any aggregate while `server.aggregates` is off | `400 aggregates_disabled` |
-| bad grammar (`col.sum(x)`, a hint on an aggregate), a cast type outside the allowlist (`::regclass`, `::record`, an unknown name), a cast on a non-aggregate, an aggregate over a computed or derived field, a type without the aggregate (`text.sum()`, `jsonb.max()`, `uuid.max()`), an embed, set-returning computed column or ungroupable column as a grouping key, duplicate response keys, aggregates outside list reads or in to-one embeds, `distinct=` | `400 invalid_select` |
+| bad grammar (`col.sum(x)`, a hint on an aggregate), a cast type outside the allowlist (`::regclass`, `::record`, an unknown name), an aggregate over a computed or derived field, a type without the aggregate (`text.sum()`, `jsonb.max()`, `uuid.max()`), an embed, set-returning computed column or ungroupable column as a grouping key, duplicate response keys, aggregates outside list reads or in to-one embeds, `distinct=` | `400 invalid_select` |
 | unknown column | `400 unknown_column` |
-| `order=` on something other than a grouping column | `400 column_not_orderable` |
+| `order=` on something other than a grouping column (a JSON path term needs the same uncast path selected as a key) | `400 column_not_orderable` |
 | `after=` / `before=` | `400 keyset_unsupported` |
 
 ## Differences from PostgREST
@@ -243,10 +246,8 @@ differs:
   neither does grouping by a spread nor hoisting the aggregates of a to-one
   spread; aggregates inside a non-spread to-one embed are rejected rather
   than computed over its single row.
-- **Casts** are accepted on aggregates only, and only to the allowlisted
-  built-in types and the API's enums; PostgREST casts plain columns too
-  (`select=id::text`) to any type. JSON paths (`col->key::numeric.sum()`)
-  are not part of pdbr's `select=` grammar.
+- **Casts** take only the allowlisted built-in types and the API's enums;
+  PostgREST casts to any type.
 - **Validation before the database**: `sum`/`avg` of a non-numeric column,
   `max`/`min` of `json`/`jsonb`/`bool`/`bytea`/`uuid`/composite columns,
   ungroupable keys, duplicate response keys and ordering by a non-grouping

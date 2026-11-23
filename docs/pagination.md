@@ -266,7 +266,7 @@ Bulk `PATCH`/`DELETE` also carry `Content-Range` for the written rows
 ```
 order  := term ("," term)*
 term   := path [ "." dir ] [ "." nulls ]
-path   := column | computed | relkey "(" column ")" | spatialcol ".dist"
+path   := column | column jsonpath | computed | relkey "(" column ")" | spatialcol ".dist"
         | column ( ".rank" | ".rank_cd" | ".trgm_dist" | ".trgm_wdist" | ".trgm_swdist" )
 dir    := "asc" | "desc"
 nulls  := "nullsfirst" | "nullslast"
@@ -286,6 +286,15 @@ GET /api/users?order=mood.asc.nullsfirst
 - Columns follow the [indexed-only policy](filtering.md#the-indexed-only-policy)
   (`@sortable` adds, `@omit order` removes); otherwise
   `400 column_not_orderable`. Unknown → `400 unknown_column`.
+
+### JSON paths
+
+`order=settings->>theme.desc` sorts by a [JSON path](api.md#json-paths)
+of a json/jsonb or array column (`->>` as text, `->` as jsonb), under the
+column's order policy. The modifiers follow the path; a key holding a dot is
+double-quoted (`order=settings->"a.b".desc`). The term is nullable (missing
+keys sort as `NULL`), the PK tiebreaker still applies, and keyset cursors
+work (the anchor row's value is re-read by key).
 
 ### Related columns
 

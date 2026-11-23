@@ -1,0 +1,1 @@
+GET /api/posts?select=id,users(id,settings->>theme)&users.settings->>theme=eq.dark&users.order=settings->n

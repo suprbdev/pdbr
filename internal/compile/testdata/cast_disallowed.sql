@@ -1,0 +1,2 @@
+-- request: GET /api/users?select=id::regclass
+-- error: 400 invalid_select: cast type "regclass" is not allowed; use a built-in scalar type (int, bigint, numeric, float8, text, date, timestamptz, interval, …) or an enum of the API

@@ -1,0 +1,1 @@
+GET /api/users?select=id,settings->theme,settings->>theme,deep:settings->a->>b,settings->"a.b"->-1,tags->0,tags->>-1,address->>city,prev_addresses->0->>street
