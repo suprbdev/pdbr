@@ -12,6 +12,8 @@ becomes the release notes of the next tag.
 
 ## [Unreleased]
 
+## [1.0.0-rc.1] - 2026-11-24
+
 ### Fixed
 
 - **Volatile `SETOF` RPCs ran more than once or not at all.** `count=true`
