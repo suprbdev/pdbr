@@ -24,11 +24,11 @@ func (s *stmt) rasterPseudoSQL(p *api.PseudoColumn, args map[string]any, alias s
 		case err != nil:
 			return "", err
 		case !ok:
-			return rv.Accessor.JSONSQL(ref), nil
+			return rv.Accessor.SQL(ref, postgis.Output{JSON: true}), nil
 		case rv.Accessor.Suffix != "Envelope":
 			return "", errUser(CodeInvalidSelect, "precision applies to GeoJSON values; %s is not one", p.Key)
 		}
-		return postgis.OutputJSONPrecisionSQL("ST_Envelope("+ref+")", digits), nil
+		return postgis.OutputSQL("ST_Envelope("+ref+")", postgis.Output{JSON: true, Precision: digits}), nil
 	case rv.Value:
 		if s.plan.Near == nil {
 			return "", errUser(CodeInvalidParameter, "%s requires ~near=", p.Key)

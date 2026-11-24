@@ -167,7 +167,7 @@ func RasterFilterOps(filters bool) []string {
 
 // addRasterColumns registers the pseudo-columns of a raster column:
 // ~<key>_<accessor> for each header-only metadata accessor
-// (postgis.RasterAccessors: width, height, num_bands, srid, pixel_width,
+// (postgis.RasterAccessors(): width, height, num_bands, srid, pixel_width,
 // pixel_height, envelope), ~<key>_value(band=) (the pixel value at ~near=)
 // and ~<key>_summary_stats(band=). Another pseudo-column owning a key keeps
 // it.
@@ -184,8 +184,8 @@ func addRasterColumns(b *api.Builder, r *api.Resource, f *api.Field) {
 		pc.Key, pc.Column = key, f.Column
 		r.Pseudo[key] = pc
 	}
-	for i := range postgis.RasterAccessors {
-		a := postgis.RasterAccessors[i]
+	for i := range postgis.RasterAccessors() {
+		a := postgis.RasterAccessors()[i]
 		add(RasterAccessor(a), &api.PseudoColumn{
 			Raster:      &api.RasterValue{Accessor: &a},
 			Schema:      rasterSchema(a.Type, a.GeoJSON),
@@ -261,7 +261,7 @@ func Omits(comment string) (skipFilter, skipOrder bool) {
 // addPseudoColumns registers ~<key>_<accessor> for every derived accessor
 // that applies to the column's typmod (see Applies).
 func addPseudoColumns(r *api.Resource, f *api.Field) {
-	for _, d := range postgis.Deriveds {
+	for _, d := range postgis.Deriveds() {
 		if !Applies(d, f.Column) {
 			continue
 		}
@@ -349,8 +349,8 @@ func snake(suffix string) string {
 
 // Accessors lists the pseudo-column suffixes in declaration order.
 func Accessors() []string {
-	out := make([]string, len(postgis.Deriveds))
-	for i, d := range postgis.Deriveds {
+	out := make([]string, len(postgis.Deriveds()))
+	for i, d := range postgis.Deriveds() {
 		out[i] = Accessor(d)
 	}
 	return out
@@ -422,7 +422,7 @@ func FeatureCollectionSchema() *api.Schema {
 // `is`, for OpenAPI x-pdbr-filter-ops.
 func FilterOps() []string {
 	var out []string
-	for _, op := range postgis.Ops {
+	for _, op := range postgis.Ops() {
 		if name := OpName(op); name != "" && op.Kind() != postgis.ArgBoolean {
 			out = append(out, name)
 		}

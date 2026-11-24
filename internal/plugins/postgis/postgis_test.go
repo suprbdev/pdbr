@@ -292,7 +292,7 @@ func TestOpenAPI(t *testing.T) {
 	if s := built.TypeSchema("geography", "public", ""); s.Ref != "#/components/schemas/GeoJSON" {
 		t.Errorf("TypeSchema(geography) = %+v", s)
 	}
-	if ops := built.Extra.FilterOps["geometry"]; !reflect.DeepEqual(ops, FilterOps()) || len(ops) != len(corepostgis.Ops)-2 {
+	if ops := built.Extra.FilterOps["geometry"]; !reflect.DeepEqual(ops, FilterOps()) || len(ops) != len(corepostgis.Ops())-2 {
 		t.Errorf("FilterOps = %v", ops)
 	}
 	if built.OpenAPI.Components.Schemas[api.GeoJSONFeature] == nil || built.OpenAPI.Components.Schemas[api.GeoJSONFeatureCollection] == nil {

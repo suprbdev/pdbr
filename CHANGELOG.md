@@ -22,7 +22,23 @@ becomes the release notes of the next tag.
   that decides `has_next` reads only the root. Applies to `SETOF <table>`
   RPCs too.
 
-### Fixes
+### Changed
+
+- `@behavior -filterBy` / `-orderBy` (PostGraphile V5) are honoured; `-filter`
+  / `-order` still work with a deprecation warning. Unknown `@omit` actions
+  and `@behavior` tokens are reported at build time, with pdbq's vocabulary
+  shared through pdbcore ([upgrading](docs/upgrading.md#smart-tags-config-messages-and-embedding-api-pdbcore-api-hygiene)).
+- Removed config keys name the reason they were removed; `PDBR_*` variables
+  that double the underscore after a section are errors with a did-you-mean
+  hint; `transactions.isolation` errors name the accepted values;
+  `database.connect_timeout`, `database.max_conns`,
+  `database.statement_timeout`, `auth.jwt.jwks_cache_ttl` (with a JWKS URL)
+  and `watch.poll_interval` (with the watch on) are validated.
+- `pdbr.LoadConfig` takes command-line values as `map[string]any` instead of
+  a `*pflag.FlagSet`.
+- Built against pdbcore's API hygiene changes (see its changelog).
+
+### Fixed
 
 - CSV output keeps carriage returns and line feeds inside values byte for
   byte (quoted, RFC 4180); a bare `\r` was dropped and `\n` became `\r\n`.
@@ -33,6 +49,9 @@ becomes the release notes of the next tag.
   forms. `select=*` still returns it and a JSON body still writes it.
 - `401`/`403` answers from authentication carry `Vary: Accept` like every
   other API response.
+- A live boot no longer alphabetises `schema.schemas`: the bare
+  `/{table}` and `/rpc/{fn}` aliases come from the first configured schema,
+  as on a schema-cache boot.
 
 ### Breaking
 

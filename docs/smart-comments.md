@@ -35,10 +35,17 @@ Parsing rules (`pdbcore/smarttags.Parse`):
 - List-valued tags (`@omit`, `@primaryKey`, `@unique`, `@behavior`) split on
   commas and whitespace: `@omit create, update` ≡ `@omit create update`.
   `@omit` actions are lower-cased.
-- `@behavior` (PostGraphile V5 style) contributes only its **negative**
-  tokens, mapped onto `@omit` actions: `-insert` → `create`, `-update` →
-  `update`, `-delete` → `delete`, `-select` → `read`, `-filter` → `filter`,
-  `-order` → `order`; other tokens are ignored.
+- `@behavior` (PostGraphile V5 style) contributes its **negative** omit
+  tokens, mapped onto `@omit` actions (matched case-insensitively):
+  `-insert` → `create`, `-update` → `update`, `-delete` → `delete`,
+  `-select` → `read`, `-filterBy` → `filter`, `-orderBy` → `order`, and the
+  contract tokens (`±contract:<name>`, see [Contracts](#contracts)).
+  The older `-filter` and `-order` still work but are deprecated.
+- Unknown `@omit` actions (`@omit reed`) and unknown `@behavior` tokens are
+  ignored with a build-time warning naming the object and the token, and a
+  deprecated `@behavior` token warns with its replacement
+  (`smart_comments: deprecated @behavior token column=app.users.email token=-filter use=-filterBy`).
+  pdbq reads and checks the same tokens.
 
 Disable everything with `plugins.disabled: [smart_comments]` (see
 [What survives without the plugin](#what-survives-without-the-plugin)).

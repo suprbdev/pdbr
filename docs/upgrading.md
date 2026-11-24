@@ -435,3 +435,20 @@ below is breaking; the old spellings are `400` errors (`invalid_filter`,
 | no `Vary` from the API | `Vary: Accept` | added to `Vary: Origin` / `Accept-Encoding` |
 | `/{schema}/rpc/{pk}` = row of a table named `rpc` when no such function exists | always the function (`404` without one) | the table keeps its list and `/by/` routes |
 | `pdbr request` runs as the connection role | same by default; `--role`, `--claims` | `--print-sql` output is unchanged by them |
+
+### Smart tags, config messages and embedding API (pdbcore API hygiene)
+
+| Before | Now | Notes |
+|---|---|---|
+| `@behavior -filterBy` / `-orderBy` were ignored | honoured as `@omit filter` / `@omit order` (PostGraphile V5 spellings, as in pdbq) | `-filter` / `-order` still work with a build-time deprecation warning naming `-filterBy` / `-orderBy` |
+| unknown `@omit` actions and `@behavior` tokens were ignored silently | ignored with a build-time warning naming the object and the token | `@omit reed` no longer goes unnoticed; pdbq checks the same tokens |
+| a live boot alphabetised `schema.schemas` (a cache boot did not), so the bare `/{table}` and `/rpc/{fn}` aliases could come from another schema than the first one listed | the bare aliases always come from `schema.schemas[0]` | check deployments that listed schemas out of alphabetical order: their bare paths change on a live boot |
+| `PDBR_ROLES__ALLOWED` (doubled underscore after the section) was ignored | `unknown environment variable PDBR_ROLES__ALLOWED (roles_allowed): did you mean PDBR_ROLES_ALLOWED?` | any section |
+| `transactions.mutations`: `unknown key transactions.mutations` | `unknown key transactions.mutations: removed: every write runs in a transaction` | also `plugins.settings.nested_mutations.force_transactions` |
+| `transactions.isolation: "x" invalid` | `transactions.isolation: "x" is not 'read_committed', 'repeatable_read' or 'serializable'` | |
+| `database.connect_timeout: 0` waited forever; negative `max_conns` / `statement_timeout`, `auth.jwt.jwks_cache_ttl: 0` with a JWKS URL (one hour) and `watch.poll_interval: 0` (a crash of the polling fallback) were accepted | config errors | `database.max_conns: 0` still means the pgx pool default |
+
+**Embedding.** `pdbr.LoadConfig(path, flags)` takes command-line values as
+`map[string]any` (koanf path to value) instead of a `*pflag.FlagSet`; build
+it from a pflag set with `cliflags.Changed(fs, except...)` from
+`github.com/suprbdev/pdbcore/confx/cliflags`.

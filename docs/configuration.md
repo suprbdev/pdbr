@@ -70,8 +70,8 @@ See [cli.md](cli.md) for details.
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `database.url` | string | — | required; standard `PG*` env vars are honoured when empty |
-| `database.max_conns` | int | 10 | maximum pooled connections; each request uses at most one |
-| `database.connect_timeout` | duration | `10s` | timeout for establishing a connection |
+| `database.max_conns` | int | 10 | maximum pooled connections; each request uses at most one; `0` uses the pgx pool default, negative is an error |
+| `database.connect_timeout` | duration | `10s` | timeout for establishing a connection; must be positive |
 | `database.statement_timeout` | duration | `25s` | per-statement timeout on every request (`0` disables); expiry → `504 pg:57014`. Keep it below `server.request_timeout` (`30s`) so a slow statement fails with a database timeout the client can act on before the request itself is cut off |
 | `server.addr` | string | `:8080` | listen address |
 | `server.base_path` | string | `""` | prefix for every API route, e.g. `/api`; `""` (the default, as in PostgREST) mounts the API at the root. `/healthz` and `/readyz` are never prefixed |
@@ -126,7 +126,7 @@ See [cli.md](cli.md) for details.
 | `transactions.partial.enabled` | bool | `false` | let a bulk `POST` or `PUT` opt in with `Prefer: partial=items` to running each element in its own savepoint: a failing element is reported without rolling back the others, answered as a per-element report (`207` when one failed). Not honoured for `PATCH`, `DELETE` or a single object. See [mutations.md](mutations.md#partial-success-for-bulk-writes) |
 | `transactions.partial.max_items` | int | `1000` | most elements a bulk body may carry with `Prefer: partial=items` (each element is its own statement and savepoint); more answers `413 body_too_large` |
 | `watch.enabled` | bool | `false` | dev only; refuses to combine with cache |
-| `watch.poll_interval` | duration | `5s` | fallback polling when event triggers can't be installed |
+| `watch.poll_interval` | duration | `5s` | fallback polling when event triggers can't be installed; must be positive when `watch.enabled` |
 | `watch.channel` | string | `pdbr_ddl` | NOTIFY channel used by the DDL event trigger |
 | `errors.detail` | string | `prod` | `dev` adds full PG detail + `pg` object to problems; `strict` hides even constraint-violation messages |
 | `plugins.disabled` | []string | `[]` | built-in plugins to disable: `smart_comments`, `advanced_filters`, `postgis`, `nested_mutations` (other names are rejected); see [plugins.md](plugins.md) |

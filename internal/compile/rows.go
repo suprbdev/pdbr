@@ -353,7 +353,7 @@ func (s *stmt) renderedRef(alias string, c *introspect.Column) string {
 // verbatim.
 func (s *stmt) exprJSON(ref string, c *introspect.Column) string {
 	if postgis.IsSpatial(c.PGType) {
-		return postgis.OutputJSONSQL(ref)
+		return postgis.OutputSQL(ref, postgis.Output{JSON: true})
 	}
 	if v, ok := api.DistanceOnly(s.catalog(), c); ok && v.Codec != nil {
 		return v.Codec.OutputJSONSQL(ref)
@@ -372,7 +372,7 @@ func (s *stmt) exprJSON(ref string, c *introspect.Column) string {
 func (s *stmt) spatialArrayJSON(ref string) string {
 	elem := s.alias("g")
 	return fmt.Sprintf("CASE WHEN %s IS NULL THEN NULL ELSE (SELECT coalesce(json_agg(%s ORDER BY %s.o), '[]'::json) FROM (SELECT generate_subscripts(%s, 1) AS o) %s) END",
-		ref, postgis.OutputJSONSQL("("+ref+")["+elem+".o]"), elem, ref, elem)
+		ref, postgis.OutputSQL("("+ref+")["+elem+".o]", postgis.Output{JSON: true}), elem, ref, elem)
 }
 
 // spatialFieldSQL renders a selected spatial column, applying the optional
@@ -385,9 +385,9 @@ func (s *stmt) spatialFieldSQL(ref string, c *introspect.Column, args map[string
 	}
 	digits, ok, err := s.precisionArg(args)
 	if err != nil || !ok {
-		return postgis.OutputJSONSQL(expr), err
+		return postgis.OutputSQL(expr, postgis.Output{JSON: true}), err
 	}
-	return postgis.OutputJSONPrecisionSQL(expr, digits), nil
+	return postgis.OutputSQL(expr, postgis.Output{JSON: true, Precision: digits}), nil
 }
 
 // spatialArgs applies buffer=, then simplify=, then transform= to a spatial
@@ -473,16 +473,16 @@ func (s *stmt) pseudoJSON(f *plan.FieldSel, alias string) (string, error) {
 		return "", err
 	}
 	if ok {
-		return d.JSONPrecisionSQL(expr, flavour, digits), nil
+		return d.SQL(expr, flavour, postgis.Output{JSON: true, Precision: digits}), nil
 	}
-	return d.JSONSQL(expr, flavour), nil
+	return d.SQL(expr, flavour, postgis.Output{JSON: true}), nil
 }
 
 // derivedFor matches an accessor name ("area", "geometry_type",
 // "GeometryType") against the pdbcore accessor table.
 func derivedFor(accessor string) (postgis.Derived, bool) {
 	want := strings.ToLower(strings.ReplaceAll(accessor, "_", ""))
-	for _, d := range postgis.Deriveds {
+	for _, d := range postgis.Deriveds() {
 		if strings.ToLower(d.Suffix) == want {
 			return d, true
 		}

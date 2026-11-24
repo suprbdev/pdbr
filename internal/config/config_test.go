@@ -12,6 +12,7 @@ import (
 
 	"github.com/suprbdev/pdbcore/auth"
 	"github.com/suprbdev/pdbcore/confx"
+	"github.com/suprbdev/pdbcore/confx/cliflags"
 )
 
 func valid() Config {
@@ -355,7 +356,7 @@ roles:
 	if err := fs.Parse([]string{"--server.addr=:5555"}); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := Load(path, confx.ChangedFlags(fs, "config"))
+	cfg, err := Load(path, cliflags.Changed(fs, "config"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -627,7 +628,7 @@ func TestLoadRemovedKeys(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := Load(writeConfig(t, "auth:\n  mode: none\nroles:\n  switch: false\n"+yaml), nil)
-			if err == nil || !strings.Contains(err.Error(), "unknown key "+name) {
+			if err == nil || !strings.Contains(err.Error(), "unknown key "+name+": removed: "+RemovedKeys[name]) {
 				t.Fatalf("err = %v", err)
 			}
 		})
@@ -635,7 +636,7 @@ func TestLoadRemovedKeys(t *testing.T) {
 	t.Setenv("PDBR_AUTH_MODE", "none")
 	t.Setenv("PDBR_ROLES_SWITCH", "false")
 	t.Setenv("PDBR_TRANSACTIONS_MUTATIONS", "false")
-	if _, err := Load("", nil); err == nil || !strings.Contains(err.Error(), "unknown environment variable PDBR_TRANSACTIONS_MUTATIONS") {
+	if _, err := Load("", nil); err == nil || !strings.Contains(err.Error(), "unknown environment variable PDBR_TRANSACTIONS_MUTATIONS (transactions.mutations): removed: every write runs in a transaction") {
 		t.Fatalf("env err = %v", err)
 	}
 }
@@ -719,11 +720,35 @@ transactions:
 	if err := fs.Parse([]string{"--transactions.end=commit", "--transactions.partial.max_items=9", "--openapi.enabled=true"}); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err = Load("", confx.ChangedFlags(fs, "config"))
+	cfg, err = Load("", cliflags.Changed(fs, "config"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cfg.TX.End != "commit" || cfg.TX.Partial.MaxItems != 9 || !cfg.OpenAPI.Enabled {
 		t.Errorf("flags = %+v %+v", cfg.TX, cfg.OpenAPI)
+	}
+}
+
+func TestLoadDoubledUnderscoreAfterSection(t *testing.T) {
+	t.Setenv("PDBR_AUTH_MODE", "none")
+	t.Setenv("PDBR_ROLES_SWITCH", "false")
+	t.Setenv("PDBR_MUTATIONS__ALLOW__UNFILTERED", "true")
+	_, err := Load("", nil)
+	if want := "unknown environment variable PDBR_MUTATIONS__ALLOW__UNFILTERED (mutations_allow_unfiltered): did you mean PDBR_MUTATIONS_ALLOW__UNFILTERED?"; err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("err = %v, want %q", err, want)
+	}
+}
+
+func TestValidateSharedDurations(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.UseConnectionIdentity()
+	cfg.Database.ConnectTimeout = 0
+	cfg.Watch.Enabled = true
+	cfg.Watch.PollInterval = 0
+	err := cfg.Validate()
+	for _, want := range []string{"database.connect_timeout must be > 0", "watch.poll_interval must be > 0"} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("err = %v, want %q", err, want)
+		}
 	}
 }
