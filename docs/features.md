@@ -335,7 +335,7 @@ These shipped features are outside the 1.0 compatibility promise: they may chang
 ## Ops & delivery
 
 - [x] Multi-stage Dockerfile (`golang:1.26-alpine` → distroless nonroot, `ENTRYPOINT ["/pdbr"] CMD ["serve"]`) (parity)
-- [x] Compose dev stack (`postgis/postgis:16-3.4` + fixture + watch mode, no host ports, gitignored `compose.override.yaml`) and `compose.test.yaml` (parity)
+- [x] Compose dev stack (`postgis/postgis:18-3.7` + fixture + watch mode, no host ports, gitignored `compose.override.yaml`) and `compose.test.yaml` (parity)
 - [x] Makefile: `build dev test test-e2e bench fuzz lint example-config release docker-build docker-push compose-up compose-down` (parity)
 - [x] CI: `lint-test` (golangci-lint + `-race` unit/golden), `e2e` (postgis service + fixture), `docker` (parity)
 - [x] Release workflow on `v*`: 5-platform cross-compile, checksums, GitHub release, `ghcr.io/suprbdev/pdbr` + `docker.io/suprbdev/pdbr` multi-arch, `act`-aware (parity)

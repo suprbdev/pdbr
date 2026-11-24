@@ -45,7 +45,7 @@ reach PostgreSQL without restarting it.
 
 ## Local stack (compose)
 
-`compose.yaml` runs `postgis/postgis:16-3.4` initialised with the fixture
+`compose.yaml` runs `postgis/postgis:18-3.7` initialised with the fixture
 schema (`db/init/01-schema.sql`, regenerated from pdbcore with `make fixture`)
 plus pdbr in watch mode without authentication, as the connection role
 (`auth.mode: none`, `roles.switch: false`), and `errors.detail: dev`. It publishes

@@ -12,6 +12,14 @@ becomes the release notes of the next tag.
 
 ## [Unreleased]
 
+### Documentation
+
+- Fix the quickstart (the `Location` and `unknown_column` samples, the
+  PostGIS image version, a `git clone` step, the `anonymous` role the fixture
+  already creates), the `--print-sql` "without a database" claim, and refresh
+  the migrating-from-postgrest guide (preference prerequisites, `PUT`
+  semantics, role inheritance on PostgreSQL 16 and later).
+
 ## [1.0.0-rc.1] - 2026-11-24
 
 ### Fixed
