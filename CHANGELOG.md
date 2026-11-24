@@ -12,6 +12,19 @@ becomes the release notes of the next tag.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Volatile `SETOF` RPCs ran more than once or not at all.** `count=true`
+  executed a volatile set-returning function twice (rows, then the total),
+  and `limit=0` on a `SETOF <scalar>` or `SETOF <composite>` one compiled to
+  `LIMIT 0`, so the function never ran while the `SETOF <table>` form did.
+  A volatile set-returning function now runs exactly once per request
+  whatever `count`, `limit`, `offset` or `limit=0` say: its output is
+  materialised in a CTE that the page, the `has_next` look-ahead and the
+  total read. `limit=0` is consistent across result kinds (function runs
+  once, no rows, total still reported). Stable and immutable functions are
+  unchanged.
+
 ## [0.20.0] - 2026-11-24
 
 ### Security
