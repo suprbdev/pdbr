@@ -171,3 +171,78 @@ func TestLevenshteinReference(t *testing.T) {
 		t.Errorf("Levenshtein = %#v", p.Levenshtein)
 	}
 }
+
+// TestReservedColumnNames: a column whose key starts with api.ReservedPrefix
+// is returned by select=* and written through the body, but no query-string
+// position names it: plain, cast, JSON-path and aggregate select items,
+// filters, every order form, distinct=, on_conflict= and columns= answer as
+// they do for an unknown ~ name.
+func TestReservedColumnNames(t *testing.T) {
+	cat := testutil.FixtureCatalog()
+	id := &introspect.Column{Name: "id", Position: 1, PGType: "int4", TypeSchema: "pg_catalog", NotNull: true}
+	cat.Tables = append(cat.Tables, &introspect.Table{
+		Schema: "public", Name: "tilde", Kind: introspect.RelTable,
+		Columns: []*introspect.Column{id,
+			{Name: "~x", Position: 2, PGType: "text", TypeSchema: "pg_catalog"},
+			{Name: "~j", Position: 3, PGType: "jsonb", TypeSchema: "pg_catalog"},
+			{Name: "~u", Position: 4, PGType: "text", TypeSchema: "pg_catalog"}},
+		PrimaryKey: &introspect.Constraint{Name: "tilde_pkey", Columns: []string{"id"}},
+		Uniques:    []*introspect.Constraint{{Name: "tilde_u_key", Columns: []string{"~u"}}},
+		Privileges: introspect.Privileges{Select: true, Insert: true, Update: true, Delete: true},
+	})
+	b := buildCatalog(t, cat, false, []string{"public"}, nil)
+	opts := allOn
+	opts.Aggregates = true
+
+	p := mustParse(t, b, "/api/tilde?select=*")
+	if !p.Select.Star {
+		t.Errorf("select=* = %+v", p.Select)
+	}
+	json := map[string]string{"Content-Type": "application/json"}
+	if p, err := doParse(t, b, req{method: "POST", url: "/api/tilde", header: json, body: `{"id": 1, "~x": "a"}`}, opts); err != nil || p.Body.Object["~x"] != "a" {
+		t.Errorf("body write of ~x = %v, %v", p, err)
+	}
+
+	for url, code := range map[string]string{
+		"/api/tilde?select=~x":              CodeUnknownColumn,
+		"/api/tilde?select=~x::text":        CodeUnknownColumn,
+		"/api/tilde?select=x:~x::text":      CodeUnknownColumn,
+		"/api/tilde?select=~j->a":           CodeUnknownColumn,
+		"/api/tilde?select=~j->>a::int":     CodeUnknownColumn,
+		"/api/tilde?select=~x.max()":        CodeUnknownColumn,
+		"/api/tilde?select=~x.count()":      CodeUnknownColumn,
+		"/api/tilde?select=~x::text.max()":  CodeUnknownColumn,
+		"/api/tilde?select=~j->a.count()":   CodeUnknownColumn,
+		"/api/tilde?~x=eq.a":                CodeUnknownColumn,
+		"/api/tilde?~j->>a=eq.1":            CodeUnknownColumn,
+		"/api/tilde?or=(~x.eq.a,id.eq.1)":   CodeUnknownColumn,
+		"/api/tilde?order=~x.desc":          CodeUnknownColumn,
+		"/api/tilde?order=~j->a":            CodeUnknownColumn,
+		"/api/tilde?order=~j->>a.desc":      CodeUnknownColumn,
+		"/api/tilde?distinct=~x":            CodeUnknownColumn,
+		"/api/tilde?select=id&distinct=~x":  CodeUnknownColumn,
+		"/api/tilde?select=id,~x":           CodeUnknownColumn,
+		"/api/tilde?select=id&order=~u.asc": CodeUnknownColumn,
+	} {
+		_, err := doParse(t, b, req{url: url}, opts)
+		if err == nil {
+			t.Errorf("%s: accepted", url)
+			continue
+		}
+		wantCode(t, err, code)
+	}
+	for _, r := range []struct {
+		r    req
+		code string
+	}{
+		{req{method: "PUT", url: "/api/tilde?on_conflict=~u", header: json, body: `[{"id": 1, "~u": "a"}]`}, CodeUnknownColumn},
+		{req{method: "POST", url: "/api/tilde?columns=id,~x", header: json, body: `{"id": 1, "~x": "a"}`}, CodeInvalidBody},
+	} {
+		_, err := doParse(t, b, r.r, opts)
+		if err == nil {
+			t.Errorf("%s %s: accepted", r.r.method, r.r.url)
+			continue
+		}
+		wantCode(t, err, r.code)
+	}
+}

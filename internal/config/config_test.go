@@ -198,6 +198,8 @@ func TestValidateRules(t *testing.T) {
 		"7d role claim path":         {func(c *Config) { c.Auth.JWT.RoleClaimPath = "a..b" }, "auth.jwt.role_claim_path"},
 		"7e negative leeway":         {func(c *Config) { c.Auth.JWT.Leeway = -time.Second }, "auth.jwt.leeway"},
 		"7f json setting":            {func(c *Config) { c.Claims.JSONSetting = "nodot" }, "claims.json_setting"},
+		"7g request timeout zero":    {func(c *Config) { c.Server.RequestTimeout = 0 }, "server.request_timeout: 0s must be >= 1s"},
+		"7h request timeout short":   {func(c *Config) { c.Server.RequestTimeout = 500 * time.Millisecond }, "server.request_timeout: 500ms must be >= 1s"},
 		"7g json under prefix":       {func(c *Config) { c.Claims.JSONSetting = "jwt.claims.all" }, "lies under claims.prefix"},
 		"7h unknown plugin":          {func(c *Config) { c.Plugins.Disabled = []string{"graphiql"} }, `unknown plugin "graphiql"`},
 		"7i kebab plugin":            {func(c *Config) { c.Plugins.Disabled = []string{"nested-mutations"} }, `did you mean "nested_mutations"?`},

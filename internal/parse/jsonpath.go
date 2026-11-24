@@ -160,7 +160,7 @@ func (p *parser) jsonPathTarget(c *introspect.Column) bool {
 // resolvePathField resolves the column a JSON path starts from; code is the
 // error code of the calling context (select, filter or order).
 func (p *parser) resolvePathField(res *api.Resource, name string, path plan.JSONPath, code string) (*api.Field, error) {
-	f := res.Field(name)
+	f := queryField(res, name)
 	if f == nil {
 		if res.Computed[name] != nil || res.Pseudo[name] != nil {
 			return nil, errf(code, "JSON paths apply to columns; %q is a computed or derived field", name)

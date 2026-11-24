@@ -1228,6 +1228,42 @@ func TestCost(t *testing.T) {
 	}
 }
 
+func TestLimitZeroCountOnly(t *testing.T) {
+	f := newFixture(t)
+	users := f.res("users")
+	posts := f.res("posts")
+	p := list(users)
+	p.Page = plan.Page{Limit: 0, LimitSet: true}
+	p.Count = true
+	p.Filter = cond(f.col("users", "id"), plan.OpGt, 1)
+	p.Select = &plan.Node{Resource: users, Fields: []plan.FieldSel{{Column: f.col("users", "id"), Alias: "uid"}}, Embeds: []plan.Embed{{
+		Key: "posts", Relation: f.rel("users", "posts", ""),
+		Node: &plan.Node{Resource: posts, Fields: []plan.FieldSel{{Column: f.col("posts", "id")}}, Embeds: []plan.Embed{{
+			Key: "comments", Relation: f.rel("posts", "comments", ""), Node: fields(f.res("comments"), "id"),
+		}}},
+	}}}
+	if got := compile.Cost(p, 100); got != 1 {
+		t.Errorf("limit=0 cost = %d, want 1", got)
+	}
+	st := f.compile(p)
+	for _, bad := range []string{`"posts"`, `"comments"`, "LATERAL", "'uid'"} {
+		if strings.Contains(st.SQL, bad) {
+			t.Errorf("limit=0 statement still renders %s:\n%s", bad, st.SQL)
+		}
+	}
+	if !strings.Contains(st.SQL, "NULL::json AS data") || !strings.Contains(st.SQL, "LIMIT 1") {
+		t.Errorf("limit=0 statement:\n%s", st.SQL)
+	}
+	if len(st.Args) != 3 {
+		t.Errorf("args = %v, want the filter, the trim and the count filter", st.Args)
+	}
+	p.Select.Fields[0].Column = nil
+	p.Select.Fields[0].Agg = nil
+	if err := f.compileErr(p); err == nil {
+		t.Error("an invalid selection must still be rejected under limit=0")
+	}
+}
+
 func TestRenderGolden(t *testing.T) {
 	got := compile.RenderGolden("GET", "/api/users?limit=2", &compile.Statement{SQL: "SELECT 1", Args: []any{"happy", 2}})
 	want := "-- request: GET /api/users?limit=2\nSELECT 1\n-- args: [\"happy\",2]\n"

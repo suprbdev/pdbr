@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/suprbdev/pdbcore/httpx"
+
 	"github.com/suprbdev/pdbr/internal/api"
 	"github.com/suprbdev/pdbr/internal/compile"
 	"github.com/suprbdev/pdbr/internal/exec"
@@ -98,7 +100,7 @@ func isMutation(method string, m *api.Match) bool {
 
 // ServeRoute implements RouteHandler.
 func (h *Handler) ServeRoute(w http.ResponseWriter, r *http.Request, m *api.Match) {
-	w.Header().Add("Vary", "Accept")
+	httpx.AddVary(w.Header(), "Accept")
 	if h.rejectReadOnly(w, r, m) {
 		return
 	}

@@ -394,7 +394,10 @@ func (s *stmt) keyConds(t *introspect.Table, cols []string, vals []any, alias st
 // in a subquery reading only the columns the selection needs, and the embed
 // laterals join onto that page, so they run once per returned row rather
 // than for every row the sort reads. LIMIT is a literal, which lets
-// PostgreSQL reuse a generic plan for the prepared statement.
+// PostgreSQL reuse a generic plan for the prepared statement. A limit=0 page
+// is count-only: the selection is still compiled (so it is validated) but
+// not emitted, and the look-ahead row that decides has_next projects nothing
+// and runs no embed.
 func (s *stmt) list() (*Statement, error) {
 	r := s.plan.Resource
 	t := r.Table
@@ -426,9 +429,14 @@ func (s *stmt) list() (*Statement, error) {
 	}
 
 	alias := s.alias("t")
+	mark := len(s.ps.args)
 	jsonExpr, laterals, err := s.rootJSON(node, alias)
 	if err != nil {
 		return nil, err
+	}
+	if pp.limit == 0 {
+		s.ps.args = s.ps.args[:mark]
+		jsonExpr, laterals = "NULL::json", nil
 	}
 	terms := s.reorderForDistinct(s.orderTerms(t, s.plan.Order), dcols)
 	selectCols := []string{jsonExpr + " AS data"}

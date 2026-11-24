@@ -449,7 +449,7 @@ func (b *Builder) addResources() {
 			}
 			keys[key] = true
 			if IsReserved(key) {
-				b.Warn("field key starts with the reserved prefix "+ReservedPrefix+": only select=* returns it; select=, filters and order= cannot name it", "table", t.Schema+"."+t.Name, "column", c.Name, "key", key)
+				b.Warn("field key starts with the reserved prefix "+ReservedPrefix+": only select=* returns it and a body writes it; no query parameter can name it", "table", t.Schema+"."+t.Name, "column", c.Name, "key", key)
 			}
 			f := &Field{Column: c, Key: key, ReadOnly: c.GeneratedAlways(), Description: description(c.Comment)}
 			if postgis.IsRaster(strings.TrimPrefix(c.PGType, "_")) {

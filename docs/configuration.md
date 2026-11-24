@@ -75,7 +75,7 @@ See [cli.md](cli.md) for details.
 | `database.statement_timeout` | duration | `25s` | per-statement timeout on every request (`0` disables); expiry → `504 pg:57014`. Keep it below `server.request_timeout` (`30s`) so a slow statement fails with a database timeout the client can act on before the request itself is cut off |
 | `server.addr` | string | `:8080` | listen address |
 | `server.base_path` | string | `""` | prefix for every API route, e.g. `/api`; `""` (the default, as in PostgREST) mounts the API at the root. `/healthz` and `/readyz` are never prefixed |
-| `server.request_timeout` | duration | `30s` | overall HTTP request timeout; expiry → `504` problem |
+| `server.request_timeout` | duration | `30s` | overall HTTP request timeout; expiry → `504` problem; must be `>= 1s` (it cannot be disabled) |
 | `server.readyz_timeout` | duration | `2s` | deadline of the pool ping behind `GET /readyz`; must be `> 0` |
 | `server.cors_origins` | []string | `[]` | allowed CORS origins (exact match, or `*`); empty disables CORS headers and preflight |
 | `server.compression` | bool | `false` | gzip responses when the client sends `Accept-Encoding: gzip` |

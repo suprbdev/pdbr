@@ -21,7 +21,9 @@ returns an empty page, `[]`, with the usual count headers, so
 `?limit=0&count=true` (or `Prefer: count=exact`) reads only the total:
 `X-Total-Count` and `Content-Range: */<total>`, `206` when the total is not
 zero. It carries no `Link` or cursor headers, since there is no row to
-continue from. `<rel>.limit=0` gives an empty embedded list. `offset` is the only paging
+continue from. A root `limit=0` is count-only: the selection is validated
+but never projected, so no embed, spread or computed column runs, and the
+request costs 1 under [`limits.max_cost`](#cost-limit). `<rel>.limit=0` gives an empty embedded list. `offset` is the only paging
 mode for views and other PK-less resources, for `distinct=`, and for `SETOF`
 RPC results.
 
@@ -406,7 +408,8 @@ mult(other)  = 1                                                (columns, forwar
 cost(column) = 1   (a headline: 10 per 8192 characters of limits.max_headline_document, 80 by default; a spatial value with buffer=: 1 + 5)
 ```
 
-A list's multiplier is the number of rows its SQL can fetch: an embed
+A list's multiplier is the number of rows its SQL can fetch (0 for a root
+`limit=0`, which projects no row): an embed
 without `limit` fetches up to `limits.max_page_size` rows per parent, so it
 costs exactly what the same embed with `limit=<max_page_size>` costs —
 leaving the limit out never lowers an estimate. Set an embed `limit` (or

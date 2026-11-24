@@ -156,7 +156,7 @@ func (p *parser) resolveAggregate(node *plan.Node, it selectItem, fn plan.AggFun
 		}
 		fs.Column, fs.Path = f.Column, path
 	} else {
-		f := res.Field(name)
+		f := queryField(res, name)
 		if f == nil {
 			if res.Computed[name] != nil || res.Pseudo[name] != nil {
 				return errf(CodeInvalidSelect, "%s() needs a column; %q is a computed or derived field", fn, name)

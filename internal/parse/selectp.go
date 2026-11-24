@@ -188,8 +188,8 @@ func (p *parser) resolveSelectItem(node *plan.Node, it selectItem, depth int) er
 	switch {
 	case reserved:
 		fs.Pseudo = res.Pseudo[it.name]
-	case res.Field(it.name) != nil:
-		fs.Column = res.Field(it.name).Column
+	case queryField(res, it.name) != nil:
+		fs.Column = queryField(res, it.name).Column
 	case res.Computed[it.name] != nil:
 		fs.Computed = res.Computed[it.name]
 	case res.Raster(it.name) != nil && res.Raster(it.name).Column.IsArray:
@@ -418,7 +418,7 @@ func (p *parser) resolveValueItem(node *plan.Node, it selectItem) error {
 		}
 		fs.Column, fs.Path = f.Column, path
 	} else {
-		f := res.Field(col)
+		f := queryField(res, col)
 		if f == nil {
 			if res.Computed[col] != nil || res.Pseudo[col] != nil || len(res.Relations[col]) > 0 {
 				return errf(CodeInvalidSelect, "casts apply to columns and JSON paths; %q is not a column", col)

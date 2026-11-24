@@ -13,7 +13,8 @@ import (
 //	cost         = 1 + Σ mult(child) × cost(child)
 //	mult(list)   = the limit the compiled SQL applies: an explicit limit
 //	               clamped to maxPageSize, else maxPageSize (root list,
-//	               to-many embed or spread)
+//	               to-many embed or spread); a root limit=0 is count-only
+//	               (its look-ahead row projects nothing), so it costs 1
 //	mult(other)  = 1 (columns, forward embeds, single rows)
 //	cost(column) = 1; `*` costs the number of columns it expands to; an
 //	               aggregate function costs 1 like a column; a headline

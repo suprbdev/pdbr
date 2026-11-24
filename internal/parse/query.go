@@ -323,7 +323,7 @@ func (p *parser) parseOnConflict(val string, res *api.Resource) error {
 	var cols []string
 	for _, k := range strings.Split(val, ",") {
 		k = strings.TrimSpace(k)
-		f := res.Field(k)
+		f := queryField(res, k)
 		if f == nil {
 			return errf(CodeUnknownColumn, "unknown column %q on %q", k, resName(res))
 		}
@@ -363,6 +363,17 @@ func sameSet(a, b []string) bool {
 		seen[x]--
 	}
 	return true
+}
+
+// queryField resolves key to a column of res for a query-string position
+// (select=, filters, order=, distinct=, on_conflict=). A key in the
+// reserved namespace never names a column there, whatever the catalog holds,
+// so a column named ~x cannot change what ~x means in a request.
+func queryField(res *api.Resource, key string) *api.Field {
+	if api.IsReserved(key) {
+		return nil
+	}
+	return res.Field(key)
 }
 
 func resName(r *api.Resource) string {

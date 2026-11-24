@@ -226,9 +226,9 @@ func TestErrorCodesNeedingConfig(t *testing.T) {
 		})
 	})
 	t.Run("timeout", func(t *testing.T) {
-		srv := testServer(t, func(c *config.Config) { c.Server.RequestTimeout = 300 * time.Millisecond }).URL
+		srv := testServer(t, func(c *config.Config) { c.Server.RequestTimeout = time.Second }).URL
 		runRows(t, srv, []errorRow{
-			{name: "request_timeout", path: "/api/rpc/e2e_slow?seconds=2", status: 504, code: "timeout"},
+			{name: "request_timeout", path: "/api/rpc/e2e_slow?seconds=3", status: 504, code: "timeout"},
 		})
 	})
 	t.Run("statement_timeout", func(t *testing.T) {

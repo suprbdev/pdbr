@@ -1,0 +1,1 @@
+GET /api/rpc/search_posts?term=rest&author_id=eq.1&limit=0&offset=2&count=true&select=id,title,users(email)
