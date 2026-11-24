@@ -12,6 +12,8 @@ becomes the release notes of the next tag.
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-11-24
+
 ### Security
 
 - **`limit=0` ran the whole selection (medium).** A root `limit=0` was
