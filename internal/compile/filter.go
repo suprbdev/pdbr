@@ -822,7 +822,7 @@ func spatialOpName(op plan.Op) (string, bool) {
 		return "", false
 	}
 	name = strings.ReplaceAll(strings.TrimPrefix(name, "st_"), "_", "")
-	for _, o := range postgis.Ops {
+	for _, o := range postgis.Ops() {
 		if o.Kind() != postgis.ArgBoolean && strings.ToLower(o.Name) == name {
 			return o.Name, true
 		}

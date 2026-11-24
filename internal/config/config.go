@@ -13,8 +13,6 @@ import (
 	"strings"
 	"time"
 
-	flag "github.com/spf13/pflag"
-
 	"github.com/suprbdev/pdbcore/auth"
 	"github.com/suprbdev/pdbcore/confx"
 	"github.com/suprbdev/pdbcore/contrib"
@@ -206,13 +204,21 @@ func DefaultConfig() Config {
 	}
 }
 
+// RemovedKeys maps pdbr keys removed before 1.0 without a replacement to
+// the reason, so loading an old config says why the key is unknown.
+var RemovedKeys = map[string]string{
+	"transactions.mutations":                               "every write runs in a transaction",
+	"plugins.settings.nested_mutations.force_transactions": "nested writes always run in a transaction",
+}
+
 // Load builds the effective config: defaults, then the optional YAML file,
-// then PDBR_* env vars, then flags (highest precedence), and validates it.
-// Pass only the flags the user actually set (confx.ChangedFlags). Loading
-// is strict: unknown keys in the file, and unknown PDBR_* variables inside
-// a config section, are errors naming the key they moved to or the
+// then PDBR_* env vars, then flags (highest precedence: koanf path to
+// value, see confx.WithFlags), and validates it. Pass only the flags the
+// user actually set (cliflags.Changed). Loading is strict: unknown keys in
+// the file, and unknown PDBR_* variables inside a config section, are
+// errors naming the key they moved to, why they were removed, or the
 // closest valid one.
-func Load(path string, flags *flag.FlagSet) (Config, error) {
+func Load(path string, flags map[string]any) (Config, error) {
 	cfg, err := LoadUnvalidated(path, flags)
 	if err != nil {
 		return cfg, err
@@ -222,9 +228,9 @@ func Load(path string, flags *flag.FlagSet) (Config, error) {
 
 // LoadUnvalidated is Load without the final Validate, for callers that
 // adjust the config first (UseConnectionIdentity) and then validate it.
-func LoadUnvalidated(path string, flags *flag.FlagSet) (Config, error) {
+func LoadUnvalidated(path string, flags map[string]any) (Config, error) {
 	cfg := DefaultConfig()
-	err := confx.Load(EnvPrefix, path, flags, &cfg, confx.WithMoved(MovedKeys))
+	err := confx.Load(EnvPrefix, path, &cfg, confx.WithMoved(MovedKeys), confx.WithRemoved(RemovedKeys), confx.WithFlags(flags))
 	return cfg, err
 }
 
@@ -241,6 +247,7 @@ func (c *Config) UseConnectionIdentity() {
 // violations together.
 func (c *Config) Validate() error {
 	var errs []string
+	errs = append(errs, confx.ValidateDatabase(c.Database)...)
 	errs = append(errs, confx.ValidateErrors(c.Errors)...)
 	errs = append(errs, confx.ValidateIdentity(c.Auth, c.Roles, c.Claims)...)
 	errs = append(errs, confx.ValidateTX(confx.TX{Isolation: c.TX.Isolation, MaxRetries: c.TX.MaxRetries})...)

@@ -4,8 +4,6 @@
 package pdbr
 
 import (
-	flag "github.com/spf13/pflag"
-
 	"github.com/suprbdev/pdbcore/confx"
 	coreinflect "github.com/suprbdev/pdbcore/inflect"
 	"github.com/suprbdev/pdbcore/introspect"
@@ -48,8 +46,10 @@ type (
 func DefaultConfig() Config { return config.DefaultConfig() }
 
 // LoadConfig builds the effective config: defaults < YAML < PDBR_* env <
-// flags (nil flags is fine) and validates it.
-func LoadConfig(path string, flags *flag.FlagSet) (Config, error) {
+// flags, given as koanf path to value (nil is fine; cliflags.Changed in
+// github.com/suprbdev/pdbcore/confx/cliflags reads them from a pflag set),
+// and validates it.
+func LoadConfig(path string, flags map[string]any) (Config, error) {
 	return config.Load(path, flags)
 }
 

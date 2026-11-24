@@ -348,7 +348,10 @@ func (a *App) BuildContractAPI(ctx context.Context, cat *introspect.Catalog, nam
 	if err != nil {
 		return nil, err
 	}
-	view, sum := ct.Spec().View(cat)
+	view, sum, err := ct.Spec().View(cat)
+	if err != nil {
+		return nil, err
+	}
 	a.Log.Debug("contract view", "contract", name, "hidden_tables", sum.Tables, "hidden_columns", sum.Columns,
 		"hidden_functions", sum.Functions, "hidden_foreign_keys", sum.ForeignKeys)
 	built, err := a.buildAPI(ctx, tableKeys(cat), view, a.Config.ContractBase(ct))
@@ -427,12 +430,20 @@ func (a *App) routeHandler(built *api.Built, in instruments) *server.Handler {
 	if a.pool != nil {
 		db = a.pool
 	}
+	iso, err := pgexec.ParseIsolation(a.Config.TX.Isolation)
+	if err != nil {
+		a.Log.Error("invalid transactions.isolation; transactions use the server's default isolation", "err", err)
+	}
+	detail, err := pgexec.ParseDetail(a.Config.Errors.Detail)
+	if err != nil {
+		a.Log.Error("invalid errors.detail; database errors are sanitized as in prod", "err", err)
+	}
 	ex := exec.New(db, built, chain, execHooks, exec.Options{
-		Isolation:         pgexec.ParseIsolation(a.Config.TX.Isolation),
+		Isolation:         iso,
 		MaxRetries:        a.Config.TX.MaxRetries,
 		ClaimsPrefix:      a.Config.Claims.Prefix,
 		ClaimsJSONSetting: a.Config.Claims.JSONSetting,
-		Detail:            pgexec.ParseDetail(a.Config.Errors.Detail),
+		Detail:            detail,
 		MaxCost:           a.Config.Limits.MaxCost,
 		MaxEmbedDepth:     a.Config.Limits.MaxDepth,
 		MaxPageSize:       a.Config.Limits.MaxPageSize,
@@ -654,7 +665,7 @@ func (a *App) buildContractServer(ctx context.Context, cat *introspect.Catalog, 
 // calling rebuild with every changed catalog.
 func (a *App) startWatch(ctx context.Context, bootHash string, rebuild func(context.Context, *introspect.Catalog)) {
 	wctx, cancel := context.WithCancel(ctx)
-	w := &watch.Watcher{
+	w, err := watch.New(watch.Config{
 		Pool:         a.pool,
 		Schemas:      a.Config.Schema.Schemas,
 		Channel:      a.Config.Watch.Channel,
@@ -662,7 +673,12 @@ func (a *App) startWatch(ctx context.Context, bootHash string, rebuild func(cont
 		Log:          a.Log,
 		TriggerName:  "pdbr_watch",
 		InitialHash:  bootHash,
-		OnChange:     func(cat *introspect.Catalog) { rebuild(wctx, cat) },
+		OnChange:     rebuild,
+	})
+	if err != nil {
+		cancel()
+		a.Log.Error("watch: not started", "err", err)
+		return
 	}
 	done := make(chan struct{})
 	go func() {

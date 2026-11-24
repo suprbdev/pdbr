@@ -602,7 +602,7 @@ func TestSpatialOpsMatchPlan(t *testing.T) {
 	if spatial != len(plan.SpatialOps)-1 {
 		t.Errorf("parser has %d spatial operators, plan.SpatialOps %d (with the internal geometry form of bbox_intersects)", spatial, len(plan.SpatialOps))
 	}
-	if want := len(postgis.Ops) - 2; len(plan.SpatialOps) != want {
+	if want := len(postgis.Ops()) - 2; len(plan.SpatialOps) != want {
 		t.Errorf("plan.SpatialOps has %d operators, pdbcore %d (excluding isNull and orderingEquals)", len(plan.SpatialOps), want)
 	}
 }

@@ -8,6 +8,7 @@ package smartcomments
 
 import (
 	"context"
+	"log/slog"
 	"sort"
 	"strings"
 
@@ -20,10 +21,28 @@ import (
 	"github.com/suprbdev/pdbr/internal/inflect"
 )
 
-// Plugin embeds the shared catalog half (Name, Priority, TransformCatalog,
-// Index) and adds Inflect and TransformAPI.
+// Plugin embeds the shared catalog half (Name, Priority, Index) and adds
+// TransformCatalog's smart-tag checks, Inflect and TransformAPI.
 type Plugin struct {
 	*catalog.Hook
+	// findings are the smart-tag issues of the last TransformCatalog,
+	// logged by TransformAPI once the configured logger is known.
+	findings []catalog.Finding
+}
+
+// vocabulary is what pdbr honours: the @omit actions of TransformAPI and
+// the catalog hook, on top of pdbcore's omit and contract @behavior
+// tokens.
+var vocabulary = smarttags.Vocabulary{
+	OmitActions: []string{"read", "all", "create", "update", "delete", "many", "filter", "order"},
+}
+
+// TransformCatalog records the unknown @omit actions and unknown or
+// deprecated @behavior tokens of the catalog (see catalog.Check), then
+// runs the shared catalog half.
+func (p *Plugin) TransformCatalog(ctx context.Context, c *introspect.Catalog) error {
+	p.findings = catalog.Check(c, vocabulary)
+	return p.Hook.TransformCatalog(ctx, c)
 }
 
 // Name is the plugin name (plugins.disabled entry). It replaces the
@@ -101,6 +120,13 @@ func (p *Plugin) constraintTags(in coreinflect.Input) smarttags.Tags {
 // backward-embed removal, deprecation marks and enum renames.
 func (p *Plugin) TransformAPI(_ context.Context, b *api.Builder) error {
 	p.SetLogger(b.Options.Logger)
+	log := b.Options.Logger
+	if log == nil {
+		log = slog.Default()
+	}
+	for _, f := range p.findings {
+		log.Warn("smart_comments: "+f.Message(), f.Args()...)
+	}
 	for _, key := range sortedKeys(b.Resources) {
 		r := b.Resources[key]
 		p.applyTableTags(b, r)

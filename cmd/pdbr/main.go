@@ -16,6 +16,7 @@ import (
 
 	"github.com/suprbdev/pdbcore/cache"
 	"github.com/suprbdev/pdbcore/confx"
+	"github.com/suprbdev/pdbcore/confx/cliflags"
 	"github.com/suprbdev/pdbcore/contrib"
 	"github.com/suprbdev/pdbcore/introspect"
 
@@ -108,14 +109,14 @@ func loadConfigRaw(cmd *cobra.Command) (config.Config, error) {
 // the flags named after a config path (configFlags), leaving out --config
 // and command options such as --cache or --print-sql, which strict loading
 // would reject as unknown keys.
-func changedConfigFlags(cmd *cobra.Command) *pflag.FlagSet {
+func changedConfigFlags(cmd *cobra.Command) map[string]any {
 	var local []string
 	cmd.Flags().VisitAll(func(f *pflag.Flag) {
 		if !strings.Contains(f.Name, ".") {
 			local = append(local, f.Name)
 		}
 	})
-	return confx.ChangedFlags(cmd.Flags(), local...)
+	return cliflags.Changed(cmd.Flags(), local...)
 }
 
 // loadConnectionConfig loads the config of a command that serves no HTTP
