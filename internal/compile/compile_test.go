@@ -1161,9 +1161,10 @@ func TestCost(t *testing.T) {
 	}
 	limitless := compile.Cost(p, 100)
 	p.Select.Embeds[0].Page = plan.Page{Limit: 0, LimitSet: true}
-	if got := compile.Cost(p, 100); got != limitless {
-		t.Errorf("limit=0 embed cost %d, want %d (the compiler applies max_page_size)", got, limitless)
+	if got := compile.Cost(p, 100); got != 1+20*(1+1) {
+		t.Errorf("limit=0 embed cost %d, want %d (the embed returns no rows)", got, 1+20*(1+1))
 	}
+	p.Select.Embeds[0].Page = plan.Page{}
 	p.Select.Embeds[0].Spread = true
 	if got := compile.Cost(p, 100); got != limitless {
 		t.Errorf("to-many spread cost %d, want %d", got, limitless)

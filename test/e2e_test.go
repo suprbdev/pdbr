@@ -489,10 +489,23 @@ func TestPagination(t *testing.T) {
 	if res.StatusCode != 206 || len(body) != 0 || res.Header.Get("X-Total-Count") != "4" || res.Header.Get("X-Next-Cursor") == "" {
 		t.Errorf("HEAD = %d %q %v", res.StatusCode, body, res.Header)
 	}
+	res = getJSON(t, srv.URL+"/api/posts?limit=0&count=true", &rows)
+	if res.StatusCode != 206 || len(rows) != 0 || res.Header.Get("X-Total-Count") != "4" || res.Header.Get("Content-Range") != "*/4" ||
+		res.Header.Get("Link") != "" || res.Header.Get("X-Next-Cursor") != "" {
+		t.Errorf("limit=0 = %d %v %v", res.StatusCode, rows, res.Header)
+	}
+	res = getJSON(t, srv.URL+"/api/metrics?limit=0&offset=1", &rows)
+	if res.StatusCode != 200 || len(rows) != 0 || res.Header.Get("Link") != "" {
+		t.Errorf("offset-paged limit=0 = %d %v %v", res.StatusCode, rows, res.Header)
+	}
+	res = getJSON(t, srv.URL+"/api/users?select=id,posts(id)&posts.limit=0&id=eq.1", &rows)
+	if ps, ok := rows[0]["posts"].([]any); res.StatusCode != 200 || !ok || len(ps) != 0 {
+		t.Errorf("posts.limit=0 = %d %v", res.StatusCode, rows)
+	}
 	// errors
 	for q, code := range map[string]string{
 		"posts?limit=101":                                    "page_size_exceeded",
-		"posts?limit=0":                                      "invalid_parameter",
+		"posts?limit=-1":                                     "invalid_parameter",
 		"posts?offset=-1":                                    "invalid_parameter",
 		"metrics?after=WyJwdWJsaWMucG9zdHMiLDJd":             "keyset_unsupported",
 		"posts?after=nope":                                   "invalid_cursor",

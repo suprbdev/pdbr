@@ -666,7 +666,7 @@ func TestEmbedParams(t *testing.T) {
 		t.Fatalf("expected relation filter, got %#v", p.Filter)
 	}
 	for u, code := range map[string]string{
-		"/api/users?select=id,posts(id)&posts.limit=0":         CodeInvalidParameter,
+		"/api/users?select=id,posts(id)&posts.limit=-1":        CodeInvalidParameter,
 		"/api/users?select=id,posts(id)&posts.limit=101":       CodePageSizeExceeded,
 		"/api/users?select=id,posts(id)&posts.offset=-1":       CodeInvalidParameter,
 		"/api/users?select=id,posts(id)&posts.after=x":         CodeInvalidParameter,
@@ -866,6 +866,10 @@ func TestPaging(t *testing.T) {
 	if p.Count {
 		t.Fatal("count=false")
 	}
+	p = mustParse(t, b, "/api/users?limit=0&select=id,posts(id)&posts.limit=0")
+	if p.Page.Limit != 0 || !p.Page.LimitSet || p.Select.Embeds[0].Page.Limit != 0 || !p.Select.Embeds[0].Page.LimitSet {
+		t.Fatalf("limit=0 page = %+v, embed %+v", p.Page, p.Select.Embeds[0].Page)
+	}
 	after := base64.RawURLEncoding.EncodeToString([]byte(`["public.posts", 7]`))
 	p = mustParse(t, b, "/api/posts?after="+after)
 	if !reflect.DeepEqual(p.Page.After, []any{int64(7)}) {
@@ -886,7 +890,7 @@ func TestPaging(t *testing.T) {
 	}
 	other := base64.RawURLEncoding.EncodeToString([]byte(`["public.users", 7]`))
 	for u, code := range map[string]string{
-		"/api/posts?limit=0":         CodeInvalidParameter,
+		"/api/posts?limit=-2":        CodeInvalidParameter,
 		"/api/posts?limit=-1":        CodeInvalidParameter,
 		"/api/posts?limit=abc":       CodeInvalidParameter,
 		"/api/posts?limit=101":       CodePageSizeExceeded,

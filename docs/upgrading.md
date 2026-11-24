@@ -302,6 +302,9 @@ branch on `code` need these changes; statuses are unchanged.
 - **`embed_depth_exceeded` is `depth_exceeded`**, the code pdbq uses for
   the same `limits.max_depth` limit (also for the nested-mutation depth).
 - **`not_implemented` (501) is gone.** It was never emitted.
+- **`limit=0` is allowed**, as in PostgREST: an empty page with its count
+  headers (`?limit=0&count=true` reads only the total) and no `Link` or
+  cursors, and an empty list for `<rel>.limit=0`. It was `400`.
 - **A hook's `UserError` without a code is `invalid_parameter`** (it was
   `invalid_filter`).
 - **Embedding API**: `compile.ErrNotImplemented` and the

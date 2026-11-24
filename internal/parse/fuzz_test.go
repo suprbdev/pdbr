@@ -117,7 +117,7 @@ func FuzzParse(f *testing.F) {
 			}
 			p, err := Parse(built, m, r, opts)
 			if err == nil {
-				if p == nil || p.Page.Limit <= 0 && m.RPC == nil {
+				if p == nil || p.Page.Limit <= 0 && !p.Page.LimitSet && m.RPC == nil {
 					t.Fatalf("plan without page limit: %+v", p)
 				}
 				continue

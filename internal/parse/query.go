@@ -190,7 +190,7 @@ func (p *parser) parseQueryWith(raw string, res *api.Resource, extra func(key, v
 	if err := p.applyRange(); err != nil {
 		return err
 	}
-	if p.req.Page.Limit == 0 {
+	if !p.req.Page.LimitSet {
 		p.req.Page.Limit = p.opts.maxPageSize()
 	}
 	if err := p.checkPaging(res); err != nil {
@@ -270,8 +270,8 @@ func (p *parser) parseLimit(val string) (int, error) {
 	if err != nil {
 		return 0, errf(CodeInvalidParameter, "limit must be an integer, got %q", val)
 	}
-	if n <= 0 {
-		return 0, errf(CodeInvalidParameter, "limit must be positive, got %d", n)
+	if n < 0 {
+		return 0, errf(CodeInvalidParameter, "limit must not be negative, got %d", n)
 	}
 	if n > p.opts.maxPageSize() {
 		return 0, errf(CodePageSizeExceeded, "limit %d exceeds the maximum page size %d", n, p.opts.maxPageSize())

@@ -859,9 +859,9 @@ func (s *stmt) listInnerWith(node *plan.Node, filter plan.Expr, order []plan.Ord
 }
 
 // embedLimit resolves an embed's page size: the cap when absent, rejected
-// (never clamped) when above it.
+// (never clamped) when above it; an explicit 0 selects no rows.
 func (s *stmt) embedLimit(page plan.Page) (int, error) {
-	if page.Limit <= 0 {
+	if !page.LimitSet && page.Limit <= 0 {
 		return s.maxPageSize, nil
 	}
 	if page.Limit > s.maxPageSize {

@@ -9,14 +9,19 @@ compile into the single statement, and both are driven by `order=`.
 
 | Param | Default | Notes |
 |---|---|---|
-| `limit` | `limits.max_page_size` (100) | larger than the cap → `400 page_size_exceeded`; `0` or negative → `400`; also set by the [`Range` header](#range-request-header) |
+| `limit` | `limits.max_page_size` (100) | larger than the cap → `400 page_size_exceeded`; negative → `400 invalid_parameter`; `0` returns no rows (see below); also set by the [`Range` header](#range-request-header) |
 | `offset` | `0` | negative → `400`; cannot combine with `before` |
 
 ```http
 GET /posts?limit=20&offset=40
 ```
 
-Absent `limit` means the cap, not "everything". `offset` is the only paging
+Absent `limit` means the cap, not "everything". `limit=0` (as in PostgREST)
+returns an empty page, `[]`, with the usual count headers, so
+`?limit=0&count=true` (or `Prefer: count=exact`) reads only the total:
+`X-Total-Count` and `Content-Range: */<total>`, `206` when the total is not
+zero. It carries no `Link` or cursor headers, since there is no row to
+continue from. `<rel>.limit=0` gives an empty embedded list. `offset` is the only paging
 mode for views and other PK-less resources, for `distinct=`, and for `SETOF`
 RPC results.
 
@@ -438,8 +443,8 @@ costs 1 and `*` costs the number of columns it expands to (a
 argument adds `pdbcore/postgis.BufferCost`, 5); a root list without
 an explicit `limit` uses its **effective** limit (`limits.max_page_size`,
 default 100) as the multiplier, and so does a backward embed without an
-explicit `limit` (`limit=0` included), since that is the limit its SQL
-applies.
+explicit `limit`, since that is the limit its SQL applies; `limit=0` (root
+or embed) multiplies by 0.
 
 ## Per-embed pagination
 

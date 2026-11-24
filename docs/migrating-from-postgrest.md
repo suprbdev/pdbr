@@ -45,7 +45,6 @@ Differences:
 | Base path | `/` | `server.base_path` defaults to `""` (the root); set it to e.g. `/api` to prefix routes |
 | Schemas | `Accept-Profile` / `Content-Profile` headers choose the schema | The path does: `/{schema}/{table}`; the bare form is the first entry of `schema.schemas`. The profile headers are ignored |
 | `limit` above the cap | clamped to `db-max-rows` | `400 page_size_exceeded` when `limit` exceeds `limits.max_page_size` (100 by default); a `Range` header is clamped |
-| `limit=0` | returns no rows | `400` |
 | Default page | unbounded unless `db-max-rows` is set | a list without `limit` returns at most `limits.max_page_size` rows, with `Link` and `X-Next-Cursor` headers to continue |
 | Pagination | `limit`/`offset`/`Range` | also keyset cursors (`after=`, `before=`), `X-Total-Count` next to `Content-Range`; a keyset page has no `Content-Range` |
 | Ordering | PostgreSQL's default: `NULLS FIRST` for `DESC` | `NULLS LAST` for both directions unless `nullsfirst` / `nullslast` is given |

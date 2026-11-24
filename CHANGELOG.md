@@ -23,6 +23,8 @@ becomes the release notes of the next tag.
 
 ### Changed
 
+- `limit=0` (and `<rel>.limit=0`) is allowed, as in PostgREST: an empty
+  page with its count headers; it was `400`.
 - `go install github.com/suprbdev/pdbr/cmd/pdbr@vX.Y.Z` builds report the
   module version in `pdbr --version`.
 - Contracts, nested mutations, partial mutations, rasters,
