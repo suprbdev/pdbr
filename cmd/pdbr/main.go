@@ -149,6 +149,7 @@ func rootCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return config.ExplainFlagError(err) })
 	root.PersistentFlags().String("config", "", "path to config file (default: ./pdbr.yaml if present)")
 	root.AddCommand(serveCmd(), requestCmd(), schemaCmd(), configCmd(), pluginsCmd())
 	return root

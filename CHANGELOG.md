@@ -12,6 +12,15 @@ becomes the release notes of the next tag.
 
 ## [Unreleased]
 
+### Fixed
+
+- A removed or moved 0.x flag (`--server.max_cost`, `--server.tx_end`,
+  kebab-case plugin flags) names its replacement or the reason it was removed,
+  as the config keys and environment variables do, instead of a bare
+  `unknown flag`.
+- Tests cover `413 body_too_large` for oversized bodies that are not JSON,
+  including chunked ones.
+
 ### Documentation
 
 - Fix the quickstart (the `Location` and `unknown_column` samples, the

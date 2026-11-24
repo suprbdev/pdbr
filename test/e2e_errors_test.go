@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -223,6 +224,23 @@ func TestErrorCodesNeedingConfig(t *testing.T) {
 		big := `{"email":"` + strings.Repeat("x", 100) + `"}`
 		runRows(t, srv, []errorRow{
 			{name: "content-length", method: "POST", path: "/api/users", body: big, status: 413, code: "body_too_large"},
+			{name: "not JSON", method: "POST", path: "/api/users", body: strings.Repeat("x", 100), hdr: map[string]string{"Content-Type": "application/json"}, status: 413, code: "body_too_large"},
+			{name: "not JSON text/plain", method: "POST", path: "/api/users", body: strings.Repeat("x", 100), hdr: map[string]string{"Content-Type": "text/plain"}, status: 413, code: "body_too_large"},
+			{name: "not JSON rpc", method: "POST", path: "/api/rpc/add_numbers", body: strings.Repeat("x", 100), hdr: map[string]string{"Content-Type": "application/json"}, status: 413, code: "body_too_large"},
+		})
+		t.Run("chunked not JSON", func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodPost, srv+"/api/users", io.NopCloser(strings.NewReader(strings.Repeat("x", 100))))
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Content-Type", "application/json")
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer res.Body.Close()
+			b, _ := io.ReadAll(res.Body)
+			wantProblem(t, res, b, 413, "body_too_large")
 		})
 	})
 	t.Run("timeout", func(t *testing.T) {

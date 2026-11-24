@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -224,5 +225,24 @@ func TestRequestIdentityLive(t *testing.T) {
 	}
 	if got := ids("--role", "anonymous", "--claims", `{"user_id": 1}`); got != all {
 		t.Errorf("--role anonymous --claims user 1 = %s", got)
+	}
+}
+
+func TestOldFlagsNameTheirReplacement(t *testing.T) {
+	for args, want := range map[string]string{
+		"serve --server.tx_end=commit":                        "unknown flag: --server.tx_end: moved to --transactions.end",
+		"serve --server.max_cost=5":                           "unknown flag: --server.max_cost: moved to --limits.max_cost",
+		"serve --plugins.settings.advanced-filters.enabled=1": "moved to --plugins.settings.advanced_filters.enabled",
+		"serve --rls.enabled=false":                           "moved to --roles.switch",
+		"plugins list --transactions.mutations":               "removed: every write runs in a transaction",
+	} {
+		cmd := rootCmd()
+		cmd.SetArgs(strings.Fields(args))
+		cmd.SetOut(io.Discard)
+		cmd.SetErr(io.Discard)
+		err := cmd.Execute()
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: err = %v, want %q", args, err, want)
+		}
 	}
 }

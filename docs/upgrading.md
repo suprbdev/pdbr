@@ -183,8 +183,8 @@ Loading a config or environment that uses an old key fails and names the
 new one (`unknown key server.tx_end: moved to transactions.end`,
 `unknown environment variable PDBR_SERVER_MAX__COST (server.max_cost):
 moved to PDBR_LIMITS_MAX__COST`); flags are renamed the same way
-(`--server.tx_end` is `--transactions.end`), but an old flag is only rejected
-as `unknown flag` without a suggestion: use the table below.
+(`--server.tx_end` is `--transactions.end`), and an old flag is rejected with
+the same hint (`unknown flag: --server.tx_end: moved to --transactions.end`).
 
 - **`server.base_path` defaults to `""`** (was `/api`): the API is mounted
   at the root, as in PostgREST, so `GET /api/users` is now `GET /users` and

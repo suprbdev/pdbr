@@ -15,6 +15,7 @@ import (
 
 	"github.com/suprbdev/pdbcore/auth"
 	"github.com/suprbdev/pdbcore/confx"
+	"github.com/suprbdev/pdbcore/confx/cliflags"
 	"github.com/suprbdev/pdbcore/contrib"
 
 	"github.com/suprbdev/pdbr/internal/plugins/advancedfilters"
@@ -209,6 +210,14 @@ func DefaultConfig() Config {
 var RemovedKeys = map[string]string{
 	"transactions.mutations":                               "every write runs in a transaction",
 	"plugins.settings.nested_mutations.force_transactions": "nested writes always run in a transaction",
+}
+
+// ExplainFlagError adds the moved-to or removed hint to the error of an
+// unknown flag that names an old config key (--server.tx_end), as loading
+// the key from a file or PDBR_* variable does.
+func ExplainFlagError(err error) error {
+	cfg := DefaultConfig()
+	return cliflags.Explain(err, &cfg, confx.WithMoved(MovedKeys), confx.WithRemoved(RemovedKeys))
 }
 
 // Load builds the effective config: defaults, then the optional YAML file,
