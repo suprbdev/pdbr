@@ -12,6 +12,8 @@ becomes the release notes of the next tag.
 
 ## [Unreleased]
 
+## [1.0.0-rc.2] - 2026-11-24
+
 ### Fixed
 
 - A removed or moved 0.x flag (`--server.max_cost`, `--server.tx_end`,
