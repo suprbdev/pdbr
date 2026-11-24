@@ -297,14 +297,12 @@ func TestIfMatch(t *testing.T) {
 	if res.StatusCode != 204 || len(body) != 0 {
 		t.Fatalf("DELETE If-Match * minimal = %d %s", res.StatusCode, body)
 	}
-	// server.etags: false ignores If-Match entirely
+	// server.etags: false refuses If-Match instead of writing unconditionally
 	srv2 := testServer(t, func(c *config.Config) { c.Server.Etags = false })
 	sendJSON(t, "POST", srv2.URL+"/api/users", `{"email": "`+uniqueEmail(t)+`"}`, 201, &u)
 	path = fmt.Sprintf("%s/api/users/%d", srv2.URL, rowID(t, u))
 	res, body = send(t, "PATCH", path, `{"full_name":"x"}`, map[string]string{"If-Match": `W/"stale"`})
-	if res.StatusCode != 200 {
-		t.Fatalf("etags off: %d %s", res.StatusCode, body)
-	}
+	wantProblem(t, res, body, 400, "if_match_unsupported")
 	sendJSON(t, "DELETE", path, "", 200, nil)
 }
 

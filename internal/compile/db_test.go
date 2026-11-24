@@ -229,7 +229,7 @@ func TestAgainstDatabase(t *testing.T) {
 			Etag string          `json:"etag"`
 			Row  json.RawMessage `json:"row"`
 		}
-		if err := json.Unmarshal(data, &w); err != nil || len(w.Etag) != 32 || len(w.Row) == 0 {
+		if err := json.Unmarshal(data, &w); err != nil || len(w.Etag) != 65 || w.Etag[32] != '.' || len(w.Row) == 0 {
 			t.Errorf("etag wrapper: %s", data)
 		}
 		var row map[string]any

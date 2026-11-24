@@ -131,8 +131,8 @@ func loadConnectionConfig(cmd *cobra.Command) (config.Config, error) {
 	return cfg, cfg.Validate()
 }
 
-func newApp(cfg config.Config) *pdbr.App {
-	return pdbr.New(cfg, pdbr.WithVersion(version))
+func newApp(cfg config.Config, opts ...pdbr.Option) *pdbr.App {
+	return pdbr.New(cfg, append([]pdbr.Option{pdbr.WithVersion(version)}, opts...)...)
 }
 
 func signalContext() context.Context {
@@ -172,7 +172,7 @@ func serveCmd() *cobra.Command {
 }
 
 func requestCmd() *cobra.Command {
-	var body, accept string
+	var body, accept, role, claims string
 	var headers []string
 	var include, printSQL bool
 	cmd := &cobra.Command{
@@ -180,7 +180,18 @@ func requestCmd() *cobra.Command {
 		Short: "Run a one-off request through the real handler (body to stdout, status to stderr)",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loadConnectionConfig(cmd)
+			cfg, err := loadConfigRaw(cmd)
+			if err != nil {
+				return err
+			}
+			cfg.UseConnectionIdentity()
+			if err := useRequestIdentity(&cfg, role); err != nil {
+				return err
+			}
+			if err := cfg.Validate(); err != nil {
+				return err
+			}
+			idClaims, err := parseClaims(claims)
 			if err != nil {
 				return err
 			}
@@ -189,7 +200,7 @@ func requestCmd() *cobra.Command {
 			}
 			return runRequest(signalContext(), cfg, requestSpec{
 				method: strings.ToUpper(args[0]), path: args[1], body: body, headers: headers,
-				include: include, printSQL: printSQL,
+				include: include, printSQL: printSQL, claims: idClaims,
 			}, cmd.OutOrStdout(), cmd.ErrOrStderr())
 		},
 	}
@@ -198,6 +209,8 @@ func requestCmd() *cobra.Command {
 	cmd.Flags().StringVar(&accept, "accept", "", "Accept header (shorthand for --header 'Accept: ...')")
 	cmd.Flags().BoolVarP(&include, "include", "i", false, "print response headers before the body")
 	cmd.Flags().BoolVar(&printSQL, "print-sql", false, "print the compiled SQL and parameters instead of executing")
+	cmd.Flags().StringVar(&role, "role", "", "run the request as this database role (SET LOCAL ROLE; default: the connection role)")
+	cmd.Flags().StringVar(&claims, "claims", "", `request claims as a JSON object, exposed through claims.prefix / claims.json_setting (default: none)`)
 	configFlags(cmd)
 	return cmd
 }

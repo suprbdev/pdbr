@@ -394,3 +394,41 @@ below is breaking; the old spellings are `400` errors (`invalid_filter`,
 | raster `<col>=intersects.<geom>` | `<col>=st_intersects.<geom>` |
 | a column named `near` (`trgm`, …) turns `near=` into a filter and removes the distance surface | `near=` filters the column; `~near=` and the distance surface are unaffected |
 | a real column `location_area` hides the accessor | both exist: `location_area` and `~location_area` |
+
+### ETags, CLI identity and routes
+
+- **ETags have two parts**: `W/"<row>.<repr>"`. `<row>` hashes the row as
+  `select=*` renders it, so hidden attributes of composite and domain
+  values no longer reach it (a change to one alone used to change the
+  ETag). `<repr>` hashes the response body, so the ETag now changes when an
+  embed, a computed column or the media type of the response does, and
+  `If-None-Match` answers `304` only for an unchanged representation (it
+  used to answer `304` for `?select=id,posts(*)` after an embedded post
+  changed). Stored ETags from 0.x never match: read the row again.
+- **`If-Match` compares the `<row>` part**, so a tag read through any
+  `select=`, embed or `Accept` still guards the write; a bare `<row>` tag
+  works too.
+- **`If-Match` with `server.etags: false` is `400 if_match_unsupported`**
+  on every route. It was silently ignored, so the write ran
+  unconditionally.
+- **`Vary: Accept`** is on every API response, since the body depends on
+  `Accept` (JSON, CSV, GeoJSON).
+- **`/{schema}/rpc/{x}` always names a function.** A table named `rpc` no
+  longer answers on `/{schema}/rpc/{pk}` when no function `{pk}` exists
+  (creating one used to take the URL over); its list and `/by/` paths stay,
+  and the build logs a warning. Use a `/by/` path, rename the table
+  (`@name`), or expose it through a view. Created rows of such a table get
+  no `Location`.
+- **`pdbr request --role NAME --claims '{json}'`** run the request as a
+  role with claims, as a server would. The default is unchanged: the
+  connection role, no claims.
+
+| 0.x | 1.0 | Notes |
+|---|---|---|
+| `ETag: W/"<md5 of the exposed columns>"` | `ETag: W/"<row>.<repr>"` | `<row>`: the `select=*` rendering; `<repr>`: the response body |
+| `If-None-Match` → `304` when the root row's columns are unchanged | `304` only when the whole representation is unchanged | embeds, computed columns and `Accept` count |
+| `If-Match` compares the whole tag | compares the `<row>` part | tags without `.<repr>` are accepted |
+| `If-Match` ignored with `server.etags: false` | `400 if_match_unsupported` | |
+| no `Vary` from the API | `Vary: Accept` | added to `Vary: Origin` / `Accept-Encoding` |
+| `/{schema}/rpc/{pk}` = row of a table named `rpc` when no such function exists | always the function (`404` without one) | the table keeps its list and `/by/` routes |
+| `pdbr request` runs as the connection role | same by default; `--role`, `--claims` | `--print-sql` output is unchanged by them |

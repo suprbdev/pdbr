@@ -454,7 +454,8 @@ body is assembled in `server` from `Result.Problem`.
   `net/http.ServeMux` (Go 1.22+ patterns: `GET /{schema}/{table}/{pk}`
   etc.). Path segments are matched against the resource index at request
   time (bare aliases for `schema.schemas[0]`; reserved segments `rpc`,
-  `openapi.json`, `healthz`, `readyz`, `by` win over bare aliases). Unknown
+  `openapi.json`, `healthz`, `readyz`, `by` win over bare aliases;
+  `/{schema}/rpc/{x}` is always the function namespace). Unknown
   resource → 404; known resource + method not offered → 405 with `Allow`.
 - **Runtime** = `{Built *api.Built, OpenAPI []byte, Handler RouteHandler}`
   (the `RouteHandler` is `server.Handler`, which owns the `exec.Executor`)

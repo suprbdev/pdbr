@@ -27,7 +27,7 @@ Everything except the health endpoints is mounted under `server.base_path`
 | `PATCH {base}/{table}/{pk}`, `…/by/{cols}/{vals}` | partial update → row | `200` / `404` / `412` |
 | `DELETE {base}/{table}/{pk}`, `…/by/{cols}/{vals}` | delete → deleted row | `200` (`204` with `Prefer: return=minimal`) / `404` / `412` |
 | `PATCH`, `DELETE {base}/{table}?<filters>` | bulk write of every row the filters select → array of written rows; no filter → `400 unfiltered_mutation` unless `mutations.allow_unfiltered` ([mutations.md](mutations.md#bulk-patch--delete-by-filter)) | `200` (`204` with `Prefer: return=minimal`) |
-| `GET {base}/{schema}/{table}…` | schema-qualified form of every route above | |
+| `GET {base}/{schema}/{table}…` | schema-qualified form of every route above; `{base}/{schema}/rpc/{x}` always names a function of the schema (`404` when there is none), so a table named `rpc` has no `/{pk}` path (its list and `/by/` paths stay; build warning) | |
 | `GET {base}/rpc/{fn}?arg=v` | stable/immutable function | see [RPC](#rpc-functions) |
 | `POST {base}/rpc/{fn}` (JSON body `{arg: v}`) | any function; volatile via `GET` → `405` (`Allow: POST`) | |
 | `GET {base}/openapi.json` | OpenAPI 3.1 document (`openapi.enabled`, default true) | `200` |
@@ -545,30 +545,49 @@ transaction semantics: [mutations.md](mutations.md#prefer).
 
 ## ETag / conditional requests
 
-Single-row `GET`s carry a weak `ETag: W/"<hex>"` =
-`md5(to_jsonb(ROW(<exposed columns>))::text)` over every column the resource
-exposes, in catalog order, computed in SQL and independent of `select=`.
-Columns hidden with `@omit` / `@omit read` ([smart-comments.md](smart-comments.md))
-are left out, so the ETag neither reveals their values nor changes when only
-they change. `If-None-Match` matching it → `304`.
+Single-row `GET`s and `HEAD`s carry a weak `ETag: W/"<row>.<repr>"`, two
+md5 hex digests computed in SQL in the same statement:
 
-`PATCH`/`DELETE` on single-row paths honour `If-Match`. The check is part of
+- `<row>` hashes the row as `select=*` renders it: every column the resource
+  exposes, in catalog order, composite and domain values through their
+  visible attributes. Columns hidden with `@omit` / `@omit read`
+  ([smart-comments.md](smart-comments.md)) or by a [contract](contracts.md),
+  hidden attributes of composite values and raster columns never reach it,
+  so the ETag neither reveals their values nor changes when only they
+  change.
+- `<repr>` hashes the response body itself, so it covers `select=`,
+  embeds, spreads, computed columns and the media type
+  (`Accept: application/geo+json` hashes the Feature, with the media type
+  mixed in).
+
+Responses on API routes carry `Vary: Accept`, since the body depends on it.
+`If-None-Match` compares the whole tag: `304` only when the representation
+the request asks for is unchanged (an embedded post that changed gives
+`?select=id,posts(*)` a new ETag).
+
+`PATCH`/`DELETE` on single-row paths honour `If-Match` against the `<row>`
+part (a tag with or without the `.<repr>` part), so a tag read through any
+`select=`, embed or `Accept` guards the same row state. The check is part of
 the one statement:
 
 ```sql
-WITH cur AS (SELECT md5(to_jsonb(ROW(t.id, t.email, …))::text) AS h FROM users t WHERE id = $1),
+WITH cur AS (SELECT md5((json_build_object('id', __cur."id", …))::text) AS h FROM users __cur WHERE id = $1),
      __mut AS (UPDATE users SET … WHERE id = $1 AND (SELECT h FROM cur) = $2 RETURNING …)
 SELECT …
 ```
 
 No `cur` row → `404`; hash mismatch → `412 etag_mismatch`. Atomic without a
-second round-trip. `server.etags` (default true) toggles the whole feature.
+second round-trip. `server.etags` (default true) toggles the whole feature;
+with it off, `If-None-Match` is ignored and `If-Match` is
+`400 if_match_unsupported` on every route, so a conditional write never runs
+unconditionally. The hash is of the rendered JSON, so it follows the
+request's time zone (`Prefer: timezone=`) like the body.
 
 **Caveat — column-level grants.** The hash needs `SELECT` on every exposed
 column. If a role lacks it on an exposed column, single-row `GET`s on that
 table fail with `403`; hide the column (`@omit read`), grant it, or disable
-`server.etags`. A write to a hidden column alone does not change the ETag, so
-`If-Match` does not guard it.
+`server.etags`. A write to a hidden column (or a hidden composite attribute)
+alone does not change the ETag, so `If-Match` does not guard it.
 
 List responses carry no `ETag`.
 

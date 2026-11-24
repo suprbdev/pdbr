@@ -80,7 +80,7 @@ See [cli.md](cli.md) for details.
 | `server.cors_origins` | []string | `[]` | allowed CORS origins (exact match, or `*`); empty disables CORS headers and preflight |
 | `server.compression` | bool | `false` | gzip responses when the client sends `Accept-Encoding: gzip` |
 | `server.read_only` | bool | `false` | every write → `405` (`code: read_only`); runtime-toggleable via `App.SetReadOnly` |
-| `server.etags` | bool | `true` | weak `ETag` on single-row GETs, `If-None-Match` → `304`, `If-Match` on `PATCH`/`DELETE` → `412`; the hash covers the exposed columns only (`@omit` / `@omit read` columns are left out) |
+| `server.etags` | bool | `true` | weak `ETag: W/"<row>.<repr>"` on single-row GETs (row state as `select=*` renders it, plus the response body), `If-None-Match` → `304`, `If-Match` on `PATCH`/`DELETE` → `412` against the row part; hidden columns and attributes are left out. Off: `If-Match` is `400 if_match_unsupported` |
 | `server.csv` | bool | `true` | `Accept: text/csv` on lists and set-returning RPCs |
 | `server.csv_escape_formulas` | bool | `true` | prefix CSV header and string cells starting with `=`, `+`, `-`, `@`, tab or CR with `'` so spreadsheets do not run them as formulas (CSV injection); JSON numbers are never escaped; `false` writes cells verbatim. See [api.md](api.md#content-negotiation) |
 | `openapi.enabled` | bool | `true` | serve `GET {base}/openapi.json`; it describes every exposed table, column, relation and function to unauthenticated callers, like pdbq's introspection (also on by default). Set `false` to hide the schema; see [openapi.md](openapi.md) |

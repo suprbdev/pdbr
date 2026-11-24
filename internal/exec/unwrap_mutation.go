@@ -157,7 +157,7 @@ func unwrapMutation(op *Operation, stmt *compile.Statement, raw []byte, found bo
 
 // locationFor renders {base}/{table}/{pk} for a single-column primary key.
 func locationFor(op *Operation, basePath string, key []any) string {
-	if op == nil || op.Resource == nil || len(key) != 1 || key[0] == nil || op.Resource.HiddenKey {
+	if op == nil || op.Resource == nil || len(key) != 1 || key[0] == nil || op.Resource.HiddenKey || op.Resource.RowPathReserved() {
 		return ""
 	}
 	var v string

@@ -194,7 +194,7 @@ FROM (
 | body | `PATCH`: one JSON object (arrays → `400 invalid_body`), set on every matching row; `{}` → `400 invalid_body`. `DELETE` never reads a body |
 | response | `200` + JSON array of the written rows (`select=` and embeds apply, compiled against `__mut`); `[]` when nothing matched — never `404`. `Prefer: return=minimal` / `headers-only` → `204` |
 | `limit`, `offset`, `order`, `count`, `distinct`, `after`/`before`, `on_conflict` | `400 invalid_parameter` (PostgREST's ordered "limited update/delete" is not supported) |
-| `If-Match` | `400 if_match_unsupported` (with `server.etags` on; ETags address single rows) |
+| `If-Match` | `400 if_match_unsupported` (ETags address single rows) |
 | `Prefer: max-affected=N` | with `handling=strict`: more than `N` rows → `400 max_affected_exceeded`, nothing written ([below](#prefer)) |
 | availability | wherever the keyed `PATCH`/`DELETE` exists (UPDATE / DELETE privilege, no `@omit update|delete`) **and** the collection is listable: `@omit read` / `@omit all` remove bulk writes too (they would otherwise count hidden rows and, with `return=representation`, return them); PK-less tables included; views and read-only mode → `405` |
 
@@ -618,20 +618,20 @@ as text) passed as a bare `$n` typed by the target column.
 
 ## If-Match on PATCH / DELETE
 
-Single-row GETs return `ETag: W/"<hex>"` = `md5(to_jsonb(ROW(…))::text)` over the
-exposed columns ([api.md](api.md#etag--conditional-requests), `server.etags`). `PATCH`/`DELETE` on single-row paths
+Single-row GETs return `ETag: W/"<row>.<repr>"`, whose `<row>` part hashes
+the row as `select=*` renders it ([api.md](api.md#etag--conditional-requests), `server.etags`). `PATCH`/`DELETE` on single-row paths
 honour `If-Match` in the same statement — no read-then-write race:
 
 ```http
 PATCH /users/1
-If-Match: W/"5d41402abc4b2a76b9719d911017c592"
+If-Match: W/"5d41402abc4b2a76b9719d911017c592.7d793037a0760186574b0282f2f435e7"
 
 {"full_name": "Grace"}
 ```
 
 ```sql
 WITH cur AS (
-  SELECT md5(to_jsonb(ROW(__cur."id", __cur."email", __cur."full_name", __cur."mood", __cur."settings", __cur."tags", __cur."balance", __cur."created_at", __cur."address", __cur."prev_addresses", __cur."moods"))::text) AS h
+  SELECT md5((json_build_object('id', __cur."id", 'email', __cur."email", …))::text) AS h
   FROM "public"."users" __cur
   WHERE __cur."id" = $2
 ),
@@ -655,13 +655,15 @@ SELECT json_build_object('found', EXISTS (SELECT 1 FROM cur), 'row', (
 | `true` | `null` | `412 etag_mismatch` |
 | `true` | object | `200` (or `204` with `return=minimal`) |
 
-- Weak/strong prefix and quotes are stripped before comparison; `If-Match: *`
-  means "must exist" (compiled without the hash predicate).
+- Weak/strong prefix and quotes are stripped and each tag is cut to its
+  `<row>` part (before the `.`) before comparison; `If-Match: *` means "must
+  exist" (compiled without the hash predicate).
 - Multiple ETags (`If-Match: W/"a", W/"b"`) → `= ANY($n)` with a `text[]`
   parameter.
-- `server.etags: false` → `If-Match` is ignored (header not honoured, no `412`).
-- `cur` hashes all columns, so `If-Match` needs `SELECT` on every column of the
-  table (same caveat as `ETag` on reads).
+- `server.etags: false` → `If-Match` is `400 if_match_unsupported`, never
+  silently ignored.
+- `cur` hashes every exposed column, so `If-Match` needs `SELECT` on each of
+  them (same caveat as `ETag` on reads).
 - Without `If-Match` the plain single-CTE shape is used.
 
 Mutation responses do not carry an `ETag` header (a

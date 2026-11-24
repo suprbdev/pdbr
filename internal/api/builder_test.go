@@ -467,8 +467,22 @@ func TestReservedAndSchemaAliasSuppression(t *testing.T) {
 	if m, ok := b.Match("/rpc/search_posts"); !ok || m.RPC == nil {
 		t.Error("/rpc/search_posts should still be the RPC route")
 	}
-	if m, ok := b.Match("/public/rpc/1"); !ok || m.Route.Kind != RouteRow || m.Resource.Path != "public.rpc" {
-		t.Errorf("/public/rpc/1 = %+v %v", m, ok)
+	if m, ok := b.Match("/public/rpc/1"); ok {
+		t.Errorf("/public/rpc/1 names a function, never the rpc table's row: %+v", m)
+	}
+	if m, ok := b.Match("/public/rpc/search_posts"); !ok || m.RPC == nil {
+		t.Errorf("/public/rpc/search_posts = %+v %v", m, ok)
+	}
+	if m, ok := b.Match("/public/rpc"); !ok || m.Route.Kind != RouteList || m.Resource.Path != "public.rpc" {
+		t.Errorf("/public/rpc = %+v %v", m, ok)
+	}
+	if !hasWarning(b.Warnings, "row path dropped") {
+		t.Errorf("no row-path warning: %v", b.Warnings)
+	}
+	for p := range b.OpenAPI.Paths {
+		if strings.HasPrefix(p, "/public/rpc/{") {
+			t.Errorf("OpenAPI documents the unreachable row path %s", p)
+		}
 	}
 	if m, ok := b.Match("/audit/users/7"); !ok || m.Resource.Path != "audit.users" || m.Key != "7" {
 		t.Errorf("/audit/users/7 = %+v %v", m, ok)

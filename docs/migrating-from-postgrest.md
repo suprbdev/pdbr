@@ -92,9 +92,11 @@ fallback):
   column in the body; pdbr keeps the columns you do not send.
 - **`Prefer: missing=default` is a no-op**: pdbr always inserts `DEFAULT` for
   omitted keys in bulk bodies.
-- **ETags** are weak and computed in SQL on single-row reads, with
-  `If-None-Match` answering `304` and `If-Match` available for optimistic writes
-  ([mutations.md](mutations.md)).
+- **ETags** are weak and computed in SQL on single-row reads
+  (`W/"<row>.<repr>"`: the row state and the response body), with
+  `If-None-Match` answering `304` and `If-Match` available for optimistic
+  writes against the row part ([mutations.md](mutations.md)). With `server.etags: false`, `If-Match` is
+  `400 if_match_unsupported`.
 - **Bulk writes may use `Prefer: partial=items`** to report per-element results
   (experimental, [compatibility.md](compatibility.md#experimental-features)).
 - **Identity `BY DEFAULT` columns are writable**; identity `ALWAYS` and generated

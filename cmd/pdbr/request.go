@@ -13,6 +13,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/suprbdev/pdbcore/pgexec"
+
+	"github.com/suprbdev/pdbr"
 	"github.com/suprbdev/pdbr/internal/config"
 	"github.com/suprbdev/pdbr/internal/exec"
 	"github.com/suprbdev/pdbr/internal/server"
@@ -22,6 +25,55 @@ type requestSpec struct {
 	method, path, body string
 	headers            []string
 	include, printSQL  bool
+	// claims are the --claims request claims; nil sets none.
+	claims map[string]any
+}
+
+// claimsHook gives every request of pdbr request the --claims claims,
+// which the executor exposes through claims.prefix and
+// claims.json_setting exactly as for an authenticated request.
+type claimsHook struct {
+	claims map[string]any
+}
+
+func (claimsHook) Name() string  { return "cli_claims" }
+func (claimsHook) Priority() int { return 0 }
+
+func (h claimsHook) BeforeRequest(ctx context.Context, op *pdbr.Operation) (context.Context, error) { //nolint:unparam
+	op.Claims = h.claims
+	return ctx, nil
+}
+
+func (claimsHook) AfterRequest(context.Context, *pdbr.Operation, *pdbr.Result) {}
+
+// useRequestIdentity applies --role to a connection-identity config: the
+// request switches to role (roles.switch on, roles.anonymous = role, as a
+// server with auth.mode none would run it); an empty role keeps the
+// connection role. The role must be one a request may switch to.
+func useRequestIdentity(cfg *config.Config, role string) error {
+	if role == "" {
+		return nil
+	}
+	if !pgexec.ValidRole(role) {
+		return fmt.Errorf("--role %q: not a role a request can run as", role)
+	}
+	cfg.Roles.Switch = true
+	cfg.Roles.Anonymous = role
+	return nil
+}
+
+// parseClaims reads --claims: a JSON object, or nil when empty.
+func parseClaims(claims string) (map[string]any, error) {
+	if claims == "" {
+		return nil, nil
+	}
+	dec := json.NewDecoder(strings.NewReader(claims))
+	dec.UseNumber()
+	var obj map[string]any
+	if err := dec.Decode(&obj); err != nil || obj == nil || dec.More() {
+		return nil, fmt.Errorf("--claims: want a JSON object, got %q", claims)
+	}
+	return obj, nil
 }
 
 // runRequest runs one request in-process through the real handler (or only
@@ -33,7 +85,11 @@ func runRequest(ctx context.Context, cfg config.Config, spec requestSpec, stdout
 	if err != nil {
 		return err
 	}
-	app := newApp(cfg)
+	var opts []pdbr.Option
+	if spec.claims != nil {
+		opts = append(opts, pdbr.WithPlugins(claimsHook{claims: spec.claims}))
+	}
+	app := newApp(cfg, opts...)
 	defer app.Close()
 
 	if spec.printSQL {
