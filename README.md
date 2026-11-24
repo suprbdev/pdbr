@@ -61,7 +61,8 @@ $ curl 'localhost:8080/users?select=id,email,posts(title)&mood=eq.happy&limit=2'
   [docs/contracts.md](docs/contracts.md).
 - **Pipe-friendly CLI** — `pdbr request GET '/users?select=id' | jq` prints
   the body, exits non-zero on 4xx/5xx, and `--print-sql` shows the exact
-  statement without a database.
+  statement without executing it (with `--schema.cache_path`, without a
+  database).
 - **Library embedding (experimental)** — `pdbr.New(cfg, pdbr.WithPlugins(...)).Handler(ctx)`
   mounts the whole API (watch mode included) in your own `net/http` mux. The Go
   API is outside the 1.0 compatibility promise.
@@ -94,6 +95,7 @@ $ go install github.com/suprbdev/pdbr/cmd/pdbr@latest
 ## Quickstart
 
 ```console
+$ git clone https://github.com/suprbdev/pdbr && cd pdbr
 $ make dev                   # PostGIS-enabled Postgres + fixture + pdbr in watch mode (no host ports: add compose.override.yaml)
 $ curl localhost:8080/openapi.json | jq .paths | head
 ```

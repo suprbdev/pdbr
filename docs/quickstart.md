@@ -3,10 +3,11 @@
 ## With the bundled dev stack
 
 ```console
+$ git clone https://github.com/suprbdev/pdbr && cd pdbr
 $ make dev            # or: make compose-up (detached) … make compose-down
 ```
 
-This builds the image and starts PostgreSQL (`postgis/postgis:16-3.4`) with
+This builds the image and starts PostgreSQL (`postgis/postgis:18-3.7`) with
 the demo schema (users, posts, comments, places, events, a `metrics` view and
 a handful of functions — the same fixture pdbcore ships for both pdbq and
 pdbr, mounted from `db/init/01-schema.sql`, which `make fixture` regenerates
@@ -50,7 +51,7 @@ $ curl -si localhost:8080/posts \
     -H 'Content-Type: application/json' \
     -d '{"author_id":1,"title":"Hello","published":true}'
 HTTP/1.1 201 Created
-Location: /posts/4
+Location: /posts/5
 ...
 
 # call a function
@@ -67,7 +68,7 @@ Errors come back as RFC 9457 problem details
 
 ```console
 $ curl -s 'localhost:8080/users?nope=eq.1'
-{"type":"about:blank","title":"Bad Request","status":400,"detail":"unknown column \"nope\"","instance":"/users","code":"unknown_column"}
+{"type":"about:blank","title":"Bad Request","status":400,"detail":"unknown column \"nope\" on \"users\"","instance":"/users","code":"unknown_column"}
 ```
 
 Because watch mode is on, `ALTER TABLE`/`CREATE TABLE` in the database is
@@ -114,7 +115,10 @@ The SQL is identical for pdbq.
    request roles: pdbr introspects with the connection role's own privileges,
    so a table that role cannot reach would not get a route (do not create it
    `NOINHERIT` as for PostgREST). Each request then runs `SET LOCAL ROLE` to
-   the role in its token.
+   the role in its token. Run this in a database cluster of its own: the
+   bundled dev stack's fixture already creates an `anonymous` role, so
+   `CREATE ROLE anonymous` fails there with `role "anonymous" already exists`
+   (drop that line to reuse the role).
 
    ```sql
    CREATE ROLE authenticator LOGIN PASSWORD 'change-me';

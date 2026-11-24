@@ -7,12 +7,12 @@ features are missing. This guide is for people moving a PostgREST v12 or v13
 deployment. It lists what maps directly, what differs and what is missing, then
 a migration order.
 
-> **The 1.0 names are being finalized.** Naming, error codes, operator names,
-> mutation shapes and ETags are still being settled before 1.0. This guide
-> describes pdbr as it is on `main` today; check [upgrading.md](upgrading.md)
-> for what changed between releases and re-run your client tests against the
-> version you deploy. The deliberate departures are also listed in
-> [features.md](features.md#differences-from-postgrest).
+> **Re-check against the version you deploy.** This guide describes pdbr 1.0.
+> The URL grammar, error codes, configuration keys and CLI are covered by the
+> [1.0 compatibility promise](compatibility.md); check
+> [upgrading.md](upgrading.md) for what changed from 0.x and re-run your
+> client tests against the version you deploy. The deliberate departures are
+> also listed in [features.md](features.md#differences-from-postgrest).
 
 Two facts shape everything else: pdbr compiles each request to **one SQL
 statement** that returns the response JSON, and it is a single Go binary
@@ -34,7 +34,9 @@ Maps directly:
   `Prefer: count=exact|planned|estimated`, `HEAD`, CSV output (`Accept: text/csv`).
 - JSON bodies for `POST`, `PATCH`, `PUT` and `DELETE`, `Prefer: return=`,
   `Prefer: resolution=merge-duplicates|ignore-duplicates`, `on_conflict=`,
-  `columns=`, `Prefer: max-affected=`, `Prefer: tx=rollback`.
+  `columns=`, `Prefer: max-affected=` (with `handling=strict`, as in
+  PostgREST) and `Prefer: tx=rollback` (needs `transactions.end:
+  commit-allow-override` or `rollback-allow-override`, as `db-tx-end` does).
 - `GET` for stable and immutable RPC functions, `POST` for volatile ones, named
   arguments, computed columns (functions taking a row type).
 
@@ -89,7 +91,9 @@ fallback):
   unless `mutations.allow_unfiltered: true`, as with the `pg-safeupdate`
   extension.
 - **`PUT` on a row path (`/users/1`) is a partial upsert.** PostgREST needs every
-  column in the body; pdbr keeps the columns you do not send.
+  column in the body; pdbr keeps the columns you do not send on update. The
+  statement is still an insert-or-update, so a `NOT NULL` column without a
+  default must be in the body (`400 invalid_body` otherwise).
 - **`Prefer: missing=default` is a no-op**: pdbr always inserts `DEFAULT` for
   omitted keys in bulk bodies.
 - **ETags** are weak and computed in SQL on single-row reads
@@ -137,8 +141,12 @@ Differences to plan for:
 - **The authenticator role must inherit the request roles.** pdbr introspects
   with the connection role's own privileges, so a `NOINHERIT` authenticator
   (PostgREST's recommendation) sees no tables. Create it with the default
-  `INHERIT`, as in [Secure setup](quickstart.md#secure-setup). Or dump a schema
-  cache as a privileged role and boot from it ([caching.md](caching.md)).
+  `INHERIT`, as in [Secure setup](quickstart.md#secure-setup). On PostgreSQL 16
+  and later the inherit flag is recorded per membership when the role is
+  granted, so `ALTER ROLE authenticator INHERIT` does not change existing
+  grants: re-run `GRANT <request role> TO authenticator WITH INHERIT TRUE`.
+  Or dump a schema cache as a privileged role and boot from it
+  ([caching.md](caching.md)).
 - Set `roles.allowed` to the roles tokens may name.
 
 ## OpenAPI
