@@ -18,7 +18,7 @@ server:
   addr: ":8080"
   # Prefix for every API route, e.g. /api ("", the default, mounts at the root like PostgREST). /healthz and /readyz are never prefixed.
   base_path: ""
-  # Overall HTTP request timeout; expiry answers 504.
+  # Overall HTTP request timeout (>= 1s); expiry answers 504.
   request_timeout: "30s"
   # Timeout of the database ping behind GET /readyz; an unreachable or slow database answers 503 unavailable. /healthz stays a liveness check.
   readyz_timeout: "2s"

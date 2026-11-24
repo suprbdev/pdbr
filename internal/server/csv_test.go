@@ -22,7 +22,7 @@ func TestWriteCSV(t *testing.T) {
 	}
 	want := "id,email,tags,settings,ok,note,q,missing\r\n" +
 		`1,a@b.c,"[""x"",""y""]","{""a"":1}",true,,"say ""hi"", now",` + "\r\n" +
-		"2,d@e.f,,,false,\"line\r\nbreak\",,\r\n"
+		"2,d@e.f,,,false,\"line\nbreak\",,\r\n"
 	if buf.String() != want {
 		t.Errorf("csv =\n%q\nwant\n%q", buf.String(), want)
 	}
@@ -42,6 +42,25 @@ func TestWriteCSV(t *testing.T) {
 	}
 }
 
+func TestWriteCSVLineBreaks(t *testing.T) {
+	data := []byte(`[{"v":"\r=1"},{"v":"a\rb"},{"v":"line1\nline2"},{"v":"crlf\r\nend"},{"v":" lead"},{"v":"plain"}]`)
+	var buf bytes.Buffer
+	if err := writeCSV(&buf, []string{"v"}, data, false); err != nil {
+		t.Fatal(err)
+	}
+	want := "v\r\n\"\r=1\"\r\n\"a\rb\"\r\n\"line1\nline2\"\r\n\"crlf\r\nend\"\r\n\" lead\"\r\nplain\r\n"
+	if buf.String() != want {
+		t.Errorf("csv =\n%q\nwant\n%q", buf.String(), want)
+	}
+	buf.Reset()
+	if err := writeCSV(&buf, []string{"v"}, []byte(`[{"v":"\r=1"}]`), true); err != nil {
+		t.Fatal(err)
+	}
+	if got := buf.String(); got != "v\r\n\"'\r=1\"\r\n" {
+		t.Errorf("escaped csv = %q", got)
+	}
+}
+
 func TestWriteCSVFormulas(t *testing.T) {
 	data := []byte(`[{"=h":"=HYPERLINK(\"https://x.invalid\")","n":-5,"s":"-5"},` +
 		`{"=h":"+1","n":1.5,"s":"@SUM(A1)"},{"=h":"\tx","n":0,"s":"\rx"},{"=h":"a=b","n":null,"s":""}]`)
@@ -52,7 +71,7 @@ func TestWriteCSVFormulas(t *testing.T) {
 	want := "'=h,n,s\r\n" +
 		`"'=HYPERLINK(""https://x.invalid"")",-5,'-5` + "\r\n" +
 		"'+1,1.5,'@SUM(A1)\r\n" +
-		"'\tx,0,\"'x\"\r\n" +
+		"'\tx,0,\"'\rx\"\r\n" +
 		"a=b,,\r\n"
 	if buf.String() != want {
 		t.Errorf("escaped csv =\n%q\nwant\n%q", buf.String(), want)

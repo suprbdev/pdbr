@@ -153,6 +153,7 @@ item below is breaking.
 | `plugins.settings.nested-mutations.*` | `plugins.settings.nested_mutations.*` | |
 | `database.statement_timeout` default `30s` | default `25s` | below `server.request_timeout` |
 | `log.format: <anything>` | `log.format: text` or `json` | other values are rejected |
+| `server.request_timeout: 0` (no timeout) | `server.request_timeout: 1s` or more | values below `1s` are rejected |
 
 The new shape, with its defaults:
 
@@ -341,8 +342,10 @@ below is breaking; the old spellings are `400` errors (`invalid_filter`,
   is always a filter on a column named `near`, and `select=~location_area`
   is always the accessor. Pseudo-columns answer under their `~` key
   (`{"~location_area": 12.5}`) unless aliased. A column whose name starts
-  with `~` can no longer be named in `select=`, filters or `order=` (only
-  `select=*` returns it); pdbr logs a warning for it.
+  with `~` can no longer be named by a query parameter: `select=` (casts,
+  JSON paths and aggregates included), filters, `order=`, `distinct=`,
+  `on_conflict=` and `columns=` (only `select=*` returns it, and a JSON body
+  still writes it); pdbr logs a warning for it.
 - **Spatial operators are snake_case.** `st_containsproperly`,
   `st_coveredby`, `st_exactlyequals`, `st_intersects3d`,
   `bbox_containedby`, `bbox_leftof`, `bbox_rightof`,

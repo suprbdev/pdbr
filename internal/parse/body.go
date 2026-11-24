@@ -137,6 +137,9 @@ func (p *parser) checkColumnsParam(res *api.Resource) error {
 		nestedKeys = p.opts.NestedKeys(res)
 	}
 	for _, key := range p.columnsOrder {
+		if api.IsReserved(key) {
+			return errf(CodeInvalidBody, "columns: unknown column %q of %q", key, resName(res))
+		}
 		if _, ok := inputCols[key]; ok {
 			continue
 		}

@@ -107,3 +107,31 @@ func TestHiddenRowTypesNotExposed(t *testing.T) {
 		}
 	}
 }
+
+// TestContractKeepsRowFunctionsOfVisibleTables: a function returning rows of
+// a table one contract hides stays in the contracts that show the table,
+// whatever its return shape (one row, a set, an array of rows).
+func TestContractKeepsRowFunctionsOfVisibleTables(t *testing.T) {
+	ctx := context.Background()
+	app := New(contractConfig(), WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))))
+	cat := hiddenRowsCatalog(t)
+	for _, f := range []struct {
+		name, ret string
+		set       bool
+	}{{"secret_one", "secrets", false}, {"secret_set", "secrets", true}, {"secret_arr", "_secrets", false}} {
+		cat.Functions = append(cat.Functions, &introspect.Function{Schema: "public", Name: f.name, ReturnType: f.ret,
+			ReturnTypeSchema: "public", ReturnsSet: f.set, Volatility: introspect.VolatilityStable})
+	}
+	cat.Reindex()
+	for _, name := range []string{"internal", "public", "internal"} {
+		built, err := app.BuildContractAPI(ctx, cat, name)
+		if err != nil {
+			t.Fatalf("%q: %v", name, err)
+		}
+		for _, fn := range []string{"secret_one", "secret_set", "secret_arr"} {
+			if got, want := built.RPCs["public."+fn] != nil, name == "internal"; got != want {
+				t.Errorf("%q: rpc %s exposed = %v, want %v", name, fn, got, want)
+			}
+		}
+	}
+}

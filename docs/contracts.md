@@ -151,7 +151,9 @@ route, a key, a privilege or a row:
 
 Watch mode rebuilds every contract after each DDL change (tag changes are
 DDL too) and swaps each one in independently; a contract whose rebuild
-fails keeps serving its previous API.
+fails keeps serving its previous API. Without watch mode every contract is built once,
+at boot: a table, function or tag created later is in no contract (a new
+function answers `404` everywhere) until pdbr restarts.
 
 With `metrics.enabled`, every series of the [metric reference](metrics.md)
 carries a `contract` label, except the pool and runtime series, which are

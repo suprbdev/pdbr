@@ -55,7 +55,7 @@ type Config struct {
 type Server struct {
 	Addr              string        `koanf:"addr" doc:"Listen address for the HTTP server."`
 	BasePath          string        `koanf:"base_path" doc:"Prefix for every API route, e.g. /api (\"\", the default, mounts at the root like PostgREST). /healthz and /readyz are never prefixed."`
-	RequestTimeout    time.Duration `koanf:"request_timeout" doc:"Overall HTTP request timeout; expiry answers 504."`
+	RequestTimeout    time.Duration `koanf:"request_timeout" doc:"Overall HTTP request timeout (>= 1s); expiry answers 504."`
 	ReadyzTimeout     time.Duration `koanf:"readyz_timeout" doc:"Timeout of the database ping behind GET /readyz; an unreachable or slow database answers 503 unavailable. /healthz stays a liveness check."`
 	CORSOrigins       []string      `koanf:"cors_origins" doc:"Allowed CORS origins (exact match, or '*' for any). Empty disables CORS headers and preflight entirely."`
 	Compression       bool          `koanf:"compression" doc:"Gzip responses for clients that send Accept-Encoding: gzip (off by default)."`
@@ -329,6 +329,9 @@ func validateServer(s Server) []string {
 	}
 	if s.ReadyzTimeout <= 0 {
 		errs = append(errs, "server.readyz_timeout must be > 0")
+	}
+	if s.RequestTimeout < time.Second {
+		errs = append(errs, fmt.Sprintf("server.request_timeout: %s must be >= 1s", s.RequestTimeout))
 	}
 	return errs
 }

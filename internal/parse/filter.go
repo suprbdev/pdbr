@@ -177,7 +177,7 @@ func (p *parser) columnCond(res *api.Resource, key string, o operand) (plan.Expr
 	if f := res.Raster(key); f != nil {
 		return p.rasterCond(res, f, o)
 	}
-	if f := res.Field(key); f != nil {
+	if f := queryField(res, key); f != nil {
 		if !res.FilterColumns[key] {
 			return nil, errf(CodeColumnNotFilterable, "column %q on %q is not filterable", key, res.Path)
 		}
@@ -268,7 +268,7 @@ func (p *parser) pathCond(res *api.Resource, key string, o operand) (plan.Expr, 
 // isPathKey reports whether key is a JSON path on a column of res.
 func isPathKey(res *api.Resource, key string) bool {
 	i := indexOutsideQuotes(key, "->")
-	return i > 0 && res.Field(key[:i]) != nil
+	return i > 0 && queryField(res, key[:i]) != nil
 }
 
 // contribCond builds the condition for an operator a pdbcore/contrib
@@ -752,7 +752,7 @@ func filterKey(res *api.Resource, key string) bool {
 	if api.IsReserved(key) {
 		return res.Pseudo[key] != nil
 	}
-	return res.Field(key) != nil || res.Raster(key) != nil || res.Computed[key] != nil || contribPseudo(res, key) != nil || isPathKey(res, key)
+	return queryField(res, key) != nil || res.Raster(key) != nil || res.Computed[key] != nil || contribPseudo(res, key) != nil || isPathKey(res, key)
 }
 
 // rasterCond builds a filter on a raster column: is.null / not.is.null, or

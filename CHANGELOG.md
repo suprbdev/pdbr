@@ -12,6 +12,33 @@ becomes the release notes of the next tag.
 
 ## [Unreleased]
 
+### Security
+
+- **`limit=0` ran the whole selection (medium).** A root `limit=0` was
+  costed at 1 but still projected its look-ahead row, running every embed,
+  spread and computed column under it, so a deep select passed
+  `limits.max_cost` and did the work of `limit=1`. It is now count-only:
+  the selection is validated but not projected, and the look-ahead row
+  that decides `has_next` reads only the root. Applies to `SETOF <table>`
+  RPCs too.
+
+### Fixes
+
+- CSV output keeps carriage returns and line feeds inside values byte for
+  byte (quoted, RFC 4180); a bare `\r` was dropped and `\n` became `\r\n`.
+- A column whose name starts with `~` can no longer be named by any query
+  parameter: casts, JSON paths and aggregates in `select=`, JSON-path and
+  distance `order=` terms, `distinct=`, `on_conflict=` and `columns=` now
+  answer `400 unknown_column` (`invalid_body` for `columns=`) like the plain
+  forms. `select=*` still returns it and a JSON body still writes it.
+- `401`/`403` answers from authentication carry `Vary: Accept` like every
+  other API response.
+
+### Breaking
+
+- `server.request_timeout` must be at least `1s`; `0` used to disable the
+  timeout silently and is now a configuration error.
+
 ## [0.19.0] - 2026-11-24
 
 ### Added

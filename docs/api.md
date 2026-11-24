@@ -152,8 +152,12 @@ A query parameter, `select=` item, filter key or `order=` term that starts
 with `~` always resolves in this namespace: `~nope` is `400 unknown_column`
 (or `invalid_parameter` for a misused reference parameter), never a column.
 A column whose name starts with `~` is therefore returned by `select=*` but
-cannot be named in `select=`, filters or `order=` (pdbr logs a warning at
-build time). Real columns named `near` or `location_area` are ordinary
+cannot be named by any query parameter: not as a `select=` item (cast, JSON
+path and aggregate forms included), filter key, `order=` term (JSON path,
+distance and related forms included), `distinct=`, `on_conflict=` or
+`columns=` entry (`400 unknown_column`; `invalid_body` for `columns=`). A
+JSON body still writes it under its own key. pdbr logs a warning at build
+time. Real columns named `near` or `location_area` are ordinary
 columns, filterable as `near=eq.x` next to `~near=`.
 
 ## `select=`
@@ -497,9 +501,11 @@ CSV is unavailable.
 
 CSV rules (RFC 4180, `internal/server/csv.go`):
 
-- One header row, then one record per row, `CRLF` line ends; fields are
-  quoted by the encoder when they contain `,`, `"`, line breaks or leading
-  spaces (`"` doubled).
+- One header row, then one record per row, `CRLF` record ends; fields are
+  quoted by the encoder when they contain `,`, `"`, a carriage return or a
+  line feed, or start with white space (`"` doubled). Everything else inside
+  a quoted field is copied byte for byte: a value's own `\r`, `\n` or
+  `\r\n` comes out exactly as it is stored.
 - Column order = `select=` order: `*` expands to the resource's columns in
   catalog order, explicit items follow (an unaliased duplicate of a `*` column
   is dropped), aliases rename the header — exactly the compiled projection.

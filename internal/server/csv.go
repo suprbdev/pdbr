@@ -1,11 +1,14 @@
 package server
 
 import (
+	"bufio"
 	"bytes"
-	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"io"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/suprbdev/pdbr/internal/api"
 	"github.com/suprbdev/pdbr/internal/exec"
@@ -94,13 +97,13 @@ func csvColumns(op *exec.Operation) []string {
 // writeCSV streams a JSON array (of objects, or of bare values when columns
 // is the single "value" column) as RFC 4180 CSV: header row, one record per
 // element, values in column order; NULL and missing keys are empty fields,
-// strings are written verbatim (quoted by the writer when needed), numbers
-// and booleans as their JSON literals, arrays/objects as compact JSON text.
+// strings are written byte for byte (quoted when needed, see writeRecord),
+// numbers and booleans as their JSON literals, arrays/objects as compact
+// JSON text.
 // With escapeFormulas, a header or string cell that a spreadsheet would
 // read as a formula gets a leading single quote (escapeFormula).
 func writeCSV(w io.Writer, columns []string, data []byte, escapeFormulas bool) error {
-	cw := csv.NewWriter(w)
-	cw.UseCRLF = true
+	bw := bufio.NewWriter(w)
 	header := columns
 	if escapeFormulas {
 		header = make([]string, len(columns))
@@ -108,7 +111,7 @@ func writeCSV(w io.Writer, columns []string, data []byte, escapeFormulas bool) e
 			header[i] = escapeFormula(c)
 		}
 	}
-	if err := cw.Write(header); err != nil {
+	if err := writeRecord(bw, header); err != nil {
 		return err
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -138,12 +141,53 @@ func writeCSV(w io.Writer, columns []string, data []byte, escapeFormulas bool) e
 				record[i] = csvField(obj[c], escapeFormulas)
 			}
 		}
-		if err := cw.Write(record); err != nil {
+		if err := writeRecord(bw, record); err != nil {
 			return err
 		}
 	}
-	cw.Flush()
-	return cw.Error()
+	return bw.Flush()
+}
+
+// writeRecord writes one RFC 4180 record terminated by CRLF. A field holding
+// a comma, a double quote, CR or LF, or starting with white space, is quoted
+// with inner quotes doubled; every other byte, line breaks inside a quoted
+// field included, is copied unchanged.
+func writeRecord(w *bufio.Writer, fields []string) error {
+	for i, f := range fields {
+		if i > 0 {
+			if err := w.WriteByte(','); err != nil {
+				return err
+			}
+		}
+		if !csvNeedsQuotes(f) {
+			if _, err := w.WriteString(f); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := w.WriteByte('"'); err != nil {
+			return err
+		}
+		if _, err := w.WriteString(strings.ReplaceAll(f, `"`, `""`)); err != nil {
+			return err
+		}
+		if err := w.WriteByte('"'); err != nil {
+			return err
+		}
+	}
+	_, err := w.WriteString("\r\n")
+	return err
+}
+
+func csvNeedsQuotes(f string) bool {
+	if f == "" {
+		return false
+	}
+	if strings.ContainsAny(f, ",\"\r\n") {
+		return true
+	}
+	r, _ := utf8.DecodeRuneInString(f)
+	return unicode.IsSpace(r)
 }
 
 func csvField(raw json.RawMessage, escapeFormulas bool) string {

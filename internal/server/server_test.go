@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"net/url"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -301,6 +302,14 @@ func TestCORS(t *testing.T) {
 		!strings.Contains(res.Header.Get("Access-Control-Allow-Methods"), "PATCH") {
 		t.Errorf("preflight headers = %v", res.Header)
 	}
+	for _, origin := range []string{"https://app.example.com", "https://evil.example.com"} {
+		for _, path := range []string{"/api/users", "/api/openapi.json"} {
+			res, _ := do(t, "OPTIONS", srv.URL+path, map[string]string{"Origin": origin, "Access-Control-Request-Method": "GET"})
+			if got := strings.Join(res.Header.Values("Vary"), ", "); !strings.Contains(got, "Origin") {
+				t.Errorf("preflight %s from %s: Vary = %q, want Origin", path, origin, got)
+			}
+		}
+	}
 	res, _ = do(t, "GET", srv.URL+"/api/users", map[string]string{"Origin": "https://app.example.com", "Accept-Encoding": "gzip"})
 	if res.Header.Get("Access-Control-Allow-Origin") != "https://app.example.com" {
 		t.Errorf("CORS header missing on normal response: %v", res.Header)
@@ -367,6 +376,9 @@ func TestAuth(t *testing.T) {
 	if res.StatusCode != 401 || problem(t, body).Code != CodeInvalidToken {
 		t.Errorf("malformed header = %d %s", res.StatusCode, body)
 	}
+	if got := res.Header.Values("Vary"); !reflect.DeepEqual(got, []string{"Accept"}) {
+		t.Errorf("401 Vary = %q, want Accept", got)
+	}
 	tok := token(t, "s", jwt.MapClaims{"role": "app_user", "sub": "7"})
 	for _, scheme := range []string{"Bearer", "bearer", "BEARER"} {
 		seen = Identity{}
@@ -378,6 +390,9 @@ func TestAuth(t *testing.T) {
 	res, body = do(t, "GET", srv.URL+"/api/users", map[string]string{"Authorization": "Bearer " + token(t, "s", jwt.MapClaims{"role": "admin"})})
 	if res.StatusCode != 403 || problem(t, body).Code != CodeRoleNotAllowed || res.Header.Get("WWW-Authenticate") != `Bearer error="insufficient_scope"` {
 		t.Errorf("role not allowed = %d %s %v", res.StatusCode, body, res.Header)
+	}
+	if got := res.Header.Values("Vary"); !reflect.DeepEqual(got, []string{"Accept"}) {
+		t.Errorf("403 Vary = %q, want Accept", got)
 	}
 	// Health and the OpenAPI document ignore credentials.
 	res, _ = do(t, "GET", srv.URL+"/api/openapi.json", map[string]string{"Authorization": "Bearer garbage"})

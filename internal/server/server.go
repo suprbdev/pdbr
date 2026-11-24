@@ -407,6 +407,7 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		httpx.AddVary(w.Header(), "Accept")
 		claims, role, err := s.auth.Authenticate(r)
 		if err != nil {
 			status, code := http.StatusUnauthorized, CodeInvalidToken

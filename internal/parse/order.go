@@ -143,7 +143,7 @@ func (p *parser) resolveOrderPath(t *plan.OrderTerm, path string, res *api.Resou
 		if !rel.Orderable {
 			return errf(CodeColumnNotOrderable, "relation %q on %q is not orderable", parts[0], res.Path)
 		}
-		f := rel.To.Field(col)
+		f := queryField(rel.To, col)
 		if f == nil {
 			return errf(CodeUnknownColumn, "unknown column %q on %q", col, rel.To.Path)
 		}
@@ -169,7 +169,7 @@ func (p *parser) resolveOrderPath(t *plan.OrderTerm, path string, res *api.Resou
 		t.Pseudo = pc
 		return nil
 	}
-	if f := res.Field(path); f != nil {
+	if f := queryField(res, path); f != nil {
 		if !res.OrderColumns[path] {
 			return errf(CodeColumnNotOrderable, "column %q on %q is not orderable", path, res.Path)
 		}
@@ -201,7 +201,7 @@ func (p *parser) resolveOrderPath(t *plan.OrderTerm, path string, res *api.Resou
 		return p.resolveContribOrder(t, path[:i], path[i+1:], res)
 	}
 	if col, ok := strings.CutSuffix(path, "."+api.SpatialDistance); ok {
-		f := res.Field(col)
+		f := queryField(res, col)
 		if f == nil {
 			return errf(CodeUnknownColumn, "unknown column %q on %q", col, res.Path)
 		}
@@ -222,7 +222,7 @@ func (p *parser) resolveOrderPath(t *plan.OrderTerm, path string, res *api.Resou
 // a distance term needs are bound once the whole query is parsed
 // (resolveContribOrders).
 func (p *parser) resolveContribOrder(t *plan.OrderTerm, key, mod string, res *api.Resource) error {
-	f := res.Field(key)
+	f := queryField(res, key)
 	if f == nil {
 		return errf(CodeUnknownColumn, "unknown column %q on %q", key, res.Path)
 	}
@@ -591,7 +591,7 @@ func (p *parser) parseDistinct(s string, res *api.Resource) ([]*introspect.Colum
 	var out []*introspect.Column
 	for _, k := range strings.Split(s, ",") {
 		k = strings.TrimSpace(k)
-		f := res.Field(k)
+		f := queryField(res, k)
 		if f == nil {
 			return nil, errf(CodeUnknownColumn, "unknown column %q on %q", k, res.Path)
 		}
