@@ -234,8 +234,17 @@ exception is the `auth.mint_type` composite: it is emitted raw
 (`to_jsonb(__fn.v)`, shapes `jwt` / `jwt_set`) so the claims keep their JSON
 numbers (`exp` must be numeric for verification), and exec signs them.
 
-Volatile functions use exactly the same shapes; only the transaction policy
-differs.
+Volatile functions use the same shapes and the same transaction policy as
+above, with one difference for set-returning ones: the call is evaluated
+exactly once per request, whatever `count`, `limit`, `offset` or `limit=0`
+say. The compiler materialises it in a leading
+`WITH __call AS MATERIALIZED (SELECT ... FROM fn(...))` CTE and the page, the
+`has_next` look-ahead row and the `count=true` total all read that CTE
+instead of calling the function again. `limit=0` returns no rows for every
+result kind (`SETOF <table>`, `SETOF <scalar>`, `SETOF <composite>`), still
+runs the function once, and still reports the total under `count=true`.
+Stable and immutable functions keep the plain `FROM fn(...)` plan: they have
+no side effects, so re-reading them is invisible.
 
 ## Volatile functions are mutations
 

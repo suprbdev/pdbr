@@ -122,6 +122,10 @@ func goldenCatalog() *introspect.Catalog {
 	}, &introspect.Function{
 		Schema: "public", Name: "post_array", ReturnType: "_posts", ReturnTypeSchema: "public", Volatility: introspect.VolatilityStable,
 	}, &introspect.Function{
+		Schema: "public", Name: "vol_posts", ReturnType: "posts", ReturnTypeSchema: "public", ReturnsSet: true, Volatility: introspect.VolatilityVolatile,
+	}, &introspect.Function{
+		Schema: "public", Name: "vol_ints", ReturnType: "int4", ReturnTypeSchema: pg, ReturnsSet: true, Volatility: introspect.VolatilityVolatile,
+	}, &introspect.Function{
 		Schema: "public", Name: "post_tab", ReturnType: "record", ReturnTypeSchema: pg, ReturnsSet: true, Volatility: introspect.VolatilityStable,
 		ReturnColumns: []introspect.FuncArg{
 			{Name: "n", PGType: "int4", TypeSchema: pg, Mode: introspect.ArgModeTable},
@@ -357,7 +361,7 @@ func TestGolden(t *testing.T) {
 }
 
 // goldenOnlyRPCs are the functions goldenCatalog adds to the fixture.
-var goldenOnlyRPCs = map[string]bool{"noop": true, "greet": true, "sum_all": true, "mood_counts": true, "user_stats": true, "post_array": true, "post_tab": true}
+var goldenOnlyRPCs = map[string]bool{"noop": true, "greet": true, "sum_all": true, "mood_counts": true, "user_stats": true, "post_array": true, "post_tab": true, "vol_posts": true, "vol_ints": true}
 
 // TestGoldenAgainstDatabase executes every golden statement against the
 // live fixture database (PDBR_TEST_DATABASE_URL; skipped otherwise), each in

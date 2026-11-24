@@ -199,7 +199,8 @@ func (s *stmt) rpcValue(rpc *api.RPC, call string) (*Statement, error) {
 // over a composite or row type, whose values a FROM item also expands into
 // columns, so the whole row is read): the function output, bounded by
 // limit/offset (max_page_size when absent), aggregated in output order
-// into a JSON array.
+// into a JSON array. A volatile function is evaluated once in a materialized
+// CTE; limit=0 then returns [] after reading it for its side effects.
 func (s *stmt) rpcSetOfValues(rpc *api.RPC, call string) (*Statement, error) {
 	fn := rpc.Function
 	limit, err := s.embedLimit(s.plan.Page)
@@ -209,29 +210,55 @@ func (s *stmt) rpcSetOfValues(rpc *api.RPC, call string) (*Statement, error) {
 	if s.plan.Page.Offset < 0 {
 		return nil, errUser(CodeInvalidParameter, "offset must be >= 0")
 	}
+	once := rpc.Mutation
+	if once && limit == 0 {
+		cte := s.callCTE(valueSource(rpc, s.structuredReturn(fn), call))
+		return &Statement{SQL: cte + "SELECT '[]'::json AS data\nFROM (SELECT count(*) FROM " + callCTEName + ") AS __n", Shape: setShape(rpc)}, nil
+	}
 	pageSQL := " LIMIT " + strconv.Itoa(limit)
 	if s.plan.Page.Offset > 0 {
 		pageSQL += " OFFSET " + s.param(s.plan.Page.Offset)
 	}
-	var from, expr string
-	shape := ShapeScalar
-	switch {
-	case rpc.Mint:
-		from = fmt.Sprintf("(SELECT __v AS v FROM %s AS __v%s) AS __s", call, pageSQL)
-		expr = "to_jsonb(__s.v)"
-		shape = ShapeJWTSet
-	case rpc.Returns == api.ReturnSetOfComposite, s.structuredReturn(fn) != nil && !strings.HasPrefix(fn.ReturnType, "_"):
-		from = fmt.Sprintf("(SELECT __v AS v FROM %s AS __v%s) AS __s", call, pageSQL)
-		if expr, err = s.valueJSON("__s.v", fn, 0); err != nil {
-			return nil, err
-		}
-	default:
-		from = fmt.Sprintf("(SELECT __v.v FROM %s AS __v(v)%s) AS __s", call, pageSQL)
+	src := valueSource(rpc, s.structuredReturn(fn), call)
+	prefix := ""
+	if once {
+		prefix = s.callCTE(src)
+		src = "SELECT v FROM " + callCTEName
+	}
+	expr := "to_jsonb(__s.v)"
+	if !rpc.Mint {
 		if expr, err = s.valueJSON("__s.v", fn, 0); err != nil {
 			return nil, err
 		}
 	}
-	return &Statement{SQL: fmt.Sprintf("SELECT coalesce(json_agg(%s), '[]'::json) AS data\nFROM %s", expr, from), Shape: shape}, nil
+	return &Statement{SQL: fmt.Sprintf("%sSELECT coalesce(json_agg(%s), '[]'::json) AS data\nFROM (%s%s) AS __s", prefix, expr, src, pageSQL), Shape: setShape(rpc)}, nil
+}
+
+// callCTEName names the CTE that holds a volatile function's output.
+const callCTEName = "__call"
+
+// callCTE renders the leading WITH clause that evaluates a volatile
+// set-returning function exactly once; every later read of the output
+// (page, look-ahead row, total) scans this CTE instead of calling the
+// function again.
+func (s *stmt) callCTE(query string) string {
+	return "WITH " + callCTEName + " AS MATERIALIZED (" + query + ")\n"
+}
+
+// valueSource renders the query yielding one column v per output value of a
+// SETOF <scalar|composite> call.
+func valueSource(rpc *api.RPC, structured *introspect.Column, call string) string {
+	if rpc.Mint || rpc.Returns == api.ReturnSetOfComposite || structured != nil && !strings.HasPrefix(rpc.Function.ReturnType, "_") {
+		return fmt.Sprintf("SELECT __v AS v FROM %s AS __v", call)
+	}
+	return fmt.Sprintf("SELECT __v.v FROM %s AS __v(v)", call)
+}
+
+func setShape(rpc *api.RPC) Shape {
+	if rpc.Mint {
+		return ShapeJWTSet
+	}
+	return ShapeScalar
 }
 
 // rpcNode returns the projection node for a table-returning function.
@@ -272,15 +299,23 @@ func (s *stmt) rpcRow(rpc *api.RPC, call string) (*Statement, error) {
 // rpcSetOfRows compiles SETOF <table>: the list compiler over the function
 // call as the root row source. Cursors are off (function output has no
 // stable keyset), so the page carries offset links only; the count subquery
-// re-renders the same call, reusing the argument parameters.
+// re-renders the same call, reusing the argument parameters. A volatile
+// function is evaluated once in a materialized CTE that the page and the
+// count both read.
 func (s *stmt) rpcSetOfRows(rpc *api.RPC, call string) (*Statement, error) {
 	p := *s.plan
 	p.Resource = rpc.Resource
 	s.plan = &p
 	s.rootSource = call
+	if !rpc.Mutation {
+		return s.list()
+	}
+	columns := s.callCTE("SELECT * FROM " + call)
+	s.rootSource = callCTEName
 	st, err := s.list()
 	if err != nil {
 		return nil, err
 	}
+	st.SQL = columns + st.SQL
 	return st, nil
 }
