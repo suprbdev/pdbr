@@ -1,0 +1,1 @@
+GET /api/users?select=id,posts(id)&posts.limit=0&limit=0&count=true

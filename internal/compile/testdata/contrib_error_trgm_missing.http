@@ -1,1 +1,1 @@
-GET /api/kb/docs?order=title.trgm_dist
+GET /api/kb/docs?order=title.trgm_distance

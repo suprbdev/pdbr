@@ -10719,7 +10719,7 @@
       "query.and": {
         "name": "and",
         "in": "query",
-        "description": "Conjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes. Also the only way to filter a column named like a reserved parameter.",
+        "description": "Conjunction: comma list of items in parentheses, item = <col>.[not.]<op>.<value> | and(...) | or(...) | not.and(...) | not.or(...); values with commas or parentheses in double quotes. Also the only way to filter a column named like a reserved parameter (select, order, limit, ...).",
         "schema": {
           "type": "string"
         }

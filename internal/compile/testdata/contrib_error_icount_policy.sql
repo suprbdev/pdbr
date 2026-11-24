@@ -1,2 +1,2 @@
--- request: GET /api/kb/labels?order=nums_icount
--- error: 400 column_not_orderable: derived column "nums_icount" on "kb.labels" is not orderable (only integer contrib accessors are, and under filters.indexed_only only on columns in filters.allow_columns)
+-- request: GET /api/kb/labels?order=~nums_icount
+-- error: 400 column_not_orderable: derived column "~nums_icount" on "kb.labels" is not orderable (only integer contrib accessors are, and under filters.indexed_only only on columns in filters.allow_columns)

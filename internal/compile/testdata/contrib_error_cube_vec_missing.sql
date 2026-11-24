@@ -1,2 +1,2 @@
--- request: GET /api/kb/shapes?select=id,box_l2_distance
--- error: 400 invalid_parameter: box_l2_distance requires vec=<vector>
+-- request: GET /api/kb/shapes?select=id,~box_l2_distance
+-- error: 400 invalid_parameter: ~box_l2_distance requires ~vec=<vector>

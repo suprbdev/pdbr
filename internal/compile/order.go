@@ -183,10 +183,10 @@ func (s *stmt) orderExprSQL(term orderTerm, alias string) string {
 	return colRef(alias, term.col)
 }
 
-// nearExpr renders the near= geometry for distance ordering over col.
+// nearExpr renders the ~near= geometry for distance ordering over col.
 func (s *stmt) nearExpr(col *introspect.Column) string {
 	if s.plan.Near == nil {
-		s.fail(errUser(CodeInvalidParameter, "order by distance requires near="))
+		s.fail(errUser(CodeInvalidParameter, "order by distance requires ~near="))
 		return "NULL"
 	}
 	expr, err := s.spatialOperand(postgis.FlavourOf(col.PGType), spatialSRID(col), s.plan.Near)
@@ -199,9 +199,9 @@ func (s *stmt) nearExpr(col *introspect.Column) string {
 
 // contribOrderSQL renders a contrib order term: the relevance of the
 // column's full-text filter (Op.RankSQL over fresh placeholders for the same
-// operand), the trigram distance to trgm=, the vector or cube distance to
-// vec=, the earthdistance distance to latlon= or the Levenshtein distance to
-// levenshtein=. Distances render in their ordering form (Expr.OrderSQL),
+// operand), the trigram distance to ~trgm=, the vector or cube distance to
+// ~vec=, the earthdistance distance to ~latlon= or the Levenshtein distance to
+// ~levenshtein=. Distances render in their ordering form (Expr.OrderSQL),
 // which keyset anchors share: earth distances sort by cube's index-served
 // chord distance rather than the great-circle metres their score shows.
 func (s *stmt) contribOrderSQL(co *plan.ContribOrder, alias string) string {
@@ -232,14 +232,14 @@ func (s *stmt) contribOrderSQL(co *plan.ContribOrder, alias string) string {
 		if !ok {
 			continue
 		}
-		param, val := "trgm", s.plan.Trgm
+		param, val := api.ParamTrgm, s.plan.Trgm
 		switch v.Name {
 		case contrib.VocabVector, contrib.VocabBit, contrib.VocabCube:
-			param, val = "vec", s.plan.Vec
+			param, val = api.ParamVec, s.plan.Vec
 		case contrib.VocabEarth, contrib.VocabEarthPoint:
-			param, val = "latlon", s.plan.LatLon
+			param, val = api.ParamLatLon, s.plan.LatLon
 		case contrib.VocabFuzzy:
-			param, val = "levenshtein", s.plan.Levenshtein
+			param, val = api.ParamLevenshtein, s.plan.Levenshtein
 		}
 		if val == nil {
 			s.fail(errUser(CodeInvalidParameter, "order by %s.%s requires %s=", co.Column.Name, co.Name, param))

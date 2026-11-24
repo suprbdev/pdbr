@@ -21,11 +21,11 @@
 //   - Page.Limit is always resolved (request and every embed).
 //   - Key.Values and Page.After/Before hold PK-typed Go values (int64,
 //     string, bool, float64, ...), positional to the constraint columns.
-//   - Near is the validated near= input when any order term uses .dist
+//   - Near is the validated ~near= input when any order term uses .st_distance
 //     (or a distance or raster value pseudo-column is selected): a decoded
 //     GeoJSON object or a WKT/EWKT string, parsed per distance column by
 //     the compiler so each gets its own SRID.
-//   - LatLon is the validated latlon=<lat>,<lon> as {lat, lon} floats when
+//   - LatLon is the validated ~latlon=<lat>,<lon> as {lat, lon} floats when
 //     an earthdistance order term, score or threshold needs it.
 package parse
 
@@ -54,7 +54,7 @@ const (
 	CodeColumnNotOrderable   = "column_not_orderable"
 	CodePageSizeExceeded     = "page_size_exceeded"
 	CodeKeysetUnsupported    = "keyset_unsupported"
-	CodeEmbedDepthExceeded   = "embed_depth_exceeded"
+	CodeDepthExceeded        = "depth_exceeded"
 	CodeAmbiguousRelation    = "ambiguous_relation"
 	CodeInvalidCursor        = "invalid_cursor"
 	CodeInvalidBody          = "invalid_body"
@@ -119,7 +119,7 @@ type Options struct {
 	RelationOrder bool
 	// ComputedOrder enables order=computed.
 	ComputedOrder bool
-	// Spatial enables spatial filter ops, .dist ordering with near=, and
+	// Spatial enables spatial filter ops, .st_distance ordering with ~near=, and
 	// col(transform=,simplify=,buffer=,precision=) projection args (postgis plugin) all at
 	// once; SpatialFilters / SpatialOrder / SpatialProjection enable them
 	// one at a time (the plugin's filters / ordering / projection settings).
@@ -264,9 +264,9 @@ type parser struct {
 	// bound once the whole query is parsed.
 	scores     []*api.PseudoColumn
 	vecFilters []vecFilter
-	// levFilters are the levenshtein_lt thresholds, checked against
-	// levenshtein=, and latlonFilters the earth_lt and earth_miles_lt
-	// thresholds, against latlon=.
+	// levFilters are the levenshtein_distance_lt thresholds, checked against
+	// ~levenshtein=, and latlonFilters the earth_distance_lt and earth_miles_distance_lt
+	// thresholds, against ~latlon=.
 	levFilters    []vecFilter
 	latlonFilters []vecFilter
 	// headlines are the headline pseudo-columns selected anywhere in the
@@ -283,7 +283,7 @@ type headlineUse struct {
 	h    *plan.Headline
 }
 
-// vecFilter is a distance threshold (vec_cos_lt, levenshtein_lt, ...) on
+// vecFilter is a distance threshold (cosine_distance_lt, levenshtein_distance_lt, ...) on
 // Column, checked against its reference parameter once it is parsed.
 type vecFilter struct {
 	Column *introspect.Column

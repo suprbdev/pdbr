@@ -1,1 +1,1 @@
-GET /api/kb/tiles?select=rast_summary_stats(band=0)
+GET /api/kb/tiles?select=~rast_summary_stats(band=0)

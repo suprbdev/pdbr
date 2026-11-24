@@ -18,9 +18,9 @@ import (
 
 // Error codes the resolver emits (docs/errors.md).
 const (
-	CodeInvalidBody        = compile.CodeInvalidBody
-	CodeUnknownRelation    = parse.CodeUnknownRelation
-	CodeEmbedDepthExceeded = compile.CodeEmbedDepthExceeded
+	CodeInvalidBody     = compile.CodeInvalidBody
+	CodeUnknownRelation = parse.CodeUnknownRelation
+	CodeDepthExceeded   = compile.CodeDepthExceeded
 )
 
 // The operations of a nested key.
@@ -542,7 +542,7 @@ func (g *chain) forward(n nestedIn, own *owner, depth int, path string) (link st
 		switch op {
 		case opCreate:
 			if depth+1 > g.p.maxDepth {
-				return "", false, errAt(CodeEmbedDepthExceeded, p, "nesting depth %d exceeds max_depth %d", depth+1, g.p.maxDepth)
+				return "", false, errAt(CodeDepthExceeded, p, "nesting depth %d exceeds max_depth %d", depth+1, g.p.maxDepth)
 			}
 			row, ok := v.(map[string]any)
 			if !ok {
@@ -568,7 +568,7 @@ func (g *chain) forward(n nestedIn, own *owner, depth int, path string) (link st
 			clear = true
 		case opUpdate:
 			if depth+1 > g.p.maxDepth {
-				return "", false, errAt(CodeEmbedDepthExceeded, p, "nesting depth %d exceeds max_depth %d", depth+1, g.p.maxDepth)
+				return "", false, errAt(CodeDepthExceeded, p, "nesting depth %d exceeds max_depth %d", depth+1, g.p.maxDepth)
 			}
 			row, ok := v.(map[string]any)
 			if !ok || len(row) == 0 {
@@ -800,7 +800,7 @@ func (g *chain) backward(n nestedIn, parentCTE string, depth int, path string, u
 			return errAt(CodeInvalidBody, p, "%q must be a non-empty JSON array of objects", op)
 		}
 		if (op == opCreate || op == opUpdate) && depth+1 > g.p.maxDepth {
-			return errAt(CodeEmbedDepthExceeded, p, "nesting depth %d exceeds max_depth %d", depth+1, g.p.maxDepth)
+			return errAt(CodeDepthExceeded, p, "nesting depth %d exceeds max_depth %d", depth+1, g.p.maxDepth)
 		}
 		for i, item := range list {
 			ep := p + "." + op + "[" + strconv.Itoa(i) + "]"

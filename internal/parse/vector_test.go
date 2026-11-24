@@ -12,15 +12,15 @@ import (
 	"github.com/suprbdev/pdbr/internal/testcatalog"
 )
 
-// TestVectorOrder: order=<col>.vec_* binds vec= once for the root and every
+// TestVectorOrder: order=<col>.vec_* binds ~vec= once for the root and every
 // embed, decoded from a JSON array or kept as text, and checked against each
-// term's column type; the term without vec=, vec= without a term and a
+// term's column type; the term without ~vec=, ~vec= without a term and a
 // malformed vector are 400 invalid_filter.
 func TestVectorOrder(t *testing.T) {
 	b := buildContrib(t, false)
 	vec := url.QueryEscape("[0.1,0.2,0.3]")
-	p := mustParse(t, b, "/api/kb/embeddings?select=id,chunks(id)&order=emb.vec_cos,id&chunks.order=emb.vec_l2.desc&vec="+vec)
-	if co := p.Order[0].Contrib; co == nil || co.Name != "vec_cos" || co.Expr != "cosineDistance" || co.Column.Name != "emb" {
+	p := mustParse(t, b, "/api/kb/embeddings?select=id,chunks(id)&order=emb.cosine_distance,id&chunks.order=emb.l2_distance.desc&~vec="+vec)
+	if co := p.Order[0].Contrib; co == nil || co.Name != "cosine_distance" || co.Expr != "cosineDistance" || co.Column.Name != "emb" {
 		t.Fatalf("root term = %#v", p.Order[0])
 	}
 	if co := p.Select.Embeds[0].Order[0].Contrib; co == nil || co.Expr != "l2Distance" || !p.Select.Embeds[0].Order[0].Desc {
@@ -29,28 +29,28 @@ func TestVectorOrder(t *testing.T) {
 	if list, ok := p.Vec.([]any); !ok || len(list) != 3 {
 		t.Errorf("vec = %#v, want the decoded list", p.Vec)
 	}
-	p = mustParse(t, b, "/api/kb/embeddings?order=sparse.vec_ip&vec="+url.QueryEscape("{1:1.5}/3"))
+	p = mustParse(t, b, "/api/kb/embeddings?order=sparse.negative_inner_product&~vec="+url.QueryEscape("{1:1.5}/3"))
 	if p.Vec != "{1:1.5}/3" {
 		t.Errorf("text vec = %#v", p.Vec)
 	}
-	mustParse(t, b, "/api/kb/embeddings?order=sparse.vec_l1,half.vec_l2&vec="+vec)
+	mustParse(t, b, "/api/kb/embeddings?order=sparse.l1_distance,half.l2_distance&~vec="+vec)
 
 	for q, code := range map[string]string{
-		"order=emb.vec_l2":    CodeInvalidParameter,
-		"vec=" + vec:          CodeInvalidParameter,
-		"order=id&vec=" + vec: CodeInvalidParameter,
-		"order=emb.vec_l2&vec=" + url.QueryEscape("[1,"):   CodeInvalidParameter,
-		"order=emb.vec_l2&vec=" + url.QueryEscape(`["a"]`): CodeInvalidParameter,
-		"order=emb.vec_l2&vec=" + url.QueryEscape("[]"):    CodeInvalidParameter,
-		"order=emb.vec_l2&vec=":                            CodeInvalidParameter,
-		"order=emb":                                        CodeColumnNotOrderable,
-		"order=title.vec_l2&vec=" + vec:                    CodeColumnNotOrderable,
-		"order=emb.trgm_dist&trgm=x":                       CodeColumnNotOrderable,
-		"distinct=emb":                                     CodeInvalidParameter,
-		"emb=eq." + vec:                                    CodeInvalidFilter,
-		"emb=in.(" + vec + ")":                             CodeInvalidFilter,
-		"emb=not.eq." + vec:                                CodeInvalidFilter,
-		"or=(emb.lt.x,id.eq.1)":                            CodeInvalidFilter,
+		"order=emb.l2_distance": CodeInvalidParameter,
+		"~vec=" + vec:           CodeInvalidParameter,
+		"order=id&~vec=" + vec:  CodeInvalidParameter,
+		"order=emb.l2_distance&~vec=" + url.QueryEscape("[1,"):   CodeInvalidParameter,
+		"order=emb.l2_distance&~vec=" + url.QueryEscape(`["a"]`): CodeInvalidParameter,
+		"order=emb.l2_distance&~vec=" + url.QueryEscape("[]"):    CodeInvalidParameter,
+		"order=emb.l2_distance&~vec=":                            CodeInvalidParameter,
+		"order=emb":                                              CodeColumnNotOrderable,
+		"order=title.l2_distance&~vec=" + vec:                    CodeColumnNotOrderable,
+		"order=emb.trgm_distance&~trgm=x":                        CodeColumnNotOrderable,
+		"distinct=emb":                                           CodeInvalidParameter,
+		"emb=eq." + vec:                                          CodeInvalidFilter,
+		"emb=in.(" + vec + ")":                                   CodeInvalidFilter,
+		"emb=not.eq." + vec:                                      CodeInvalidFilter,
+		"or=(emb.lt.x,id.eq.1)":                                  CodeInvalidFilter,
 	} {
 		_, err := doParse(t, b, req{url: "/api/kb/embeddings?" + q}, allOn)
 		if err == nil {
@@ -66,30 +66,11 @@ func TestVectorOrder(t *testing.T) {
 	wantCode(t, err, CodeInvalidSelect)
 
 	indexed := buildContrib(t, true)
-	mustParse(t, indexed, "/api/kb/embeddings?order=emb.vec_l1&vec="+vec)
-	mustParse(t, indexed, "/api/kb/embeddings?order=half.vec_cos&vec="+vec)
-	for _, q := range []string{"order=half.vec_l1&vec=" + vec, "order=sparse.vec_l2&vec=" + vec} {
+	mustParse(t, indexed, "/api/kb/embeddings?order=emb.l1_distance&~vec="+vec)
+	mustParse(t, indexed, "/api/kb/embeddings?order=half.cosine_distance&~vec="+vec)
+	for _, q := range []string{"order=half.l1_distance&~vec=" + vec, "order=sparse.l2_distance&~vec=" + vec} {
 		_, err := doParse(t, indexed, req{url: "/api/kb/embeddings?" + q}, allOn)
 		wantCode(t, err, CodeColumnNotOrderable)
-	}
-}
-
-// TestVectorSoftReserved: where a column or RPC argument is named vec, vec=
-// is that filter or argument and the vector order terms are unavailable.
-func TestVectorSoftReserved(t *testing.T) {
-	cat := testcatalog.Contrib(testutil.FixtureCatalog())
-	emb := cat.Table(testcatalog.ContribSchema, "embeddings")
-	emb.Columns = append(emb.Columns, &introspect.Column{Name: "vec", Position: 6, PGType: "text", TypeSchema: "pg_catalog"})
-	b := buildCatalog(t, cat, false, []string{"public", testcatalog.ContribSchema}, nil)
-	p := mustParse(t, b, "/api/kb/embeddings?vec=eq.x")
-	if c, ok := p.Filter.(plan.Cond); !ok || c.Column.Name != "vec" {
-		t.Errorf("vec=eq.x filter = %#v", p.Filter)
-	}
-	_, err := doParse(t, b, req{url: "/api/kb/embeddings?order=emb.vec_l2&vec=eq.x"}, allOn)
-	wantCode(t, err, CodeColumnNotOrderable)
-	_, err = doParse(t, b, req{url: "/api/kb/chunks?order=emb.vec_l2&vec=" + url.QueryEscape("[1]")}, allOn)
-	if err != nil {
-		t.Errorf("chunks has no vec column: %v", err)
 	}
 }
 

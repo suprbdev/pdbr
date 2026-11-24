@@ -54,43 +54,43 @@ func rasterKeys(r *api.Resource) []string {
 }
 
 // TestRasterPseudoColumns: a raster column gets the metadata accessors,
-// the pixel value at near= and the summary statistics; raster arrays get
+// the pixel value at ~near= and the summary statistics; raster arrays get
 // nothing; OpenAPI documents them, the near parameter, the intersects
 // filter and the summary-statistics object.
 func TestRasterPseudoColumns(t *testing.T) {
 	built := buildTiles(t, New(DefaultSettings()), "")
 	tiles := built.ByPath["kb.tiles"]
-	want := []string{"rast_envelope", "rast_height", "rast_num_bands", "rast_pixel_height", "rast_pixel_width", "rast_srid", "rast_summary_stats", "rast_value", "rast_width"}
+	want := []string{"~rast_envelope", "~rast_height", "~rast_num_bands", "~rast_pixel_height", "~rast_pixel_width", "~rast_srid", "~rast_summary_stats", "~rast_value", "~rast_width"}
 	if got := rasterKeys(tiles); !reflect.DeepEqual(got, want) {
 		t.Fatalf("raster pseudo-columns = %v\nwant %v", got, want)
 	}
-	if v := tiles.Pseudo["rast_value"]; v.Score == nil || v.Score.Param != "near" || !v.Raster.Value {
-		t.Errorf("rast_value = %+v", v)
+	if v := tiles.Pseudo["~rast_value"]; v.Score == nil || v.Score.Param != api.ParamNear || !v.Raster.Value {
+		t.Errorf("~rast_value = %+v", v)
 	}
 	if !built.Surface.SpatialFilters {
 		t.Error("raster-only model left the spatial filter surface off")
 	}
 	props := built.OpenAPI.Components.Schemas["kb.tiles"].Properties
-	if p := props["rast_envelope"]; p == nil || p.Ref != "#/components/schemas/GeoJSON" && (len(p.AnyOf) == 0 || p.AnyOf[0].Ref != "#/components/schemas/GeoJSON") {
-		t.Errorf("rast_envelope property = %+v", p)
+	if p := props["~rast_envelope"]; p == nil || p.Ref != "#/components/schemas/GeoJSON" && (len(p.AnyOf) == 0 || p.AnyOf[0].Ref != "#/components/schemas/GeoJSON") {
+		t.Errorf("~rast_envelope property = %+v", p)
 	}
-	if p := props["rast_value"]; p == nil || !strings.Contains(p.Description, "select=rast_value[(band=<integer>)]") {
-		t.Errorf("rast_value property = %+v", p)
+	if p := props["~rast_value"]; p == nil || !strings.Contains(p.Description, "select=~rast_value[(band=<integer>)]") {
+		t.Errorf("~rast_value property = %+v", p)
 	}
-	if p := props["rast_summary_stats"]; p == nil || p.Properties["mean"] == nil || !reflect.DeepEqual(p.Type, []string{"object", "null"}) {
-		t.Errorf("rast_summary_stats property = %+v", p)
+	if p := props["~rast_summary_stats"]; p == nil || p.Properties["mean"] == nil || !reflect.DeepEqual(p.Type, []string{"object", "null"}) {
+		t.Errorf("~rast_summary_stats property = %+v", p)
 	}
 	if props["rast"] != nil {
 		t.Error("raster column in the read schema")
 	}
 	get := built.OpenAPI.Paths["/kb/tiles"].Get
-	if paramByName(get.Parameters, "near") == nil {
-		t.Error("near not documented for rast_value")
+	if paramByName(get.Parameters, "~near") == nil {
+		t.Error("near not documented for ~rast_value")
 	}
-	if p := paramByName(get.Parameters, "rast"); p == nil || !reflect.DeepEqual(p.XFilterOps, []string{"intersects", "is"}) || !strings.Contains(p.Description, "raster's SRID") {
+	if p := paramByName(get.Parameters, "rast"); p == nil || !reflect.DeepEqual(p.XFilterOps, []string{"st_intersects", "is"}) || !strings.Contains(p.Description, "raster's SRID") {
 		t.Errorf("rast filter param = %+v", p)
 	}
-	if sel := paramByName(get.Parameters, "select").Description; !strings.Contains(sel, "rast_summary_stats[(band=<integer>)]") || !strings.Contains(sel, "rast_value[(band=<integer>)]") {
+	if sel := paramByName(get.Parameters, "select").Description; !strings.Contains(sel, "~rast_summary_stats[(band=<integer>)]") || !strings.Contains(sel, "~rast_value[(band=<integer>)]") {
 		t.Errorf("select description: %s", sel)
 	}
 
@@ -120,9 +120,9 @@ func TestRasterOmit(t *testing.T) {
 	}
 }
 
-// TestRasterKeyTaken: a real column owning a raster pseudo-column's key
-// keeps it, and a column named near removes the pixel value.
-func TestRasterKeyTaken(t *testing.T) {
+// TestRasterColumnsDoNotCollide: real columns named rast_width and near
+// leave the raster pseudo-columns, the pixel value included, in place.
+func TestRasterColumnsDoNotCollide(t *testing.T) {
 	cat := testcatalog.Geo(testcatalog.Contrib(testutil.FixtureCatalog()))
 	tiles := cat.Table(testcatalog.ContribSchema, "tiles")
 	tiles.Columns = append(tiles.Columns,
@@ -133,14 +133,8 @@ func TestRasterKeyTaken(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := b.Resources[testcatalog.ContribSchema+".tiles"]
-	if pc := r.Pseudo["rast_width"]; pc != nil {
-		t.Errorf("rast_width pseudo-column shadows a real column: %+v", pc)
-	}
-	if r.Pseudo["rast_value"] != nil {
-		t.Error("rast_value registered where near is a column")
-	}
-	if len(b.Warnings) == 0 {
-		t.Error("no warning for the taken key")
+	if r.Pseudo["~rast_width"] == nil || r.Pseudo["~rast_value"] == nil {
+		t.Errorf("raster pseudo-columns next to rast_width and near: %v", sortedKeys(r.Pseudo))
 	}
 }
 

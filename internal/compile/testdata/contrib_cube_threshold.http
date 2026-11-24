@@ -1,1 +1,1 @@
-GET /api/kb/shapes?select=id,box_chebyshev_distance,pt_l2_distance,pt_l1_distance&box=vec_chebyshev_lt.2.5&vec=%5B1%2C2%5D
+GET /api/kb/shapes?select=id,~box_chebyshev_distance,~pt_l2_distance,~pt_l1_distance&box=chebyshev_distance_lt.2.5&~vec=%5B1%2C2%5D

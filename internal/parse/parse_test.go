@@ -237,7 +237,7 @@ func TestSelect(t *testing.T) {
 		opts := allOn
 		opts.MaxEmbedDepth = 2
 		_, err := doParse(t, b, req{url: "/api/users?select=posts(comments(posts(id)))"}, opts)
-		wantCode(t, err, CodeEmbedDepthExceeded)
+		wantCode(t, err, CodeDepthExceeded)
 		if _, err := doParse(t, b, req{url: "/api/users?select=posts(comments(id))"}, opts); err != nil {
 			t.Fatal(err)
 		}
@@ -599,11 +599,11 @@ func TestSpatialOpsMatchPlan(t *testing.T) {
 			t.Errorf("ops[%q].list = %v, want %v", name, spec.list, wantList)
 		}
 	}
-	if spatial != len(plan.SpatialOps) {
-		t.Errorf("parser has %d spatial operators, plan.SpatialOps %d", spatial, len(plan.SpatialOps))
+	if spatial != len(plan.SpatialOps)-1 {
+		t.Errorf("parser has %d spatial operators, plan.SpatialOps %d (with the internal geometry form of bbox_intersects)", spatial, len(plan.SpatialOps))
 	}
-	if want := len(postgis.Ops) - 1; len(plan.SpatialOps) != want {
-		t.Errorf("plan.SpatialOps has %d operators, pdbcore %d (excluding isNull)", len(plan.SpatialOps), want)
+	if want := len(postgis.Ops) - 2; len(plan.SpatialOps) != want {
+		t.Errorf("plan.SpatialOps has %d operators, pdbcore %d (excluding isNull and orderingEquals)", len(plan.SpatialOps), want)
 	}
 }
 
@@ -614,15 +614,19 @@ func TestSpatialGeometryOperandOps(t *testing.T) {
 		if spec.Kind() != postgis.ArgGeometry {
 			continue
 		}
+		url := string(op)
+		if op == plan.OpBBoxIntersectsGeom {
+			url = string(plan.OpBBoxIntersects)
+		}
 		for _, col := range []string{"location", "area"} {
-			p := mustParse(t, b, "/api/places?"+col+"=not."+string(op)+".SRID%3D4326%3BPOINT(1%202)")
+			p := mustParse(t, b, "/api/places?"+col+"=not."+url+".SRID%3D4326%3BPOINT(1%202)")
 			c := p.Filter.(plan.Cond)
 			v, ok := c.Value.(postgis.Value)
 			if !ok || c.Op != op || !c.Negate || v.Param != "SRID=4326;POINT(1 2)" {
 				t.Errorf("%s=%s: cond = %+v", col, op, c)
 			}
 		}
-		_, err := doParse(t, b, req{url: "/api/places?owner_id=" + string(op) + ".POINT(1%202)"}, allOn)
+		_, err := doParse(t, b, req{url: "/api/places?owner_id=" + url + ".POINT(1%202)"}, allOn)
 		wantCode(t, err, CodeInvalidFilter)
 	}
 }
@@ -662,7 +666,7 @@ func TestEmbedParams(t *testing.T) {
 		t.Fatalf("expected relation filter, got %#v", p.Filter)
 	}
 	for u, code := range map[string]string{
-		"/api/users?select=id,posts(id)&posts.limit=0":         CodeInvalidParameter,
+		"/api/users?select=id,posts(id)&posts.limit=-1":        CodeInvalidParameter,
 		"/api/users?select=id,posts(id)&posts.limit=101":       CodePageSizeExceeded,
 		"/api/users?select=id,posts(id)&posts.offset=-1":       CodeInvalidParameter,
 		"/api/users?select=id,posts(id)&posts.after=x":         CodeInvalidParameter,
@@ -802,35 +806,35 @@ func TestOrder(t *testing.T) {
 	if p.Order[0].Computed == nil {
 		t.Fatalf("order = %+v", p.Order)
 	}
-	p = mustParse(t, b, "/api/places?order=location.dist.asc,id&near=SRID%3D4326%3BPOINT(-0.1281%2051.508)")
+	p = mustParse(t, b, "/api/places?order=location.st_distance.asc,id&~near=SRID%3D4326%3BPOINT(-0.1281%2051.508)")
 	if p.Order[0].Distance == nil || p.Order[0].Distance.Name != "location" || p.Near == nil {
-		t.Fatalf("order = %+v near=%v", p.Order, p.Near)
+		t.Fatalf("order = %+v ~near=%v", p.Order, p.Near)
 	}
 	if p.Near != "SRID=4326;POINT(-0.1281 51.508)" {
 		t.Fatalf("near = %+v", p.Near)
 	}
-	_, err := doParse(t, b, req{url: "/api/places?order=location.dist"}, allOn)
+	_, err := doParse(t, b, req{url: "/api/places?order=location.st_distance"}, allOn)
 	wantCode(t, err, CodeInvalidParameter)
-	p = mustParse(t, b, "/api/users?select=id,places(id)&places.order=location.dist&near=POINT(1%202)")
+	p = mustParse(t, b, "/api/users?select=id,places(id)&places.order=location.st_distance&~near=POINT(1%202)")
 	if p.Select.Embeds[0].Order[0].Distance == nil || p.Near == nil {
-		t.Fatalf("embed dist order = %+v near=%v", p.Select.Embeds[0].Order, p.Near)
+		t.Fatalf("embed dist order = %+v ~near=%v", p.Select.Embeds[0].Order, p.Near)
 	}
 	for u, code := range map[string]string{
-		"/api/posts?order=":                                CodeInvalidParameter,
-		"/api/posts?order=title.sideways":                  CodeInvalidParameter,
-		"/api/posts?order=title.asc.desc":                  CodeInvalidParameter,
-		"/api/posts?order=title.nullsfirst.asc":            CodeInvalidParameter,
-		"/api/posts?order=nope":                            CodeUnknownColumn,
-		"/api/posts?order=body":                            CodeColumnNotOrderable,
-		"/api/posts?order=nope(email)":                     CodeUnknownRelation,
-		"/api/posts?order=users(nope)":                     CodeUnknownColumn,
-		"/api/posts?order=users(full_name)":                CodeColumnNotOrderable,
-		"/api/posts?order=users(email":                     CodeInvalidParameter,
-		"/api/comments?order=comments(post_id)":            CodeAmbiguousRelation,
-		"/api/users?order=tag_words":                       CodeColumnNotOrderable,
-		"/api/places?order=location":                       CodeColumnNotOrderable,
-		"/api/places?order=name.dist&near=POINT(1%202)":    CodeInvalidParameter,
-		"/api/places?order=location.dist.asc&near=garbage": CodeInvalidParameter,
+		"/api/posts?order=":                                        CodeInvalidParameter,
+		"/api/posts?order=title.sideways":                          CodeInvalidParameter,
+		"/api/posts?order=title.asc.desc":                          CodeInvalidParameter,
+		"/api/posts?order=title.nullsfirst.asc":                    CodeInvalidParameter,
+		"/api/posts?order=nope":                                    CodeUnknownColumn,
+		"/api/posts?order=body":                                    CodeColumnNotOrderable,
+		"/api/posts?order=nope(email)":                             CodeUnknownRelation,
+		"/api/posts?order=users(nope)":                             CodeUnknownColumn,
+		"/api/posts?order=users(full_name)":                        CodeColumnNotOrderable,
+		"/api/posts?order=users(email":                             CodeInvalidParameter,
+		"/api/comments?order=comments(post_id)":                    CodeAmbiguousRelation,
+		"/api/users?order=tag_words":                               CodeColumnNotOrderable,
+		"/api/places?order=location":                               CodeColumnNotOrderable,
+		"/api/places?order=name.st_distance&~near=POINT(1%202)":    CodeInvalidParameter,
+		"/api/places?order=location.st_distance.asc&~near=garbage": CodeInvalidParameter,
 	} {
 		_, err := doParse(t, b, req{url: u}, allOn)
 		if err == nil {
@@ -848,7 +852,7 @@ func TestOrder(t *testing.T) {
 	wantCode(t, err, CodeInvalidParameter)
 	_, err = doParse(t, b, req{url: "/api/users?order=post_count"}, off)
 	wantCode(t, err, CodeColumnNotOrderable)
-	_, err = doParse(t, b, req{url: "/api/places?order=location.dist&near=POINT(1%202)"}, off)
+	_, err = doParse(t, b, req{url: "/api/places?order=location.st_distance&~near=POINT(1%202)"}, off)
 	wantCode(t, err, CodeInvalidParameter)
 }
 
@@ -861,6 +865,10 @@ func TestPaging(t *testing.T) {
 	p = mustParse(t, b, "/api/posts?count=false")
 	if p.Count {
 		t.Fatal("count=false")
+	}
+	p = mustParse(t, b, "/api/users?limit=0&select=id,posts(id)&posts.limit=0")
+	if p.Page.Limit != 0 || !p.Page.LimitSet || p.Select.Embeds[0].Page.Limit != 0 || !p.Select.Embeds[0].Page.LimitSet {
+		t.Fatalf("limit=0 page = %+v, embed %+v", p.Page, p.Select.Embeds[0].Page)
 	}
 	after := base64.RawURLEncoding.EncodeToString([]byte(`["public.posts", 7]`))
 	p = mustParse(t, b, "/api/posts?after="+after)
@@ -882,7 +890,7 @@ func TestPaging(t *testing.T) {
 	}
 	other := base64.RawURLEncoding.EncodeToString([]byte(`["public.users", 7]`))
 	for u, code := range map[string]string{
-		"/api/posts?limit=0":         CodeInvalidParameter,
+		"/api/posts?limit=-2":        CodeInvalidParameter,
 		"/api/posts?limit=-1":        CodeInvalidParameter,
 		"/api/posts?limit=abc":       CodeInvalidParameter,
 		"/api/posts?limit=101":       CodePageSizeExceeded,
@@ -1255,16 +1263,16 @@ func TestGeoJSONNegotiation(t *testing.T) {
 			t.Errorf("%s %s %s: accept=%v err=%v", tc.method, tc.url, tc.accept, p, err)
 		}
 	}
-	p, err := doParse(t, b, req{url: "/api/places?geometry=area", header: map[string]string{"Accept": geo}}, allOn)
+	p, err := doParse(t, b, req{url: "/api/places?~geometry=area", header: map[string]string{"Accept": geo}}, allOn)
 	if err != nil || p.Geometry != "area" {
 		t.Errorf("geometry hint: %+v %v", p, err)
 	}
-	_, err = doParse(t, b, req{url: "/api/places?geometry=area"}, allOn)
+	_, err = doParse(t, b, req{url: "/api/places?~geometry=area"}, allOn)
 	wantCode(t, err, CodeInvalidParameter)
-	_, err = doParse(t, b, req{url: "/api/places?geometry=area&geometry=location", header: map[string]string{"Accept": geo}}, allOn)
+	_, err = doParse(t, b, req{url: "/api/places?~geometry=area&~geometry=location", header: map[string]string{"Accept": geo}}, allOn)
 	wantCode(t, err, CodeInvalidParameter)
-	_, err = doParse(t, b, req{url: "/api/users?geometry=area", header: map[string]string{"Accept": geo}}, allOn)
-	wantCode(t, err, CodeInvalidFilter)
+	_, err = doParse(t, b, req{url: "/api/users?~geometry=area", header: map[string]string{"Accept": geo}}, allOn)
+	wantCode(t, err, CodeNotAcceptable)
 }
 
 func TestParseArrayLiteral(t *testing.T) {

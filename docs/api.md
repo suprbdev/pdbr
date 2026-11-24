@@ -61,7 +61,7 @@ For each table/view in `schema.schemas` the connection role can `SELECT`:
 | stable/immutable functions | `GET`/`POST /rpc/{fn}` (`RETURNS TABLE` / `OUT` params → objects keyed by the result columns) |
 | volatile functions | `POST /rpc/{fn}` (mutation semantics) |
 | `fn(<table>)` stable functions | computed columns (`users_post_count` → `select=post_count`) |
-| PostGIS columns | GeoJSON in/out, `<col>_area`, `<col>_centroid`, … pseudo-columns, spatial filters, `.dist` ordering |
+| PostGIS columns | GeoJSON in/out, `~<col>_area`, `~<col>_centroid`, … pseudo-columns, spatial filters, `.st_distance` ordering |
 | everything | `GET /openapi.json` |
 
 ## Naming
@@ -87,22 +87,22 @@ prefixed:
 - **Computed columns**: function name with the `<table>_` prefix stripped
   (`users_post_count` → `post_count`); `@name` overrides. A real column with the
   same name wins and the computed column is skipped with a warning.
-- **PostGIS pseudo-columns**: `<col>_area`, `_length`, `_perimeter`,
+- **PostGIS pseudo-columns**: `~<col>_area`, `_length`, `_perimeter`,
   `_centroid`, `_envelope`, `_srid`, `_geometry_type`, `_is_valid`, `_x`,
   `_y`, `_z`, `_m`, `_num_points`, `_num_geometries`, `_start_point`,
   `_end_point`, `_point_on_surface`, `_wkt`, `_ewkt`, `_is_empty`,
   `_is_simple`, `_xmin`, `_ymin`, `_xmax`, `_ymax` (the type-specific ones only
   where the column's typmod allows them — [postgis.md](postgis.md); a real
   column of that name wins).
-- **Score pseudo-columns**: `<col>_distance` (spatial, from `near=`),
-  `<col>_similarity`, `_word_similarity`, `_strict_word_similarity`
-  (pg_trgm, against `trgm=`) and `<col>_l2_distance`,
+- **Score pseudo-columns**: `~<col>_st_distance` (spatial, from `~near=`),
+  `~<col>_trgm_similarity`, `_word_similarity`, `_strict_word_similarity`
+  (pg_trgm, against `~trgm=`) and `~<col>_l2_distance`,
   `_negative_inner_product`, `_cosine_distance`, `_l1_distance`,
-  `_hamming_distance`, `_jaccard_distance` (pgvector, from `vec=`),
-  `<col>_chebyshev_distance` and the L2 / L1 ones on cube columns (from
-  `vec=`), `<col>_earth_distance` and `<col>_earth_distance_miles`
-  (earthdistance, from `latlon=`) and the raster `<col>_value(band=)` (from
-  `near=`): the
+  `_hamming_distance`, `_jaccard_distance` (pgvector, from `~vec=`),
+  `~<col>_chebyshev_distance` and the L2 / L1 ones on cube columns (from
+  `~vec=`), `~<col>_earth_distance` and `~<col>_earth_miles_distance`
+  (earthdistance, from `~latlon=`) and the raster `~<col>_value(band=)` (from
+  `~near=`): the
   pdbcore expression names in snake_case, the same names pdbq gives its
   `<field>Distance` / `<field>Similarity` / `<field>CosineDistance` fields
   ([postgis.md](postgis.md#selecting-the-distance),
@@ -120,13 +120,41 @@ exists.
 ## Query parameters
 
 Reserved: `select`, `order`, `limit`, `offset`, `after`, `before`, `count`,
-`distinct`, `on_conflict`; `near`, `trgm`, `vec`, `latlon` and
-`levenshtein` only where no column, computed column or RPC argument carries
-the name (there it is a filter or the argument, and `.dist` / `.trgm_*` /
-`.vec_*` / `.earth_*` / `.levenshtein` ordering is unavailable). Every other parameter is a filter
-(`col=op.value`, `rel.col=op.value`, `and=`/`or=`/`not.and=`/`not.or=`) — see
-[filtering.md](filtering.md). A column literally named like a reserved
-parameter cannot be filtered in the bare form; use it inside `and=(…)`.
+`distinct`, `on_conflict` (and `columns` on writes), plus everything that
+starts with `~` (see [The `~` namespace](#the--namespace)). Every other
+parameter is a filter (`col=op.value`, `rel.col=op.value`,
+`and=`/`or=`/`not.and=`/`not.or=`) — see [filtering.md](filtering.md). A
+column literally named like a reserved parameter cannot be filtered in the
+bare form; use it inside `and=(…)`.
+
+### The `~` namespace
+
+Names pdbr generates next to the catalog's own start with `~`, so no column,
+computed column, relation or function argument can ever take their place:
+adding a column named `near` or `location_area` to a table, or a function
+argument named `vec`, does not change what any request means.
+
+- **Reference parameters**: `~near=` (spatial distance, raster pixel value),
+  `~trgm=` (trigram distance and similarity), `~vec=` (pgvector and cube
+  distances), `~latlon=` (earthdistance), `~levenshtein=` (edit distance) and
+  `~geometry=` (the Feature geometry of `Accept: application/geo+json`).
+  Each is request-wide: one value serves the root and every embed.
+- **Pseudo-columns**: every value pdbr derives from a column is
+  `~<col>_<name>`: PostGIS accessors (`~location_area`, `~location_srid`),
+  raster accessors (`~rast_width`, `~rast_value`), distance and similarity
+  scores (`~location_st_distance`, `~emb_cosine_distance`,
+  `~title_trgm_similarity`), headlines (`~body_headline`) and the
+  ltree/intarray accessors (`~path_nlevel`, `~tags_icount`). The response key
+  is that name, `~` included, unless the item is aliased
+  (`select=area:~location_area`).
+
+A query parameter, `select=` item, filter key or `order=` term that starts
+with `~` always resolves in this namespace: `~nope` is `400 unknown_column`
+(or `invalid_parameter` for a misused reference parameter), never a column.
+A column whose name starts with `~` is therefore returned by `select=*` but
+cannot be named in `select=`, filters or `order=` (pdbr logs a warning at
+build time). Real columns named `near` or `location_area` are ordinary
+columns, filterable as `near=eq.x` next to `~near=`.
 
 ## `select=`
 
@@ -254,7 +282,7 @@ GET /users?select=id,posts(id,title,comments(id))   -- backward, nested
 ```
 
 Nesting depth is bounded by `limits.max_depth` (default 5); deeper →
-`400 embed_depth_exceeded`. Cost is bounded by `limits.max_cost` — see
+`400 depth_exceeded`. Cost is bounded by `limits.max_cost` — see
 [pagination.md](pagination.md#cost-limit).
 
 ### Spread embeds
@@ -379,7 +407,7 @@ Nested writes over a `PERIOD` FK copy only the equality columns: see
 
 ```http
 GET /users?select=id,post_count                       -- users_post_count(users) → "post_count"
-GET /places?select=name,location,location_srid,area_area
+GET /places?select=name,location,~location_srid,~area_area
 GET /places?select=name,web:location(transform=3857),coarse:area(simplify=0.01)
 ```
 
@@ -459,7 +487,7 @@ POST /rpc/search_posts            {"q": "hello"}
 | no `Accept`, `*/*`, `application/*`, `application/json` | JSON |
 | `Accept: text/csv` (or `text/*`) on a list `GET`/`HEAD` or set-returning RPC `GET`/`HEAD` | CSV, `Content-Type: text/csv; charset=utf-8` |
 | `Accept: text/csv` with an embed in `select=`, on a single-row path, on a mutation, on a non-set RPC, or with `server.csv: false` | `406 not_acceptable` (the `detail` says which) |
-| `Accept: application/geo+json` on a `GET`/`HEAD` of a resource with a spatial column (list, key lookup, `SETOF <table>` or single-row RPC) | GeoJSON `FeatureCollection` / `Feature`, `Content-Type: application/geo+json`; `geometry=<key>` picks the geometry item — see [PostGIS](postgis.md#accept-applicationgeojson) |
+| `Accept: application/geo+json` on a `GET`/`HEAD` of a resource with a spatial column (list, key lookup, `SETOF <table>` or single-row RPC) | GeoJSON `FeatureCollection` / `Feature`, `Content-Type: application/geo+json`; `~geometry=<key>` picks the geometry item — see [PostGIS](postgis.md#accept-applicationgeojson) |
 | `Accept: application/geo+json` without a spatial column in `select=`, with aggregates, on a mutation or a non-row RPC | `406 not_acceptable` |
 | any other `Accept` | `406 not_acceptable` |
 
@@ -566,7 +594,7 @@ Cursor and `Link` details: [pagination.md](pagination.md).
 | Limit | Config | Over |
 |---|---|---|
 | page size | `limits.max_page_size` (100) | `400 page_size_exceeded` (`limit=`); a `Range` header is clamped instead |
-| embed depth | `limits.max_depth` (5) | `400 embed_depth_exceeded` |
+| embed depth | `limits.max_depth` (5) | `400 depth_exceeded` |
 | request cost | `limits.max_cost` (100000) | `400 cost_exceeded` |
 | body size | `limits.max_body_bytes` (1 MiB) | `413` |
 | request time | `server.request_timeout` (30s) | `504` |
@@ -671,8 +699,8 @@ id,author_id,title,published
 Nearest places to a point, with a pseudo-column:
 
 ```console
-$ curl -s 'localhost:8080/places?select=name,location_srid&order=location.dist.asc&near=SRID%3D4326%3BPOINT(-0.1281%2051.508)&limit=1'
-[{"name":"Trafalgar Square","location_srid":4326}]
+$ curl -s 'localhost:8080/places?select=name,~location_srid&order=location.st_distance.asc&~near=SRID%3D4326%3BPOINT(-0.1281%2051.508)&limit=1'
+[{"name":"Trafalgar Square","~location_srid":4326}]
 ```
 
 Next: [filtering.md](filtering.md), [pagination.md](pagination.md).

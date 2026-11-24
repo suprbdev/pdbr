@@ -1,2 +1,2 @@
--- request: GET /api/kb/embeddings?order=half.vec_l1&vec=%5B1%5D
--- error: 400 column_not_orderable: half.vec_l1 needs an index on the column built for that metric under filters.indexed_only (HNSW, or IVFFlat for vec_l2, vec_ip and vec_cos on vector and halfvec, with the metric's operator class such as vector_cosine_ops), or the column in filters.allow_columns
+-- request: GET /api/kb/embeddings?order=half.l1_distance&~vec=%5B1%5D
+-- error: 400 column_not_orderable: half.l1_distance needs an index on the column built for that metric under filters.indexed_only (HNSW, or IVFFlat for l2_distance, negative_inner_product and cosine_distance on vector and halfvec, with the metric's operator class such as vector_cosine_ops), or the column in filters.allow_columns

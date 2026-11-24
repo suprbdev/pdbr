@@ -1,1 +1,1 @@
-GET /api/places?select=id,location_distance
+GET /api/places?select=id,~location_st_distance

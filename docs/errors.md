@@ -48,8 +48,8 @@ code you do not know as the generic error of its status.
 
 The codes for concepts pdbq shares are spelled the same in both products:
 `invalid_token`, `auth_required`, `role_not_allowed`, `read_only`,
-`cost_exceeded`, `page_size_exceeded`, `not_found`, `timeout`,
-`unavailable` and `pg:<SQLSTATE>`.
+`cost_exceeded`, `depth_exceeded`, `page_size_exceeded`, `not_found`,
+`timeout`, `unavailable` and `pg:<SQLSTATE>`.
 
 ### Request grammar (400)
 
@@ -59,21 +59,21 @@ body.
 
 | `code` | Meaning |
 |---|---|
-| `invalid_filter` | a filter (`col=op.value`, `and=`/`or=`/`not.` logic, relation and embed filters): unknown or inapplicable operator (`eq` on a spatial, vector, cube or earth column, a spatial operator on a non-spatial column, anything but `intersects`/`is` on a raster column), malformed operand, list, quoting, `any`/`all` modifier or text search configuration, a value that does not coerce to the column's type (`id=eq.abc`), a non-numeric distance threshold, bad relation-filter grammar (quantifier on a to-one relation, `exists` misuse, a path deeper than one level), relation filters while the advanced-filters plugin disables them, filters on a write that takes none (`POST`, `PUT`, `PATCH`/`DELETE` on a single-row path), and a rank order term or a headline without exactly one usable full-text filter on its column |
-| `invalid_parameter` | a reserved query parameter or a path key: malformed query-string escape, a duplicate parameter, `limit`/`offset`/`count` values, `order=` grammar (direction and nulls tokens, related-order paths, JSON paths, `.dist` on a non-spatial column, related ordering while it is disabled), `distinct=` grammar and column types, `on_conflict=` misuse, a list parameter on a single-row path or a write (`limit`, `order`, …), a per-embed parameter embeds do not take (`posts.after=`), `geometry=` misuse; the reference parameters `near=`, `trgm=`, `vec=`, `latlon=` and `levenshtein=`: missing where an order term, score column or threshold needs one, malformed, or present with nothing that uses it; a path key value that does not coerce to its column's type (`/users/abc`) or has the wrong number of parts. Also the code of a hook's `UserError` that names none |
-| `invalid_select` | `select=` grammar: unbalanced parentheses, empty item, bad alias, a cast or JSON path where none applies, hints on a non-embed, arguments on a column that takes none, an explicit select of a raster column (never readable), bad spatial (`transform=`, `precision=`, …), raster (`band=`), headline or derived-column arguments, a score column embedded under a root where its parameter is a filter; aggregates ([aggregates.md](aggregates.md#errors)): a cast outside an aggregate or to a type outside the allowlist (`::regclass`), an aggregate without the input type (`text.sum()`), an embed or ungroupable column as a grouping key, duplicate response keys, aggregates on single-row paths, mutations or in to-one embeds, `distinct=` with aggregates |
+| `invalid_filter` | a filter (`col=op.value`, `and=`/`or=`/`not.` logic, relation and embed filters): unknown or inapplicable operator (`eq` on a spatial, vector, cube or earth column, a spatial operator on a non-spatial column, anything but `st_intersects`/`is` on a raster column), malformed operand, list, quoting, `any`/`all` modifier or text search configuration, a value that does not coerce to the column's type (`id=eq.abc`), a non-numeric distance threshold, bad relation-filter grammar (quantifier on a to-one relation, `exists` misuse, a path deeper than one level), relation filters while the advanced-filters plugin disables them, filters on a write that takes none (`POST`, `PUT`, `PATCH`/`DELETE` on a single-row path), and a rank order term or a headline without exactly one usable full-text filter on its column |
+| `invalid_parameter` | a reserved query parameter or a path key: malformed query-string escape, a duplicate parameter, `limit`/`offset`/`count` values, `order=` grammar (direction and nulls tokens, related-order paths, JSON paths, `.st_distance` on a non-spatial column, related ordering while it is disabled), `distinct=` grammar and column types, `on_conflict=` misuse, a list parameter on a single-row path or a write (`limit`, `order`, …), a per-embed parameter embeds do not take (`posts.after=`), `~geometry=` misuse; the reference parameters `~near=`, `~trgm=`, `~vec=`, `~latlon=` and `~levenshtein=`: missing where an order term, score column or threshold needs one, malformed, or present with nothing that uses it; a path key value that does not coerce to its column's type (`/users/abc`) or has the wrong number of parts. Also the code of a hook's `UserError` that names none |
+| `invalid_select` | `select=` grammar: unbalanced parentheses, empty item, bad alias, a cast or JSON path where none applies, hints on a non-embed, arguments on a column that takes none, an explicit select of a raster column (never readable), bad spatial (`transform=`, `precision=`, …), raster (`band=`), headline or derived-column arguments; aggregates ([aggregates.md](aggregates.md#errors)): a cast outside an aggregate or to a type outside the allowlist (`::regclass`), an aggregate without the input type (`text.sum()`), an embed or ungroupable column as a grouping key, duplicate response keys, aggregates on single-row paths, mutations or in to-one embeds, `distinct=` with aggregates |
 | `invalid_argument` | a function or computed-column argument value: an RPC argument (query parameter on `GET`, JSON member on `POST`) or a `select=key(k=v)` argument that does not coerce to the argument's type, and a row-typed argument that is not a JSON object (array of objects) of the resource's readable columns |
 | `invalid_body` | request body: not an object/array as required, unreadable or trailing data, unknown key, empty patch, missing required columns, missing conflict-target columns, both `create` and `connect`, malformed nested operation, more than `max_operations` nested operations, uncoercible value, empty `[]` bulk, single-row `PUT` body key ≠ path key (PostgREST `PGRST115`), an RPC body that is not a JSON object |
 | `invalid_cursor` | `after`/`before` cursor undecodable or minted for a different resource |
 | `invalid_range` | `Range` header with the last item before the first, or no overlap with `offset`/`limit` ([pagination.md](pagination.md#range-request-header)) |
 | `invalid_preference` | `Prefer: handling=strict` with an unknown token or a malformed value (PostgREST `PGRST122`); `resolution=merge-duplicates` on a resource without `PUT`; `tx=` while `transactions.end` has no override; `partial=` while `transactions.partial.enabled` is off or with a value other than `items`; an unknown `timezone=` |
-| `unknown_column` | column, computed or pseudo-column name not on the resource, in `select=`, filters, `order=`, `distinct=`, `on_conflict=` |
+| `unknown_column` | column, computed or pseudo-column name not on the resource, in `select=`, filters, `order=`, `distinct=`, `on_conflict=`; any name starting with `~` that is not one of the resource's pseudo-columns |
 | `unknown_relation` | relation key in `select=`, a filter/order path, a per-embed param, or a nested-mutation body that matches no FK of the resource; a `!hint` that selects none of the key's FKs (`posts!nope(id)`; the detail lists the hints that would); a nested-mutation operation the relation does not offer (privilege, `@omit`, FK column not writable, referenced column hidden, `NOT NULL` FK for `disconnect`) |
 | `ambiguous_relation` | relation key matches ≥ 2 FKs and carries no `!hint`; the detail lists the candidates |
 | `unknown_argument` | RPC argument, computed-column argument or headline option name not declared |
 | `missing_argument` | RPC or computed-column call omits an argument that has no `DEFAULT` (or, on a variadic function, one before a passed argument); the detail lists them |
-| `column_not_filterable` | column exists but is outside the filter policy (`filters.indexed_only`, `@omit filter`) |
-| `column_not_orderable` | column exists but is outside the order policy; with aggregates, an `order=` term that is not a grouping column; an order term whose reference parameter is a column or argument filter on the route |
+| `column_not_filterable` | column exists but is outside the filter policy (`filters.indexed_only`, `@omit filter`); a pseudo-column that takes no filters (every one but the integer contrib accessors) |
+| `column_not_orderable` | column exists but is outside the order policy; a pseudo-column that takes no order terms; with aggregates, an `order=` term that is not a grouping column |
 | `column_readonly` | generated or identity-`ALWAYS` column in a write body |
 | `keyset_unsupported` | `after`/`before` on a resource without a PK, `before` combined with `offset`, any cursor combined with a `Range` header, `distinct=` or aggregate functions with keyset |
 | `aggregates_disabled` | an aggregate function in `select=` while `aggregates.enabled` is off (PostgREST `PGRST123`) |
@@ -88,7 +88,7 @@ body.
 |---|---|---|
 | `page_size_exceeded` | 400 | `limit` > `limits.max_page_size` (also on embeds and RPC lists) |
 | `cost_exceeded` | 400 | estimated cost > `limits.max_cost` |
-| `embed_depth_exceeded` | 400 | `select=` nesting deeper than `limits.max_depth`; nested-mutation depth > `max_depth` |
+| `depth_exceeded` | 400 | `select=` nesting deeper than `limits.max_depth`; nested-mutation depth > `max_depth` |
 | `body_too_large` | 413 | body > `limits.max_body_bytes` |
 
 ### Identity
@@ -136,7 +136,7 @@ returns `{Class, SQLState, Message(detail)}`):
 | `42*` other than `42501` (undefined function/column, syntax — should not happen; message "invalid operation" in prod/strict) | 400 | `pg:42…` |
 | malformed full-text / ltree operand (`pdbcore/pgexec` contrib input errors): `42601` raised while parsing a `tsquery`/`tsvector`/`ltree`/`lquery`/`ltxtquery` value (`syntax error in tsquery: …`, `ltree syntax error …`, …), `42704` unknown text search configuration | 400 | `pg:42601` / `pg:42704` |
 | PostGIS input error (`XX000` with `Operation on mixed SRID geometries`, `parse error - invalid geometry` or an `lwgeom_*` message): an operand or body value PostGIS rejects | 400 | `pg:XX000` |
-| raster / geometry SRID mismatch (`P0001` with `Raster and geometry do not have the same SRID`, raised by PostGIS when a raster `intersects` operand in another SRID overlaps a row's raster) | 400 | `pg:P0001` |
+| raster / geometry SRID mismatch (`P0001` with `Raster and geometry do not have the same SRID`, raised by PostGIS when a raster `st_intersects` operand in another SRID overlaps a row's raster) | 400 | `pg:P0001` |
 | no credentials and no anonymous role | 401 | `auth_required` |
 | invalid credentials | 401 | `invalid_token` |
 | `42501` insufficient privilege (incl. RLS `RETURNING` filtering) | 403 | `pg:42501` |

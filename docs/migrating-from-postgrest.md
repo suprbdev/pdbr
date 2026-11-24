@@ -45,7 +45,6 @@ Differences:
 | Base path | `/` | `server.base_path` defaults to `""` (the root); set it to e.g. `/api` to prefix routes |
 | Schemas | `Accept-Profile` / `Content-Profile` headers choose the schema | The path does: `/{schema}/{table}`; the bare form is the first entry of `schema.schemas`. The profile headers are ignored |
 | `limit` above the cap | clamped to `db-max-rows` | `400 page_size_exceeded` when `limit` exceeds `limits.max_page_size` (100 by default); a `Range` header is clamped |
-| `limit=0` | returns no rows | `400` |
 | Default page | unbounded unless `db-max-rows` is set | a list without `limit` returns at most `limits.max_page_size` rows, with `Link` and `X-Next-Cursor` headers to continue |
 | Pagination | `limit`/`offset`/`Range` | also keyset cursors (`after=`, `before=`), `X-Total-Count` next to `Content-Range`; a keyset page has no `Content-Range` |
 | Ordering | PostgreSQL's default: `NULLS FIRST` for `DESC` | `NULLS LAST` for both directions unless `nullsfirst` / `nullslast` is given |
@@ -53,6 +52,7 @@ Differences:
 | `count=planned` | `EXPLAIN` estimate | `pg_class.reltuples`, only for unfiltered scans of tables without RLS; otherwise falls back to `exact` and `Preference-Applied` says so |
 | Duplicate response keys | both keys are returned | `400 invalid_select` unless the same column is selected twice |
 | Filterable columns | all | only indexed columns by default (`filters.indexed_only: true`; `filters.allow_columns` and `@filterable` as exceptions), see [filtering.md](filtering.md) |
+| pdbr-only names | — | everything pdbr adds beyond PostgREST's grammar that could collide with a column starts with `~`: reference parameters (`~near=`, `~vec=`, `~trgm=`, …) and derived values (`select=~location_area,~emb_cosine_distance`); they never shadow your columns, see [api.md](api.md#the--namespace) |
 
 Missing today (a request for these is a `400`, `406` or `415`, not a silent
 fallback):

@@ -467,8 +467,8 @@ func TestOpenAPISpatialSurface(t *testing.T) {
 	if p := paramByName(get.Parameters, "area"); p == nil || !reflect.DeepEqual(p.XFilterOps, []string{"is"}) {
 		t.Errorf("geography without FilterOps entry = %+v", p)
 	}
-	if paramByName(get.Parameters, "near") == nil || !strings.Contains(paramByName(get.Parameters, "order").Description, "location.dist") {
-		t.Error("near / .dist not documented")
+	if paramByName(get.Parameters, "~near") == nil || !strings.Contains(paramByName(get.Parameters, "order").Description, "location.st_distance") {
+		t.Error("near / .st_distance not documented")
 	}
 	if !strings.Contains(paramByName(get.Parameters, "select").Description, "transform=") {
 		t.Error("projection args not documented")
@@ -478,7 +478,7 @@ func TestOpenAPISpatialSurface(t *testing.T) {
 	}
 	// Without the surface: no near, spatial columns filter with is only.
 	plain := fixture(t).OpenAPI.Paths["/places"].Get
-	if paramByName(plain.Parameters, "near") != nil || !reflect.DeepEqual(paramByName(plain.Parameters, "location").XFilterOps, []string{"is"}) {
+	if paramByName(plain.Parameters, "~near") != nil || !reflect.DeepEqual(paramByName(plain.Parameters, "location").XFilterOps, []string{"is"}) {
 		t.Errorf("plain spatial params = %+v", paramByName(plain.Parameters, "location"))
 	}
 }

@@ -28,11 +28,12 @@ type pagePlan struct {
 }
 
 // planPage resolves limit/offset/after/before into a pagePlan. Absent limit
-// defaults to the cap rather than an unbounded scan; larger is rejected.
+// defaults to the cap rather than an unbounded scan; larger is rejected; an
+// explicit 0 returns no rows (the page still reports has_next and total).
 func (s *stmt) planPage(r *api.Resource, page plan.Page) (pagePlan, error) {
 	t := r.Table
 	p := pagePlan{keyset: t.PrimaryKey != nil && !r.HiddenKey, limit: page.Limit, offset: page.Offset}
-	if p.limit <= 0 {
+	if p.limit <= 0 && !page.LimitSet {
 		p.limit = s.maxPageSize
 	}
 	if p.limit > s.maxPageSize {

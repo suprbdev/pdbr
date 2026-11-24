@@ -1,1 +1,1 @@
-GET /api/kb/docs?select=id,body_headline,short:body_headline(max_words=10,min_words=3,start_sel="%3Cmark%3E",stop_sel="%3C/mark%3E",fragment_delimiter="%20…%20",max_fragments=2)&body=wfts(english).fat%20cat&limit=5
+GET /api/kb/docs?select=id,~body_headline,short:~body_headline(max_words=10,min_words=3,start_sel="%3Cmark%3E",stop_sel="%3C/mark%3E",fragment_delimiter="%20…%20",max_fragments=2)&body=wfts(english).fat%20cat&limit=5

@@ -866,7 +866,7 @@ contract's bodies and schemas.
 - Depth ≤ `plugins.settings.nested_mutations.max_depth` (default 3; the root
   row is depth 1, every `create` or `update` — of a parent or a child —
   adds one, `connect` / `delete` / `disconnect` add none) → else `400
-  embed_depth_exceeded` (the code is shared with `select=` nesting).
+  depth_exceeded` (the code is shared with `select=` nesting).
 - At most `plugins.settings.nested_mutations.max_operations` operations
   (default 50; every list item and every forward operation counts once)
   per request → else `400 invalid_body`.

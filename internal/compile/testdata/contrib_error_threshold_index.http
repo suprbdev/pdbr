@@ -1,1 +1,1 @@
-GET /api/kb/embeddings?select=id&half=vec_cos_lt.0.3&vec=%5B1%2C0%2C0%5D
+GET /api/kb/embeddings?select=id&half=cosine_distance_lt.0.3&~vec=%5B1%2C0%2C0%5D

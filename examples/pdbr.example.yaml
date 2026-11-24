@@ -46,13 +46,13 @@ openapi:
 limits:
   # Maximum accepted request body size in bytes; over answers 413.
   max_body_bytes: 1048576
-  # Maximum select= embed nesting depth; deeper answers 400 embed_depth_exceeded.
+  # Maximum select= embed nesting depth; deeper answers 400 depth_exceeded.
   max_depth: 5
   # Maximum estimated cost (1 + list multipliers) per request; over answers 400 cost_exceeded. A list counts the rows the SQL can fetch: its limit, else max_page_size (to-many embeds included). @costMultiplier smart comments tune the estimate.
   max_cost: 100000
   # Largest accepted limit (larger answers 400 page_size_exceeded); also the page size when limit is absent.
   max_page_size: 100
-  # Characters of a document a full-text headline (<col>_headline) reads: a text document is cut to its first max_headline_document characters, a json or jsonb document longer than that gives a null headline. ts_headline re-parses its document on every call, so each headline costs 10 per started 8192 characters of this bound in max_cost.
+  # Characters of a document a full-text headline (~<col>_headline) reads: a text document is cut to its first max_headline_document characters, a json or jsonb document longer than that gives a null headline. ts_headline re-parses its document on every call, so each headline costs 10 per started 8192 characters of this bound in max_cost.
   max_headline_document: 65536
 
 schema:
@@ -176,11 +176,11 @@ plugins:
       computed_opt_in: false
     # postgis plugin: the spatial query surface of geometry, geography and raster columns.
     postgis:
-      # Spatial filter operators (st_*, bbox_*) on spatial columns and the intersects filter on raster columns.
+      # Spatial filter operators (st_*, bbox_*) on spatial columns and the st_intersects filter on raster columns.
       filters: true
-      # Derived pseudo-columns: <col>_area, <col>_centroid, ... on spatial columns, <col>_width, <col>_value, <col>_summary_stats, ... on raster columns.
+      # Derived pseudo-columns: ~<col>_area, ~<col>_centroid, ... on spatial columns, ~<col>_width, ~<col>_value, ~<col>_summary_stats, ... on raster columns.
       derived: true
-      # Distance ordering (order=<col>.dist.asc|desc) and the <col>_distance score, both with near=.
+      # Distance ordering (order=<col>.st_distance.asc|desc) and the ~<col>_st_distance score, both with ~near=.
       ordering: true
       # select= projection arguments: col(transform=...,simplify=...,buffer=...,precision=...).
       projection: true
@@ -188,7 +188,7 @@ plugins:
       aggregates: true
     # nested_mutations plugin: related rows written in the same statement as a POST or PATCH.
     nested_mutations:
-      # Deepest nesting of create/update operations (the root row is depth 1; connect, delete and disconnect add no level); deeper answers 400 embed_depth_exceeded.
+      # Deepest nesting of create/update operations (the root row is depth 1; connect, delete and disconnect add no level); deeper answers 400 depth_exceeded.
       max_depth: 3
       # Most nested operations per request (every list item and forward operation counts once); more answers 400 invalid_body.
       max_operations: 50

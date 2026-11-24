@@ -19,7 +19,7 @@ vocabulary needs is read from the catalog:
   operators, order terms and type handling are simply absent. The extension
   version matters too: `pg_trgm` older than 1.2 has no word-similarity
   operators and older than 1.4 no strict ones, and pgvector older than 0.7
-  has no L1 distance (`vec_l1`) and no bit distances.
+  has no L1 distance (`l1_distance`) and no bit distances.
 - **Extension schemas.** An extension may live in a schema that is not on the
   `search_path`. Every extension type, operator and function is then rendered
   schema-qualified, for example `(t0."attrs") OPERATOR("ext".?) $1::text`,
@@ -179,7 +179,7 @@ therefore `400 column_not_filterable` unless the column is listed in
 
 | op | SQL | Operand |
 |---|---|---|
-| `levenshtein_lt` | `levenshtein_less_equal(col, $lev, $d) < $d` | the exclusive bound `$d`, a non-negative integer; the text is `levenshtein=` |
+| `levenshtein_distance_lt` | `levenshtein_less_equal(col, $lev, $d) < $d` | the exclusive bound `$d`, a non-negative integer; the text is `~levenshtein=` |
 | `soundex` | `soundex(col) = soundex($1)` | text |
 | `metaphone` | `metaphone(col, 255) = metaphone($1, 255)` | text, at most 255 bytes |
 | `dmetaphone` | `dmetaphone(col) = dmetaphone($1)` (primary Double Metaphone code) | text |
@@ -189,15 +189,15 @@ when the `fuzzystrmatch` extension is installed, take `not.` and work in
 `or=`/`and=` and embed filters:
 
 ```http
-GET /people?name=levenshtein_lt.3&levenshtein=Jon&order=name.levenshtein&limit=10
+GET /people?name=levenshtein_distance_lt.3&~levenshtein=Jon&order=name.levenshtein_distance&limit=10
 GET /people?or=(name.soundex.Robert,name.dmetaphone.Smith)
 ```
 
-`levenshtein_lt` measures from the request-wide `levenshtein=` text, like
-the vector thresholds measure from `vec=` (see [Ordering](#ordering) and
+`levenshtein_distance_lt` measures from the request-wide `~levenshtein=` text, like
+the vector thresholds measure from `~vec=` (see [Ordering](#ordering) and
 [Scores](#scores)); without it the request is `400 invalid_parameter`.
 fuzzystrmatch refuses texts over 255 characters (`metaphone`: bytes):
-a longer `levenshtein=` is `400 invalid_parameter` and a longer `metaphone`
+a longer `~levenshtein=` is `400 invalid_parameter` and a longer `metaphone`
 operand `400 invalid_filter`, and
 a longer column value has no distance or code, so neither an operator nor
 its `not.` form matches it (and its distance sorts last) instead of the
@@ -250,8 +250,8 @@ operators, so `gt`/`gte`/`lt`/`lte` are `400 invalid_filter`.
 Comparisons (`eq`, `gt`, …) use the extension's operators.
 
 Derived pseudo-columns (see [Derived columns](#derived-columns-ltree-and-intarray)):
-`<col>_nlevel`, `<col>_parent`, `<col>_lca(path=…)` and
-`<col>_subpath(offset=…[,length=…])` on ltree columns, `<col>_lca` on
+`~<col>_nlevel`, `~<col>_parent`, `~<col>_lca(path=…)` and
+`~<col>_subpath(offset=…[,length=…])` on ltree columns, `~<col>_lca` on
 `ltree[]` columns.
 
 ### intarray (pdbr)
@@ -265,7 +265,7 @@ the core array operators (`cs`, `cd`, `ov`), which intarray's own operator
 classes (`gin__int_ops`, `gist__int_ops`) also serve. A GIN or GiST index on
 the column admits it under `filters.indexed_only`. A malformed query is
 `400 pg:42601`; intarray rejects arrays holding NULL elements (`400
-pg:22004` when such a row is evaluated). `<col>_icount` selects, filters and
+pg:22004` when such a row is evaluated). `~<col>_icount` selects, filters and
 orders by the element count (see [Derived columns](#derived-columns-ltree-and-intarray)).
 
 ### inet / cidr (pdbr; `ov` as in PostgREST)
@@ -315,28 +315,31 @@ hstore these are its B-tree class operators `#<#`/`#>#`, since it has no
 
 ## Ordering
 
+Distance terms are named `<metric>_distance`, like their scores and
+thresholds ([Scores](#scores)).
+
 | term | Expression | Best first |
 |---|---|---|
 | `<col>.rank` | `ts_rank(vector, query)` | `.desc` |
 | `<col>.rank_cd` | `ts_rank_cd(vector, query)` | `.desc` |
-| `<col>.trgm_dist` | `col <-> $trgm` (1 − similarity) | `asc` (default) |
-| `<col>.trgm_wdist` | `col <->> $trgm` (1 − word similarity; pg_trgm 1.2+) | `asc` |
-| `<col>.trgm_swdist` | `col <->>> $trgm` (1 − strict word similarity; 1.4+) | `asc` |
-| `<col>.vec_l2` | `col <-> $vec::vector` (Euclidean distance) | `asc` (default) |
-| `<col>.vec_ip` | `col <#> $vec::vector` (negative inner product) | `asc` |
-| `<col>.vec_cos` | `col <=> $vec::vector` (cosine distance, 1 − cosine similarity) | `asc` |
-| `<col>.vec_l1` | `col <+> $vec::vector` (taxicab distance; pgvector 0.7+) | `asc` |
-| `<col>.levenshtein` | `levenshtein(col, $levenshtein)` (fuzzystrmatch edit distance) | `asc` (default) |
-| `<col>.vec_l2`, `.vec_l1`, `.vec_chebyshev` (cube) | `col <-> $vec::cube`, `<#>`, `<=>` (Euclidean, taxicab, Chebyshev) | `asc` |
-| `<col>.earth_dist` (earth) | `col <-> ll_to_earth($lat, $lon)`: cube's chord distance, which orders like the great-circle distance | `asc` |
-| `<col>.earth_miles` (point, earthdistance) | `col <@> point($lon, $lat)` (statute miles) | `asc` |
+| `<col>.trgm_distance` | `col <-> $trgm` (1 − similarity) | `asc` (default) |
+| `<col>.trgm_word_distance` | `col <->> $trgm` (1 − word similarity; pg_trgm 1.2+) | `asc` |
+| `<col>.trgm_strict_word_distance` | `col <->>> $trgm` (1 − strict word similarity; 1.4+) | `asc` |
+| `<col>.l2_distance` | `col <-> $vec::vector` (Euclidean distance) | `asc` (default) |
+| `<col>.negative_inner_product` | `col <#> $vec::vector` (negative inner product) | `asc` |
+| `<col>.cosine_distance` | `col <=> $vec::vector` (cosine distance, 1 − cosine similarity) | `asc` |
+| `<col>.l1_distance` | `col <+> $vec::vector` (taxicab distance; pgvector 0.7+) | `asc` |
+| `<col>.levenshtein_distance` | `levenshtein(col, $levenshtein)` (fuzzystrmatch edit distance) | `asc` (default) |
+| `<col>.l2_distance`, `.l1_distance`, `.chebyshev_distance` (cube) | `col <-> $vec::cube`, `<#>`, `<=>` (Euclidean, taxicab, Chebyshev) | `asc` |
+| `<col>.earth_distance` (earth) | `col <-> ll_to_earth($lat, $lon)`: cube's chord distance, which orders like the great-circle distance | `asc` |
+| `<col>.earth_miles_distance` (point, earthdistance) | `col <@> point($lon, $lat)` (statute miles) | `asc` |
 | `<col>->key` | the hstore value of `key` (text) | either |
-| `<col>_nlevel`, `<col>_icount` | `nlevel(col)`, `icount(col)` (allowlisted columns under the policy) | either |
+| `~<col>_nlevel`, `~<col>_icount` | `nlevel(col)`, `icount(col)` (allowlisted columns under the policy) | either |
 
 ```http
 GET /articles?search=wfts(english).fat%20cat&order=search.rank.desc&limit=10
-GET /articles?order=title.trgm_dist&trgm=postgres&limit=10
-GET /articles?title=trgm_sim.postgres&order=title.trgm_dist,id&trgm=postgres
+GET /articles?order=title.trgm_distance&~trgm=postgres&limit=10
+GET /articles?title=trgm_sim.postgres&order=title.trgm_distance,id&~trgm=postgres
 ```
 
 - **rank / rank_cd** rank against the request's own full-text filter on the
@@ -345,30 +348,24 @@ GET /articles?title=trgm_sim.postgres&order=title.trgm_dist,id&trgm=postgres
   `and=(…)` groups, or the embed's for `posts.order=`; not under `or=` or
   `not.`), with the same variant, query and config. Without one the request
   is `400 invalid_filter`, and so is a scope with two of them.
-- **trgm_dist** and the word forms measure the distance to the `trgm=` query
-  parameter, the way `near=` works for `.dist`. One `trgm=` serves the root
-  and every embed. A distance term without `trgm=` is `400 invalid_parameter`,
-  and so is `trgm=` without one.
-- `trgm` (like `near`) is reserved only on routes where no column, computed
-  column or RPC argument is named so. Where one is, `trgm=` is that filter or
-  argument, and the trigram distance terms are not offered
-  (`400 column_not_orderable`; OpenAPI lists neither the terms nor a `trgm`
-  parameter). No escape spelling exists; rename the column, or expose it
-  through a view, to get distance ordering there.
-- **vec_l2**, **vec_ip**, **vec_cos** and **vec_l1** measure the distance of
-  a pgvector column to the `vec=` query parameter, the same way: one `vec=`
-  serves the root and every embed, a vector term without `vec=` or `vec=`
-  without one is `400 invalid_parameter`, and `vec` is reserved only where no
-  column, computed column or RPC argument is named so. See
-  [pgvector](#pgvector-pdbr).
-- The **cube** distances measure from the same `vec=` as the pgvector
-  ones, and **earth_dist** / **earth_miles** from `latlon=<lat>,<lon>`
-  (degrees), reserved and required like `vec=`. See [cube](#cube-pdbr) and
+- **trgm_distance** and the word forms measure the distance to the `~trgm=` query
+  parameter, the way `~near=` works for `.st_distance`. One `~trgm=` serves the root
+  and every embed. A distance term without `~trgm=` is `400 invalid_parameter`,
+  and so is `~trgm=` without one.
+- `~trgm` (like `~near`) is in pdbr's reserved `~` namespace
+  ([api.md](api.md#the--namespace)): a column or RPC argument named `trgm`
+  is an ordinary filter or argument and changes nothing here.
+- **l2_distance**, **negative_inner_product**, **cosine_distance** and **l1_distance** measure the distance of
+  a pgvector column to the `~vec=` query parameter, the same way: one `~vec=`
+  serves the root and every embed, a vector term without `~vec=` or `~vec=`
+  without one is `400 invalid_parameter`. See [pgvector](#pgvector-pdbr).
+- The **cube** distances measure from the same `~vec=` as the pgvector
+  ones, and **earth_distance** / **earth_miles_distance** from `~latlon=<lat>,<lon>`
+  (degrees), required like `~vec=`. See [cube](#cube-pdbr) and
   [earthdistance](#earthdistance-pdbr).
-- **levenshtein** measures the edit distance to the `levenshtein=` text the
-  same way (one `levenshtein=` per request, reserved only where no column,
-  computed column or RPC argument is named so; a term without it, or
-  `levenshtein=` without a term, score or `levenshtein_lt` filter, is `400
+- **levenshtein_distance** measures the edit distance to the `~levenshtein=`
+  text the same way (one `~levenshtein=` per request; a term without it, or
+  `~levenshtein=` without a term, score or `levenshtein_distance_lt` filter, is `400
   invalid_parameter`). No index serves it, so under `filters.indexed_only` it
   needs the column in `filters.allow_columns` (`400 column_not_orderable`
   otherwise). Values over 255 characters have no distance and sort last.
@@ -398,17 +395,17 @@ Columns of pgvector's `vector`, `halfvec` and `sparsevec` types (extension
   rejected by PostgreSQL (`400 pg:22P02` / `pg:22000`). `GET` RPC arguments
   take the text form.
 - **Filters**: `is.null` / `not.is.null`, and distance thresholds against
-  `vec=` (below). Comparisons (`eq`, `lt`, `in`, …) are `400
+  `~vec=` (below). Comparisons (`eq`, `lt`, `in`, …) are `400
   invalid_filter`, as on spatial columns.
-- **Ordering**: only by distance to `vec=`, nearest first under `asc`:
+- **Ordering**: only by distance to `~vec=`, nearest first under `asc`:
 
 ```http
-GET /items?order=embedding.vec_cos&vec=%5B0.1%2C0.2%2C0.3%5D&limit=10
-GET /items?order=embedding.vec_l2&vec=[0.1,0.2,0.3]&limit=10
-GET /docs?select=id,chunks(id,text)&chunks.order=embedding.vec_ip&chunks.limit=3&vec=%5B1%2C0%2C0%5D
+GET /items?order=embedding.cosine_distance&~vec=%5B0.1%2C0.2%2C0.3%5D&limit=10
+GET /items?order=embedding.l2_distance&~vec=[0.1,0.2,0.3]&limit=10
+GET /docs?select=id,chunks(id,text)&chunks.order=embedding.negative_inner_product&chunks.limit=3&~vec=%5B1%2C0%2C0%5D
 ```
 
-  `vec=` is a JSON array of numbers (URL-encoded, or raw where the client
+  `~vec=` is a JSON array of numbers (URL-encoded, or raw where the client
   allows `[`/`]`) or the column type's text form, and is checked against
   every vector term's column (`400 invalid_parameter` when it is not a vector
   value). Its dimensions must match the column's; PostgreSQL rejects a
@@ -421,9 +418,9 @@ GET /docs?select=id,chunks(id,text)&chunks.order=embedding.vec_ip&chunks.limit=3
   accepted only when an index of the table covers the column with an access
   method that serves it, built with that metric's operator class
   (`vector_l2_ops`, `vector_cosine_ops`, `halfvec_ip_ops`, ...): HNSW for
-  all four, IVFFlat for `vec_l2`, `vec_ip` and `vec_cos` on `vector` and
-  `halfvec` (not `vec_l1`, not `sparsevec`). An HNSW index built with
-  `vector_l2_ops` admits `vec_l2` only. Otherwise the term is `400
+  all four, IVFFlat for `l2_distance`, `negative_inner_product` and `cosine_distance` on `vector` and
+  `halfvec` (not `l1_distance`, not `sparsevec`). An HNSW index built with
+  `vector_l2_ops` admits `l2_distance` only. Otherwise the term is `400
   column_not_orderable` unless the column is in `filters.allow_columns`.
   HNSW and IVFFlat scans are approximate nearest-neighbour searches (see
   pgvector's `hnsw.ef_search` / `ivfflat.probes`), and these indexes do not
@@ -432,41 +429,41 @@ GET /docs?select=id,chunks(id,text)&chunks.order=embedding.vec_ip&chunks.limit=3
   NULL are not returned, where a sequential scan would list them last. Add
   `<col>=not.is.null` to make that explicit.
 - **Distance thresholds**: "similar enough" cut-offs, measured from the
-  same `vec=` as the order terms and scores:
+  same `~vec=` as the order terms and scores:
 
 | filter | SQL |
 |---|---|
-| `<col>=vec_l2_lt.<d>` | `(col <-> $vec::vector) < $d` |
-| `<col>=vec_ip_lt.<d>` | `(col <#> $vec::vector) < $d` (negative inner product) |
-| `<col>=vec_cos_lt.<d>` | `(col <=> $vec::vector) < $d` |
-| `<col>=vec_l1_lt.<d>` | `(col <+> $vec::vector) < $d` (pgvector 0.7+) |
+| `<col>=l2_distance_lt.<d>` | `(col <-> $vec::vector) < $d` |
+| `<col>=negative_inner_product_lt.<d>` | `(col <#> $vec::vector) < $d` (negative inner product) |
+| `<col>=cosine_distance_lt.<d>` | `(col <=> $vec::vector) < $d` |
+| `<col>=l1_distance_lt.<d>` | `(col <+> $vec::vector) < $d` (pgvector 0.7+) |
 
 ```http
-GET /items?select=id,embedding_cosine_distance&embedding=vec_cos_lt.0.2&order=embedding.vec_cos&vec=%5B0.1%2C0.2%2C0.3%5D&limit=10
+GET /items?select=id,~embedding_cosine_distance&embedding=cosine_distance_lt.0.2&order=embedding.cosine_distance&~vec=%5B0.1%2C0.2%2C0.3%5D&limit=10
 ```
 
   The operand is the exclusive bound, a finite number (`400 invalid_filter`
   otherwise); `not.`, `or=(…)`, `and=(…)` and embed filters take them like
-  any operator, and a threshold without `vec=` is `400 invalid_parameter`.
+  any operator, and a threshold without `~vec=` is `400 invalid_parameter`.
   pgvector indexes serve ordering, not these predicates, so under
   `filters.indexed_only` they are accepted only on columns listed in
   `filters.allow_columns` (`400 column_not_filterable` otherwise); combined
   with nearest-first ordering by the same distance and `limit=`, an
   approximate index scan feeds the filter.
-- **Distance columns**: `<col>_l2_distance`, `<col>_negative_inner_product`,
-  `<col>_cosine_distance` and `<col>_l1_distance` select the distances from
-  `vec=` (see [Scores](#scores)).
+- **Distance columns**: `~<col>_l2_distance`, `~<col>_negative_inner_product`,
+  `~<col>_cosine_distance` and `~<col>_l1_distance` select the distances from
+  `~vec=` (see [Scores](#scores)).
 - **Bit vectors**: with pgvector 0.7 or later, `bit` and `varbit` columns
   (binary embeddings; still plain comparable columns) take pgvector's
-  Hamming (`<~>`) and Jaccard (`<%>`) distances: order terms `vec_hamming`
-  and `vec_jaccard`, thresholds `vec_hamming_lt` and `vec_jaccard_lt`, and
-  the `<col>_hamming_distance` / `<col>_jaccard_distance` columns, all
-  against `vec=` given as a bit string (`vec=1010`, cast to `varbit`; a
+  Hamming (`<~>`) and Jaccard (`<%>`) distances: order terms `hamming_distance`
+  and `jaccard_distance`, thresholds `hamming_distance_lt` and `jaccard_distance_lt`, and
+  the `~<col>_hamming_distance` / `~<col>_jaccard_distance` columns, all
+  against `~vec=` given as a bit string (`~vec=1010`, cast to `varbit`; a
   length mismatch is rejected by pgvector). A bit column gets this only where
   an HNSW (`bit_hamming_ops`, `bit_jaccard_ops`) or IVFFlat
   (`bit_hamming_ops`) index covers it, or the policy admits it
   (`filters.allow_columns`, or `indexed_only: false`), so installing pgvector
-  leaves other bit columns alone. One `vec=` serves the whole request, so a
+  leaves other bit columns alone. One `~vec=` serves the whole request, so a
   request mixes bit and vector distances only when the value parses for
   both. Binary quantization keeps such a column next to the full vector and
   re-ranks the coarse Hamming candidates by the exact distance:
@@ -485,14 +482,14 @@ CREATE FUNCTION search_items(q vector(1536), n int DEFAULT 10) RETURNS SETOF ite
 $$;
 ```
 
-  Without the function, `order=code.vec_hamming&limit=100&vec=<sign bits>`
+  Without the function, `order=code.hamming_distance&limit=100&~vec=<sign bits>`
   fetches the coarse candidates (with `select=id,embedding`) and the client
-  re-ranks them: one `vec=` cannot hold both the bit string and the vector.
+  re-ranks them: one `~vec=` cannot hold both the bit string and the vector.
 - **OpenAPI**: `vector`/`halfvec` are `type: array, items: {type: number}`
   in responses and `oneOf [array, string]` in request bodies; `sparsevec` is
   `string` (`oneOf [string, array]` in bodies). The `order` description
   lists the vector terms per column, `x-pdbr-filter-ops` the thresholds the
-  policy admits, and the `vec` parameter is documented on resources that
+  policy admits, and the `~vec` parameter is documented on resources that
   have a vector term, score column or threshold.
 
 ## cube (pdbr)
@@ -516,28 +513,28 @@ n-dimensional points and boxes when the extension is installed.
 | `cs` | `col @> $1::cube` | a cube: `[1,2]`, `[[0,0],[1,1]]` or `(0,0),(1,1)` |
 | `cd` | `col <@ $1::cube` | same |
 | `ov` | `col && $1::cube` | same |
-| `vec_l2_lt.<d>` | `col && cube_enlarge($vec, $d, cube_dim($vec)) AND (col <-> $vec) < $d` | the exclusive bound; the reference is `vec=` |
-| `vec_l1_lt.<d>` | same prefilter, `<#>` | same |
-| `vec_chebyshev_lt.<d>` | same prefilter, `<=>` | same |
+| `l2_distance_lt.<d>` | `col && cube_enlarge($vec, $d, cube_dim($vec)) AND (col <-> $vec) < $d` | the exclusive bound; the reference is `~vec=` |
+| `l1_distance_lt.<d>` | same prefilter, `<#>` | same |
+| `chebyshev_distance_lt.<d>` | same prefilter, `<=>` | same |
 
   The operand of `cs`/`cd`/`ov` is a JSON list (URL-encoded, and
   double-quoted inside `or=(…)` lists since it holds commas) or the text
-  form. The thresholds measure from the request-wide `vec=`, like the
+  form. The thresholds measure from the request-wide `~vec=`, like the
   pgvector thresholds; the box enlarged by the distance in every dimension
   holds every cube within that distance whatever the metric, so a GiST
   index serves the prefilter before the exact distance. Comparisons
   (`eq`, `lt`, `in`, …) are `400 invalid_filter`, as on vector columns;
   so are a plain `order=box`, `distinct=box` and `box.min()`/`max()`.
-- **Ordering**: `order=<col>.vec_l2|vec_l1|vec_chebyshev` against `vec=`
+- **Ordering**: `order=<col>.l2_distance|l1_distance|chebyshev_distance` against `~vec=`
   (a JSON point or box, or the cube text form; checked against the cube
   rules), nearest first under `asc`. A GiST index on the column answers
   them as KNN scans; keyset cursors re-evaluate the anchor's distance.
   The primary-key tiebreaker is applied by an incremental sort on top of
   the KNN scan, which PostgreSQL plans from version 17 on; older servers
-  sort the matching rows instead (the same holds for `earth_dist` and the
+  sort the matching rows instead (the same holds for `earth_distance` and the
   pgvector terms).
-- **Scores**: `<col>_l2_distance`, `<col>_l1_distance` and
-  `<col>_chebyshev_distance` (see [Scores](#scores)), on every cube column.
+- **Scores**: `~<col>_l2_distance`, `~<col>_l1_distance` and
+  `~<col>_chebyshev_distance` (see [Scores](#scores)), on every cube column.
 - **Index policy**: every operator, threshold and order term is served by
   a GiST index on the column, so under `filters.indexed_only` a cube
   column needs one (or `filters.allow_columns`); `400
@@ -548,18 +545,15 @@ n-dimensional points and boxes when the extension is installed.
 
 ```http
 GET /shapes?box=ov.%5B%5B0%2C0%5D%2C%5B5%2C5%5D%5D&select=id,box
-GET /shapes?select=id,box_chebyshev_distance&box=vec_chebyshev_lt.2&order=box.vec_chebyshev&vec=%5B1%2C2%5D&limit=10
+GET /shapes?select=id,~box_chebyshev_distance&box=chebyshev_distance_lt.2&order=box.chebyshev_distance&~vec=%5B1%2C2%5D&limit=10
 ```
 
 ## earthdistance (pdbr)
 
 With the `earthdistance` extension (which needs `cube`) installed, two
 kinds of column measure distances on the Earth's surface from the
-request-wide reference location `latlon=<lat>,<lon>` (degrees; latitude
+request-wide reference location `~latlon=<lat>,<lon>` (degrees; latitude
 within ±90, longitude within ±180, `400 invalid_parameter` otherwise).
-`latlon` is soft-reserved like `near`, `trgm` and `vec`: where a column,
-computed column or RPC argument is named `latlon` it is that filter, and
-the surface below that needs it is not offered.
 
 **`earth` columns** (the extension's `earth` domain over `cube`, or a
 domain over it):
@@ -568,26 +562,26 @@ domain over it):
   ways (`latitude(col)`/`longitude(col)` out, `ll_to_earth($1, $2)` in).
   A missing member, a non-number or a value out of range is `400
   invalid_body`.
-- **Filter**: `earth_lt.<metres>` keeps rows within that great-circle
-  distance of `latlon=`: `earth_box(ll_to_earth($lat, $lon), $d) @> col AND
+- **Filter**: `earth_distance_lt.<metres>` keeps rows within that great-circle
+  distance of `~latlon=`: `earth_box(ll_to_earth($lat, $lon), $d) @> col AND
   earth_distance(col, ll_to_earth($lat, $lon)) < $d`. The box prefilter is
   served by a GiST index on the column; the box also holds points slightly
   farther away, which the exact distance drops. `not.`, `or=`/`and=` and
   embed filters take it like any operator.
-- **Ordering**: `order=<col>.earth_dist` is nearest first under `asc`. It
+- **Ordering**: `order=<col>.earth_distance` is nearest first under `asc`. It
   sorts by cube's `<->` distance between the points
   (`col <-> ll_to_earth($lat, $lon)`), the chord through the Earth, which
   orders exactly like the great-circle distance and which the GiST index
   answers as a KNN scan; keyset cursors compare the same chord value
   (pdbcore `Expr.OrderSQL`), so paging follows `ORDER BY` exactly.
-- **Score**: `<col>_earth_distance` is the great-circle distance in metres
+- **Score**: `~<col>_earth_distance` is the great-circle distance in metres
   (`earth_distance`), which is what the threshold compares.
 - Comparisons, plain ordering, `distinct` and `min()`/`max()` are refused,
   as on cube columns. OpenAPI documents the value as a `{lat, lon}` object.
 
 **`point` columns** holding (longitude, latitude) in degrees get the
-`<@>` operator, in statute miles: `earth_miles_lt.<miles>`,
-`order=<col>.earth_miles` and `<col>_earth_distance_miles`. No index serves
+`<@>` operator, in statute miles: `earth_miles_distance_lt.<miles>`,
+`order=<col>.earth_miles_distance` and `~<col>_earth_miles_distance`. No index serves
 `<@>`, so, like the bit-column pgvector surface, a point column gets it
 only where the policy admits unindexed surface: listed in
 `filters.allow_columns`, or with `filters.indexed_only: false`. Installing
@@ -596,8 +590,8 @@ OpenAPI document unchanged. Store an `earth` column (or index
 `ll_to_earth` of the coordinates) for index-assisted radius search.
 
 ```http
-GET /sites?select=id,name,loc_earth_distance&loc=earth_lt.5000&order=loc.earth_dist&latlon=51.508,-0.128&limit=20
-GET /sites?order=ll.earth_miles&ll=earth_miles_lt.10&latlon=51.508,-0.128
+GET /sites?select=id,name,~loc_earth_distance&loc=earth_distance_lt.5000&order=loc.earth_distance&~latlon=51.508,-0.128&limit=20
+GET /sites?order=ll.earth_miles_distance&ll=earth_miles_distance_lt.10&~latlon=51.508,-0.128
 POST /sites
 {"name": "Trafalgar Square", "loc": {"lat": 51.508, "lon": -0.128}}
 ```
@@ -609,36 +603,43 @@ functions unqualified, so there its schema and cube's must be on the
 ## Scores
 
 Score pseudo-columns select the similarity or distance a reference
-parameter measures, the way `<col>_distance` selects the spatial distance
-from `near=` ([postgis.md](postgis.md#selecting-the-distance)). They are
-named after pdbcore's expressions in snake_case, the names pdbq gives its
-score fields:
+parameter measures, the way `~<col>_st_distance` selects the spatial distance
+from `~near=` ([postgis.md](postgis.md#selecting-the-distance)). Distances
+use one vocabulary everywhere, `<metric>_distance`: the order term
+`<col>.<metric>_distance`, the score `~<col>_<metric>_distance` and the
+threshold `<metric>_distance_lt` share the metric name (`l2_distance`,
+`cosine_distance`, `earth_distance`, `levenshtein_distance`, …, and
+`st_distance` for PostGIS). pgvector's `<#>` keeps its own name,
+`negative_inner_product`, because it is not a distance (it can be
+negative). The trigram scores are similarities, `~<col>_trgm_similarity`
+and the word forms, next to the `trgm_distance` order terms (a distance is
+1 − its similarity):
 
 | pseudo-column | value | reference |
 |---|---|---|
-| `<col>_similarity` | `similarity(col, $trgm)`, 0 to 1 | `trgm=` |
-| `<col>_word_similarity` | `word_similarity($trgm, col)` (pg_trgm 1.2+) | `trgm=` |
-| `<col>_strict_word_similarity` | `strict_word_similarity($trgm, col)` (1.4+) | `trgm=` |
-| `<col>_l2_distance`, `_negative_inner_product`, `_cosine_distance`, `_l1_distance` | `col <-> $vec`, `<#>`, `<=>`, `<+>` | `vec=` |
-| `<col>_hamming_distance`, `<col>_jaccard_distance` (bit columns) | `col <~> $vec::varbit`, `<%>` | `vec=` |
-| `<col>_levenshtein_distance` (integer) | `levenshtein(col, $levenshtein)`; null for values over 255 characters | `levenshtein=` |
-| `<col>_l2_distance`, `_l1_distance`, `_chebyshev_distance` (cube columns) | `col <-> $vec::cube`, `<#>`, `<=>` | `vec=` |
-| `<col>_earth_distance` (earth columns) | `earth_distance(col, ll_to_earth($lat, $lon))`, great-circle metres | `latlon=` |
-| `<col>_earth_distance_miles` (point columns) | `col <@> point($lon, $lat)`, statute miles | `latlon=` |
+| `~<col>_trgm_similarity` | `similarity(col, $trgm)`, 0 to 1 | `~trgm=` |
+| `~<col>_trgm_word_similarity` | `word_similarity($trgm, col)` (pg_trgm 1.2+) | `~trgm=` |
+| `~<col>_trgm_strict_word_similarity` | `strict_word_similarity($trgm, col)` (1.4+) | `~trgm=` |
+| `~<col>_l2_distance`, `_negative_inner_product`, `_cosine_distance`, `_l1_distance` | `col <-> $vec`, `<#>`, `<=>`, `<+>` | `~vec=` |
+| `~<col>_hamming_distance`, `~<col>_jaccard_distance` (bit columns) | `col <~> $vec::varbit`, `<%>` | `~vec=` |
+| `~<col>_levenshtein_distance` (integer) | `levenshtein(col, $levenshtein)`; null for values over 255 characters | `~levenshtein=` |
+| `~<col>_l2_distance`, `_l1_distance`, `_chebyshev_distance` (cube columns) | `col <-> $vec::cube`, `<#>`, `<=>` | `~vec=` |
+| `~<col>_earth_distance` (earth columns) | `earth_distance(col, ll_to_earth($lat, $lon))`, great-circle metres | `~latlon=` |
+| `~<col>_earth_miles_distance` (point columns) | `col <@> point($lon, $lat)`, statute miles | `~latlon=` |
 
 ```http
-GET /articles?select=id,title,title_similarity&title=trgm_sim.postgres&trgm=postgres&order=title.trgm_dist&limit=10
-GET /items?select=id,embedding_cosine_distance&order=embedding.vec_cos&vec=%5B0.1%2C0.2%2C0.3%5D&limit=10
-GET /docs?select=id,chunks(id,embedding_cosine_distance)&chunks.order=embedding.vec_cos&chunks.limit=3&vec=%5B1%2C0%2C0%5D
+GET /articles?select=id,title,~title_trgm_similarity&title=trgm_sim.postgres&~trgm=postgres&order=title.trgm_distance&limit=10
+GET /items?select=id,~embedding_cosine_distance&order=embedding.cosine_distance&~vec=%5B0.1%2C0.2%2C0.3%5D&limit=10
+GET /docs?select=id,chunks(id,~embedding_cosine_distance)&chunks.order=embedding.cosine_distance&chunks.limit=3&~vec=%5B1%2C0%2C0%5D
 ```
 
 - They are selected explicitly (never part of `*`), aliasable
-  (`score:title_similarity`), and work in embeds, spreads, row paths and
+  (`score:~title_trgm_similarity`), and work in embeds, spreads, row paths and
   mutation responses. The reference parameter is required whenever one is
   selected (`400 invalid_parameter`), serves every score, order term and
   threshold of the request, and is bound again for each score, so the SQL
   text depends only on which scores are selected. They take no arguments,
-  casts, filters or ordering (order by the matching `.trgm_*`/`.vec_*`
+  casts, filters or ordering (order by the matching `<col>.<metric>_distance`
   term instead; a trigram distance is 1 − its similarity).
 - Trigram scores exist on text columns that take the trigram operators
   (a GIN or GiST trigram index, or `filters.allow_columns`, under
@@ -648,36 +649,33 @@ GET /docs?select=id,chunks(id,embedding_cosine_distance)&chunks.order=embedding.
   `<@>` surface (see [earthdistance](#earthdistance-pdbr)). Being
   projections of the returned rows, neither depends on the ordering index
   or `@omit order`; `@omit read` removes them with the column.
-- A resource with a column or computed column named `trgm` (`vec`,
-  `latlon`) has no such parameter and no trigram (vector and cube,
-  earthdistance) scores; a score selected in an
-  embed under a root where the parameter is a filter is `400
-  invalid_select`. A real, computed or derived column owning a score's key
-  keeps it (with a warning).
+- Columns named like a reference parameter (`trgm`, `vec`, `latlon`) or a
+  score without its `~` (`title_trgm_similarity`) are ordinary columns and
+  change none of this.
 - Each costs 1 per row in `limits.max_cost`, like a column. OpenAPI lists
   them as read-only nullable `number` properties of the resource schema and
   in the `select` description.
 
 ## Headlines
 
-A `<col>_headline` pseudo-column returns a `ts_headline` snippet: the
+A `~<col>_headline` pseudo-column returns a `ts_headline` snippet: the
 document with the words the request's full-text filter matched marked up,
 next to `order=<col>.rank`. It exists on every column that accepts a
 full-text filter under the filter policy:
 
 - on a text-like, `json` or `jsonb` column the document is the column
-  itself: `body_headline` highlights `body` against the `body=fts…` filter;
+  itself: `~body_headline` highlights `body` against the `body=fts…` filter;
 - on a `tsvector` column (typically generated from other columns) the
   document is another column of the resource named by `document=`: a
-  readable text-like, `json` or `jsonb` column. `search_headline` needs it
+  readable text-like, `json` or `jsonb` column. `~search_headline` needs it
   (`400 invalid_select` without it, or with a column that is not one), and
   exists only on resources with such a column.
 
 ```http
-GET /articles?select=id,title,search_headline(document=body,max_words=20,min_words=5,start_sel="<mark>",stop_sel="</mark>")&search=wfts(english).fat%20cat&order=search.rank.desc&limit=10
-GET /articles?select=id,body_headline(max_fragments=2,fragment_delimiter="%20…%20")&body=plfts.cheese
-GET /articles?select=id,meta_headline&meta=fts(english).story
-GET /authors?select=name,articles(id,search_headline(document=title))&articles.search=fts.cat&articles.limit=3
+GET /articles?select=id,title,~search_headline(document=body,max_words=20,min_words=5,start_sel="<mark>",stop_sel="</mark>")&search=wfts(english).fat%20cat&order=search.rank.desc&limit=10
+GET /articles?select=id,~body_headline(max_fragments=2,fragment_delimiter="%20…%20")&body=plfts.cheese
+GET /articles?select=id,~meta_headline&meta=fts(english).story
+GET /authors?select=name,articles(id,~search_headline(document=title))&articles.search=fts.cat&articles.limit=3
 ```
 
 - **The query** is the scope's single non-negated `fts`/`plfts`/`phfts`/`wfts`
@@ -708,8 +706,7 @@ GET /authors?select=name,articles(id,search_headline(document=title))&articles.s
   where the filter is the scope). `@omit read` removes a column's
   headline and its use as a `document=`; `@omit filter` or an indexed-only
   rejection of its full-text filter removes the headline. A column hidden
-  from a schema contract cannot be named as a document there. A real,
-  computed or other pseudo-column owning the key keeps it (with a warning).
+  from a schema contract cannot be named as a document there.
 - **Bounding.** `ts_headline` re-parses the whole document on every call,
   so its work grows with the document's length. It reads at most
   `limits.max_headline_document` characters (default 65536): a text
@@ -734,30 +731,29 @@ aliasable, and usable in embeds, spreads, row paths and mutation responses:
 
 | pseudo-column | value | type | filter / order |
 |---|---|---|---|
-| `<col>_nlevel` (ltree) | `nlevel(col)`, the number of labels | integer | yes |
-| `<col>_parent` (ltree) | `subpath(col, 0, nlevel(col) - 1)`: empty for a one-label path, null for the empty path | string | no |
-| `<col>_lca(path=a.b)` (ltree) | `lca(col, $path)`, the longest common ancestor with `path` | string | no |
-| `<col>_subpath(offset=1[,length=2])` (ltree) | `subpath(col, $offset[, $length])`; a negative offset counts from the end, length (≥ 0) defaults to the rest; null when offset lies outside the path | string | no |
-| `<col>_lca` (ltree[]) | `lca` of the non-null elements; null for an empty array | string | no |
-| `<col>_icount` (int4[] with intarray) | `icount(col)`, the number of elements | integer | yes |
+| `~<col>_nlevel` (ltree) | `nlevel(col)`, the number of labels | integer | yes |
+| `~<col>_parent` (ltree) | `subpath(col, 0, nlevel(col) - 1)`: empty for a one-label path, null for the empty path | string | no |
+| `~<col>_lca(path=a.b)` (ltree) | `lca(col, $path)`, the longest common ancestor with `path` | string | no |
+| `~<col>_subpath(offset=1[,length=2])` (ltree) | `subpath(col, $offset[, $length])`; a negative offset counts from the end, length (≥ 0) defaults to the rest; null when offset lies outside the path | string | no |
+| `~<col>_lca` (ltree[]) | `lca` of the non-null elements; null for an empty array | string | no |
+| `~<col>_icount` (int4[] with intarray) | `icount(col)`, the number of elements | integer | yes |
 
 ```http
-GET /categories?select=id,path_nlevel,path_parent,top:path_subpath(offset=0,length=1)&path_nlevel=lte.2&order=path_nlevel.desc
-GET /categories?select=id,common:path_lca(path=top.science.physics)
-GET /items?select=id,tags_icount&tags=query_int.1%26(2%7C3)&order=tags_icount.desc
+GET /categories?select=id,~path_nlevel,~path_parent,top:~path_subpath(offset=0,length=1)&~path_nlevel=lte.2&order=~path_nlevel.desc
+GET /categories?select=id,common:~path_lca(path=top.science.physics)
+GET /items?select=id,~tags_icount&tags=query_int.1%26(2%7C3)&order=~tags_icount.desc
 ```
 
 The select arguments are bind parameters (the SQL text does not depend on
 whether `length` is given), and malformed ones are `400 invalid_select`
-(`path_subpath` without arguments, a non-integer offset, a negative length,
-an offset beyond ±65535). `<col>_nlevel` and `<col>_icount` take the integer
+(`~path_subpath` without arguments, a non-integer offset, a negative length,
+an offset beyond ±65535). `~<col>_nlevel` and `~<col>_icount` take the integer
 filter operators (`eq … in, is, isdistinct`, `not.`, `or=`/`and=`, embed
 and relation filters, `(any)`/`(all)`) and `order=` terms (keyset cursors
 included). No index serves them, so under `filters.indexed_only` they
 filter and order only when the column is in `filters.allow_columns` (and
 filterable / orderable itself): `400 column_not_filterable` /
-`column_not_orderable` otherwise; selecting them is always allowed. A real
-or computed column owning the key keeps it (with a warning). `@omit read`
+`column_not_orderable` otherwise; selecting them is always allowed. `@omit read`
 removes them with the column, `@omit filter` / `@omit order` their filter
 and order surface. Each costs 1 per row in `limits.max_cost`. OpenAPI lists
 them as read-only properties (with their select syntax) and in the `select`
@@ -828,11 +824,11 @@ columns) need the column in `filters.allow_columns`, or
 `filters.indexed_only: false`. The unaccent operators are never
 index-served and always need `filters.allow_columns` under the policy.
 Trigram distance ordering needs a GiST index under the policy, vector
-distance ordering an HNSW index (or IVFFlat, which serves `vec_l2`,
-`vec_ip` and `vec_cos` on `vector` and `halfvec`). `query_int` needs a GIN
-or GiST index. The fuzzystrmatch operators, `order=<col>.levenshtein` and
-`<col>_levenshtein_distance`, `hk_def`, and filtering or ordering by
-`<col>_nlevel` / `<col>_icount` are never index-served and need
+distance ordering an HNSW index (or IVFFlat, which serves `l2_distance`,
+`negative_inner_product` and `cosine_distance` on `vector` and `halfvec`). `query_int` needs a GIN
+or GiST index. The fuzzystrmatch operators, `order=<col>.levenshtein_distance` and
+`~<col>_levenshtein_distance`, `hk_def`, and filtering or ordering by
+`~<col>_nlevel` / `~<col>_icount` are never index-served and need
 `filters.allow_columns`. Rank ordering needs a
 column that accepts a full-text filter. A rejected operator is `400
 column_not_filterable` (`column_not_orderable` for order terms).
@@ -840,14 +836,14 @@ column_not_filterable` (`column_not_orderable` for order terms).
 The vector and bit distance thresholds, which no index serves, need the
 column in `filters.allow_columns` under the policy. The cube operators,
 thresholds and distance ordering, the earth radius filter and
-`earth_dist` are GiST-served (a GiST index led by the column admits
-them); the point `<@>` surface (`earth_miles_lt`, `earth_miles`, the
+`earth_distance` are GiST-served (a GiST index led by the column admits
+them); the point `<@>` surface (`earth_miles_distance_lt`, `earth_miles_distance`, the
 miles score) is never index-served and needs `filters.allow_columns`.
 
 OpenAPI lists exactly the accepted operators per column in
 `x-pdbr-filter-ops` (pinned to the parser by `TestFilterOpsMatchParser`,
 under both policies), the rank and distance terms in the `order`
-description, and the `trgm` / `vec` parameter on resources that have a
+description, and the `~trgm` / `~vec` parameter on resources that have a
 trigram / vector distance term, score column or threshold.
 
 ## Differences from PostgREST
@@ -859,11 +855,11 @@ trigram / vector distance term, score column or threshold.
   `*_any`, `lquery`, `lquery_any`, `ltxtquery`), inet
   `cs_strict`/`cd_strict`, the unaccent ops (`unaccent_*`), element
   containment `cs.5` on ranges, JSON-object range and hstore operands, and
-  the `rank`/`rank_cd`/`trgm_*`/`vec_*`/`levenshtein` order terms, the
-  `vec_*_lt` and `levenshtein_lt` thresholds, the fuzzystrmatch phonetic
+  the `rank`/`rank_cd` and `<metric>_distance` order terms, the
+  `<metric>_distance_lt` thresholds, the fuzzystrmatch phonetic
   operators, `hk_def`, `query_int`, the cube and earthdistance operators,
   order terms and scores, the score and derived pseudo-columns
-  with `trgm=`/`vec=`/`latlon=`/`levenshtein=` are pdbr extensions. hstore values by
+  with `~trgm=`/`~vec=`/`~latlon=`/`~levenshtein=` are pdbr extensions. hstore values by
   key (`attrs->color`) work in PostgREST too, which renders the arrow
   literally; pdbr restricts it to one key and treats `->` and `->>` alike.
 - **pgvector output.** `vector` and `halfvec` values are JSON arrays of
@@ -872,7 +868,7 @@ trigram / vector distance term, score column or threshold.
   second decode. `sparsevec` stays a string in both. Input takes either form.
 - **inet `cs`/`cd`** mean `>>=`/`<<=`, where PostgREST's literal `@>`/`<@`
   fails on inet.
-- **Headlines** (`<col>_headline`, `ts_headline`) are a pdbr extension;
+- **Headlines** (`~<col>_headline`, `ts_headline`) are a pdbr extension;
   full-text search on json/jsonb columns matches PostgREST.
 - **The indexed-only policy** has no PostgREST counterpart.
 
@@ -896,36 +892,36 @@ unaccent `unaccentEqualTo`, `unaccentLike`, `unaccentStartsWith`,
 `unaccentIncludes` → `unaccent_eq`, `unaccent_ilike`, `unaccent_sw`,
 `unaccent_includes`; the vector distances `l2Distance`,
 `negativeInnerProduct`, `cosineDistance`, `l1Distance` → the order terms
-`vec_l2`, `vec_ip`, `vec_cos`, `vec_l1` (bit `hammingDistance`,
-`jaccardDistance` → `vec_hamming`, `vec_jaccard`), and their `LessThan`
-thresholds → `vec_l2_lt`, … `vec_jaccard_lt`. pdbq's score fields
+`l2_distance`, `negative_inner_product`, `cosine_distance`, `l1_distance` (bit `hammingDistance`,
+`jaccardDistance` → `hamming_distance`, `jaccard_distance`), and their `LessThan`
+thresholds → `l2_distance_lt`, … `jaccard_distance_lt`. pdbq's score fields
 (`<field>Similarity`, `<field>CosineDistance`, …) are pdbr's score
-pseudo-columns (`<col>_similarity`, `<col>_cosine_distance`, …); pdbq reads
+pseudo-columns (`~<col>_trgm_similarity`, `~<col>_cosine_distance`, …); pdbq reads
 each list's own `similarTo:`/`nearVector:` and its threshold operators carry
-their own vector, where pdbr has one request-wide `trgm=`/`vec=`, and a
+their own vector, where pdbr has one request-wide `~trgm=`/`~vec=`, and a
 pdbq score without its reference is `null` where pdbr answers `400`.
 pdbq's `<field>Headline(document: …, options: {…})` is pdbr's
-`<col>_headline(document=…, max_words=…)`; pdbq offers it on `tsvector`
+`~<col>_headline(document=…, max_words=…)`; pdbq offers it on `tsvector`
 columns over text documents only, because it exposes no `to_tsvector`
 filters over text or json columns (no index serves them), so it has no
-`body_headline` on a text column and no full-text search or headlines on
+`~body_headline` on a text column and no full-text search or headlines on
 json/jsonb columns. hstore `hasDefinedKey` is `hk_def`; fuzzystrmatch `levenshteinDistanceLessThan`,
 `soundexEqualTo`, `metaphoneEqualTo`, `doubleMetaphoneEqualTo` are
-`levenshtein_lt`, `soundex`, `metaphone`, `dmetaphone`, the
-`levenshteinDistance` ordering and score are `<col>.levenshtein` and
-`<col>_levenshtein_distance` against `levenshtein=` (pdbq's threshold
+`levenshtein_distance_lt`, `soundex`, `metaphone`, `dmetaphone`, the
+`levenshteinDistance` ordering and score are `<col>.levenshtein_distance` and
+`~<col>_levenshtein_distance` against `~levenshtein=` (pdbq's threshold
 carries its own `{text, distance}`); intarray `matchesQueryInt` is
 `query_int`; cube `contains`/`containedBy`/`overlaps` are `cs`/`cd`/`ov`,
 its `l2Distance`, `l1Distance`, `chebyshevDistance` orderings and scores
-`vec_l2`, `vec_l1`, `vec_chebyshev` and `<col>_l2_distance`, … against
-`vec=`, their `LessThan` thresholds `vec_*_lt`; earthdistance
-`earthDistanceLessThan` / `earthDistanceMilesLessThan` are `earth_lt` /
-`earth_miles_lt`, the `earthDistance` / `earthDistanceMiles` orderings and
-scores `<col>.earth_dist` / `<col>.earth_miles` and
-`<col>_earth_distance` / `<col>_earth_distance_miles` against `latlon=`
+`l2_distance`, `l1_distance`, `chebyshev_distance` and `~<col>_l2_distance`, … against
+`~vec=`, their `LessThan` thresholds `<metric>_distance_lt`; earthdistance
+`earthDistanceLessThan` / `earthDistanceMilesLessThan` are `earth_distance_lt` /
+`earth_miles_distance_lt`, the `earthDistance` / `earthDistanceMiles` orderings and
+scores `<col>.earth_distance` / `<col>.earth_miles_distance` and
+`~<col>_earth_distance` / `~<col>_earth_miles_distance` against `~latlon=`
 (pdbq's `nearPoint:` argument; its thresholds carry their own
 `{lat, lon, distance}`). The hstore `value` expression is the `attrs->key` path, and
 the ltree `nlevel`, `parent`, `lca`, `subpath` and intarray `icount` values
-are the derived pseudo-columns `<col>_nlevel`, … (`subpath`/`lca` with
+are the derived pseudo-columns `~<col>_nlevel`, … (`subpath`/`lca` with
 select arguments). The other derived accessors (inet `family`, range
 bounds, vector `dims`/`norm`) are not exposed by pdbr.

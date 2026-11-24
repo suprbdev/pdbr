@@ -1,2 +1,2 @@
--- request: GET /api/kb/tiles?select=rast_value
--- error: 400 invalid_parameter: rast_value requires near=<GeoJSON or WKT>
+-- request: GET /api/kb/tiles?select=~rast_value
+-- error: 400 invalid_parameter: ~rast_value requires ~near=<GeoJSON or WKT>

@@ -1,1 +1,1 @@
-GET /api/places?select=id,name,users(id,places(id))&order=location.dist.asc,id&near=SRID%3D4326%3BPOINT(-0.1281%2051.508)&users.places.order=area.dist.desc&limit=3
+GET /api/places?select=id,name,users(id,places(id))&order=location.st_distance.asc,id&~near=SRID%3D4326%3BPOINT(-0.1281%2051.508)&users.places.order=area.st_distance.desc&limit=3

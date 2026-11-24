@@ -11,29 +11,29 @@ import (
 )
 
 // scoreSQL renders a score pseudo-column of the row at alias against the
-// request's reference parameter: ST_Distance from near= (metres on
+// request's reference parameter: ST_Distance from ~near= (metres on
 // geography; on geometry SRID units, or metres on the spheroid with
-// spheroid=true), a pg_trgm similarity to trgm=, a pgvector or cube
-// distance from vec=, an earthdistance distance from latlon= or the
-// Levenshtein distance to levenshtein=. The reference is bound again for
+// spheroid=true), a pg_trgm similarity to ~trgm=, a pgvector or cube
+// distance from ~vec=, an earthdistance distance from ~latlon= or the
+// Levenshtein distance to ~levenshtein=. The reference is bound again for
 // each score, so the SQL text only depends on which scores are selected.
 func (s *stmt) scoreSQL(p *api.PseudoColumn, args map[string]any, alias string) (string, error) {
 	ref := colRef(alias, p.Column.Name)
 	switch p.Score.Param {
-	case "near":
+	case api.ParamNear:
 		near := s.nearExpr(p.Column)
 		if b, _ := args["spheroid"].(bool); b && postgis.FlavourOf(p.Column.PGType) == postgis.Geometry {
 			return postgis.SpheroidDistanceSQL(ref, near), nil
 		}
 		return postgis.DistanceSQL(ref, near), nil
-	case "trgm", "vec", "latlon", "levenshtein":
+	case api.ParamTrgm, api.ParamVec, api.ParamLatLon, api.ParamLevenshtein:
 		val := s.plan.Trgm
 		switch p.Score.Param {
-		case "vec":
+		case api.ParamVec:
 			val = s.plan.Vec
-		case "latlon":
+		case api.ParamLatLon:
 			val = s.plan.LatLon
-		case "levenshtein":
+		case api.ParamLevenshtein:
 			val = s.plan.Levenshtein
 		}
 		if val == nil {
@@ -48,9 +48,9 @@ func (s *stmt) scoreSQL(p *api.PseudoColumn, args map[string]any, alias string) 
 	return "", fmt.Errorf("compile: unknown score parameter %q", p.Score.Param)
 }
 
-// contribPseudoSQL renders a contrib accessor (<col>_nlevel, <col>_parent,
-// <col>_lca, <col>_icount) or derived value (<col>_lca(path=),
-// <col>_subpath(offset=,length=), whose arguments are bound) of the row at
+// contribPseudoSQL renders a contrib accessor (~<col>_nlevel, ~<col>_parent,
+// ~<col>_lca, ~<col>_icount) or derived value (~<col>_lca(path=),
+// ~<col>_subpath(offset=,length=), whose arguments are bound) of the row at
 // alias.
 func (s *stmt) contribPseudoSQL(p *api.PseudoColumn, args map[string]any, alias string) (string, error) {
 	ref := colRef(alias, p.Column.Name)

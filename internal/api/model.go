@@ -205,16 +205,16 @@ type Computed struct {
 }
 
 // PseudoColumn is a derived value over a real column: a PostGIS accessor
-// (postgis plugin: <col>_area, <col>_centroid, ...), a raster accessor,
+// (postgis plugin: ~<col>_area, ~<col>_centroid, ...), a raster accessor,
 // pixel value or summary statistics (postgis plugin, Raster set:
-// <col>_width, <col>_value(band=), <col>_summary_stats(band=), ...), a
-// pdbcore/contrib accessor or derived value (Contrib set: <col>_nlevel,
-// <col>_parent, <col>_lca, <col>_subpath, <col>_icount), a full-text
-// headline (Headline set: <col>_headline) or a score measured against the
-// request's reference parameter (Score set: <col>_distance from near=,
-// <col>_similarity from trgm=, <col>_cosine_distance from vec=,
-// <col>_earth_distance from latlon=, <col>_levenshtein_distance from
-// levenshtein=, ...; a raster's <col>_value has both Score and Raster).
+// ~<col>_width, ~<col>_value(band=), ~<col>_summary_stats(band=), ...), a
+// pdbcore/contrib accessor or derived value (Contrib set: ~<col>_nlevel,
+// ~<col>_parent, ~<col>_lca, ~<col>_subpath, ~<col>_icount), a full-text
+// headline (Headline set: ~<col>_headline) or a score measured against the
+// request's reference parameter (Score set: ~<col>_st_distance from ~near=,
+// ~<col>_trgm_similarity from ~trgm=, ~<col>_cosine_distance from ~vec=,
+// ~<col>_earth_distance from ~latlon=, ~<col>_levenshtein_distance from
+// ~levenshtein=, ...; a raster's ~<col>_value has both Score and Raster).
 type PseudoColumn struct {
 	Key      string
 	Column   *introspect.Column
@@ -224,7 +224,7 @@ type PseudoColumn struct {
 	// Contrib is set on a contrib accessor or derived pseudo-column;
 	// Accessor is then empty.
 	Contrib *ContribValue
-	// Headline is set on a <col>_headline pseudo-column; Accessor is then
+	// Headline is set on a ~<col>_headline pseudo-column; Accessor is then
 	// empty.
 	Headline *Headline
 	// Raster is set on a pseudo-column over a raster column (one of
@@ -242,8 +242,8 @@ type PseudoColumn struct {
 // Score binds a score pseudo-column to its reference parameter and
 // expression.
 type Score struct {
-	// Param is the query parameter holding the reference: "near", "trgm",
-	// "vec", "latlon" or "levenshtein".
+	// Param is the query parameter holding the reference: ParamNear,
+	// ParamTrgm, ParamVec, ParamLatLon or ParamLevenshtein.
 	Param string
 	// Expr is the pdbcore/contrib expression measured (similarity,
 	// cosineDistance, hammingDistance, ...); the zero Expr for the spatial
@@ -251,7 +251,7 @@ type Score struct {
 	Expr contrib.Expr
 }
 
-// Headline binds a <col>_headline pseudo-column: ts_headline over a
+// Headline binds a ~<col>_headline pseudo-column: ts_headline over a
 // document against the full-text filter on Column in the request scope.
 type Headline struct {
 	// Documents maps the field keys of the readable document columns
@@ -276,7 +276,7 @@ type ContribValue struct {
 }
 
 // RasterValue binds a pseudo-column to a raster column's surface: a
-// header-only metadata accessor (Accessor set), the pixel value at near=
+// header-only metadata accessor (Accessor set), the pixel value at ~near=
 // (Value) or the summary statistics of a band (SummaryStats). The value
 // and statistics take an optional band=<n> select argument (default 1).
 type RasterValue struct {

@@ -203,8 +203,8 @@ func TestAgainstDatabase(t *testing.T) {
 	p.Select = &plan.Node{Resource: places, Fields: []plan.FieldSel{
 		{Column: f.col("places", "name")}, {Column: f.col("places", "location")},
 		{Alias: "web", Column: f.col("places", "location"), Args: map[string]any{"transform": 3857, "simplify": 0.001}},
-		{Pseudo: &api.PseudoColumn{Key: "location_srid", Column: f.col("places", "location"), Accessor: "srid"}},
-		{Pseudo: &api.PseudoColumn{Key: "area_centroid", Column: f.col("places", "area"), Accessor: "centroid"}},
+		{Pseudo: &api.PseudoColumn{Key: "~location_srid", Column: f.col("places", "location"), Accessor: "srid"}},
+		{Pseudo: &api.PseudoColumn{Key: "~area_centroid", Column: f.col("places", "area"), Accessor: "centroid"}},
 	}}
 	sp := true
 	p.Filter = plan.And{Terms: []plan.Expr{

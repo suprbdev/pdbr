@@ -1,1 +1,1 @@
-GET /api/kb/docs?select=id,title_similarity,title_word_similarity,title_strict_word_similarity&title=trgm_sim.postgres&trgm=postgres
+GET /api/kb/docs?select=id,~title_trgm_similarity,~title_trgm_word_similarity,~title_trgm_strict_word_similarity&title=trgm_sim.postgres&~trgm=postgres

@@ -168,11 +168,15 @@ func etagMatches(header, etag string) bool {
 // pageHeaders sets the cursor and Link headers for a page. Keyset-capable
 // pages carry cursors and after=/before= links (any offset is dropped:
 // the cursor is an exact continuation); offset-only pages carry offset=
-// links and no cursors.
+// links and no cursors. A limit=0 page has neither: it has no rows to
+// continue from.
 func pageHeaders(h http.Header, op *Operation, stmt *compile.Statement, w *pageWrapper, basePath string) {
 	var pg plan.Page
 	if op != nil && op.Plan != nil {
 		pg = op.Plan.Page
+	}
+	if pg.LimitSet && pg.Limit == 0 {
+		return
 	}
 	base := basePath + op.Path
 	var links []string

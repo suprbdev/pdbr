@@ -1,1 +1,1 @@
-GET /api/places/1?select=name,area_distance&near=%7B%22type%22%3A%22Point%22%2C%22coordinates%22%3A%5B0%2C0%5D%7D
+GET /api/places/1?select=name,~area_st_distance&~near=%7B%22type%22%3A%22Point%22%2C%22coordinates%22%3A%5B0%2C0%5D%7D

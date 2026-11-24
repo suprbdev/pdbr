@@ -13,7 +13,7 @@ const (
 	CodeInvalidSelect      = "invalid_select"
 	CodePageSizeExceeded   = "page_size_exceeded"
 	CodeKeysetUnsupported  = "keyset_unsupported"
-	CodeEmbedDepthExceeded = "embed_depth_exceeded"
+	CodeDepthExceeded      = "depth_exceeded"
 	CodeCostExceeded       = "cost_exceeded"
 	CodeInvalidCursor      = "invalid_cursor"
 	CodeInvalidBody        = "invalid_body"

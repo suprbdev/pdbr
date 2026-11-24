@@ -39,7 +39,7 @@ type groupedQuery struct {
 // their aggregates aggregate over the joined rows.
 func (s *stmt) grouped(node *plan.Node, filter plan.Expr, corr func(childAlias string) string, root bool, depth int) (*groupedQuery, error) {
 	if depth > s.maxDepth {
-		return nil, errUser(CodeEmbedDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)
+		return nil, errUser(CodeDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)
 	}
 	t := node.Resource.Table
 	alias := s.alias("t")
@@ -132,7 +132,7 @@ func (s *stmt) grouped(node *plan.Node, filter plan.Expr, corr func(childAlias s
 				return errUser(CodeInvalidSelect, "spread grouping over %q needs its referenced columns to be a primary or unique key of the target", e.Key)
 			}
 			if depth+1 > s.maxDepth {
-				return errUser(CodeEmbedDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)
+				return errUser(CodeDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)
 			}
 			child := embedNode(e)
 			childAlias := s.alias("t")

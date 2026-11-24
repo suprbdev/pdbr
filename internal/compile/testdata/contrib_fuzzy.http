@@ -1,1 +1,1 @@
-GET /api/kb/docs?select=id,body_levenshtein_distance&body=levenshtein_lt.3&order=body.levenshtein,id&levenshtein=postgres&limit=5
+GET /api/kb/docs?select=id,~body_levenshtein_distance&body=levenshtein_distance_lt.3&order=body.levenshtein_distance,id&~levenshtein=postgres&limit=5

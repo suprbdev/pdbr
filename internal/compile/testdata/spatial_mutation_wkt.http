@@ -1,4 +1,4 @@
-PATCH /api/places/1?select=id,location_srid
+PATCH /api/places/1?select=id,~location_srid
 Content-Type: application/json
 
 {"location": "POINT(-0.1281 51.508)"}

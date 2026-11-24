@@ -1,1 +1,1 @@
-GET /api/kb/sites?select=id,ll_earth_distance_miles&ll=not.earth_miles_lt.10&order=ll.earth_miles&latlon=51.5,-0.12&limit=10
+GET /api/kb/sites?select=id,~ll_earth_miles_distance&ll=not.earth_miles_distance_lt.10&order=ll.earth_miles_distance&~latlon=51.5,-0.12&limit=10

@@ -34,7 +34,7 @@ import (
 //
 // @costMultiplier on an FK replaces a backward embed's multiplier when lower.
 // Filters are not priced (the estimate is the fan-out of what is returned),
-// so neither is the raster intersects filter. exec compares the result to
+// so neither is the raster st_intersects filter. exec compares the result to
 // limits.max_cost before compiling.
 func Cost(req *plan.Request, maxPageSize int) int {
 	if req == nil {
@@ -58,7 +58,7 @@ func Cost(req *plan.Request, maxPageSize int) int {
 	mult := 1
 	if req.Key == nil && (req.RPC == nil || req.RPC.Returns == api.ReturnSetOfRows) {
 		mult = req.Page.Limit
-		if mult <= 0 || mult > maxPageSize || node.Aggregated() {
+		if (mult <= 0 && !req.Page.LimitSet) || mult > maxPageSize || node.Aggregated() {
 			mult = maxPageSize
 		}
 	}
@@ -116,7 +116,7 @@ func nodeCost(node *plan.Node, maxPageSize int) int {
 		mult := 1
 		if e.Relation != nil && e.Relation.ToMany() {
 			mult = maxPageSize
-			if e.Page.Limit > 0 && !child.Aggregated() {
+			if (e.Page.Limit > 0 || e.Page.LimitSet) && !child.Aggregated() {
 				mult = min(e.Page.Limit, maxPageSize)
 			}
 			if cm := e.Relation.CostMultiplier; cm > 0 && cm < mult {

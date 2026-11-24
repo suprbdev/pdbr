@@ -1,1 +1,1 @@
-GET /api/kb/tiles?rast=intersects.nonsense
+GET /api/kb/tiles?rast=st_intersects.nonsense

@@ -1,1 +1,1 @@
-GET /api/kb/docs?select=id&order=attrs->color,path_nlevel.desc&limit=2&after=WyJrYi5kb2NzIiwgM10
+GET /api/kb/docs?select=id&order=attrs->color,~path_nlevel.desc&limit=2&after=WyJrYi5kb2NzIiwgM10

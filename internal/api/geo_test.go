@@ -26,23 +26,23 @@ func geoOptions(indexedOnly bool) Options {
 
 // TestCubeEarthSurface: cube columns take cs/cd/ov and the vec_*_lt
 // thresholds where a GiST index (or the policy) admits them, order by the
-// three cube distances to vec= and score them everywhere; earth columns
-// take earth_lt and order by earth_dist to latlon=; point columns get the
+// three cube distances to ~vec= and score them everywhere; earth columns
+// take earth_distance_lt and order by earth_distance to ~latlon=; point columns get the
 // <@> surface only where the policy admits unindexed surface.
 func TestCubeEarthSurface(t *testing.T) {
 	b := build(t, geoCatalog(), geoOptions(true))
 	shapes, sites := b.ByPath["kb.shapes"], b.ByPath["kb.sites"]
-	if got, want := b.FilterOps(shapes, shapes.Table.Column("box")), []string{"is", "cs", "cd", "ov", "vec_l2_lt", "vec_l1_lt", "vec_chebyshev_lt"}; !reflect.DeepEqual(got, want) {
+	if got, want := b.FilterOps(shapes, shapes.Table.Column("box")), []string{"is", "cs", "cd", "ov", "l2_distance_lt", "l1_distance_lt", "chebyshev_distance_lt"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("box ops = %v, want %v", got, want)
 	}
-	if got, want := b.FilterOps(sites, sites.Table.Column("loc")), []string{"is", "earth_lt"}; !reflect.DeepEqual(got, want) {
+	if got, want := b.FilterOps(sites, sites.Table.Column("loc")), []string{"is", "earth_distance_lt"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("loc ops = %v, want %v", got, want)
 	}
 	var orders []string
 	for _, o := range b.ContribOrders(shapes, shapes.Table.Column("box")) {
 		orders = append(orders, o.Name+"/"+o.Param)
 	}
-	if want := []string{"vec_l2/vec", "vec_l1/vec", "vec_chebyshev/vec"}; !reflect.DeepEqual(orders, want) {
+	if want := []string{"l2_distance/~vec", "l1_distance/~vec", "chebyshev_distance/~vec"}; !reflect.DeepEqual(orders, want) {
 		t.Errorf("box orders = %v, want %v", orders, want)
 	}
 	if got := b.ContribOrders(shapes, shapes.Table.Column("pt")); len(got) != 0 {
@@ -52,13 +52,13 @@ func TestCubeEarthSurface(t *testing.T) {
 		t.Errorf("unlisted point column orders under indexed_only: %v", got)
 	}
 	want := []string{
-		"box_chebyshev_distance=vec:chebyshevDistance", "box_l1_distance=vec:l1Distance", "box_l2_distance=vec:l2Distance",
-		"pt_chebyshev_distance=vec:chebyshevDistance", "pt_l1_distance=vec:l1Distance", "pt_l2_distance=vec:l2Distance",
+		"~box_chebyshev_distance=~vec:chebyshevDistance", "~box_l1_distance=~vec:l1Distance", "~box_l2_distance=~vec:l2Distance",
+		"~pt_chebyshev_distance=~vec:chebyshevDistance", "~pt_l1_distance=~vec:l1Distance", "~pt_l2_distance=~vec:l2Distance",
 	}
 	if got := scoreKeys(shapes); !reflect.DeepEqual(got, want) {
 		t.Errorf("kb.shapes scores = %v\nwant %v", got, want)
 	}
-	if got := scoreKeys(sites); !reflect.DeepEqual(got, []string{"loc_earth_distance=latlon:earthDistance"}) {
+	if got := scoreKeys(sites); !reflect.DeepEqual(got, []string{"~loc_earth_distance=~latlon:earthDistance"}) {
 		t.Errorf("kb.sites scores = %v", got)
 	}
 
@@ -66,28 +66,28 @@ func TestCubeEarthSurface(t *testing.T) {
 	opts.AllowColumns[testcatalog.ContribSchema+".sites"] = []string{"ll"}
 	b = build(t, geoCatalog(), opts)
 	sites = b.ByPath["kb.sites"]
-	if got := b.FilterOps(sites, sites.Table.Column("ll")); !slices.Contains(got, "earth_miles_lt") {
+	if got := b.FilterOps(sites, sites.Table.Column("ll")); !slices.Contains(got, "earth_miles_distance_lt") {
 		t.Errorf("allowlisted point ops = %v", got)
 	}
-	if got := scoreKeys(sites); !reflect.DeepEqual(got, []string{"ll_earth_distance_miles=latlon:earthDistanceMiles", "loc_earth_distance=latlon:earthDistance"}) {
+	if got := scoreKeys(sites); !reflect.DeepEqual(got, []string{"~ll_earth_miles_distance=~latlon:earthDistanceMiles", "~loc_earth_distance=~latlon:earthDistance"}) {
 		t.Errorf("kb.sites scores with ll allowlisted = %v", got)
 	}
 
 	get := b.OpenAPI.Paths["/kb/sites"].Get
-	ll := paramByName(get.Parameters, "latlon")
+	ll := paramByName(get.Parameters, "~latlon")
 	if ll == nil || !strings.Contains(ll.Description, "<lat>,<lon>") {
 		t.Errorf("latlon param = %+v", ll)
 	}
-	if order := paramByName(get.Parameters, "order").Description; !strings.Contains(order, "latlon=<lat>,<lon>") || !strings.Contains(order, "loc.earth_dist, ll.earth_miles") || strings.Contains(order, "Orderable columns: id, name, loc") {
+	if order := paramByName(get.Parameters, "order").Description; !strings.Contains(order, "~latlon=<lat>,<lon>") || !strings.Contains(order, "loc.earth_distance, ll.earth_miles_distance") || strings.Contains(order, "Orderable columns: id, name, loc") {
 		t.Errorf("order description: %s", order)
 	}
-	if p := paramByName(get.Parameters, "loc"); p == nil || !reflect.DeepEqual(p.XFilterOps, []string{"is", "earth_lt"}) {
+	if p := paramByName(get.Parameters, "loc"); p == nil || !reflect.DeepEqual(p.XFilterOps, []string{"is", "earth_distance_lt"}) {
 		t.Errorf("loc filter param = %+v", p)
 	}
-	if paramByName(b.OpenAPI.Paths["/kb/shapes"].Get.Parameters, "latlon") != nil {
+	if paramByName(b.OpenAPI.Paths["/kb/shapes"].Get.Parameters, "~latlon") != nil {
 		t.Error("kb.shapes documents latlon")
 	}
-	if paramByName(b.OpenAPI.Paths["/kb/shapes"].Get.Parameters, "vec") == nil {
+	if paramByName(b.OpenAPI.Paths["/kb/shapes"].Get.Parameters, "~vec") == nil {
 		t.Error("kb.shapes lacks vec")
 	}
 
@@ -106,7 +106,7 @@ func TestCubeEarthSurface(t *testing.T) {
 	if in := schemas["kb.shapes.insert"].Properties["box"]; len(in.AnyOf[0].OneOf) != 3 || in.AnyOf[0].OneOf[2].Type != "string" {
 		t.Errorf("cube input schema = %+v", in)
 	}
-	if p := schemas["kb.shapes"].Properties["box_chebyshev_distance"]; p == nil || !p.ReadOnly || !strings.Contains(p.Description, "vec=") {
+	if p := schemas["kb.shapes"].Properties["~box_chebyshev_distance"]; p == nil || !p.ReadOnly || !strings.Contains(p.Description, "~vec=") {
 		t.Errorf("cube score property = %+v", p)
 	}
 }
@@ -126,11 +126,11 @@ func TestCubeEarthGatedOnExtensions(t *testing.T) {
 	cat.Extensions = kept
 	b := build(t, cat, geoOptions(false))
 	shapes := b.ByPath["kb.shapes"]
-	if got := b.FilterOps(shapes, shapes.Table.Column("box")); slices.Contains(got, "vec_l2_lt") || slices.Contains(got, "cs") {
+	if got := b.FilterOps(shapes, shapes.Table.Column("box")); slices.Contains(got, "l2_distance_lt") || slices.Contains(got, "cs") {
 		t.Errorf("cube ops without the extension = %v", got)
 	}
 	for _, k := range append(scoreKeys(shapes), scoreKeys(b.ByPath["kb.sites"])...) {
-		if !strings.HasPrefix(k, "name_") {
+		if !strings.HasPrefix(k, "~name_") {
 			t.Errorf("score without the extensions: %s", k)
 		}
 	}
@@ -160,9 +160,6 @@ func TestRasterColumns(t *testing.T) {
 	}
 	if tiles.InputColumns["rast"] == nil {
 		t.Error("raster column not writable")
-	}
-	if !tiles.NameTaken("rast") {
-		t.Error("raster key not taken")
 	}
 	schemas := b.OpenAPI.Components.Schemas
 	if schemas["kb.tiles"].Properties["rast"] != nil || schemas["kb.tiles"].Properties["history"] != nil {
@@ -194,9 +191,9 @@ func TestRasterColumns(t *testing.T) {
 
 	bl := New(geoCatalog(), inflect.Default, geoOptions(true))
 	r := bl.Resources["kb.tiles"]
-	r.Pseudo["rast_width"] = &PseudoColumn{Key: "rast_width", Column: r.Raster("rast").Column}
+	r.Pseudo["~rast_width"] = &PseudoColumn{Key: "~rast_width", Column: r.Raster("rast").Column}
 	bl.RemoveField(r, "rast", false)
-	if r.Raster("rast") != nil || r.Pseudo["rast_width"] != nil || r.FilterColumns["rast"] || r.InputColumns["rast"] == nil {
+	if r.Raster("rast") != nil || r.Pseudo["~rast_width"] != nil || r.FilterColumns["rast"] || r.InputColumns["rast"] == nil {
 		t.Errorf("RemoveField(rast): rasters %v pseudo %v filter %v", fieldKeys(r.Rasters), r.Pseudo, r.FilterColumns)
 	}
 	bl.RemoveField(r, "history", true)

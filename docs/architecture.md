@@ -189,7 +189,7 @@ type FieldSel struct {
 	Alias    string             // response key ("" = Name)
 	Column   *introspect.Column // real column
 	Computed *api.Computed      // computed column (row-type function)
-	Pseudo   *api.PseudoColumn  // postgis derived accessor (<col>_<accessor>)
+	Pseudo   *api.PseudoColumn  // postgis derived accessor (~<col>_<accessor>)
 	Args     map[string]any     // spatial projection args: transform, simplify (v1)
 	Agg      *Aggregate         // aggregate function (aggregates.enabled); Column = input, nil for count()
 }
@@ -235,7 +235,7 @@ type OrderTerm struct {
 	Column   *introspect.Column
 	Computed *api.Computed
 	Relation *RelationOrder // users(name) — forward: scalar subquery, backward: MIN/MAX
-	Distance *introspect.Column // spatial column for `.dist` (uses Request.Near)
+	Distance *introspect.Column // spatial column for `.st_distance` (uses Request.Near)
 	Desc     bool
 	NullsFirst bool // both directions default to NULLS LAST
 }
@@ -271,7 +271,7 @@ serializable and does not need to be — `pdbr request --print-sql` re-parses.
   is a relation filter (advanced_filters plugin, `EXISTS`); a key that matches
   no FK of the resource → 400 `unknown_relation`.
 - `select=` grammar (brief §5) → `Node` tree; depth > `limits.max_depth`
-  → 400 `embed_depth_exceeded`; ambiguous relation key without hint → 400
+  → 400 `depth_exceeded`; ambiguous relation key without hint → 400
   `ambiguous_relation` listing candidates.
 - Filter values are coerced by column type here (enum labels verbatim, arrays
   from `{a,b}`, jsonb from JSON text, spatial from GeoJSON/WKT); unknown column

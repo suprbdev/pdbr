@@ -2,6 +2,7 @@ package parse
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/suprbdev/pdbcore/introspect"
@@ -11,17 +12,20 @@ import (
 	"github.com/suprbdev/pdbr/internal/testcatalog"
 )
 
-// TestSoftReservedParams: near= and trgm= are reserved only where no column
-// or RPC argument carries the name; there the name is a filter (or the
-// argument), and the order terms needing the parameter are unavailable.
-// Elsewhere a stray near=/trgm= is a 400 rather than silently ignored.
-func TestSoftReservedParams(t *testing.T) {
-	cat := testcatalog.Contrib(testutil.FixtureCatalog())
+// TestReservedNamespace: the reference parameters and pseudo-columns live
+// under api.ReservedPrefix, so columns, computed columns and function
+// arguments named like them (near, trgm, vec, latlon, levenshtein, geometry,
+// body_levenshtein_distance) change nothing: the bare names stay filters or
+// arguments, the ~ names keep their meaning, and the surface needing them
+// stays available.
+func TestReservedNamespace(t *testing.T) {
+	cat := testcatalog.Geo(testcatalog.Contrib(testutil.FixtureCatalog()))
+	names := []string{"near", "trgm", "vec", "latlon", "levenshtein", "geometry", "body_levenshtein_distance"}
 	for _, tb := range cat.Tables {
 		if tb.Schema == testcatalog.ContribSchema && tb.Name == "docs" {
-			tb.Columns = append(tb.Columns,
-				&introspect.Column{Name: "trgm", Position: 13, PGType: "text", TypeSchema: "pg_catalog"},
-				&introspect.Column{Name: "near", Position: 14, PGType: "text", TypeSchema: "pg_catalog"})
+			for i, n := range names {
+				tb.Columns = append(tb.Columns, &introspect.Column{Name: n, Position: 30 + i, PGType: "text", TypeSchema: "pg_catalog"})
+			}
 		}
 	}
 	cat.Functions = append(cat.Functions, &introspect.Function{
@@ -30,41 +34,67 @@ func TestSoftReservedParams(t *testing.T) {
 		ReturnType: "posts", ReturnTypeSchema: "public", ReturnsSet: true, Volatility: introspect.VolatilityStable,
 	})
 	b := buildCatalog(t, cat, false, []string{"public", testcatalog.ContribSchema}, nil)
+	plain := buildContrib(t, false)
 
-	for _, col := range []string{"trgm", "near"} {
+	for _, col := range names {
 		p := mustParse(t, b, "/api/kb/docs?"+col+"=eq.x")
 		if c, ok := p.Filter.(plan.Cond); !ok || c.Column.Name != col || c.Value != "x" {
 			t.Errorf("%s=eq.x filter = %#v", col, p.Filter)
 		}
 	}
-	_, err := doParse(t, b, req{url: "/api/kb/docs?order=title.trgm_dist&trgm=eq.x"}, allOn)
-	wantCode(t, err, CodeColumnNotOrderable)
-	docs := b.ByPath["kb.docs"]
-	for _, o := range b.ContribOrders(docs, docs.Table.Column("title")) {
-		if o.Param == "trgm" {
-			t.Errorf("trigram order %s offered next to a column named trgm", o.Name)
+	for _, u := range []string{
+		"/api/kb/docs?order=title.trgm_distance&~trgm=x",
+		"/api/kb/docs?select=id,~title_trgm_similarity&~trgm=x",
+		"/api/kb/docs?select=id,~body_levenshtein_distance,body_levenshtein_distance&body=levenshtein_distance_lt.2&order=body.levenshtein_distance&~levenshtein=Jon",
+	} {
+		got, err := doParse(t, b, req{url: u}, allOn)
+		if err != nil {
+			t.Errorf("%s: %v", u, err)
+			continue
 		}
+		want, err := doParse(t, plain, req{url: strings.ReplaceAll(u, ",body_levenshtein_distance&", "&")}, allOn)
+		if err != nil {
+			t.Errorf("%s without the columns: %v", u, err)
+			continue
+		}
+		if got.Trgm != want.Trgm || got.Levenshtein != want.Levenshtein {
+			t.Errorf("%s: references %v/%v, want %v/%v", u, got.Trgm, got.Levenshtein, want.Trgm, want.Levenshtein)
+		}
+	}
+	p := mustParse(t, b, "/api/kb/docs?select=id,~body_levenshtein_distance,body_levenshtein_distance&~levenshtein=Jon")
+	if fs := p.Select.Fields; len(fs) != 3 || fs[1].Pseudo == nil || fs[2].Column == nil || fs[2].Column.Name != "body_levenshtein_distance" {
+		t.Errorf("pseudo and real column side by side = %+v", fs)
+	}
+	docs, plainDocs := b.ByPath["kb.docs"], plain.ByPath["kb.docs"]
+	if got, want := len(b.ContribOrders(docs, docs.Table.Column("title"))), len(plain.ContribOrders(plainDocs, plainDocs.Table.Column("title"))); got != want {
+		t.Errorf("title order terms next to the columns = %d, want %d", got, want)
 	}
 	seen := map[string]int{}
 	for _, prm := range b.OpenAPI.Paths["/kb/docs"].Get.Parameters {
 		seen[prm.Name]++
 	}
-	if seen["trgm"] != 1 || seen["near"] != 1 {
-		t.Errorf("trgm/near documented %d/%d times, want once each (the filter)", seen["trgm"], seen["near"])
+	for _, n := range []string{"trgm", "near", "~trgm", "~levenshtein"} {
+		if seen[n] != 1 {
+			t.Errorf("%s documented %d times, want once", n, seen[n])
+		}
 	}
 
-	p := mustParse(t, b, "/api/rpc/trgm_probe?trgm=fuzzy")
+	p = mustParse(t, b, "/api/rpc/trgm_probe?trgm=fuzzy")
 	if p.Body.Object["trgm"] != "fuzzy" {
 		t.Errorf("rpc arg trgm = %#v", p.Body.Object)
 	}
 
-	plain := buildContrib(t, false)
 	for url, code := range map[string]string{
-		"/api/kb/docs?trgm=x":                       CodeInvalidParameter,
-		"/api/kb/docs?order=search.rank&trgm=x":     CodeInvalidFilter,
-		"/api/places?near=POINT(1%202)":             CodeInvalidParameter,
-		"/api/places?order=id&near=POINT(1%202)":    CodeInvalidParameter,
-		"/api/kb/docs?order=title.trgm_dist&trgm=x": "",
+		"/api/kb/docs?~trgm=x":                           CodeInvalidParameter,
+		"/api/kb/docs?~trgm=x&~trgm=y":                   CodeInvalidParameter,
+		"/api/kb/docs?order=search.rank&~trgm=x":         CodeInvalidFilter,
+		"/api/places?~near=POINT(1%202)":                 CodeInvalidParameter,
+		"/api/places?order=id&~near=POINT(1%202)":        CodeInvalidParameter,
+		"/api/kb/docs?~nope=eq.1":                        CodeUnknownColumn,
+		"/api/kb/docs?select=~nope":                      CodeUnknownColumn,
+		"/api/kb/docs?order=~nope":                       CodeUnknownColumn,
+		"/api/kb/docs?select=body_levenshtein_distance":  CodeUnknownColumn,
+		"/api/kb/docs?order=title.trgm_distance&~trgm=x": "",
 	} {
 		_, err := doParse(t, plain, req{url: url}, allOn)
 		if code == "" {
@@ -132,30 +162,11 @@ func TestContribJSONArgs(t *testing.T) {
 	}
 }
 
-// TestLevenshteinSoftReserved: levenshtein= yields to a column of that
-// name, which then takes the Levenshtein order term, score and threshold
-// with it; elsewhere it binds the reference text.
-func TestLevenshteinSoftReserved(t *testing.T) {
-	cat := testcatalog.Contrib(testutil.FixtureCatalog())
-	docs := cat.Table(testcatalog.ContribSchema, "docs")
-	docs.Columns = append(docs.Columns, &introspect.Column{Name: "levenshtein", Position: 13, PGType: "text", TypeSchema: "pg_catalog"})
-	b := buildCatalog(t, cat, false, []string{"public", testcatalog.ContribSchema}, nil)
-	p := mustParse(t, b, "/api/kb/docs?levenshtein=eq.x")
-	if c, ok := p.Filter.(plan.Cond); !ok || c.Column.Name != "levenshtein" {
-		t.Errorf("levenshtein=eq.x filter = %#v", p.Filter)
-	}
-	for _, u := range []string{"/api/kb/docs?order=body.levenshtein", "/api/kb/docs?body=levenshtein_lt.2"} {
-		_, err := doParse(t, b, req{url: u}, allOn)
-		if err == nil {
-			t.Errorf("%s parsed next to a column named levenshtein", u)
-		}
-	}
-	if b.ByPath["kb.docs"].Pseudo["body_levenshtein_distance"] != nil {
-		t.Error("Levenshtein score next to a column named levenshtein")
-	}
-
+// TestLevenshteinReference: ~levenshtein= binds the reference text for the
+// Levenshtein order term, score and threshold.
+func TestLevenshteinReference(t *testing.T) {
 	plain := buildContrib(t, false)
-	p = mustParse(t, plain, "/api/kb/docs?select=id,body_levenshtein_distance&body=levenshtein_lt.2&order=body.levenshtein&levenshtein=Jon")
+	p := mustParse(t, plain, "/api/kb/docs?select=id,~body_levenshtein_distance&body=levenshtein_distance_lt.2&order=body.levenshtein_distance&~levenshtein=Jon")
 	if p.Levenshtein != "Jon" {
 		t.Errorf("Levenshtein = %#v", p.Levenshtein)
 	}

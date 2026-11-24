@@ -117,7 +117,7 @@ func TestPseudoColumns(t *testing.T) {
 	}
 	for _, col := range []string{"location", "area"} {
 		for _, acc := range want {
-			pc := places.Pseudo[col+"_"+acc]
+			pc := places.Pseudo[api.PseudoKey(col, acc)]
 			if col == "location" && notOnPoint[acc] {
 				if pc != nil {
 					t.Errorf("pseudo %s_%s registered on a 2D Point column", col, acc)
@@ -129,22 +129,22 @@ func TestPseudoColumns(t *testing.T) {
 			}
 		}
 	}
-	if s := places.Pseudo["location_centroid"].Schema; s.Ref != "#/components/schemas/GeoJSON" {
+	if s := places.Pseudo["~location_centroid"].Schema; s.Ref != "#/components/schemas/GeoJSON" {
 		t.Errorf("centroid schema = %+v", s)
 	}
-	if s := places.Pseudo["location_srid"].Schema; s.Type != "integer" {
+	if s := places.Pseudo["~location_srid"].Schema; s.Type != "integer" {
 		t.Errorf("srid schema = %+v", s)
 	}
-	if s := places.Pseudo["area_is_valid"].Schema; s.Type != "boolean" {
+	if s := places.Pseudo["~area_is_valid"].Schema; s.Type != "boolean" {
 		t.Errorf("is_valid schema = %+v", s)
 	}
-	if s := places.Pseudo["location_x"].Schema; s.Type != "number" {
+	if s := places.Pseudo["~location_x"].Schema; s.Type != "number" {
 		t.Errorf("x schema = %+v", s)
 	}
-	if s := places.Pseudo["area_start_point"].Schema; s.Ref != "#/components/schemas/GeoJSON" {
+	if s := places.Pseudo["~area_start_point"].Schema; s.Ref != "#/components/schemas/GeoJSON" {
 		t.Errorf("start_point schema = %+v", s)
 	}
-	if s := places.Pseudo["area_ewkt"].Schema; s.Type != "string" {
+	if s := places.Pseudo["~area_ewkt"].Schema; s.Type != "string" {
 		t.Errorf("ewkt schema = %+v", s)
 	}
 	// Non-spatial resources get none.
@@ -154,31 +154,39 @@ func TestPseudoColumns(t *testing.T) {
 	// derived: false registers only the distance scores, which belong to
 	// ordering.
 	_, off := build(t, testutil.FixtureCatalog(), New(Settings{Filters: true, Ordering: true, Projection: true, Aggregates: true}))
-	if got := sortedKeys(off.ByPath["places"].Pseudo); !reflect.DeepEqual(got, []string{"area_distance", "location_distance"}) {
+	if got := sortedKeys(off.ByPath["places"].Pseudo); !reflect.DeepEqual(got, []string{"~area_st_distance", "~location_st_distance"}) {
 		t.Errorf("derived=false registered %v", got)
 	}
 }
 
-func TestRealColumnWins(t *testing.T) {
+// TestRealColumnsDoNotCollide: a real column named like a pseudo-column
+// without the reserved prefix (location_srid) or like the reference
+// parameter (near) changes no pseudo-column; one that starts with the
+// prefix is warned about.
+func TestRealColumnsDoNotCollide(t *testing.T) {
+	_, base := build(t, testutil.FixtureCatalog(), New(DefaultSettings()))
 	cat := testutil.FixtureCatalog()
 	pt := placesTable(cat)
-	pt.Columns = append(pt.Columns, &introspect.Column{Name: "location_srid", Position: 6, PGType: "int4", TypeSchema: "pg_catalog"})
+	pt.Columns = append(pt.Columns,
+		&introspect.Column{Name: "location_srid", Position: 6, PGType: "int4", TypeSchema: "pg_catalog"},
+		&introspect.Column{Name: "near", Position: 7, PGType: "text", TypeSchema: "pg_catalog"},
+		&introspect.Column{Name: "~location_wkt", Position: 8, PGType: "text", TypeSchema: "pg_catalog"})
 	b, built := build(t, cat, New(DefaultSettings()))
 	places := built.ByPath["places"]
-	if places.Pseudo["location_srid"] != nil {
-		t.Fatal("pseudo-column shadowed a real column")
+	if got, want := sortedKeys(places.Pseudo), sortedKeys(base.ByPath["places"].Pseudo); !reflect.DeepEqual(got, want) {
+		t.Fatalf("pseudo-columns next to the real columns = %v, want %v", got, want)
 	}
-	if places.Field("location_srid") == nil || len(places.Pseudo) != 47 {
-		t.Fatalf("field/pseudo count: %v %d", places.Field("location_srid"), len(places.Pseudo))
+	if places.Field("location_srid") == nil || places.Pseudo["~location_srid"] == nil || places.Pseudo["~location_st_distance"] == nil {
+		t.Fatal("real column and pseudo-column do not coexist")
 	}
 	found := false
 	for _, w := range b.Warnings {
-		if strings.Contains(w, "pseudo-column skipped") {
+		if strings.Contains(w, "reserved prefix") {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("no warning: %v", b.Warnings)
+		t.Errorf("no warning for a column with the reserved prefix: %v", b.Warnings)
 	}
 }
 
@@ -205,12 +213,12 @@ func TestPseudoColumnsByTypmod(t *testing.T) {
 		_, built := build(t, cat, New(DefaultSettings()))
 		places := built.ByPath["places"]
 		for _, acc := range tc.has {
-			if places.Pseudo["location_"+acc] == nil {
+			if places.Pseudo["~location_"+acc] == nil {
 				t.Errorf("%+v: location_%s missing", tc.spatial, acc)
 			}
 		}
 		for _, acc := range tc.lacks {
-			if places.Pseudo["location_"+acc] != nil {
+			if places.Pseudo["~location_"+acc] != nil {
 				t.Errorf("%+v: location_%s registered", tc.spatial, acc)
 			}
 		}
@@ -273,18 +281,18 @@ func TestOpenAPI(t *testing.T) {
 	if len(loc.AnyOf) != 2 || loc.AnyOf[0].Ref != "#/components/schemas/GeoJSON" {
 		t.Errorf("location property = %+v", loc)
 	}
-	srid := places.Properties["location_srid"]
-	if srid == nil || !srid.ReadOnly || !strings.Contains(srid.Description, "select=location_srid") {
-		t.Errorf("location_srid property = %+v", srid)
+	srid := places.Properties["~location_srid"]
+	if srid == nil || !srid.ReadOnly || !strings.Contains(srid.Description, "select=~location_srid") {
+		t.Errorf("~location_srid property = %+v", srid)
 	}
-	cen := places.Properties["area_centroid"]
+	cen := places.Properties["~area_centroid"]
 	if cen == nil || !cen.ReadOnly || len(cen.AnyOf) != 2 || cen.AnyOf[0].Ref != "#/components/schemas/GeoJSON" {
-		t.Errorf("area_centroid property = %+v", cen)
+		t.Errorf("~area_centroid property = %+v", cen)
 	}
 	if s := built.TypeSchema("geography", "public", ""); s.Ref != "#/components/schemas/GeoJSON" {
 		t.Errorf("TypeSchema(geography) = %+v", s)
 	}
-	if ops := built.Extra.FilterOps["geometry"]; !reflect.DeepEqual(ops, FilterOps()) || len(ops) != len(corepostgis.Ops) {
+	if ops := built.Extra.FilterOps["geometry"]; !reflect.DeepEqual(ops, FilterOps()) || len(ops) != len(corepostgis.Ops)-2 {
 		t.Errorf("FilterOps = %v", ops)
 	}
 	if built.OpenAPI.Components.Schemas[api.GeoJSONFeature] == nil || built.OpenAPI.Components.Schemas[api.GeoJSONFeatureCollection] == nil {
@@ -297,10 +305,10 @@ func TestOpenAPI(t *testing.T) {
 	if mt := doc.Paths["/places/{id}"].Get.Responses["200"].Content["application/geo+json"]; mt == nil || mt.Schema.Ref != "#/components/schemas/GeoJSONFeature" {
 		t.Errorf("row geo+json content = %+v", mt)
 	}
-	if !hasParam(list.Parameters, "geometry", "query") || !hasParam(list.Parameters, "Accept", "header") {
+	if !hasParam(list.Parameters, "~geometry", "query") || !hasParam(list.Parameters, "Accept", "header") {
 		t.Errorf("list parameters lack geometry/Accept")
 	}
-	if users := doc.Paths["/users"].Get; users.Responses["200"].Content["application/geo+json"] != nil || hasParam(users.Parameters, "geometry", "query") {
+	if users := doc.Paths["/users"].Get; users.Responses["200"].Content["application/geo+json"] != nil || hasParam(users.Parameters, "~geometry", "query") {
 		t.Errorf("users must not advertise geo+json")
 	}
 	_, off := build(t, testutil.FixtureCatalog(), New(Settings{Derived: true, Ordering: true, Projection: true, Aggregates: true}))
@@ -338,7 +346,7 @@ func TestDisabledAndNoSpatial(t *testing.T) {
 
 func TestFilterOpsMatchParser(t *testing.T) {
 	ops := FilterOps()
-	if len(ops) != len(plan.SpatialOps)+1 || ops[len(ops)-1] != "is" {
+	if len(ops) != len(plan.SpatialOps) || ops[len(ops)-1] != "is" {
 		t.Fatalf("FilterOps = %v", ops)
 	}
 	for _, name := range ops[:len(ops)-1] {
@@ -347,6 +355,9 @@ func TestFilterOpsMatchParser(t *testing.T) {
 		}
 	}
 	for op, core := range plan.SpatialOps {
+		if op == plan.OpBBoxIntersectsGeom {
+			continue
+		}
 		spec, ok := corepostgis.OpByName(core)
 		if !ok || OpName(spec) != string(op) {
 			t.Errorf("OpName(%s) = %q, want %q", core, OpName(spec), op)
@@ -360,9 +371,9 @@ func TestParseGates(t *testing.T) {
 	_, built := build(t, testutil.FixtureCatalog(), New(DefaultSettings()))
 	requests := map[string]string{
 		"filters":    "/places?location=st_intersects.SRID%3D4326%3BPOINT(1%202)",
-		"ordering":   "/places?order=location.dist.asc&near=POINT(1%202)",
+		"ordering":   "/places?order=location.st_distance.asc&~near=POINT(1%202)",
 		"projection": "/places?select=location(transform=3857)",
-		"derived":    "/places?select=location_srid",
+		"derived":    "/places?select=~location_srid",
 	}
 	parseWith := func(t *testing.T, opts parse.Options, target string) error {
 		t.Helper()

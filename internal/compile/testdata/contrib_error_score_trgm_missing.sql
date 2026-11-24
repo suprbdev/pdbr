@@ -1,2 +1,2 @@
--- request: GET /api/kb/docs?select=id,title_similarity
--- error: 400 invalid_parameter: title_similarity requires trgm=<text>
+-- request: GET /api/kb/docs?select=id,~title_trgm_similarity
+-- error: 400 invalid_parameter: ~title_trgm_similarity requires ~trgm=<text>

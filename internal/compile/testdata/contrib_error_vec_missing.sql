@@ -1,2 +1,2 @@
--- request: GET /api/kb/embeddings?order=emb.vec_cos
--- error: 400 invalid_parameter: order by emb.vec_cos requires vec=<vector>
+-- request: GET /api/kb/embeddings?order=emb.cosine_distance
+-- error: 400 invalid_parameter: order by emb.cosine_distance requires ~vec=<vector>

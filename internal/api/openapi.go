@@ -676,7 +676,7 @@ func (b *Builder) resourceSchema(r *Resource) *Schema {
 		cp := *p
 		cp.ReadOnly = true
 		sel := key + pc.SelectArgSyntax()
-		if pc.Score != nil && pc.Score.Param == "near" && postgis.FlavourOf(pc.Column.PGType) == postgis.Geometry {
+		if pc.Score != nil && pc.Score.Param == ParamNear && postgis.FlavourOf(pc.Column.PGType) == postgis.Geometry {
 			sel += "[(spheroid=true)]"
 		}
 		switch {

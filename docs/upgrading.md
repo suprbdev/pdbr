@@ -299,7 +299,12 @@ branch on `code` need these changes; statuses are unchanged.
 - **A hint that selects no relation is `unknown_relation`** (it was
   `ambiguous_relation`). `ambiguous_relation` is only for a key with
   several FKs and no hint.
+- **`embed_depth_exceeded` is `depth_exceeded`**, the code pdbq uses for
+  the same `limits.max_depth` limit (also for the nested-mutation depth).
 - **`not_implemented` (501) is gone.** It was never emitted.
+- **`limit=0` is allowed**, as in PostgREST: an empty page with its count
+  headers (`?limit=0&count=true` reads only the total) and no `Link` or
+  cursors, and an empty list for `<rel>.limit=0`. It was `400`.
 - **A hook's `UserError` without a code is `invalid_parameter`** (it was
   `invalid_filter`).
 - **Embedding API**: `compile.ErrNotImplemented` and the
@@ -311,6 +316,7 @@ branch on `code` need these changes; statuses are unchanged.
 | `400 invalid_filter` | `400 invalid_argument` | `GET /rpc/f?n=abc`, `select=excerpt(max_chars=x)`, a row argument that is not JSON |
 | `400 invalid_body` | `400 invalid_argument` | `POST /rpc/f {"n": "abc"}`, a row argument with an unknown key |
 | `400 ambiguous_relation` | `400 unknown_relation` | `select=comments!nope(id)`, `posts!left(*)`, `users?posts!bad.title=eq.x` |
+| `400 embed_depth_exceeded` | `400 depth_exceeded` | `select=` nested deeper than `limits.max_depth`, nested mutations deeper than `nested_mutations.max_depth` |
 | `501 not_implemented` | — | removed |
 | `400 invalid_filter` (hook `UserError` with an empty `Code`) | `400 invalid_parameter` | |
 
@@ -318,3 +324,73 @@ These keep `invalid_filter`: an unknown operator or one the column's type
 does not take, a malformed operand or list, a value that does not coerce
 (`id=eq.abc`), relation-filter grammar, filters on a write that takes none,
 and a rank order term or headline without its full-text filter.
+
+### Operator, parameter and pseudo-column names
+
+pdbr 1.0 renames parts of the query grammar so the names follow one rule
+each and a DDL change can never change what a request means. Every item
+below is breaking; the old spellings are `400` errors (`invalid_filter`,
+`invalid_parameter` or `unknown_column`), not aliases.
+
+- **The `~` namespace.** The reference parameters and every pseudo-column
+  start with `~` ([api.md](api.md#the--namespace)). Before, `near=`,
+  `trgm=`, `vec=`, `latlon=`, `levenshtein=` and `geometry=` turned into
+  filters (or RPC arguments) as soon as a column or argument of that name
+  existed, and a real column named like a pseudo-column (`location_area`)
+  silently replaced it. Now `~near=` is always the parameter, `near=eq.x`
+  is always a filter on a column named `near`, and `select=~location_area`
+  is always the accessor. Pseudo-columns answer under their `~` key
+  (`{"~location_area": 12.5}`) unless aliased. A column whose name starts
+  with `~` can no longer be named in `select=`, filters or `order=` (only
+  `select=*` returns it); pdbr logs a warning for it.
+- **Spatial operators are snake_case.** `st_containsproperly`,
+  `st_coveredby`, `st_exactlyequals`, `st_intersects3d`,
+  `bbox_containedby`, `bbox_leftof`, `bbox_rightof`,
+  `bbox_overlapsor{leftof,rightof,below,above}` and `bbox_intersectsnd` are
+  spelled as in the table below.
+- **Redundant spatial operators are gone.** `bbox_intersects2d` is
+  `bbox_intersects` with a geometry operand (an operand starting with `(` is
+  still an envelope), and `st_orderingequals` is `st_exactly_equals`, which
+  matches the same rows and can use a B-tree index.
+- **Raster `intersects` is `st_intersects`**, like the geometry operator.
+  OpenAPI lists `x-pdbr-filter-ops: [st_intersects, is]`.
+- **One distance vocabulary, `<metric>_distance`.** Order terms, score
+  pseudo-columns and thresholds share the metric name: `.dist` is
+  `.st_distance` (score `~<col>_st_distance`), the pgvector and cube terms
+  drop `vec_` (`vec_cos` is `cosine_distance`, `vec_ip` is
+  `negative_inner_product`), the trigram terms spell out `distance`
+  (`trgm_dist` is `trgm_distance`), and the earthdistance and Levenshtein
+  terms and thresholds gain `_distance`. The trigram similarity scores are
+  `~<col>_trgm_similarity` and the word forms, and the miles score is
+  `~<col>_earth_miles_distance`.
+- **Errors.** A filter or `order=` term on a pseudo-column that takes none
+  is `400 column_not_filterable` / `column_not_orderable` (it was
+  `unknown_column`). `~geometry=` on a resource without a spatial column
+  is the `406` of `Accept: application/geo+json` (it was a filter).
+- **Embedding API.** `Resource.NameTaken` is gone, `Resource.Pseudo` is
+  keyed by the `~` names, and a score's `Score.Param` holds `~near`,
+  `~vec`, … .
+
+| 0.x | 1.0 |
+|---|---|
+| `near=`, `trgm=`, `vec=`, `latlon=`, `levenshtein=`, `geometry=` | `~near=`, `~trgm=`, `~vec=`, `~latlon=`, `~levenshtein=`, `~geometry=` |
+| `<col>_area`, `<col>_srid`, `<col>_x`, … (PostGIS accessors) | `~<col>_area`, `~<col>_srid`, `~<col>_x`, … |
+| `<col>_width`, `<col>_value`, `<col>_summary_stats`, … (raster) | `~<col>_width`, `~<col>_value`, `~<col>_summary_stats`, … |
+| `<col>_headline`, `<col>_nlevel`, `<col>_parent`, `<col>_lca`, `<col>_subpath`, `<col>_icount` | the same with `~` |
+| `order=<col>.dist`, `<col>_distance` | `order=<col>.st_distance`, `~<col>_st_distance` |
+| `order=<col>.trgm_dist`, `.trgm_wdist`, `.trgm_swdist` | `.trgm_distance`, `.trgm_word_distance`, `.trgm_strict_word_distance` |
+| `<col>_similarity`, `<col>_word_similarity`, `<col>_strict_word_similarity` | `~<col>_trgm_similarity`, `~<col>_trgm_word_similarity`, `~<col>_trgm_strict_word_similarity` |
+| `order=<col>.vec_l2`, `.vec_ip`, `.vec_cos`, `.vec_l1`, `.vec_hamming`, `.vec_jaccard`, `.vec_chebyshev` | `.l2_distance`, `.negative_inner_product`, `.cosine_distance`, `.l1_distance`, `.hamming_distance`, `.jaccard_distance`, `.chebyshev_distance` |
+| `vec_l2_lt`, `vec_ip_lt`, `vec_cos_lt`, `vec_l1_lt`, `vec_hamming_lt`, `vec_jaccard_lt`, `vec_chebyshev_lt` | `l2_distance_lt`, `negative_inner_product_lt`, `cosine_distance_lt`, `l1_distance_lt`, `hamming_distance_lt`, `jaccard_distance_lt`, `chebyshev_distance_lt` |
+| `<col>_l2_distance`, `<col>_cosine_distance`, … (pgvector, cube scores) | `~<col>_l2_distance`, `~<col>_cosine_distance`, … |
+| `order=<col>.earth_dist`, `earth_lt`, `<col>_earth_distance` | `order=<col>.earth_distance`, `earth_distance_lt`, `~<col>_earth_distance` |
+| `order=<col>.earth_miles`, `earth_miles_lt`, `<col>_earth_distance_miles` | `order=<col>.earth_miles_distance`, `earth_miles_distance_lt`, `~<col>_earth_miles_distance` |
+| `order=<col>.levenshtein`, `levenshtein_lt`, `<col>_levenshtein_distance` | `order=<col>.levenshtein_distance`, `levenshtein_distance_lt`, `~<col>_levenshtein_distance` |
+| `st_containsproperly`, `st_coveredby`, `st_exactlyequals`, `st_intersects3d` | `st_contains_properly`, `st_covered_by`, `st_exactly_equals`, `st_3d_intersects` |
+| `bbox_containedby`, `bbox_leftof`, `bbox_rightof`, `bbox_intersectsnd` | `bbox_contained_by`, `bbox_left_of`, `bbox_right_of`, `bbox_intersects_nd` |
+| `bbox_overlapsorleftof`, `…orrightof`, `…orbelow`, `…orabove` | `bbox_overlaps_or_left_of`, `…_or_right_of`, `…_or_below`, `…_or_above` |
+| `bbox_intersects2d.<geom>` | `bbox_intersects.<geom>` |
+| `st_orderingequals.<geom>` | `st_exactly_equals.<geom>` |
+| raster `<col>=intersects.<geom>` | `<col>=st_intersects.<geom>` |
+| a column named `near` (`trgm`, …) turns `near=` into a filter and removes the distance surface | `near=` filters the column; `~near=` and the distance surface are unaffected |
+| a real column `location_area` hides the accessor | both exist: `location_area` and `~location_area` |

@@ -173,8 +173,12 @@ func (p *parser) resolveSelectItem(node *plan.Node, it selectItem, depth int) er
 	if it.outCast != "" || strings.Contains(it.name, "::") || hasJSONPath(it.name) {
 		return errf(CodeInvalidSelect, "casts and JSON paths apply to columns (col::type, col->key, col->>key::type) and aggregate functions, not to %q", strings.TrimSpace(it.name))
 	}
+	reserved := api.IsReserved(it.name)
+	if reserved && res.Pseudo[it.name] == nil {
+		return errf(CodeUnknownColumn, "unknown column %q on %q", it.name, res.Path)
+	}
 	// Embed: a relation key followed by (...), or carrying hints.
-	if cands := res.Relations[it.name]; len(cands) > 0 && (it.hasInner || len(it.hints) > 0) {
+	if cands := res.Relations[it.name]; len(cands) > 0 && !reserved && (it.hasInner || len(it.hints) > 0) {
 		return p.resolveEmbed(node, it, depth)
 	}
 	if len(it.hints) > 0 && (res.Field(it.name) != nil || res.Computed[it.name] != nil || res.Pseudo[it.name] != nil) {
@@ -182,16 +186,16 @@ func (p *parser) resolveSelectItem(node *plan.Node, it selectItem, depth int) er
 	}
 	fs := plan.FieldSel{Alias: it.alias}
 	switch {
+	case reserved:
+		fs.Pseudo = res.Pseudo[it.name]
 	case res.Field(it.name) != nil:
 		fs.Column = res.Field(it.name).Column
 	case res.Computed[it.name] != nil:
 		fs.Computed = res.Computed[it.name]
-	case res.Pseudo[it.name] != nil:
-		fs.Pseudo = res.Pseudo[it.name]
 	case res.Raster(it.name) != nil && res.Raster(it.name).Column.IsArray:
 		return errf(CodeInvalidSelect, "raster array column %q of %q is not readable; expose it through a computed column", it.name, res.Path)
 	case res.Raster(it.name) != nil:
-		return errf(CodeInvalidSelect, "raster column %q of %q is not readable: select its derived columns (%s_width, %s_num_bands, %s_envelope, %s_value(band=<n>) with near=, %s_summary_stats(band=<n>), ...) or expose the bytes through a computed column", it.name, res.Path, it.name, it.name, it.name, it.name, it.name)
+		return errf(CodeInvalidSelect, "raster column %q of %q is not readable: select its derived columns (~%s_width, ~%s_num_bands, ~%s_envelope, ~%s_value(band=<n>) with ~near=, ~%s_summary_stats(band=<n>), ...) or expose the bytes through a computed column", it.name, res.Path, it.name, it.name, it.name, it.name, it.name)
 	default:
 		if len(res.Relations[it.name]) > 0 {
 			return errf(CodeInvalidSelect, "embed %q needs a selection: %s(...)", it.name, it.name)
@@ -248,7 +252,7 @@ func (p *parser) resolveSelectItem(node *plan.Node, it selectItem, depth int) er
 			fs.Args = args
 		case fs.Computed != nil && fs.Computed.SetOf != nil:
 			if depth+1 > p.opts.maxEmbedDepth() {
-				return errf(CodeEmbedDepthExceeded, "select nesting exceeds max_embed_depth %d", p.opts.maxEmbedDepth())
+				return errf(CodeDepthExceeded, "select nesting exceeds max_embed_depth %d", p.opts.maxEmbedDepth())
 			}
 			sub, err := p.parseSelect(inner, fs.Computed.SetOf, depth+1)
 			if err != nil {
@@ -456,7 +460,7 @@ func (p *parser) resolveEmbed(node *plan.Node, it selectItem, depth int) error {
 		return errf(CodeUnknownRelation, "relation %q of %q cannot be embedded", it.name, res.Path)
 	}
 	if depth+1 > p.opts.maxEmbedDepth() {
-		return errf(CodeEmbedDepthExceeded, "select nesting exceeds max_embed_depth %d", p.opts.maxEmbedDepth())
+		return errf(CodeDepthExceeded, "select nesting exceeds max_embed_depth %d", p.opts.maxEmbedDepth())
 	}
 	if !it.hasInner {
 		return errf(CodeInvalidSelect, "embed %q needs a selection: %s(...)", it.name, it.name)
@@ -650,7 +654,7 @@ func parseRasterArgs(pc *api.PseudoColumn, s string) (map[string]any, error) {
 // parseScoreArgs parses the arguments of a score pseudo-column: only the
 // spatial distance of a geometry column takes one, spheroid=true|false.
 func parseScoreArgs(pc *api.PseudoColumn, s string) (map[string]any, error) {
-	if pc.Score.Param != "near" || postgis.FlavourOf(pc.Column.PGType) != postgis.Geometry {
+	if pc.Score.Param != api.ParamNear || postgis.FlavourOf(pc.Column.PGType) != postgis.Geometry {
 		return nil, errf(CodeInvalidSelect, "%q takes no arguments", pc.Key)
 	}
 	k, v, ok := strings.Cut(s, "=")

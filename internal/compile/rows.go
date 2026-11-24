@@ -150,7 +150,7 @@ func (s *stmt) featureCollection(features string) string {
 // rule).
 func (s *stmt) rowPairs(node *plan.Node, alias string, depth int) (*pairList, []string, error) {
 	if depth > s.maxDepth {
-		return nil, nil, errUser(CodeEmbedDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)
+		return nil, nil, errUser(CodeDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)
 	}
 	r := node.Resource
 	if r == nil {
@@ -440,7 +440,7 @@ func (s *stmt) precisionArg(args map[string]any) (string, bool, error) {
 
 // pseudoJSON renders a pseudo-column: a raster accessor, pixel value or
 // summary statistics, a score, a contrib accessor or derived value, a
-// full-text headline, or a derived spatial accessor (<col>_area, …), whose
+// full-text headline, or a derived spatial accessor (~<col>_area, …), whose
 // projection arguments apply to the owning column before the accessor
 // runs.
 func (s *stmt) pseudoJSON(f *plan.FieldSel, alias string) (string, error) {
@@ -503,7 +503,7 @@ func (s *stmt) computedJSON(c *api.Computed, node *plan.Node, args map[string]an
 	if fn.ReturnsSet {
 		if c.SetOf != nil {
 			if depth > s.maxDepth {
-				return "", errUser(CodeEmbedDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)
+				return "", errUser(CodeDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)
 			}
 			if node == nil {
 				node = &plan.Node{Resource: c.SetOf, Star: true}
@@ -647,7 +647,7 @@ func (s *stmt) arrayJSON(ref string, elem func(ref string) (string, error)) (str
 // true for a row whose attributes are all NULL.
 func (s *stmt) compositeJSON(ref string, comp *introspect.Composite, isArray bool, depth int) (string, error) {
 	if depth > s.maxDepth {
-		return "", errUser(CodeEmbedDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)
+		return "", errUser(CodeDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)
 	}
 	if isArray {
 		return s.arrayJSON(ref, func(elem string) (string, error) { return s.compositeJSON(elem, comp, false, depth) })
@@ -671,7 +671,7 @@ func (s *stmt) compositeJSON(ref string, comp *introspect.Composite, isArray boo
 // does not expose values that reach one.
 func (s *stmt) rowValueJSON(ref string, t *introspect.Table, isArray bool, depth int) (string, error) {
 	if depth > s.maxDepth {
-		return "", errUser(CodeEmbedDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)
+		return "", errUser(CodeDepthExceeded, "embed depth exceeds limit (%d)", s.maxDepth)
 	}
 	r := s.c.Built.Resources[t.Schema+"."+t.Name]
 	if r == nil {
@@ -859,9 +859,9 @@ func (s *stmt) listInnerWith(node *plan.Node, filter plan.Expr, order []plan.Ord
 }
 
 // embedLimit resolves an embed's page size: the cap when absent, rejected
-// (never clamped) when above it.
+// (never clamped) when above it; an explicit 0 selects no rows.
 func (s *stmt) embedLimit(page plan.Page) (int, error) {
-	if page.Limit <= 0 {
+	if !page.LimitSet && page.Limit <= 0 {
 		return s.maxPageSize, nil
 	}
 	if page.Limit > s.maxPageSize {

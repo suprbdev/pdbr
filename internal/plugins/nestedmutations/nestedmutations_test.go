@@ -201,7 +201,7 @@ func TestValidation(t *testing.T) {
 		{"backward element missing required", "/api/users", `{"email":"a","posts":{"create":[{"title":"t"},{"body":"b"}]}}`, CodeInvalidBody, `nested "posts[1]": missing required column(s): title`},
 		{"backward element sets parent fk", "/api/users", `{"email":"a","posts":{"create":[{"title":"t","author_id":1}]}}`, CodeInvalidBody, `nested "posts[0]": column "author_id" is filled from the parent`},
 		{"backward element unknown key", "/api/users", `{"email":"a","posts":{"create":[{"title":"t","nope":1}]}}`, CodeInvalidBody, `nested "posts[0]": unknown key "nope"`},
-		{"depth forward chain", "/api/comments", `{"body":"c","posts":{"create":{"title":"t","users":{"create":{"email":"a","places":{"create":[{"name":"p"}]}}}}}}`, CodeEmbedDepthExceeded, `nested "posts.users.places": nesting depth 4 exceeds max_depth 3`},
+		{"depth forward chain", "/api/comments", `{"body":"c","posts":{"create":{"title":"t","users":{"create":{"email":"a","places":{"create":[{"name":"p"}]}}}}}}`, CodeDepthExceeded, `nested "posts.users.places": nesting depth 4 exceeds max_depth 3`},
 		{"depth backward chain", "/api/users", `{"email":"a","posts":{"create":[{"title":"t","comments":{"create":[{"body":"c","comments":{"create":[{"body":"d"}]}}]}}]}}`, CodeInvalidBody, `nested "posts[0].comments[0]": unknown key "comments"`},
 		{"grandchild in nested", "/api/users", `{"email":"a","posts":{"create":[{"title":"t","comments":{"create":[{"body":"c","posts":{"connect":{"id":1}}}]}}]}}`, CodeInvalidBody, `nested "posts[0].comments[0]": nested relation "posts" sets column "post_id", which is filled from the parent`},
 	}
@@ -223,11 +223,11 @@ func TestDepthBound(t *testing.T) {
 		t.Fatalf("depth 3 within max_depth 3: %v", err)
 	}
 	_, err := run(t, New(with(func(s *Settings) { s.MaxDepth = 2 })), built, "/api/users", deep, nil)
-	wantCode(t, err, CodeEmbedDepthExceeded, `nested "posts[0].comments": nesting depth 3 exceeds max_depth 2`)
+	wantCode(t, err, CodeDepthExceeded, `nested "posts[0].comments": nesting depth 3 exceeds max_depth 2`)
 	// A forward create counts too; connect does not add a level.
 	fwd := `{"body":"c","posts":{"create":{"title":"t","users":{"create":{"email":"a"}}}}}`
 	_, err = run(t, New(with(func(s *Settings) { s.MaxDepth = 2 })), built, "/api/comments", fwd, nil)
-	wantCode(t, err, CodeEmbedDepthExceeded, `nested "posts.users"`)
+	wantCode(t, err, CodeDepthExceeded, `nested "posts.users"`)
 	conn := `{"body":"c","posts":{"create":{"title":"t","users":{"connect":{"id":1}}}}}`
 	if _, err := run(t, New(with(func(s *Settings) { s.MaxDepth = 2 })), built, "/api/comments", conn, nil); err != nil {
 		t.Fatalf("connect at the bound: %v", err)
@@ -447,7 +447,7 @@ func TestPatchValidation(t *testing.T) {
 		{"backward delete empty", "/api/users/1", `{"posts":{"delete":[]}}`, CodeInvalidBody, `"delete" must be a non-empty JSON array`},
 		{"backward delete bad key", "/api/users/1", `{"posts":{"delete":[{"nope":1}]}}`, CodeInvalidBody, `nested "posts.delete[0]": unknown key "nope" in "delete"`},
 		{"backward connect bad value", "/api/users/1", `{"posts":{"connect":[{"id":"x"}]}}`, CodeInvalidBody, `nested "posts.connect[0]"`},
-		{"nested update depth", "/api/users/1", `{"posts":{"update":[{"where":{"id":1},"data":{"comments":{"update":[{"where":{"id":1},"data":{"posts":{"update":{"title":"x"}}}}]}}}]}}`, CodeEmbedDepthExceeded, "exceeds max_depth 3"},
+		{"nested update depth", "/api/users/1", `{"posts":{"update":[{"where":{"id":1},"data":{"comments":{"update":[{"where":{"id":1},"data":{"posts":{"update":{"title":"x"}}}}]}}}]}}`, CodeDepthExceeded, "exceeds max_depth 3"},
 		{"fk and nested", "/api/places/1", `{"owner_id":1,"users":{"update":{"full_name":"x"}}}`, CodeInvalidBody, "both column"},
 	}
 	for _, tc := range cases {

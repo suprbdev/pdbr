@@ -388,7 +388,7 @@ func TestEmbedDepth(t *testing.T) {
 	}
 	p := list(comments)
 	p.Select = node
-	userErr(t, f.compileErr(p), compile.CodeEmbedDepthExceeded)
+	userErr(t, f.compileErr(p), compile.CodeDepthExceeded)
 }
 
 // ---- filters ----
@@ -640,7 +640,7 @@ func TestFilterSpatial(t *testing.T) {
 		{"dwithin-geog", cond(area, "st_dwithin", []any{"POINT(1 2)", 5000.0}), `WHERE ST_DWithin(t0."area", (` + geogOperand + `)::geography, $2)`, 2, "SRID=4326;POINT(1 2)"},
 		{"beyond", cond(loc, "st_beyond", map[string]any{"geometry": "POINT(1 2)", "distance": 1}), `WHERE NOT ST_DWithin(t0."location", ` + geom4326 + `, $2)`, 2, "SRID=4326;POINT(1 2)"},
 		{"bbox", cond(loc, "bbox_intersects", []any{"-0.5", "51.3", "0.3", "51.7"}), `WHERE t0."location" && ST_MakeEnvelope($1, $2, $3, $4, 4326)`, 4, nil},
-		{"bbox-srid", cond(loc, "bbox_containedby", []any{1, 2, 3, 4, 3857}), `WHERE t0."location" @ ST_MakeEnvelope($1, $2, $3, $4, 3857)`, 4, nil},
+		{"bbox-srid", cond(loc, "bbox_contained_by", []any{1, 2, 3, 4, 3857}), `WHERE t0."location" @ ST_MakeEnvelope($1, $2, $3, $4, 3857)`, 4, nil},
 		// ~ / @ have no geography overload: both sides fall back to geometry.
 		{"bbox-geog", cond(area, "bbox_contains", []any{1, 2, 3, 4}), `WHERE t0."area"::geometry ~ ST_MakeEnvelope($1, $2, $3, $4, 4326)`, 4, nil},
 		{"bbox-geog-and", cond(area, "bbox_intersects", []any{1, 2, 3, 4}), `WHERE t0."area" && (ST_MakeEnvelope($1, $2, $3, $4, 4326))::geography`, 4, nil},
@@ -1064,12 +1064,12 @@ func TestSpatialOutput(t *testing.T) {
 		{Column: loc},
 		{Alias: "web", Column: loc, Args: map[string]any{"transform": 3857}},
 		{Alias: "coarse", Column: f.col("places", "area"), Args: map[string]any{"simplify": 0.01, "transform": "3857"}},
-		{Pseudo: &api.PseudoColumn{Key: "location_srid", Column: loc, Accessor: "srid"}},
-		{Pseudo: &api.PseudoColumn{Key: "area_centroid", Column: f.col("places", "area"), Accessor: "centroid"}},
-		{Alias: "gt", Pseudo: &api.PseudoColumn{Key: "location_geometry_type", Column: loc, Accessor: "geometry_type"}},
+		{Pseudo: &api.PseudoColumn{Key: "~location_srid", Column: loc, Accessor: "srid"}},
+		{Pseudo: &api.PseudoColumn{Key: "~area_centroid", Column: f.col("places", "area"), Accessor: "centroid"}},
+		{Alias: "gt", Pseudo: &api.PseudoColumn{Key: "~location_geometry_type", Column: loc, Accessor: "geometry_type"}},
 	}}
 	stmt := f.compile(p)
-	want := `json_build_object('name', t0."name", 'location', ST_AsGeoJSON(t0."location")::json, $1::text, ST_AsGeoJSON(ST_Transform(t0."location", 3857))::json, $3::text, ST_AsGeoJSON(ST_Transform(ST_SimplifyPreserveTopology(t0."area"::geometry, $2), 3857))::json, 'location_srid', ST_SRID(t0."location"), 'area_centroid', ST_AsGeoJSON(CASE WHEN ST_GeometryType(t0."area"::geometry) = 'ST_GeometryCollection' THEN ST_Centroid(t0."area"::geometry) ELSE ST_Centroid(t0."area")::geometry END)::json, $4::text, ST_GeometryType(t0."location"))`
+	want := `json_build_object('name', t0."name", 'location', ST_AsGeoJSON(t0."location")::json, $1::text, ST_AsGeoJSON(ST_Transform(t0."location", 3857))::json, $3::text, ST_AsGeoJSON(ST_Transform(ST_SimplifyPreserveTopology(t0."area"::geometry, $2), 3857))::json, '~location_srid', ST_SRID(t0."location"), '~area_centroid', ST_AsGeoJSON(CASE WHEN ST_GeometryType(t0."area"::geometry) = 'ST_GeometryCollection' THEN ST_Centroid(t0."area"::geometry) ELSE ST_Centroid(t0."area")::geometry END)::json, $4::text, ST_GeometryType(t0."location"))`
 	if !strings.Contains(stmt.SQL, want) {
 		t.Errorf("spatial output:\nwant %s\n%s", want, stmt.SQL)
 	}
@@ -1161,9 +1161,10 @@ func TestCost(t *testing.T) {
 	}
 	limitless := compile.Cost(p, 100)
 	p.Select.Embeds[0].Page = plan.Page{Limit: 0, LimitSet: true}
-	if got := compile.Cost(p, 100); got != limitless {
-		t.Errorf("limit=0 embed cost %d, want %d (the compiler applies max_page_size)", got, limitless)
+	if got := compile.Cost(p, 100); got != 1+20*(1+1) {
+		t.Errorf("limit=0 embed cost %d, want %d (the embed returns no rows)", got, 1+20*(1+1))
 	}
+	p.Select.Embeds[0].Page = plan.Page{}
 	p.Select.Embeds[0].Spread = true
 	if got := compile.Cost(p, 100); got != limitless {
 		t.Errorf("to-many spread cost %d, want %d", got, limitless)
@@ -1345,7 +1346,7 @@ func TestCostHeadlineAndBuffer(t *testing.T) {
 	p.Page = plan.Page{Limit: 10, LimitSet: true}
 	p.Select = &plan.Node{Resource: docs, Fields: []plan.FieldSel{
 		{Column: docs.Table.Column("id")},
-		{Pseudo: docs.Pseudo["body_headline"], Headline: &plan.Headline{Document: docs.Table.Column("body")}},
+		{Pseudo: docs.Pseudo["~body_headline"], Headline: &plan.Headline{Document: docs.Table.Column("body")}},
 	}}
 	if got, want := compile.Cost(p, 100), 1+10*(1+contrib.HeadlineDocumentCost(contrib.MaxHeadlineDocument)); got != want {
 		t.Errorf("headline cost = %d, want %d", got, want)
@@ -1367,8 +1368,8 @@ func TestCostScores(t *testing.T) {
 	p.Page = plan.Page{Limit: 20, LimitSet: true}
 	p.Select = &plan.Node{Resource: places, Fields: []plan.FieldSel{
 		{Column: places.Table.Column("id")},
-		{Pseudo: places.Pseudo["location_distance"], Args: map[string]any{"spheroid": true}},
-		{Pseudo: places.Pseudo["area_distance"]},
+		{Pseudo: places.Pseudo["~location_st_distance"], Args: map[string]any{"spheroid": true}},
+		{Pseudo: places.Pseudo["~area_st_distance"]},
 	}}
 	if got, want := compile.Cost(p, 100), 1+20*3; got != want {
 		t.Errorf("cost = %d, want %d", got, want)
@@ -1379,30 +1380,30 @@ func TestCostScores(t *testing.T) {
 // column, the raster metadata accessors at postgis.RasterAccessorCost, the
 // pixel value at RasterValueCost and the summary statistics at
 // RasterSummaryStatsCost per row; `*` over a resource with raster columns
-// costs its readable columns only, and filters (the raster intersects
+// costs its readable columns only, and filters (the raster st_intersects
 // filter included) are not priced.
 func TestCostGeo(t *testing.T) {
 	built := goldenBuilt(t)
 	shapes, sites, tiles := built.ByPath["kb.shapes"], built.ByPath["kb.sites"], built.ByPath["kb.tiles"]
 	p := list(shapes)
 	p.Page = plan.Page{Limit: 10, LimitSet: true}
-	p.Select = &plan.Node{Resource: shapes, Fields: []plan.FieldSel{{Column: shapes.Table.Column("box")}, {Pseudo: shapes.Pseudo["box_chebyshev_distance"]}}}
+	p.Select = &plan.Node{Resource: shapes, Fields: []plan.FieldSel{{Column: shapes.Table.Column("box")}, {Pseudo: shapes.Pseudo["~box_chebyshev_distance"]}}}
 	if got, want := compile.Cost(p, 100), 1+10*2; got != want {
 		t.Errorf("cube cost = %d, want %d", got, want)
 	}
 	p = list(sites)
 	p.Page = plan.Page{Limit: 10, LimitSet: true}
-	p.Select = &plan.Node{Resource: sites, Fields: []plan.FieldSel{{Pseudo: sites.Pseudo["loc_earth_distance"]}, {Pseudo: sites.Pseudo["ll_earth_distance_miles"]}}}
+	p.Select = &plan.Node{Resource: sites, Fields: []plan.FieldSel{{Pseudo: sites.Pseudo["~loc_earth_distance"]}, {Pseudo: sites.Pseudo["~ll_earth_miles_distance"]}}}
 	if got, want := compile.Cost(p, 100), 1+10*2; got != want {
 		t.Errorf("earth cost = %d, want %d", got, want)
 	}
 	p = list(tiles)
 	p.Page = plan.Page{Limit: 10, LimitSet: true}
 	p.Select = &plan.Node{Resource: tiles, Star: true, Fields: []plan.FieldSel{
-		{Pseudo: tiles.Pseudo["rast_width"]},
-		{Pseudo: tiles.Pseudo["rast_envelope"]},
-		{Pseudo: tiles.Pseudo["rast_value"], Args: map[string]any{"band": int64(2)}},
-		{Pseudo: tiles.Pseudo["rast_summary_stats"]},
+		{Pseudo: tiles.Pseudo["~rast_width"]},
+		{Pseudo: tiles.Pseudo["~rast_envelope"]},
+		{Pseudo: tiles.Pseudo["~rast_value"], Args: map[string]any{"band": int64(2)}},
+		{Pseudo: tiles.Pseudo["~rast_summary_stats"]},
 	}}
 	p.Filter = cond(tiles.Table.Column("rast"), plan.OpRasterIntersects, "POINT(1 2)")
 	want := 1 + 10*(2+2*postgis.RasterAccessorCost+postgis.RasterValueCost+postgis.RasterSummaryStatsCost)

@@ -1,2 +1,2 @@
--- request: GET /api/kb/tiles?select=rast_width(band=1)
--- error: 400 invalid_select: "rast_width" takes no arguments
+-- request: GET /api/kb/tiles?select=~rast_width(band=1)
+-- error: 400 invalid_select: "~rast_width" takes no arguments

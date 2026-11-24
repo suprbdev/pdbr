@@ -163,7 +163,7 @@ func TestErrorCodeVocabulary(t *testing.T) {
 		{name: "page_size_exceeded", path: "/api/users?limit=1000", status: 400, code: "page_size_exceeded"},
 		{name: "keyset_unsupported", path: "/api/metrics?after=WyJwdWJsaWMubWV0cmljcyIsMV0", status: 400, code: "keyset_unsupported"},
 		{name: "cost_exceeded", path: "/api/users?select=id,posts(id,comments(id))", status: 400, code: "cost_exceeded"},
-		{name: "embed_depth_exceeded", path: "/api/users?select=id,posts(id,comments(id,posts(id)))&limit=1", status: 400, code: "embed_depth_exceeded"},
+		{name: "depth_exceeded", path: "/api/users?select=id,posts(id,comments(id,posts(id)))&limit=1", status: 400, code: "depth_exceeded"},
 		{name: "ambiguous_relation", path: "/api/comments?select=id,comments(id)&limit=1", status: 400, code: "ambiguous_relation"},
 		{name: "invalid_body", method: "POST", path: "/api/users", body: `{"nope":1}`, status: 400, code: "invalid_body"},
 		{name: "column_readonly", method: "POST", path: "/api/users", body: `{"id":5,"email":"ro@e2e"}`, status: 400, code: "column_readonly"},

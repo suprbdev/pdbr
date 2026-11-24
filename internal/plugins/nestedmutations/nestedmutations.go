@@ -39,7 +39,7 @@ const DefaultMaxOperations = 50
 
 // Settings is the plugins.settings.nested_mutations section.
 type Settings struct {
-	MaxDepth      int `koanf:"max_depth" doc:"Deepest nesting of create/update operations (the root row is depth 1; connect, delete and disconnect add no level); deeper answers 400 embed_depth_exceeded."`
+	MaxDepth      int `koanf:"max_depth" doc:"Deepest nesting of create/update operations (the root row is depth 1; connect, delete and disconnect add no level); deeper answers 400 depth_exceeded."`
 	MaxOperations int `koanf:"max_operations" doc:"Most nested operations per request (every list item and forward operation counts once); more answers 400 invalid_body."`
 }
 

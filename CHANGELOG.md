@@ -23,6 +23,8 @@ becomes the release notes of the next tag.
 
 ### Changed
 
+- `limit=0` (and `<rel>.limit=0`) is allowed, as in PostgREST: an empty
+  page with its count headers; it was `400`.
 - `go install github.com/suprbdev/pdbr/cmd/pdbr@vX.Y.Z` builds report the
   module version in `pdbr --version`.
 - Contracts, nested mutations, partial mutations, rasters,
@@ -40,7 +42,19 @@ becomes the release notes of the next tag.
   `invalid_argument` (also in a `POST` body, which used `invalid_body`). A hint
   that selects no relation is `unknown_relation` instead of
   `ambiguous_relation`. The never-emitted `not_implemented` (501) and
-  `compile.ErrNotImplemented` are removed.
+  `compile.ErrNotImplemented` are removed. `embed_depth_exceeded` is
+  `depth_exceeded`, as in pdbq.
+
+- The query grammar uses one naming rule each: the reference parameters and
+  every pseudo-column live in a `~` namespace (`~near=`, `~vec=`,
+  `select=~location_area`), so a column or function argument can no longer
+  change what a request means; spatial operators are snake_case
+  (`st_contains_properly`, `bbox_overlaps_or_left_of`, …) without aliases
+  (`bbox_intersects2d` and `st_orderingequals` are gone); raster
+  `intersects` is `st_intersects`; distances are `<metric>_distance` across
+  order terms, scores and thresholds (`.dist` → `.st_distance`,
+  `vec_cos` → `cosine_distance`, `trgm_dist` → `trgm_distance`,
+  `earth_lt` → `earth_distance_lt`, …).
 
 For the changes between 0.x and 1.0 see [docs/upgrading.md](docs/upgrading.md).
 

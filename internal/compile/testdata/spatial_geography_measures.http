@@ -1,1 +1,1 @@
-GET /api/places?select=id,area_perimeter,area_centroid,area_area,area_length&order=id&limit=5
+GET /api/places?select=id,~area_perimeter,~area_centroid,~area_area,~area_length&order=id&limit=5

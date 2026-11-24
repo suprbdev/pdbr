@@ -1,1 +1,1 @@
-GET /api/kb/embeddings?select=id,chunks(id,emb_cosine_distance)&chunks.order=emb.vec_cos&chunks.limit=2&vec=%5B1%2C0%2C0%5D&limit=2
+GET /api/kb/embeddings?select=id,chunks(id,~emb_cosine_distance)&chunks.order=emb.cosine_distance&chunks.limit=2&~vec=%5B1%2C0%2C0%5D&limit=2

@@ -27,19 +27,20 @@ func TestContribScores(t *testing.T) {
 	b := build(t, testcatalog.Contrib(testutil.FixtureCatalog()), contribOptions(true))
 	docs := b.ByPath["kb.docs"]
 	want := []string{
-		"body_levenshtein_distance=levenshtein:levenshteinDistance",
-		"body_similarity=trgm:similarity", "body_strict_word_similarity=trgm:strictWordSimilarity", "body_word_similarity=trgm:wordSimilarity",
-		"title_similarity=trgm:similarity", "title_strict_word_similarity=trgm:strictWordSimilarity", "title_word_similarity=trgm:wordSimilarity",
+		"~body_levenshtein_distance=~levenshtein:levenshteinDistance",
+		"~body_trgm_similarity=~trgm:similarity", "~body_trgm_strict_word_similarity=~trgm:strictWordSimilarity", "~body_trgm_word_similarity=~trgm:wordSimilarity",
+		"~title_trgm_similarity=~trgm:similarity", "~title_trgm_strict_word_similarity=~trgm:strictWordSimilarity", "~title_trgm_word_similarity=~trgm:wordSimilarity",
 	}
 	if got := scoreKeys(docs); !reflect.DeepEqual(got, want) {
 		t.Errorf("kb.docs scores = %v\nwant %v", got, want)
 	}
+	docsWant := want
 	emb := b.ByPath["kb.embeddings"]
 	want = []string{
-		"code_hamming_distance=vec:hammingDistance", "code_jaccard_distance=vec:jaccardDistance",
-		"emb_cosine_distance=vec:cosineDistance", "emb_l1_distance=vec:l1Distance", "emb_l2_distance=vec:l2Distance", "emb_negative_inner_product=vec:negativeInnerProduct",
-		"half_cosine_distance=vec:cosineDistance", "half_l1_distance=vec:l1Distance", "half_l2_distance=vec:l2Distance", "half_negative_inner_product=vec:negativeInnerProduct",
-		"sparse_cosine_distance=vec:cosineDistance", "sparse_l1_distance=vec:l1Distance", "sparse_l2_distance=vec:l2Distance", "sparse_negative_inner_product=vec:negativeInnerProduct",
+		"~code_hamming_distance=~vec:hammingDistance", "~code_jaccard_distance=~vec:jaccardDistance",
+		"~emb_cosine_distance=~vec:cosineDistance", "~emb_l1_distance=~vec:l1Distance", "~emb_l2_distance=~vec:l2Distance", "~emb_negative_inner_product=~vec:negativeInnerProduct",
+		"~half_cosine_distance=~vec:cosineDistance", "~half_l1_distance=~vec:l1Distance", "~half_l2_distance=~vec:l2Distance", "~half_negative_inner_product=~vec:negativeInnerProduct",
+		"~sparse_cosine_distance=~vec:cosineDistance", "~sparse_l1_distance=~vec:l1Distance", "~sparse_l2_distance=~vec:l2Distance", "~sparse_negative_inner_product=~vec:negativeInnerProduct",
 	}
 	if got := scoreKeys(emb); !reflect.DeepEqual(got, want) {
 		t.Errorf("kb.embeddings scores = %v\nwant %v", got, want)
@@ -49,14 +50,14 @@ func TestContribScores(t *testing.T) {
 	}
 
 	props := b.OpenAPI.Components.Schemas["kb.embeddings"].Properties
-	if p := props["emb_cosine_distance"]; p == nil || !reflect.DeepEqual(p.Type, []string{"number", "null"}) || !p.ReadOnly || !strings.Contains(p.Description, "vec=") {
-		t.Errorf("emb_cosine_distance property = %+v", p)
+	if p := props["~emb_cosine_distance"]; p == nil || !reflect.DeepEqual(p.Type, []string{"number", "null"}) || !p.ReadOnly || !strings.Contains(p.Description, "~vec=") {
+		t.Errorf("~emb_cosine_distance property = %+v", p)
 	}
 	get := b.OpenAPI.Paths["/kb/docs"].Get
-	if sel := paramByName(get.Parameters, "select").Description; !strings.Contains(sel, "Scores against near=, trgm=, vec=, latlon= or levenshtein=") || !strings.Contains(sel, "title_similarity") {
+	if sel := paramByName(get.Parameters, "select").Description; !strings.Contains(sel, "Scores against ~near=, ~trgm=, ~vec=, ~latlon= or ~levenshtein=") || !strings.Contains(sel, "~title_trgm_similarity") {
 		t.Errorf("select description: %s", sel)
 	}
-	if paramByName(get.Parameters, "trgm") == nil {
+	if paramByName(get.Parameters, "~trgm") == nil {
 		t.Error("kb.docs lacks trgm")
 	}
 
@@ -65,8 +66,8 @@ func TestContribScores(t *testing.T) {
 	cat.Table(testcatalog.ContribSchema, "docs").Columns = append(cat.Table(testcatalog.ContribSchema, "docs").Columns,
 		&introspect.Column{Name: "trgm", Position: 20, PGType: "int4", TypeSchema: "pg_catalog"})
 	b = build(t, cat, contribOptions(true))
-	if got := scoreKeys(b.ByPath["kb.docs"]); !reflect.DeepEqual(got, []string{"body_levenshtein_distance=levenshtein:levenshteinDistance"}) {
-		t.Errorf("scores on a resource with a column named trgm: %v", got)
+	if got := scoreKeys(b.ByPath["kb.docs"]); !reflect.DeepEqual(got, docsWant) {
+		t.Errorf("a column named trgm changed the scores: %v", got)
 	}
 	got := scoreKeys(b.ByPath["kb.embeddings"])
 	for _, k := range got {
@@ -78,7 +79,7 @@ func TestContribScores(t *testing.T) {
 		t.Errorf("vector scores without indexes = %v", got)
 	}
 	b = build(t, cat, contribOptions(false))
-	if got := scoreKeys(b.ByPath["kb.embeddings"]); len(got) != 18 || !strings.HasPrefix(got[0], "code_hamming_distance") {
+	if got := scoreKeys(b.ByPath["kb.embeddings"]); len(got) != 18 || !strings.HasPrefix(got[0], "~code_hamming_distance") {
 		t.Errorf("indexed_only off: %v", got)
 	}
 }

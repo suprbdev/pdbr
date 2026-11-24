@@ -40,45 +40,21 @@ func splitQuery(raw string) ([]param, error) {
 }
 
 // reserved are the query parameters that are never filters (bare form).
+// The reference parameters carry api.ReservedPrefix, so no column, computed
+// column or function argument can take their place.
 var reserved = map[string]bool{
 	"select": true, "order": true, "limit": true, "offset": true, "after": true,
-	"before": true, "count": true, "distinct": true, "near": true, "on_conflict": true,
-	"trgm": true, "vec": true, "levenshtein": true, "latlon": true, "columns": true, "geometry": true,
+	"before": true, "count": true, "distinct": true, "on_conflict": true, "columns": true,
+	api.ParamNear: true, api.ParamTrgm: true, api.ParamVec: true, api.ParamLevenshtein: true,
+	api.ParamLatLon: true, api.ParamGeometry: true,
 }
 
-// softReserved are the reserved params that yield to a column, computed
-// column or RPC argument of the same name on the route: there the name is a
-// filter (or the argument) and the parameter is unavailable.
-var softReserved = map[string]bool{"near": true, "trgm": true, "vec": true, "levenshtein": true, "latlon": true, "geometry": true}
-
 // isReserved reports whether key is a reserved parameter on this route.
-func (p *parser) isReserved(key string, res *api.Resource) bool {
-	if !reserved[key] {
-		return false
-	}
+func (p *parser) isReserved(key string, _ *api.Resource) bool {
 	if key == "columns" {
 		return p.isMutation() && p.method != plan.DELETE
 	}
-	if key == "geometry" && (res == nil || !res.HasSpatial()) {
-		return false
-	}
-	return !softReserved[key] || !nameTaken(key, res, p.match.RPC)
-}
-
-// nameTaken reports whether a column or computed column of res, or an
-// argument of rpc, is named key.
-func nameTaken(key string, res *api.Resource, rpc *api.RPC) bool {
-	if res != nil && res.NameTaken(key) {
-		return true
-	}
-	if rpc != nil {
-		for _, a := range rpc.Args {
-			if a.Name == key {
-				return true
-			}
-		}
-	}
-	return false
+	return reserved[key]
 }
 
 // listOnly are the reserved params that only make sense on list requests.
@@ -152,24 +128,24 @@ func (p *parser) parseQueryWith(raw string, res *api.Resource, extra func(key, v
 				return errf(CodeInvalidSelect, "select is not valid on this route")
 			}
 			continue
-		case q.key == "near" && p.isReserved(q.key, res):
+		case q.key == api.ParamNear:
 			near, hasNear = q.val, true
 			continue
-		case q.key == "trgm" && p.isReserved(q.key, res):
+		case q.key == api.ParamTrgm:
 			trgm, hasTrgm = q.val, true
 			continue
-		case q.key == "vec" && p.isReserved(q.key, res):
+		case q.key == api.ParamVec:
 			vec, hasVec = q.val, true
 			continue
-		case q.key == "levenshtein" && p.isReserved(q.key, res):
+		case q.key == api.ParamLevenshtein:
 			lev, hasLev = q.val, true
 			continue
-		case q.key == "latlon" && p.isReserved(q.key, res):
+		case q.key == api.ParamLatLon:
 			latlon, hasLatLon = q.val, true
 			continue
-		case q.key == "geometry" && p.isReserved(q.key, res):
+		case q.key == api.ParamGeometry:
 			if q.val == "" {
-				return errf(CodeInvalidParameter, "geometry= needs the key of a spatial select item")
+				return errf(CodeInvalidParameter, "~geometry= needs the key of a spatial select item")
 			}
 			p.req.Geometry = q.val
 			continue
@@ -214,7 +190,7 @@ func (p *parser) parseQueryWith(raw string, res *api.Resource, extra func(key, v
 	if err := p.applyRange(); err != nil {
 		return err
 	}
-	if p.req.Page.Limit == 0 {
+	if !p.req.Page.LimitSet {
 		p.req.Page.Limit = p.opts.maxPageSize()
 	}
 	if err := p.checkPaging(res); err != nil {
@@ -294,8 +270,8 @@ func (p *parser) parseLimit(val string) (int, error) {
 	if err != nil {
 		return 0, errf(CodeInvalidParameter, "limit must be an integer, got %q", val)
 	}
-	if n <= 0 {
-		return 0, errf(CodeInvalidParameter, "limit must be positive, got %d", n)
+	if n < 0 {
+		return 0, errf(CodeInvalidParameter, "limit must not be negative, got %d", n)
 	}
 	if n > p.opts.maxPageSize() {
 		return 0, errf(CodePageSizeExceeded, "limit %d exceeds the maximum page size %d", n, p.opts.maxPageSize())

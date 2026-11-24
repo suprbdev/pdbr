@@ -1,1 +1,1 @@
-GET /api/kb/docs?select=id,title&title=trgm_sim.postgres&or=(title.trgm_wsim.gres,title.not.trgm_swsim.post)&order=title.trgm_dist,title.trgm_wdist.desc&trgm=postgres&limit=5
+GET /api/kb/docs?select=id,title&title=trgm_sim.postgres&or=(title.trgm_wsim.gres,title.not.trgm_swsim.post)&order=title.trgm_distance,title.trgm_word_distance.desc&~trgm=postgres&limit=5

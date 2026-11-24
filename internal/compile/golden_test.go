@@ -219,7 +219,7 @@ func goldenBuilt(t testing.TB) *api.Built {
 		Version:     "test",
 		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
-	// The postgis plugin registers the <col>_<accessor> pseudo-columns the
+	// The postgis plugin registers the ~<col>_<accessor> pseudo-columns the
 	// spatial_* goldens select; the parse gates themselves come from
 	// goldenParseOptions.
 	if err := postgisplugin.New(postgisplugin.DefaultSettings()).TransformAPI(context.Background(), b); err != nil {

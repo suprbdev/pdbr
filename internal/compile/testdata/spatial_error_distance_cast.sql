@@ -1,2 +1,2 @@
--- request: GET /api/places?select=id,location_distance::text&near=POINT(0%200)
--- error: 400 invalid_select: casts apply to columns and JSON paths; "location_distance" is not a column
+-- request: GET /api/places?select=id,~location_st_distance::text&~near=POINT(0%200)
+-- error: 400 invalid_select: casts apply to columns and JSON paths; "~location_st_distance" is not a column

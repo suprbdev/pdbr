@@ -1,4 +1,4 @@
--- request: GET /api/kb/sites?select=id&order=loc.earth_dist.desc&latlon=51.5,-0.12&limit=2&after=WyJrYi5zaXRlcyIsIDNd
+-- request: GET /api/kb/sites?select=id&order=loc.earth_distance.desc&~latlon=51.5,-0.12&limit=2&after=WyJrYi5zaXRlcyIsIDNd
 SELECT json_build_object('has_next', coalesce(bool_or(s1.__rn > $9), false), 'has_prev', true, 'first', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $9))->0, 'last', (json_agg(s1.__key ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $9))->-1, 'n', count(*) FILTER (WHERE s1.__rn <= $9), 'rows', coalesce(json_agg(s1.data ORDER BY s1.__rn ASC) FILTER (WHERE s1.__rn <= $9), '[]'::json)) AS data
 FROM (
   SELECT json_build_object('id', t0."id") AS data, jsonb_build_array(t0."id") AS __key, row_number() OVER (ORDER BY (t0."loc") OPERATOR("ext".<->) "ext".ll_to_earth($1::float8, $2::float8) DESC NULLS LAST, t0."id" ASC) AS __rn

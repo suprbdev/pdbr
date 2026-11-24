@@ -1,2 +1,2 @@
-GET /api/places?select=id,location&geometry=name
+GET /api/places?select=id,location&~geometry=name
 Accept: application/geo+json
